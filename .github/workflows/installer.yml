@@ -4,6 +4,20 @@
 #
 # The install test (installer/ci-install-test.ps1) runs Mantle LIVE on the runner: it changes the runner's
 # taskbar and execution policy, which is why it only ever runs here, on a machine thrown away afterwards.
+#
+# CODE SIGNING (SignPath Foundation, optional, lane signpath-mantle 2026-10-30). Off until the repo variable
+# SIGNPATH_ORGANIZATION_ID is set; while it is unset this workflow does exactly what it did before (unsigned
+# Mantle-Setup.exe on the draft). Once it is set (with the secret SIGNPATH_API_TOKEN and the variables
+# SIGNPATH_PROJECT_SLUG and SIGNPATH_POLICY_SLUG), the `sign` job submits the install-tested, unsigned
+# Mantle-Setup.exe artifact to SignPath, waits for the signing request to be approved and signed, checks the
+# signature on the runner (Get-AuthenticodeSignature must say Valid), and the draft gets the SIGNED file.
+# A failed or unapproved signing request puts nothing on the draft. Every job runs on a GitHub-hosted runner
+# (a SignPath OSS condition). Policy: README.md "Code signing policy".
+#
+# Nothing else holds a hash of the installer, so nothing has to be regenerated after signing: an installed
+# Mantle's updater (lib/updater.js checkPackaged) only compares the latest release's tag with its version and
+# links the release's Mantle-Setup.exe for the user to download and run; it reads no latest.yml, blockmap or
+# checksum, and electron-builder runs with --publish never, so only Mantle-Setup.exe goes on the release.
 name: installer
 
 on:
@@ -40,6 +54,8 @@ jobs:
     timeout-minutes: 45
     outputs:
       version: ${{ steps.meta.outputs.version }}
+      # the unsigned installer's artifact id: what the `sign` job hands to SignPath
+      setup-artifact-id: ${{ steps.upload-setup.outputs.artifact-id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -106,6 +122,7 @@ jobs:
           if ($code -ne 0) { throw "install test failed: $sum" }
 
       - name: Upload the installer
+        id: upload-setup
         if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -123,9 +140,71 @@ jobs:
             ci-out-install-test.txt
           if-no-files-found: ignore
 
-  draft-release:
+  # SignPath signing: only when the repo variable SIGNPATH_ORGANIZATION_ID is set, and only for a run that
+  # updates the draft (the signed file exists to go on it). Skipped otherwise, and then the draft gets the
+  # unsigned file exactly as before.
+  sign:
     needs: build-and-test
-    if: github.event_name == 'push' || inputs.draft
+    if: vars.SIGNPATH_ORGANIZATION_ID != '' && (github.event_name == 'push' || inputs.draft)
+    runs-on: windows-latest
+    # the signing request waits for a person to approve it in SignPath (up to an hour below)
+    timeout-minutes: 75
+    permissions:
+      contents: read
+      actions: read   # SignPath's action reads this run's job details and downloads the artifact with github.token
+    outputs:
+      sha256: ${{ steps.verify.outputs.sha256 }}
+    steps:
+      # The artifact is the zip actions/upload-artifact made of the unsigned Mantle-Setup.exe, so the SignPath
+      # artifact configuration's root is <zip-file> with <pe-file path="Mantle-Setup.exe"> inside it. The
+      # signed zip comes back extracted into dist-signed/.
+      - name: Submit Mantle-Setup.exe to SignPath and wait for the signed file
+        id: signpath
+        uses: signpath/github-action-submit-signing-request@v3
+        with:
+          api-token: ${{ secrets.SIGNPATH_API_TOKEN }}
+          organization-id: ${{ vars.SIGNPATH_ORGANIZATION_ID }}
+          project-slug: ${{ vars.SIGNPATH_PROJECT_SLUG }}
+          signing-policy-slug: ${{ vars.SIGNPATH_POLICY_SLUG }}
+          github-artifact-id: ${{ needs.build-and-test.outputs.setup-artifact-id }}
+          wait-for-completion: true
+          wait-for-completion-timeout-in-seconds: 3600
+          output-artifact-directory: dist-signed
+
+      - name: Check the signature (Get-AuthenticodeSignature must say Valid)
+        id: verify
+        shell: pwsh
+        env:
+          REQUEST_URL: ${{ steps.signpath.outputs.signing-request-web-url }}
+        run: |
+          $f = 'dist-signed/Mantle-Setup.exe'
+          if (-not (Test-Path $f)) { throw "SignPath returned no $f (got: $((Get-ChildItem -Recurse dist-signed -ErrorAction SilentlyContinue | ForEach-Object Name) -join ', '))" }
+          $sig = Get-AuthenticodeSignature $f
+          $who = if ($sig.SignerCertificate) { $sig.SignerCertificate.Subject } else { 'no signer certificate' }
+          $ts = if ($sig.TimeStamperCertificate) { 'timestamped' } else { 'NOT timestamped' }
+          $sha = (Get-FileHash $f -Algorithm SHA256).Hash
+          $len = (Get-Item $f).Length
+          $line = "SIGNED: Mantle-Setup.exe $([math]::Round($len / 1MB, 1)) MB ($len bytes), sha256 $sha; signature $($sig.Status) ($($sig.StatusMessage)), signer $who, $ts; request $env:REQUEST_URL"
+          $line | Write-Output
+          "$line" >> $env:GITHUB_STEP_SUMMARY
+          if ($sig.Status -ne 'Valid') { throw "the signature on Mantle-Setup.exe is $($sig.Status), not Valid: $($sig.StatusMessage)" }
+          "sha256=$sha" >> $env:GITHUB_OUTPUT
+
+      - name: Upload the signed installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Mantle-Setup-signed
+          path: dist-signed/Mantle-Setup.exe
+          if-no-files-found: error
+
+  draft-release:
+    needs: [build-and-test, sign]
+    # The draft takes the signed file when signing ran and succeeded, the unsigned one when signing is not set
+    # up (sign skipped), and nothing when signing is set up but did not succeed.
+    if: >-
+      !cancelled() && needs.build-and-test.result == 'success' &&
+      (github.event_name == 'push' || inputs.draft) &&
+      (needs.sign.result == 'success' || (needs.sign.result == 'skipped' && vars.SIGNPATH_ORGANIZATION_ID == ''))
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -135,8 +214,17 @@ jobs:
           sparse-checkout: installer
       - uses: actions/download-artifact@v4
         with:
-          name: Mantle-Setup
+          name: ${{ needs.sign.result == 'success' && 'Mantle-Setup-signed' || 'Mantle-Setup' }}
           path: dist
+      - name: The file to upload is the one SignPath signed (same sha256)
+        if: needs.sign.result == 'success'
+        env:
+          SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
+        run: |
+          set -euo pipefail
+          got=$(sha256sum dist/Mantle-Setup.exe | awk '{ print toupper($1) }')
+          [ -n "$SIGNED_SHA256" ] && [ "$got" = "$SIGNED_SHA256" ] || { echo "::error::dist/Mantle-Setup.exe sha256 $got is not the signed file's ($SIGNED_SHA256)"; exit 1; }
+          echo "signed Mantle-Setup.exe, sha256 $got"
       - name: Put Mantle-Setup.exe on the DRAFT release (never published, no tag created)
         env:
           GH_TOKEN: ${{ github.token }}
