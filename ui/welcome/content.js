@@ -21,6 +21,10 @@
  *   kill switch                    main.js registerShortcuts Ctrl+Alt+Shift+Backspace
  *   start at sign-in               tools/install-autostart.ps1 (task "Mantle"), npm run autostart:remove
  *   Keyboard shortcuts page        ui/settings/settings.js V.shortcuts "Keyboard shortcuts"
+ *   network on its own (card 1)    lib/updater.js FIRST_CHECK_MS / CHECK_EVERY_MS / DEFAULTS (GitHub);
+ *                                  sidecar/TopbarPing.cs EveryMs, pauses with the stats; the hosts in
+ *                                  sidecar/ping-targets.json; tray "Features" = lib/features.js trayItems,
+ *                                  labels from lib/features/updates.js and lib/features/topbar.js
  */
 (function (root) {
   'use strict';
@@ -36,6 +40,8 @@
           { icon: 'top', name: 'The top bar', text: 'The Mantle menu and the menus of the app in front, with CPU, memory and GPU on the right.' },
           { icon: 'launcher', name: 'The launcher', text: 'Mantle’s Start. Tap Win and type to find apps, settings and files.' },
         ],
+        // the network Mantle uses on its own (README "Privacy"; SignPath asks for it at first run)
+        foot: 'On its own, Mantle checks GitHub for updates 2 minutes after it starts and every 6 hours, and the top bar’s PING pings AWS and Akamai/Linode servers every 2 seconds while it shows. Untick either under Features in the tray: Check for Mantle updates, Top menu bar.',
       },
       {
         id: 'keys', step: 'The keys',

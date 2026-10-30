@@ -70,6 +70,7 @@
           h('span', { class: 'pic' }, svg(40, 30, ICONS[it.icon] || [SCREEN])),
           h('span', { class: 'itext' }, h('span', { class: 'iname', text: it.name }), h('span', { class: 'idesc', text: it.text })));
       })),
+      c.foot ? h('p', { class: 'fine', text: c.foot }) : null,
     ];
   }
 

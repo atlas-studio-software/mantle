@@ -94,6 +94,9 @@ p { margin: 0; }
 
 /* card 1: what changed */
 .items { margin-top: 28px; display: flex; flex-direction: column; gap: 22px; }
+/* card 1 with its network note (.fine) under the items: a little less air so the note fits the 500px card */
+.items:has(~ .fine) { gap: 16px; }
+.items ~ .fine { margin-bottom: 0; }
 .item { display: flex; align-items: flex-start; gap: 14px; }
 .pic {
   flex: 0 0 56px; height: 44px; display: grid; place-items: center;
