@@ -149,6 +149,8 @@ jobs:
     runs-on: windows-latest
     # the signing request waits for a person to approve it in SignPath (up to an hour below)
     timeout-minutes: 75
+    # This job hands its github.token to SignPath, so it holds only what SignPath documents it needs, and no
+    # write access: the draft-release job below uploads, and that job never talks to SignPath.
     permissions:
       contents: read
       actions: read   # SignPath's action reads this run's job details and downloads the artifact with github.token
@@ -188,6 +190,7 @@ jobs:
           $line | Write-Output
           "$line" >> $env:GITHUB_STEP_SUMMARY
           if ($sig.Status -ne 'Valid') { throw "the signature on Mantle-Setup.exe is $($sig.Status), not Valid: $($sig.StatusMessage)" }
+          if (-not $sig.TimeStamperCertificate) { throw 'Mantle-Setup.exe is signed but not timestamped, so the signature would stop validating when the certificate expires' }
           "sha256=$sha" >> $env:GITHUB_OUTPUT
 
       - name: Upload the signed installer
@@ -205,9 +208,14 @@ jobs:
       !cancelled() && needs.build-and-test.result == 'success' &&
       (github.event_name == 'push' || inputs.draft) &&
       (needs.sign.result == 'success' || (needs.sign.result == 'skipped' && vars.SIGNPATH_ORGANIZATION_ID == ''))
-    runs-on: ubuntu-latest
+    # Signed: Windows, so this job checks the Authenticode signature itself before it uploads. Unsigned:
+    # ubuntu-latest, as before. The upload script runs under bash on both.
+    runs-on: ${{ needs.sign.result == 'success' && 'windows-latest' || 'ubuntu-latest' }}
     permissions:
       contents: write
+    defaults:
+      run:
+        shell: bash
     steps:
       - uses: actions/checkout@v4
         with:
@@ -216,15 +224,21 @@ jobs:
         with:
           name: ${{ needs.sign.result == 'success' && 'Mantle-Setup-signed' || 'Mantle-Setup' }}
           path: dist
-      - name: The file to upload is the one SignPath signed (same sha256)
+      # Trust nothing the sign job said: the downloaded file must be the one it verified, and still Valid.
+      - name: The file to upload is the one SignPath signed (same sha256, signature Valid and timestamped)
         if: needs.sign.result == 'success'
+        shell: pwsh
         env:
           SIGNED_SHA256: ${{ needs.sign.outputs.sha256 }}
         run: |
-          set -euo pipefail
-          got=$(sha256sum dist/Mantle-Setup.exe | awk '{ print toupper($1) }')
-          [ -n "$SIGNED_SHA256" ] && [ "$got" = "$SIGNED_SHA256" ] || { echo "::error::dist/Mantle-Setup.exe sha256 $got is not the signed file's ($SIGNED_SHA256)"; exit 1; }
-          echo "signed Mantle-Setup.exe, sha256 $got"
+          $f = 'dist/Mantle-Setup.exe'
+          if (-not (Test-Path $f)) { throw "no $f in the Mantle-Setup-signed artifact" }
+          $got = (Get-FileHash $f -Algorithm SHA256).Hash
+          if (-not $env:SIGNED_SHA256 -or $got -ne $env:SIGNED_SHA256) { throw "$f sha256 $got is not the signed file's ($env:SIGNED_SHA256)" }
+          $sig = Get-AuthenticodeSignature $f
+          if ($sig.Status -ne 'Valid') { throw "the signature on Mantle-Setup.exe is $($sig.Status), not Valid: $($sig.StatusMessage)" }
+          if (-not $sig.TimeStamperCertificate) { throw 'Mantle-Setup.exe is signed but not timestamped' }
+          "signed Mantle-Setup.exe, sha256 $got, signature $($sig.Status), signer $($sig.SignerCertificate.Subject), timestamped" | Write-Output
       - name: Put Mantle-Setup.exe on the DRAFT release (never published, no tag created)
         env:
           GH_TOKEN: ${{ github.token }}
