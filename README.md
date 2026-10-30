@@ -41,7 +41,7 @@ powershell -NoProfile -ExecutionPolicy Bypass -File "<path to your Mantle checko
 ```
 
 (or `npm run restore` from the repo). With the installer: **Start > All apps > Mantle > Restore Windows
-taskbar** runs the same script (from `%LOCALAPPDATA%ProgramsMantleesourcesapp	ools`). It stops Mantle — and only Mantle, never
+taskbar** runs the same script (from `%LOCALAPPDATA%\Programs\Mantle\resources\app\tools`). It stops Mantle — and only Mantle, never
 another Electron app — puts the taskbar's auto-hide flag back to whatever it was
 before Mantle started, resets the work area, checks that the taskbar is really
 there, and prints `verified` before exiting 0. If it is still wrong, run it again
@@ -116,9 +116,9 @@ With the installer, only the first line applies. From source, all of them:
 ## Install
 
 **[Mantle-Setup.exe](https://github.com/Owen-Silva/mantle/releases/latest/download/Mantle-Setup.exe)** installs
-Mantle for your Windows user only, with no admin prompt, into `%LOCALAPPDATA%ProgramsMantle`, and adds
+Mantle for your Windows user only, with no admin prompt, into `%LOCALAPPDATA%\Programs\Mantle`, and adds
 **Start > All apps > Mantle** with two entries: **Mantle**, and **Restore Windows taskbar** (the restore
-script above, through `toolsestore-windows.cmd`, which passes `-ExecutionPolicy Bypass` so neither the
+script above, through `tools\restore-windows.cmd`, which passes `-ExecutionPolicy Bypass` so neither the
 execution policy nor a downloaded-file mark can stop it).
 
 1. **SmartScreen.** The installer is not code-signed, so Windows says *Windows protected your PC*. Choose
@@ -132,9 +132,9 @@ execution policy nor a downloaded-file mark can stop it).
    banner links its `Mantle-Setup.exe`; run it. Like any install over a running Mantle, it asks Mantle to
    put Windows back and quit, checks that the taskbar is back, replaces Mantle and starts it again.
 4. **Uninstall** in Settings > Apps > Installed apps > Mantle. Before it removes a file, the uninstaller asks
-   a running Mantle to put Windows back and quit, runs `toolsestore-windows.ps1` (which stops anything that
+   a running Mantle to put Windows back and quit, runs `tools\restore-windows.ps1` (which stops anything that
    did not quit and reads the taskbar back), and removes the logon task if it starts this copy. If Windows
-   cannot be confirmed back, it says why and removes nothing. Your settings in `%APPDATA%mantle` stay.
+   cannot be confirmed back, it says why and removes nothing. Your settings in `%APPDATA%\mantle` stay.
 
 The installer holds the built sidecar, Electron and every file Mantle runs; it needs nothing else on the
 machine. It is built and install-tested on GitHub Actions (`.github/workflows/installer.yml`): installed,
