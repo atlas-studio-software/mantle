@@ -9,3 +9,5 @@
 - **Updates:** Mantle tells you when a new release is out and links its installer. Run it: it puts Windows back, replaces Mantle and starts it again.
 
 Running Mantle from a `git clone` works exactly as before; see the README.
+
+[Code signing policy](https://github.com/Owen-Silva/mantle#code-signing-policy) · [Privacy](https://github.com/Owen-Silva/mantle#privacy)

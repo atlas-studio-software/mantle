@@ -11,7 +11,8 @@ crash puts Windows back exactly as it was.
 ## Download
 
 **Windows installer:** [Mantle-Setup.exe](https://github.com/Owen-Silva/mantle/releases/latest/download/Mantle-Setup.exe)
-(see [Install](#install) for what it does, the SmartScreen warning and how to uninstall).
+(see [Install](#install) for what it does, the SmartScreen warning and how to uninstall;
+[Code signing policy](#code-signing-policy) for how releases are signed).
 
 **From source:**
 
@@ -500,6 +501,68 @@ git tag v0.2.0
 git push origin master v0.2.0
 gh release create v0.2.0 --verify-tag --title "Mantle 0.2.0" --notes "What changed, in a few lines"
 ```
+
+## Code signing policy
+
+**Status: pending.** SignPath Foundation has not approved this project yet, so no Mantle release is
+signed today: v0.1.1 and every release before it are unsigned, which is why SmartScreen warns. Once the
+project is approved, the Windows installer `Mantle-Setup.exe` on the
+[Releases](https://github.com/Owen-Silva/mantle/releases) page will be signed, and this applies to those
+releases:
+
+Free code signing provided by [SignPath.io](https://about.signpath.io), certificate by [SignPath Foundation](https://signpath.org)
+
+- **What is signed:** `Mantle-Setup.exe` only, built from this repository's `master` branch by
+  [`.github/workflows/installer.yml`](.github/workflows/installer.yml) on GitHub-hosted runners. Nothing
+  built on a personal machine is signed. The files inside the installer (`Mantle.exe`, the sidecar
+  `Mantle.Sidecar.exe`) are not signed one by one.
+- **Committers and reviewers:** [@Owen-Silva](https://github.com/Owen-Silva) (the only committer; pull
+  requests are not accepted right now, see [Contributing](#contributing)).
+- **Approvers:** [@Owen-Silva](https://github.com/Owen-Silva). Every signing request is approved by hand in
+  SignPath before anything is signed.
+
+### Privacy
+
+Mantle has no servers of its own and no analytics, telemetry, advertising or crash reporting. The
+template sentence "This program will not transfer any information to other networked systems unless
+specifically requested by the user" is **not** true for Mantle, because of the first two items below.
+
+**On its own, with the default settings:**
+
+- **Update check: GitHub.** Two minutes after Mantle starts and then every 6 hours, Mantle asks
+  `api.github.com` for this repository's latest release (`GET /repos/Owen-Silva/mantle/releases/latest`,
+  no account, no token, no data about you or your PC beyond what any web request carries: your IP address
+  and the user agent `mantle-updater`). A copy run from a `git clone` also fetches that release's tag from
+  `github.com`. To stop it: turn off **Check for Mantle updates** in tray > Features or Mantle Settings
+  (see [Updating](#updating)). [GitHub's privacy statement](https://docs.github.com/site-policy/privacy-policies/github-general-privacy-statement).
+- **The top bar's PING readout: AWS and Akamai/Linode.** While the top bar is showing its stats, the
+  sidecar sends an ICMP echo (or, for a host that does not answer one, a TCP connect to port 443, closed at
+  once) every 2 seconds to whichever of the hosts in `sidecar/ping-targets.json`
+  (`dynamodb.us-west-1`, `us-west-2` and `us-east-1.amazonaws.com`; `speedtest.dallas`, `chicago` and
+  `atlanta.linode.com`) answered fastest, and re-measures all of them every 10 minutes. These packets carry no data about
+  you; the hosts see your IP address. To stop it: turn off the top bar in tray > Features.
+  [AWS privacy notice](https://aws.amazon.com/privacy/), [Akamai privacy statement](https://www.akamai.com/legal/privacy-statement).
+
+**Only when you ask for it:**
+
+- **Google Calendar**, after you sign in to Google in Mantle's Settings: `accounts.google.com`,
+  `oauth2.googleapis.com` and `www.googleapis.com`, read-only (`calendar.readonly`). Once signed in, Mantle
+  syncs a few seconds after it starts and every 10 minutes; **Sign out** deletes the token and the cached
+  events and revokes Mantle's access at Google. Details:
+  [Mantle's Google Calendar privacy policy](https://owen-silva.github.io/mantle/privacy.html);
+  [Google's privacy policy](https://policies.google.com/privacy).
+- **Spotify artwork**: when you open Spotify's queue, search or library in Mantle, the album and artist
+  images Spotify names are loaded from Spotify's image servers (`i.scdn.co`, `*.spotifycdn.com`).
+  [Spotify's privacy policy](https://www.spotify.com/legal/privacy-policy/).
+- **The ping test** in the PING menu: `speed.cloudflare.com` (download and upload test), the same
+  ping hosts and your router, with Akamai/Linode speed-test files as the download fallback.
+  [Cloudflare's privacy policy](https://www.cloudflare.com/privacypolicy/).
+- **Searching the web**: the launcher's web search and Task Manager's *Search online* open your default
+  browser at Google or Bing. Mantle itself sends nothing; your browser does.
+
+Everything else stays on your PC: the camera for the look-away blur (see
+[Privacy: the camera](#privacy-the-camera)), the bundled wallpapers, the face-detection model, settings and
+caches. Mantle's local checks (Mission Control and similar) only ever talk to `127.0.0.1`.
 
 ## Licence
 
