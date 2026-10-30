@@ -155,7 +155,8 @@ jobs:
               -f name="Mantle $TAG" -F draft=true -F prerelease=false -F body=@installer/release-notes.md --jq .id)
             echo "created the draft release $TAG (id $id) at $GITHUB_SHA"
           else
-            gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH -f target_commitish="$GITHUB_SHA" -F draft=true >/dev/null
+            # tag_name goes with every PATCH: a draft PATCHed without it loses its tag name
+            gh api "repos/$GITHUB_REPOSITORY/releases/$id" -X PATCH -f tag_name="$TAG" -f target_commitish="$GITHUB_SHA" -F draft=true >/dev/null
             echo "updating the draft release $TAG (id $id) to $GITHUB_SHA"
           fi
           # Replace the asset if it is there (same stable name every time).
