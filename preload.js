@@ -1,5 +1,5 @@
 'use strict';
-const { contextBridge, ipcRenderer, webUtils } = require('electron');
+const { contextBridge, ipcRenderer, webUtils, webFrame } = require('electron');
 
 /*
  * The one and only bridge between Mantle's pages and the main process.
@@ -178,4 +178,34 @@ function pathForFile(file) {
   try { return webUtils.getPathForFile(file) || ''; } catch (_) { return ''; }
 }
 
-contextBridge.exposeInMainWorld('mantle', { call, on, pathForFile });
+/*
+ * The page's picture cache (lane mantle-slim-bar, 2026-11-06). Chromium keeps every picture a page has
+ * shown in its in-memory resource cache, keyed by its address, and a data: picture's address is the
+ * picture itself: album art, Up next and Library covers, tray icon frames and backdrop strips were all
+ * kept for the life of the page, long after they left the screen. Measured in Mantle's Electron
+ * (tools/img-mem-probe.js, 600 pictures shown and dropped): 603 kept, 213 MB, untouched by a critical
+ * memory-pressure signal; one webFrame.clearCache() took the cache to 0 and the renderer's working set
+ * from 263 to 86 MB. A picture still on screen is not lost: its element holds it, and only the cache's
+ * entry goes; the same picture shown again is decoded again (a few ms for a cover).
+ * imageCache({clearOver: bytes}) -> {cleared, before: {count, bytes}, after?}: clears ONLY when the cache
+ * holds more than clearOver bytes of pictures; imageCache({}) just reads. The page picks the moment
+ * (ui/bar/bar.js: a pop-up closed, the bar hid). tools/bar-mem-probe.js measures this exact text, so it
+ * stays between the markers and self-contained.
+ */
+// <image-cache>
+function imageCache(opts) {
+  if (!webFrame || typeof webFrame.getResourceUsage !== 'function') throw new Error('this Electron has no webFrame.getResourceUsage');
+  const read = () => {
+    const u = webFrame.getResourceUsage();
+    const im = (u && u.images) || {};
+    return { count: Number(im.count) || 0, bytes: Number(im.size) || 0 };
+  };
+  const over = opts && opts.clearOver !== undefined ? Number(opts.clearOver) : Infinity;
+  const before = read();
+  if (!(over >= 0) || !(before.bytes > over)) return { cleared: false, before };
+  webFrame.clearCache();
+  return { cleared: true, before, after: read() };
+}
+// </image-cache>
+
+contextBridge.exposeInMainWorld('mantle', { call, on, pathForFile, imageCache });

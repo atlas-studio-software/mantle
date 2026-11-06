@@ -1586,6 +1586,21 @@
   window.mantle = {
     mode: 'mock',                                   // bar.js shows this, so a mock is never mistaken for the real thing
 
+    /* The picture cache (preload.js imageCache, lane mantle-slim-bar). A browser page has no webFrame:
+       tools/bar-mem-probe.js hands Electron's real one in as window.__mantleImageCache; otherwise every ask
+       is recorded like a call ('imageCache') and answers from window.__MOCK_IMAGE_CACHE__ ({count, bytes},
+       default empty), cleared the way the real one clears: only when it holds more than clearOver. */
+    imageCache: function (o) {
+      if (typeof window.__mantleImageCache === 'function') return window.__mantleImageCache(o);
+      if (Array.isArray(window.__MOCK_CALLS__)) window.__MOCK_CALLS__.push({ ch: 'imageCache', p: o, t: Date.now() });
+      if (window.__MOCK_IMAGE_CACHE__ === 'throw') throw new Error('mock: the picture cache could not be read');
+      var c = window.__MOCK_IMAGE_CACHE__ || { count: 0, bytes: 0 };
+      var over = o && o.clearOver !== undefined ? Number(o.clearOver) : Infinity;
+      if (!(over >= 0) || !(c.bytes > over)) return { cleared: false, before: c, mock: true };
+      window.__MOCK_IMAGE_CACHE__ = { count: 0, bytes: 0 };
+      return { cleared: true, before: c, after: { count: 0, bytes: 0 }, mock: true };
+    },
+
     /* on(): every channel replays its current value once on subscribe, because the bar is a
        readout — it must be correct the instant it is created, not after the next change. */
     on: function (channel, cb) {

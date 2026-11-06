@@ -19,7 +19,7 @@ let passed = 0;
 const failures = [];
 const ok = (cond, name, detail) => { if (cond) passed++; else failures.push(detail !== undefined ? `${name} (${String(detail).slice(0, 300)})` : name); };
 
-function load(invoke) {
+function load(invoke, webFrame) {
   const logged = [];
   let api = null;
   const el = { getAttribute: () => null, setAttribute() {}, style: { removeProperty() {}, setProperty() {}, getPropertyValue: () => '' } };
@@ -27,6 +27,7 @@ function load(invoke) {
     contextBridge: { exposeInMainWorld: (name, v) => { if (name === 'mantle') api = v; } },
     ipcRenderer: { sendSync: () => ({ theme: 'light' }), on() {}, invoke },
     webUtils: { getPathForFile: () => '' },
+    webFrame,
   };
   const fakeConsole = { error: (...a) => logged.push(a.map(String).join(' ')), warn: (...a) => logged.push(a.map(String).join(' ')), log() {} };
   const sandbox = {
@@ -73,6 +74,25 @@ const CODE = /0x[0-9a-f]{4,}|Error invoking|remote method|mantle:call|IPC|DataCl
     try { await api.call('bad'); } catch (e) { msg = e.message; }
     ok(msg === 'access was denied', 'a refused reply still rejects with main\'s (already plain) words', msg);
     ok(!logged.some((l) => /could not reach/.test(l)), 'nothing logged for a normal reply', logged.join(' | '));
+  }
+  {
+    // the picture cache (lane mantle-slim-bar): read always, cleared ONLY over the line the page gives
+    let images = { count: 140, size: 21 * 1048576, liveSize: 20 * 1048576 };
+    let clears = 0;
+    const wf = { getResourceUsage: () => ({ images }), clearCache: () => { clears++; images = { count: 0, size: 0, liveSize: 0 }; } };
+    const { api } = load(() => Promise.resolve({ ok: true, result: null }), wf);
+    ok(api && typeof api.imageCache === 'function', 'preload exposes window.mantle.imageCache');
+    let r = api.imageCache({});
+    ok(!r.cleared && r.before.count === 140 && r.before.bytes === 21 * 1048576 && clears === 0, 'imageCache({}) only reads', JSON.stringify(r));
+    r = api.imageCache({ clearOver: 32 * 1048576 });
+    ok(!r.cleared && clears === 0, 'under the line: not cleared', JSON.stringify(r));
+    r = api.imageCache({ clearOver: 8 * 1048576 });
+    ok(r.cleared && clears === 1 && r.before.count === 140 && r.after.count === 0 && r.after.bytes === 0, 'over the line: cleared once, with the numbers before and after', JSON.stringify(r));
+    r = api.imageCache({ clearOver: 'x' });
+    ok(!r.cleared && clears === 1, 'a line that is not a number never clears', JSON.stringify(r));
+    let threw = '';
+    try { load(() => Promise.resolve({ ok: true }), undefined).api.imageCache({ clearOver: 0 }); } catch (e) { threw = e.message; }
+    ok(/no webFrame/.test(threw), 'no webFrame: it throws with the reason (the bar says it once)', threw);
   }
   for (const f of failures) console.log('FAIL ' + f);
   console.log(`PRELOAD TEST: ${passed} passed, ${failures.length} failed`);
