@@ -7,7 +7,7 @@
  * <= 0.1 %, a hidden window 0.
  *
  *   node tools/idle-cpu.js [--label=head] [--settle=60] [--sample=60] [--rounds=2] [--out=suite-out]
- *                          [--timers] [--allow-local]
+ *                          [--timers] [--profile] [--allow-local]
  *
  * What it does: starts `electron . --test --profile-name=idlecpu-<label> --test-live-bar` (test-quiet
  * keeps every window invisible and click-through) with a probe in its main process (NODE_OPTIONS
@@ -19,7 +19,9 @@
  *   - what woke main: sidecar commands sent (by name), sidecar events received (by ev), pushes to each
  *     page (by event name), and with --timers every main-process timer that fired (by the file:line that
  *     set it; costs a stack per timer, so the CPU numbers of a --timers run are not comparable);
- *   - the top bar sampler's own CPU per tick (topbarstats costMs).
+ *   - the top bar sampler's own CPU per tick (topbarstats costMs);
+ *   - with --profile, main's own JS by function (V8 sampling profiler) and each visible page's script,
+ *     layout and style time (CDP Performance metrics); the profiler costs CPU too, so again a run of its own.
  * Writes <out>/idle-cpu-<label>.json and prints one summary block.
  *
  * TEST ONLY and CLOUD BY DEFAULT: it starts a whole Mantle test copy, so it refuses to run unless CI or
@@ -42,7 +44,9 @@ function installProbe() {
   const reset = () => { T.since = Date.now(); T.sc = {}; T.ev = {}; T.push = {}; T.timers = {}; T.stats = { n: 0, costMs: 0, max: 0 }; };
   const pageOf = (wc) => { try { const u = String(wc.getURL() || '').replace(/\\/g, '/'); const m = u.match(/\/ui\/(.+?)(\?|#|$)/); return m ? m[1].replace(/\/index\.html$/, '') : u.slice(0, 40); } catch (_) { return '?'; } };
 
-  if (process.env.MANTLE_IDLE_TIMERS === '1') {
+  // (Electron re-wraps the timer globals during its own start, after this --require: so they are
+  // patched when main first loads electron, see Module._load below)
+  function patchTimers() {
     const here = __filename.replace(/\\/g, '/');
     const site = () => {
       const st = (new Error().stack || '').split('\n').slice(2);
@@ -68,7 +72,7 @@ function installProbe() {
   const origLoad = Module._load;
   Module._load = function (req) {
     const r = origLoad.apply(this, arguments);
-    if (!el && req === 'electron' && r && r.app && r.BrowserWindow) { el = r; boot(); }
+    if (!el && req === 'electron' && r && r.app && r.BrowserWindow) { el = r; if (process.env.MANTLE_IDLE_TIMERS === '1') patchTimers(); boot(); }
     if (/lib[\\/]sidecar(\.js)?$/.test(req) && r && r.Sidecar && r.Sidecar.prototype && !r.Sidecar.prototype.__idle) {
       const P = r.Sidecar.prototype; P.__idle = true;
       for (const m of ['call', 'send']) {
@@ -110,12 +114,61 @@ function installProbe() {
           return { page: pageOf(w.webContents), pid, visible: w.isVisible(), bounds: w.getBounds() }; }),
       }),
       tally: (q) => { const out = JSON.parse(JSON.stringify(T)); out.until = Date.now(); if (q.reset === '1') reset(); return out; },
+      // --profile: main's own JS (V8 sampling profiler, node:inspector) and each visible page's renderer
+      // work (CDP Performance metrics: script, layout, style), between profStart and profStop
+      profStart: async () => {
+        const insp = require('inspector');
+        P.session = new insp.Session(); P.session.connect();
+        const post = (m, a) => new Promise((ok, no) => P.session.post(m, a || {}, (e, r) => (e ? no(e) : ok(r))));
+        await post('Profiler.enable'); await post('Profiler.setSamplingInterval', { interval: 500 }); await post('Profiler.start');
+        P.pages = [];
+        for (const w of wins()) {
+          if (!w.isVisible()) continue;
+          const dbg = w.webContents.debugger;
+          try { if (!dbg.isAttached()) dbg.attach('1.3'); await dbg.sendCommand('Performance.enable'); P.pages.push({ page: pageOf(w.webContents), dbg, m0: (await dbg.sendCommand('Performance.getMetrics')).metrics }); } catch (e) { P.pages.push({ page: pageOf(w.webContents), err: e.message }); }
+        }
+        return { ok: true, pages: P.pages.length };
+      },
+      profStop: async () => {
+        const post = (m, a) => new Promise((ok, no) => P.session.post(m, a || {}, (e, r) => (e ? no(e) : ok(r))));
+        const { profile } = await post('Profiler.stop');
+        P.session.disconnect();
+        const dt = (profile.endTime - profile.startTime) / 1000;   // ms
+        const per = profile.samples.length ? dt / profile.samples.length : 0;
+        const self = new Map();
+        let busy = 0;
+        for (const n of profile.nodes) {
+          const cf = n.callFrame;
+          const ms = n.hitCount * per;
+          if (!ms) continue;
+          const key = cf.functionName === '(idle)' || cf.functionName === '(program)' || cf.functionName === '(garbage collector)' ? cf.functionName
+            : `${cf.functionName || '(anon)'} ${String(cf.url).replace(/\\/g, '/').replace(/^.*\/(?=(lib|ui|main\.js|tools|node_modules)\b)/, '').replace(/^file:\/\/\//, '')}:${cf.lineNumber + 1}`;
+          self.set(key, (self.get(key) || 0) + ms);
+          if (cf.functionName !== '(idle)') busy += ms;
+        }
+        const top = [...self.entries()].filter(([k]) => k !== '(idle)').sort((a, b) => b[1] - a[1]).slice(0, 30).map(([k, v]) => [k, Math.round(v * 10) / 10]);
+        const pages = [];
+        const pick = ['TaskDuration', 'ScriptDuration', 'LayoutDuration', 'RecalcStyleDuration', 'LayoutCount', 'RecalcStyleCount', 'JSHeapUsedSize'];
+        for (const p of P.pages) {
+          if (p.err) { pages.push({ page: p.page, err: p.err }); continue; }
+          try {
+            const m1 = (await p.dbg.sendCommand('Performance.getMetrics')).metrics;
+            const g = (ms, k) => { const x = ms.find((e) => e.name === k); return x ? x.value : 0; };
+            const o = { page: p.page };
+            for (const k of pick) { const d = g(m1, k) - g(p.m0, k); o[k] = /Duration/.test(k) ? Math.round(d * 1e5) / 100 : d; }   // durations in ms
+            pages.push(o);
+            p.dbg.detach();
+          } catch (e) { pages.push({ page: p.page, err: e.message }); }
+        }
+        return { wallMs: Math.round(dt), busyMs: Math.round(busy), top, pages };
+      },
     };
-    const server = http.createServer((req, res) => {
+    const P = {};
+    const server = http.createServer(async (req, res) => {
       const u = new URL(req.url, 'http://127.0.0.1');
       const fn = routes[u.pathname.slice(1)];
       let body;
-      try { body = fn ? fn(Object.fromEntries(u.searchParams)) : { error: 'no such route' }; } catch (err) { body = { error: String(err && err.message) }; }
+      try { body = fn ? await fn(Object.fromEntries(u.searchParams)) : { error: 'no such route' }; } catch (err) { body = { error: String(err && err.message) }; }
       res.setHeader('content-type', 'application/json');
       res.end(JSON.stringify(body));
     });
@@ -130,7 +183,7 @@ function installProbe() {
 
 // ------------------------------------------------------------------ the CLI
 function parseArgs(argv) {
-  const A = { label: 'run', settle: 60, sample: 60, rounds: 2, out: path.join(ROOT, 'suite-out'), timers: false, allowLocal: false };
+  const A = { label: 'run', settle: 60, sample: 60, rounds: 2, out: path.join(ROOT, 'suite-out'), timers: false, profile: false, allowLocal: false };
   for (const a of argv) {
     const m = a.match(/^--([\w-]+)(?:=(.*))?$/);
     if (!m) continue;
@@ -139,6 +192,7 @@ function parseArgs(argv) {
     else if (k === 'settle' || k === 'sample' || k === 'rounds') A[k] = Math.max(1, Number(v) || A[k]);
     else if (k === 'out') A.out = path.resolve(v);
     else if (k === 'timers') A.timers = true;
+    else if (k === 'profile') A.profile = true;
     else if (k === 'allow-local') A.allowLocal = true;
   }
   return A;
@@ -238,11 +292,14 @@ async function cli() {
     await api('tally', { reset: '1' });
     const s0 = sidecarSnap(spawnSync, mainPid);
     const m0 = await api('metrics');
+    if (A.profile) await api('profStart');
     await sleep(A.sample * 1000);
+    const prof = A.profile ? await api('profStop') : null;
     const m1 = await api('metrics');
     const s1 = sidecarSnap(spawnSync, mainPid);
     const tally = await api('tally');
     const d = diffRound(m0, m1, s0, s1, tally);
+    if (prof) d.profile = prof;
     d.windows = m1.windows.map((w) => `${w.page}${w.visible ? '' : ' (hidden)'} ${w.bounds.width}x${w.bounds.height}@${w.bounds.x},${w.bounds.y}`);
     result.rounds.push(d);
   }
@@ -259,6 +316,11 @@ async function cli() {
     say(`  sidecar events/min: ${top(d.perMinute.sidecarEvents, 12)}`);
     say(`  pushes/min: ${top(d.perMinute.pushes, 12)}`);
     if (A.timers) say(`  main timers fired/min: ${top(d.perMinute.timers, 25)}`);
+    if (d.profile) {
+      const p = d.profile;
+      say(`  main JS: ${p.busyMs} ms busy of ${p.wallMs} ms (sampled; incl. program/gc): ${(p.top || []).slice(0, 25).map(([k, v]) => `${k} ${v}`).join(' | ')}`);
+      for (const g of p.pages || []) say(`  page ${g.page}: ${g.err ? g.err : `task ${g.TaskDuration} ms, script ${g.ScriptDuration}, layout ${g.LayoutDuration} (${g.LayoutCount}x), style ${g.RecalcStyleDuration} (${g.RecalcStyleCount}x)`}`);
+    }
   }
   say(`idle-cpu: windows: ${result.rounds[0] ? result.rounds[0].windows.join('; ') : '-'}`);
 }
