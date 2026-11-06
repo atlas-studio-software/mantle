@@ -65,4 +65,4 @@ Known gaps:
   Its own paint mark is missing: the probe never loaded in the Electron main process (unexplained).
 - The Electron light CPU sample (5.47 %) may still include start-up work; dark (0.83 %) is the steadier one.
 - The output folder is 217 MB (self-contained .NET 10 + Windows App SDK, ReadyToRun). Electron's own
-  Electron's ~250 MB node_modules\electron.
+  install size was not measured.
