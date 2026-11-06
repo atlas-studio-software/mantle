@@ -85,6 +85,7 @@ function installProbe() {
         if (name === 'event' && msg && typeof msg.ev === 'string') {
           inc(T.ev, msg.ev.slice(0, 60));
           if (msg.ev === 'topbarstats' && typeof msg.costMs === 'number') { T.stats.n++; T.stats.costMs += msg.costMs; T.stats.max = Math.max(T.stats.max, msg.costMs); }
+          if (msg.ev === 'topbarstats' && msg.net) inc(T.ev, 'net.src=' + (msg.net.src || '(none)') + (msg.net.srcWhy ? ' (' + String(msg.net.srcWhy).slice(0, 60) + ')' : '') + (msg.net.down == null ? ' no reading' : ''));
         }
         return emit.apply(this, arguments);
       };

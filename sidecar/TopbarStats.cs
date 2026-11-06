@@ -119,7 +119,7 @@ namespace Mantle {
     // ------------------------------------------------------------------ the sampler thread
 
     sealed class Query {
-      public IntPtr Q, GQ, CpuAll, Gpu, GpuDed, GpuShr, NetRx, NetTx;   // GQ: the GPU engines' own query (GpuEveryMs)
+      public IntPtr Q, GQ, NQ, CpuAll, Gpu, GpuDed, GpuShr, NetRx, NetTx;   // GQ: the GPU engines' own query (GpuEveryMs); NQ: the network's (THE NETWORK)
       public string CpuErr, GpuErr, GpuMemErr, NetErr;
     }
 
@@ -132,8 +132,12 @@ namespace Mantle {
       if (grc != 0) { q.GQ = IntPtr.Zero; q.GpuErr = "Windows would not open the GPU's performance-counter query (PDH 0x" + grc.ToString("X8") + ")"; }
       else { q.GpuErr = Add(q.GQ, "\\GPU Engine(*)\\Utilization Percentage", out q.Gpu); StatsNative.PdhCollectQueryData(q.GQ); }   // its baseline
       q.GpuMemErr = Add(q.Q, "\\GPU Adapter Memory(*)\\Dedicated Usage", out q.GpuDed) ?? Add(q.Q, "\\GPU Adapter Memory(*)\\Shared Usage", out q.GpuShr);
-      q.NetErr = Add(q.Q, "\\Network Interface(*)\\Bytes Received/sec", out q.NetRx) ?? Add(q.Q, "\\Network Interface(*)\\Bytes Sent/sec", out q.NetTx);
+      int nrc = StatsNative.PdhOpenQueryW(null, IntPtr.Zero, out q.NQ);
+      if (nrc != 0) { q.NQ = IntPtr.Zero; q.NetErr = "Windows would not open the network's performance-counter query (PDH 0x" + nrc.ToString("X8") + ")"; }
+      else q.NetErr = Add(q.NQ, "\\Network Interface(*)\\Bytes Received/sec", out q.NetRx) ?? Add(q.NQ, "\\Network Interface(*)\\Bytes Sent/sec", out q.NetTx);
       StatsNative.PdhCollectQueryData(q.Q);   // rates need two collections; the first is the baseline
+      if (q.NQ != IntPtr.Zero) StatsNative.PdhCollectQueryData(q.NQ);
+      NetIfs.Watch();
       return q;
     }
 
@@ -261,6 +265,178 @@ namespace Mantle {
       return g;
     }
 
+    // ------------------------------------------------------------------ THE NETWORK (lane mantle-slim-cpu, 2026-11-06)
+    // The user: "having it use less of my computer". Measured on the user's laptop (one Wi-Fi adapter, thread
+    // cycles over 15 one-second ticks): collecting \Network Interface(*) took ~2.0 M cycles (~1.3-2.3 ms) a
+    // second, ten times the CPU and GPU-memory counters together, because the provider re-reads every interface
+    // Windows has (30+ here: filters, WAN miniports, tunnels) to list the few it shows. GetIfEntry2 for the one
+    // shown adapter took ~0.37 M cycles. Both read the same NDIS octet counters: side by side for 10 s, the
+    // octet delta per second and PDH's Bytes Received/Sent/sec agreed to within 0.7 % (the two reads are a few
+    // ms apart), so the figure keeps its meaning.
+    // So PDH stays the one that decides WHICH adapters count and what they are called (its instance names, the
+    // dropdown's rows): its query is collected at start, every NetSetEveryMs, at once when Windows reports an
+    // IP interface change (NotifyIpInterfaceChange: an adapter coming up is counted on the next tick, not 10 s
+    // later), and when a counted adapter goes away or down. Every other second the counted adapters' octets
+    // are read with GetIfEntry2 and turned into bytes a second over the time between two reads.
+    // FALLBACK, SAID: an instance that matches no interface (or two), more than NetMaxFast adapters (then the
+    // table reads cost as much), or a failed read: PDH every second, as before, and net.src / net.srcWhy say so.
+    const int NetSetEveryMs = 10000;
+    const int NetMaxFast = 3;
+    sealed class NetIf { public string Name; public long Luid; public ulong In, Out; }
+    static List<NetIf> _netIfs;       // the adapters PDH counts, mapped to interfaces; null = PDH every second
+    static string _netWhy;            // why PDH reads every second (null while the fast path runs)
+    static long _netSetAt, _netAt;
+    static readonly Stopwatch _netClock = Stopwatch.StartNew();
+
+    static IDictionary NetSample(Query q) {
+      long now = _netClock.ElapsedMilliseconds;
+      if (_netIfs != null && !NetIfs.Changed && now - _netSetAt < NetSetEveryMs && now - _netAt <= 3 * PeriodMs) {
+        IDictionary fast = NetFast(now);
+        if (fast != null) return fast;
+      }
+      return NetFromCounters(q, now);
+    }
+
+    /// The counted adapters' octets since the last read, or null when any of them is gone or down (PDH then
+    /// reads this tick and the set is taken again).
+    static IDictionary NetFast(long now) {
+      double dt = (now - _netAt) / 1000.0;
+      if (dt <= 0) return null;
+      var reads = new ulong[_netIfs.Count * 2];
+      for (int i = 0; i < _netIfs.Count; i++) {
+        ulong rin, rout;
+        if (!NetIfs.Read(_netIfs[i].Luid, out rin, out rout) || rin < _netIfs[i].In || rout < _netIfs[i].Out) return null;
+        reads[2 * i] = rin; reads[2 * i + 1] = rout;
+      }
+      var ad = new List<object>();
+      double down = 0, up = 0;
+      for (int i = 0; i < _netIfs.Count; i++) {
+        NetIf n = _netIfs[i];
+        double d = (reads[2 * i] - n.In) / dt, u = (reads[2 * i + 1] - n.Out) / dt;
+        n.In = reads[2 * i]; n.Out = reads[2 * i + 1];
+        down += d; up += u;
+        if (d + u > 0 || ad.Count < 3) ad.Add(Json.Obj("name", n.Name, "down", Math.Round(d), "up", Math.Round(u)));
+      }
+      _netAt = now;
+      return Json.Obj("down", Math.Round(down), "up", Math.Round(up), "adapters", ad, "src", "interfaces");
+    }
+
+    /// The PDH read (the figure exactly as before), then the adapter set it names is mapped to interfaces for
+    /// the seconds after it.
+    static IDictionary NetFromCounters(Query q, long now) {
+      bool wasFast = _netIfs != null;
+      NetIfs.Changed = false;
+      int rc = q.NQ == IntPtr.Zero ? -1 : StatsNative.PdhCollectQueryData(q.NQ);
+      List<KeyValuePair<string, double>> rx = rc == 0 ? Read(q.NetRx, PDH_FMT_DOUBLE) : null, tx = rc == 0 ? Read(q.NetTx, PDH_FMT_DOUBLE) : null;
+      if (rx == null || tx == null) {
+        _netIfs = null; _netWhy = "the network counters could not be read";
+        return Json.Obj("down", null, "reason", q.NetErr ?? "the network counters could not be read this second");
+      }
+      var ad = new List<object>();
+      double down = 0, up = 0;
+      foreach (var kv in rx) {
+        double u = 0;
+        foreach (var t in tx) if (t.Key == kv.Key) { u = t.Value; break; }
+        down += kv.Value; up += u;
+        if (kv.Value + u > 0 || ad.Count < 3) ad.Add(Json.Obj("name", kv.Key, "down", Math.Round(kv.Value), "up", Math.Round(u)));
+      }
+      // While the fast path runs, PDH's own rate here spans the seconds since ITS last collection (up to
+      // NetSetEveryMs), so this tick's figure comes from the octets of the set counted until now, read over the
+      // last second like the ticks around it; an adapter that came is counted from the next tick. After a
+      // pause (the stats were off) or a failed read, PDH's figure stands, as it did before.
+      IDictionary viaOctets = wasFast && now - _netAt <= 3 * PeriodMs ? NetFast(now) : null;
+      Remap(rx, now);
+      if (viaOctets != null) return viaOctets;
+      var o = Json.Obj("down", Math.Round(down), "up", Math.Round(up), "adapters", ad, "src", "counters");
+      if (_netWhy != null) o["srcWhy"] = _netWhy;
+      return o;
+    }
+
+    /// PDH's instance names -> interfaces (GetIfTable2, only when the names changed), baselined now.
+    static void Remap(List<KeyValuePair<string, double>> rx, long now) {
+      _netSetAt = now;
+      if (rx.Count > NetMaxFast) { _netIfs = null; _netWhy = rx.Count + " adapters are counted, and reading each costs as much as the counters"; return; }
+      bool same = _netIfs != null && _netIfs.Count == rx.Count;
+      for (int i = 0; same && i < rx.Count; i++) if (_netIfs[i].Name != rx[i].Key) same = false;
+      List<NetIf> list;
+      if (same) list = _netIfs;
+      else {
+        string why;
+        list = NetIfs.Map(rx, out why);
+        if (list == null) { _netIfs = null; _netWhy = why; return; }
+      }
+      foreach (var n in list) {
+        ulong rin, rout;
+        if (!NetIfs.Read(n.Luid, out rin, out rout)) { _netIfs = null; _netWhy = "Windows would not read the interface of " + n.Name; return; }
+        n.In = rin; n.Out = rout;
+      }
+      _netIfs = list; _netWhy = null; _netAt = now;
+    }
+
+    static class NetIfs {
+      [DllImport("iphlpapi.dll")] static extern int GetIfTable2(out IntPtr table);
+      [DllImport("iphlpapi.dll")] static extern int GetIfEntry2(IntPtr row);
+      [DllImport("iphlpapi.dll")] static extern void FreeMibTable(IntPtr table);
+      [UnmanagedFunctionPointer(CallingConvention.StdCall)] delegate void IpIfChange(IntPtr ctx, IntPtr row, int type);
+      [DllImport("iphlpapi.dll")] static extern int NotifyIpInterfaceChange(ushort family, IpIfChange cb, IntPtr ctx, bool initial, out IntPtr handle);
+      // MIB_IF_ROW2 (netioapi.h), x64 and x86 alike: no pointers in it. The offsets were checked against PDH on
+      // the user's laptop (the octets read here matched Bytes Received/Sent/sec).
+      const int RowSize = 1352, DescAt = 542, OperAt = 1156, InAt = 1208, OutAt = 1280;
+      const int IfOperStatusUp = 1;
+      static IntPtr _row = IntPtr.Zero;
+      static IpIfChange _cb;            // kept alive for as long as Windows may call it
+      static IntPtr _notify;
+      public static volatile bool Changed;
+
+      /// Windows says when an IP interface comes, goes or changes: the next tick takes PDH's set again.
+      public static void Watch() {
+        if (_cb != null) return;
+        _cb = delegate (IntPtr ctx, IntPtr row, int type) { Changed = true; };
+        try { if (NotifyIpInterfaceChange(0, _cb, IntPtr.Zero, false, out _notify) != 0) _notify = IntPtr.Zero; } catch (Exception) { _notify = IntPtr.Zero; }
+      }
+
+      /// An adapter's octets now; false when it is gone or not up (PDH no longer counts it either).
+      public static bool Read(long luid, out ulong inOct, out ulong outOct) {
+        inOct = outOct = 0;
+        if (_row == IntPtr.Zero) _row = Marshal.AllocHGlobal(RowSize);
+        for (int i = 0; i < RowSize; i += 8) Marshal.WriteInt64(_row, i, 0);
+        Marshal.WriteInt64(_row, 0, luid);
+        if (GetIfEntry2(_row) != 0) return false;
+        if (Marshal.ReadInt32(_row, OperAt) != IfOperStatusUp) return false;
+        inOct = unchecked((ulong)Marshal.ReadInt64(_row, InAt));
+        outOct = unchecked((ulong)Marshal.ReadInt64(_row, OutAt));
+        return true;
+      }
+
+      /// PDH's instance name is the adapter's description with ( ) # / \ written as [ ] _ _ _. Each name must
+      /// match exactly one interface; any doubt and PDH stays the source.
+      public static List<NetIf> Map(List<KeyValuePair<string, double>> rx, out string why) {
+        why = null;
+        IntPtr t;
+        if (GetIfTable2(out t) != 0) { why = "Windows would not list the network interfaces"; return null; }
+        try {
+          int n = Marshal.ReadInt32(t);
+          long rows = t.ToInt64() + 8;   // NumEntries, then the rows 8-aligned
+          var byName = new Dictionary<string, long>(StringComparer.Ordinal);
+          var twice = new HashSet<string>(StringComparer.Ordinal);
+          for (int i = 0; i < n; i++) {
+            IntPtr r = new IntPtr(rows + (long)i * RowSize);
+            string d = Marshal.PtrToStringUni(new IntPtr(r.ToInt64() + DescAt)) ?? "";
+            string name = d.Replace('(', '[').Replace(')', ']').Replace('#', '_').Replace('/', '_').Replace('\\', '_');
+            if (byName.ContainsKey(name)) twice.Add(name); else byName[name] = Marshal.ReadInt64(r);
+          }
+          var list = new List<NetIf>();
+          foreach (var kv in rx) {
+            long luid;
+            if (twice.Contains(kv.Key)) { why = "two interfaces are called \"" + kv.Key + "\""; return null; }
+            if (!byName.TryGetValue(kv.Key, out luid)) { why = "no interface is called \"" + kv.Key + "\""; return null; }
+            list.Add(new NetIf { Name = kv.Key, Luid = luid });
+          }
+          return list;
+        } finally { FreeMibTable(t); }
+      }
+    }
+
     static IDictionary Sample(Query q, long nowMs) {
       int rc = StatsNative.PdhCollectQueryData(q.Q);
       bool detail = DateTime.UtcNow.Ticks < Interlocked.Read(ref _detailUntil);
@@ -309,21 +485,9 @@ namespace Mantle {
                        "reason", gr.Reason ?? q.GpuMemErr, "at", gr.At, "everyMs", GpuEveryMs);
       }
 
-      // NET
-      IDictionary net;
-      List<KeyValuePair<string, double>> rx = rc == 0 ? Read(q.NetRx, PDH_FMT_DOUBLE) : null, tx = rc == 0 ? Read(q.NetTx, PDH_FMT_DOUBLE) : null;
-      if (rx == null || tx == null) net = Json.Obj("down", null, "reason", q.NetErr ?? "the network counters could not be read this second");
-      else {
-        var ad = new List<object>();
-        double down = 0, up = 0;
-        foreach (var kv in rx) {
-          double u = 0;
-          foreach (var t in tx) if (t.Key == kv.Key) { u = t.Value; break; }
-          down += kv.Value; up += u;
-          if (kv.Value + u > 0 || ad.Count < 3) ad.Add(Json.Obj("name", kv.Key, "down", Math.Round(kv.Value), "up", Math.Round(u)));
-        }
-        net = Json.Obj("down", Math.Round(down), "up", Math.Round(up), "adapters", ad);
-      }
+      // NET (THE NETWORK, below)
+      IDictionary net = NetSample(q);
+
       return Json.Obj("cpu", cpu, "mem", mem, "gpu", gpu, "net", net, "detail", detail ? _detailKind : null);
     }
 
