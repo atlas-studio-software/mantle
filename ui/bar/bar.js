@@ -626,7 +626,6 @@
     el.backdrop.removeAttribute('src');
     el.body.classList.add('no-backdrop');
     resetBarTint();                          // the guard belongs to the strip it was solved for
-    imgTrimSoon('the bar hid');              // gone from the screen: the pictures it showed can go (THE PICTURE CACHE)
   }
 
   /* Hover is the signal main hides on: it cannot see the pointer inside this window. */
@@ -2296,49 +2295,6 @@
      flyout (main has already taken its live pictures off), for a pop-up replaced by another one, or
      in a window nobody can see. */
   var popGhost = null, popGhostT = 0, popFreeT = 0, popFreeFn = null;
-
-  /* THE PICTURE CACHE (lane mantle-slim-bar, 2026-11-06). The bar's renderer grew with use and never gave
-     it back: the live log's memory line had it at 36 -> 110 MB private in an hour of media-card use, and
-     54 -> 126 MB over four days, while every other page stayed flat. Chromium keeps every picture a page
-     has shown in its resource cache, keyed by the picture's address, and a data: picture IS its address:
-     every song's artwork, every Up next and Library cover, tray icon frames, backdrop strips stayed for
-     the life of the page, long after they left the screen, and a memory-pressure signal does not drop
-     them (tools/img-mem-probe.js; the bar page itself: tools/bar-mem-probe.js). So a moment after a pop-up
-     closes or the bar hides (nothing mid-open, nothing animating), the bar asks the preload to drop that
-     cache, only when it holds more than IMG_TRIM_OVER of pictures, at most once per IMG_TRIM_GAP_MS.
-     Nothing on screen changes: a picture still shown keeps its pixels (its element holds them, only the
-     cache entry goes), and one shown again is decoded again, a few ms for a cover. A bridge without it
-     (an older preload) or one that throws is said once in the console and the bar stops asking. */
-  var IMG_TRIM_OVER = 8 * 1048576, IMG_TRIM_WAIT_MS = 1500, IMG_TRIM_GAP_MS = 20000;
-  var imgTrimT = 0, imgTrimAt = 0;
-  var imgTrim = window.__barImgTrim = { runs: 0, cleared: 0, freedBytes: 0, last: null, off: null };
-  function imgTrimSoon(why) {
-    if (imgTrimT || imgTrim.off) return;
-    var wait = Math.max(IMG_TRIM_WAIT_MS, imgTrimAt + IMG_TRIM_GAP_MS - Date.now());
-    imgTrimT = setTimeout(function () { imgTrimT = 0; imgTrimRun(why); }, wait);
-  }
-  function imgTrimRun(why) {
-    if (popKey || popGhost) return;          // a pop-up is open again: its own close asks
-    var r;
-    try {
-      if (!mantle || typeof mantle.imageCache !== 'function') throw new Error('this Mantle\'s bridge has no picture cache (window.mantle.imageCache)');
-      imgTrimAt = Date.now();
-      var t0 = performance.now();
-      r = mantle.imageCache({ clearOver: IMG_TRIM_OVER });
-      var ms = Math.round((performance.now() - t0) * 10) / 10;
-    } catch (e) {
-      imgTrim.off = msg(e);
-      console.warn('[bar] image cache: not trimmed, so pictures the bar has shown stay in memory: ' + imgTrim.off);
-      return;
-    }
-    imgTrim.runs++;
-    imgTrim.last = { at: imgTrimAt, why: why, ms: ms, cleared: !!(r && r.cleared), before: (r && r.before) || null, after: (r && r.after) || null };
-    if (!(r && r.cleared && r.before)) return;
-    imgTrim.cleared++;
-    imgTrim.freedBytes += Math.max(0, (r.before.bytes || 0) - ((r.after && r.after.bytes) || 0));
-    console.log('[bar] image cache: dropped ' + r.before.count + ' cached pictures (' + (r.before.bytes / 1048576).toFixed(1) + ' MB) in ' + ms + ' ms, after ' + why);
-  }
-
   function popOutMs() {
     if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return 120;
     var d = parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--m-dur-s'));
@@ -2412,7 +2368,6 @@
     if (outMs) popFreeT = setTimeout(popFreeNow, outMs);
     else popFreeNow();
     if (reChip) paintMediaChip();
-    imgTrimSoon('a pop-up closed');          // its covers and art are off the screen (THE PICTURE CACHE)
   }
 
   /* Returns the bar.popover promise, so a popover that needs the grown window (the flyout's live
