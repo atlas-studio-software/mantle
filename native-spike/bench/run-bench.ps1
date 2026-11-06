@@ -102,10 +102,11 @@ function Save-Shot([string]$name, $r) {
 }
 
 # Time from launch until the pill's pixels change on screen (and until they stop changing).
-function Watch-Pixels([long]$launchMs, [byte[]]$base, [int]$timeoutS) {
+function Watch-Pixels([long]$launchMs, [byte[]]$base, [int]$timeoutS, $proc) {
   $visible = $null; $settled = $null; $prev = $null; $same = 0
   $end = (Get-Date).AddSeconds($timeoutS)
   while ((Get-Date) -lt $end) {
+    if ($proc -and $proc.HasExited) { break }
     $g = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
     $t = NowMs
     if ($null -eq $visible -and [BenchNative]::Diff($g, $base) -gt 6) { $visible = $t - $launchMs }
@@ -181,20 +182,26 @@ function Run-Electron([string]$theme) {
   Start-Sleep -Milliseconds 800
   $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
   $log = Join-Path $Out "$tag.log"
-  $env:NODE_OPTIONS = '--require "' + (Join-Path $spike 'bench\electron-probe.js') + '"'
+  # forward slashes, no quotes: Node reads backslashes inside a quoted NODE_OPTIONS value as escapes
+  $env:NODE_OPTIONS = '--require=' + ((Join-Path $spike 'bench\electron-probe.js') -replace '\\', '/')
   $env:SPIKE_PROBE_OUT = $probe
   $launch = NowMs
-  $proc = Start-Process -FilePath $electronExe -ArgumentList '.', '--live', "--log=$log" -WorkingDirectory $ws -PassThru
+  $proc = Start-Process -FilePath $electronExe -ArgumentList '.', '--live', "--log=$log" -WorkingDirectory $ws -PassThru `
+    -RedirectStandardOutput (Join-Path $Out "$tag.stdout.txt") -RedirectStandardError (Join-Path $Out "$tag.stderr.txt")
   Remove-Item Env:NODE_OPTIONS, Env:SPIKE_PROBE_OUT
-  $px = Watch-Pixels $launch $base 60
+  $px = Watch-Pixels $launch $base 60 $proc
   # wait for Mantle to say it is up (installer/ci-install-test.ps1 waits for the same line)
   $upMs = $null
   $end = (Get-Date).AddSeconds(120)
-  while ((Get-Date) -lt $end -and $null -eq $upMs) {
+  while ((Get-Date) -lt $end -and $null -eq $upMs -and -not $proc.HasExited) {
     if ((Test-Path $log) -and (Select-String -Path $log -Pattern 'features: (started|none started)' -Quiet)) { $upMs = (NowMs) - $launch }
     else { Start-Sleep -Milliseconds 250 }
   }
-  if ($proc.HasExited) { Problem "$tag exited early (exit $($proc.ExitCode))"; return $null }
+  if ($proc.HasExited) {
+    Problem "$tag exited early (exit $($proc.ExitCode))"
+    foreach ($f in "$tag.stdout.txt", "$tag.stderr.txt") { $fp = Join-Path $Out $f; if (Test-Path $fp) { Get-Content $fp | Select-Object -Last 15 | ForEach-Object { Write-Host "  ${f}: $_" } } }
+    return $null
+  }
   if ($null -eq $upMs) { Problem "$tag never logged 'features: started' in 120 s" }
   $wait = 45000 - ((NowMs) - $launch); if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
   [BenchNative]::SetCursorPos($park.x, $park.y) | Out-Null
@@ -246,9 +253,11 @@ function Run-Native([string]$theme) {
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Milliseconds 800
   $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
+  $cornerAt = @{ x = $pill.x - 20; y = $pill.y - 50 }   # inside the window's shadow room, outside the pill and its shadow
+  $cornerBase = [BenchNative]::Grab($cornerAt.x, $cornerAt.y, 16, 16)
   $launch = NowMs
   $proc = Start-Process -FilePath $exe -ArgumentList "--theme=$theme", "--bench-out=$dir" -PassThru
-  $px = Watch-Pixels $launch $base 60
+  $px = Watch-Pixels $launch $base 60 $proc
   $ready = $null; $end = (Get-Date).AddSeconds(30)
   while ((Get-Date) -lt $end -and -not $ready) { if (Test-Path (Join-Path $dir 'ready.json')) { $ready = Get-Content (Join-Path $dir 'ready.json') -Raw | ConvertFrom-Json } else { Start-Sleep -Milliseconds 200 } }
   if ($proc.HasExited) {
@@ -263,6 +272,8 @@ function Run-Native([string]$theme) {
   Start-Sleep -Seconds 2
   $shotBar = Save-Shot "$tag-bar.png" $shot
   $shotFull = Save-Shot "$tag-full.png" @{ x = 0; y = 0; w = $scr.Width; h = $scr.Height }
+  $cornerDiff = [Math]::Round([BenchNative]::Diff([BenchNative]::Grab($cornerAt.x, $cornerAt.y, 16, 16), $cornerBase), 2)
+  if ($cornerDiff -gt 3) { Problem "$tag window is not see-through outside the pill (corner differs by $cornerDiff)" }
   $mem = Get-Mem $proc.Id
   $cpuUp = Get-Cpu $proc.Id $(if ($Mode -eq 'smoke') { 15 } else { 60 })
 
@@ -291,7 +302,7 @@ function Run-Native([string]$theme) {
     app = 'native'; theme = $theme; what = 'the native bar: one process (UI + window list + icons in-process)'
     firstPaint = [ordered]@{ firstFrameMs = $selfMs; pixelsVisibleMs = $px.visibleMs; pixelsSettledMs = $px.settledMs
       mainMs = if ($ready) { [long]$ready.mainUnixMs - $launch } else { $null } }
-    backdrop = if ($ready) { $ready.backdrop } else { $null }
+    backdrop = if ($ready) { $ready.backdrop } else { $null }; seeThroughCornerDiff = $cornerDiff
     memUp = $mem; cpuUp = $cpuUp; memAfterClicks = $memAfter; focus = $focus
     shots = @((Split-Path -Leaf $shotBar), (Split-Path -Leaf $shotFull)) + $(if ($shotFocus) { @(Split-Path -Leaf $shotFocus) } else { @() })
   }

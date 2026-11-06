@@ -128,6 +128,7 @@ public sealed partial class BarWindow : Window
         int none = Win32.DWMWA_COLOR_NONE; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_BORDER_COLOR, ref none, 4);
         long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE).ToInt64() | Win32.WS_EX_TOOLWINDOW;
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
+        _o.Log("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
         AppWindow.MoveAndResize(_winPx);
     }
 
