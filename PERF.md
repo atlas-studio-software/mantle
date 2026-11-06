@@ -15,8 +15,12 @@ assumed some windows would be pre-made, so some rules below are changed. The cha
 - **Default: nothing is pre-made.** No hidden Settings, Task Manager or Files window waits in the background.
   These three must be fast **cold**: light first paint, last-known data from a disk cache, the rest
   loaded after the paint.
-- **Opt-in:** each surface has its own config key: `keepReady.settings`, `keepReady.taskmgr` and
-  `keepReady.files`. All three default to `false`. When one is on, that surface keeps a hidden window ready.
+- **Opt-in:** each surface has its own config key: `keepReady.settings`, `keepReady.taskmgr`,
+  `keepReady.files` and `keepReady.taskview`. All four default to `false`. When one is on, that surface keeps a hidden
+  window ready.
+- **Task View (Win+Tab)** used to keep its parked window from start for everyone. Since 2026-11-06 it follows the rule
+  above: Win+Tab makes the window, a close keeps it parked 3 minutes (a second Win+Tab soon after is warm), then
+  it is let go. `keepReady.taskview` brings back the window made at start, with its warm-up.
   It is destroyed while a game runs and made again afterwards.
 - A new surface may reuse a window Mantle already has. For example, the launcher window can host Run
   and Win+X. That is allowed only if it adds no RAM.
