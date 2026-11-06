@@ -25,13 +25,25 @@
 const path = require('path');
 const zlib = require('zlib');
 const { execFileSync } = require('child_process');
-const H = require('../ui/bar/page-harness.js');
+const fs = require('fs');
+const os = require('os');
+/* Under Electron (node node_modules/electron/cli.js tools/bar-mem-probe.js) the page runs in Mantle's own
+   Chromium, in a quiet window (lib/test-quiet.js: alpha 0, click-through, never focused), with the GPU in
+   the browser process as Mantle runs it, and with webFrame's image cache behind the mock's bridge. Under
+   node it runs in headless Chromium through ui/bar/page-harness.js. */
+const ELECTRON = !!process.versions.electron;
+if (ELECTRON) require(path.join(__dirname, '..', 'lib', 'test-quiet.js')).install(['--test'], process.env);
 
 const N = Math.max(3, Number(process.env.MEM_PROBE_N) || 60);
 const STEPS = 3;
 const WANT = (process.env.MEM_PROBE || 'cards,tracks,reveals,popups').split(',').map((s) => s.trim()).filter(Boolean);
-const W = { w: 1400, h: 877, dsf: 1, settle: 900, init: 'window.__MOCK_CALLS__ = null;' };
+/* dark, as the user runs it (preload.js stamps <html data-theme>; the mock does not): the dark pop-up glass and
+   the bar's backdrop strip run only in dark */
+const DARK = "(function () { var st = function () { if (document.documentElement) document.documentElement.setAttribute('data-theme', 'dark'); }; st(); document.addEventListener('readystatechange', st); })();";
+const W = { w: 1400, h: 877, dsf: 1, settle: 900, init: 'window.__MOCK_CALLS__ = null;' + DARK };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+// before each checkpoint: longer than the bar's own wait before it trims its image cache (bar.js IMG_TRIM_*)
+const IDLE_MS = Math.max(0, Number(process.env.MEM_PROBE_IDLE_MS) || 2500);
 
 /* ------------------------------------------------------------ PNGs made here, unique per call */
 const CRC = (() => { const t = new Int32Array(256); for (let n = 0; n < 256; n++) { let c = n; for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1; t[n] = c; } return t; })();
@@ -116,7 +128,7 @@ const PILL = '?mode=pill&media=playing&spq=long';
 let trackNo = 0;
 function newTrack() {
   trackNo++;
-  return { title: 'Probe song ' + trackNo, artist: 'Probe artist ' + (trackNo % 7), art: png(192, 192, 40) };
+  return { title: 'Probe song ' + trackNo, artist: 'Probe artist ' + (trackNo % 7), art: png(192, 192, 10) };
 }
 
 /* page-side: a 'media' push for the mock's Spotify session with a new title and artwork */
@@ -150,16 +162,16 @@ const QUEUE_REPLY = `(function () {
 
 function queueReply(cur) {
   const row = (i, where) => ({ uri: 'spotify:track:PROBE' + String(trackNo).padStart(6, '0') + String(i).padStart(10, '0'), uid: where + i, name: 'Row ' + i + ' of ' + trackNo,
-    artists: 'Someone', kind: 'track', where, provider: where === 'queued' ? 'queue' : 'context', image: png(64, 64, 30) });
+    artists: 'Someone', kind: 'track', where, provider: where === 'queued' ? 'queue' : 'context', image: png(64, 64, 10) });
   const queued = []; for (let i = 0; i < 12; i++) queued.push(row(i, 'queued'));
   const nextUp = []; for (let i = 0; i < 20; i++) nextUp.push(row(100 + i, 'next'));
   return { ok: true, state: 'connected', at: Date.now(), caps: { skipTo: true, next: true, remove: true, move: true, search: true },
-    current: { uri: 'spotify:track:PROBENOW' + String(trackNo).padStart(14, '0'), uid: 'now', name: cur.title, artists: cur.artist, kind: 'track', where: 'current', image: png(64, 64, 30) },
+    current: { uri: 'spotify:track:PROBENOW' + String(trackNo).padStart(14, '0'), uid: 'now', name: cur.title, artists: cur.artist, kind: 'track', where: 'current', image: png(64, 64, 10) },
     queued, nextUp, player: { paused: false, shuffle: true, repeat: 0, canShuffle: true, canRepeat: true, canRepeatTrack: true, hasItem: true } };
 }
 function libReply() {
   const items = [];
-  for (let i = 0; i < 40; i++) items.push({ uri: 'spotify:playlist:PROBE' + String(trackNo).padStart(6, '0') + String(i).padStart(16, '0'), kind: 'playlist', name: 'List ' + i, owner: 'Someone', sub: 'Someone', image: png(160, 160, 40) });
+  for (let i = 0; i < 40; i++) items.push({ uri: 'spotify:playlist:PROBE' + String(trackNo).padStart(6, '0') + String(i).padStart(16, '0'), kind: 'playlist', name: 'List ' + i, owner: 'Someone', sub: 'Someone', image: png(64, 64, 10) });
   return { ok: true, liked: { uri: 'spotify:collection:tracks', name: 'Liked Songs' }, skipped: 0, total: items.length, at: Date.now(), items };
 }
 async function setReplies(pg, t, opts) {
@@ -211,36 +223,133 @@ const SCEN = {
   },
 };
 
+/* ------------------------------------------------------------ the page, in Electron */
+/* The image-cache primitive exactly as preload.js ships it (the text between its markers), so what is
+   measured is the shipped code; a preload.js without it (an older commit) is measured without it. */
+function preloadImageCacheSource() {
+  const src = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8');
+  const m = /\/\/ <image-cache>([\s\S]*?)\/\/ <\/image-cache>/.exec(src);
+  return m ? m[1] : null;
+}
+async function electronPage(query) {
+  const { app, BrowserWindow, nativeTheme } = require('electron');
+  if (!electronPage.ready) {
+    app.commandLine.appendSwitch('in-process-gpu');      // as main.js runs Mantle
+    app.on('window-all-closed', () => {});               // one window per scenario: closing one must not quit
+    electronPage.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-bar-mem-'));
+    app.setPath('userData', path.join(electronPage.dir, 'profile'));
+    await app.whenReady();
+    nativeTheme.themeSource = 'dark';
+    electronPage.ready = true;
+  }
+  const ic = preloadImageCacheSource();
+  const pre = path.join(electronPage.dir, 'pre-' + Date.now() + '.js');
+  fs.writeFileSync(pre, "const { webFrame } = require('electron');\n" +
+    'window.__MOCK_CALLS__ = null;\nwindow.__MOCK_REPLY__ = ' + QUEUE_REPLY + ';\n' + DARK + '\n' +
+    (ic ? ic + '\nwindow.__mantleImageCache = imageCache;\n' : '// this commit\'s preload.js has no image-cache primitive\n'));
+  const win = new BrowserWindow({ width: W.w, height: W.h, show: true, webPreferences: { preload: pre, contextIsolation: false, sandbox: true, backgroundThrottling: false } });
+  const wc = win.webContents;
+  const errors = [];
+  wc.on('console-message', (...a) => {
+    const d = a[1] && typeof a[1] === 'object' && 'message' in a[1] ? a[1] : { level: a[1], message: a[2] };
+    if (d.level === 'error' || d.level === 3) errors.push(String(d.message));
+    if (/\[bar\] image cache/.test(String(d.message))) process.stdout.write('bar-mem: page said: ' + String(d.message).slice(0, 300) + '\n');
+  });
+  await win.loadFile(path.join(__dirname, '..', 'ui', 'bar', 'index.html'), { search: query.replace(/^\?/, '') });
+  await sleep(W.settle);
+  wc.debugger.attach('1.3');
+  const send = (m, x) => wc.debugger.sendCommand(m, x || {});
+  const js = (f, a) => wc.executeJavaScript('(' + f.toString() + ')(' + (a === undefined ? '' : JSON.stringify(a)) + ')', true);
+  const pg = {
+    errors,
+    eval: js,
+    wait: sleep,
+    emit: (ch, x) => js(([c, y]) => window.__mockMain.emit(c, y), [ch, x]),
+    count: (sel) => js((q) => document.querySelectorAll(q).length, sel),
+    click: async (sel, o) => {
+      const r = await js((q) => { const e = document.querySelector(q); if (!e) return null; const b = e.getBoundingClientRect(); return { x: b.left + b.width / 2, y: b.top + b.height / 2 }; }, sel);
+      if (!r) throw new Error('no element ' + sel);
+      await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: r.x, y: r.y });
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: r.x, y: r.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: r.x, y: r.y, button: 'left', clickCount: 1 });
+      await sleep((o && o.wait) || 250);
+    },
+  };
+  await send('Performance.enable');
+  const gc = async () => { for (let i = 0; i < 2; i++) { await send('HeapProfiler.collectGarbage'); await sleep(150); } };
+  async function measure(label, extra) {
+    await gc(); await sleep(300);
+    const heap = await send('Runtime.getHeapUsage');
+    const dom = await send('Memory.getDOMCounters');
+    const perf = {}; for (const x of (await send('Performance.getMetrics')).metrics) perf[x.name] = x.value;
+    const all = app.getAppMetrics(), pid = wc.getOSProcessId();
+    const r = all.find((x) => x.pid === pid), b = all.find((x) => x.type === 'Browser');
+    const cache = await js(() => (window.__mantleImageCache ? window.__mantleImageCache({}).before : null));
+    const theme = await js(() => document.documentElement.getAttribute('data-theme'));
+    const trim = await js(() => (window.__barImgTrim ? { runs: window.__barImgTrim.runs, cleared: window.__barImgTrim.cleared } : null));
+    const row = Object.assign({ label, jsUsedMB: MB(heap.usedSize), documents: dom.documents, nodes: dom.nodes, listeners: dom.jsEventListeners, resources: perf.Resources,
+      rendererPrivMB: r ? MB(r.memory.privateBytes * 1024) : null, rendererWsMB: r ? MB(r.memory.workingSetSize * 1024) : null,
+      browserPrivMB: b ? MB(b.memory.privateBytes * 1024) : null, imageCache: cache ? cache.count + ' / ' + MB(cache.bytes) + ' MB' : 'n/a', trim, theme }, extra || {});
+    process.stdout.write('bar-mem: ' + JSON.stringify(row) + '\n');
+    return row;
+  }
+  const purge = async () => { await send('Memory.simulatePressureNotification', { level: 'critical' }); await sleep(1500); };
+  return { pg, m: { measure, purge }, close: async () => { try { wc.debugger.detach(); } catch (_) { /* gone */ } win.destroy(); await sleep(500); } };
+}
+
+/* ------------------------------------------------------------ the page, in headless Chromium */
+function headlessPage(query, body) {
+  const H = require('../ui/bar/page-harness.js');
+  return H.withBrowser(async (open) => {
+    const pg = await open(query, Object.assign({}, W, { reply: QUEUE_REPLY }));
+    const m = await probe(pg, pg.page.context().browser());
+    await body({ pg, m });
+  });
+}
+
+async function scenario(name, results) {
+  const body = async ({ pg, m }) => {
+    // a first pop-up picture so every scenario starts with the dark glass path warmed
+    await pg.eval((b) => { window.__probeBd = b; }, png(350, 219, 18));
+    const rows = [await m.measure(name + ' start', { cycle: 0 })];
+    // one warm cycle: first-use allocations (fonts, the card's code paths) are not growth
+    await SCEN[name](pg, 0);
+    await sleep(IDLE_MS);
+    rows.push(await m.measure(name + ' warm', { cycle: 1 }));
+    for (let i = 1; i <= N; i++) {
+      await SCEN[name](pg, i);
+      if (i % Math.ceil(N / STEPS) === 0 || i === N) { await sleep(IDLE_MS); rows.push(await m.measure(name + ' ' + i, { cycle: i + 1 })); }
+    }
+    await m.purge();
+    rows.push(await m.measure(name + ' after critical pressure', { cycle: N + 1 }));
+    rows.errors = pg.errors.slice(0, 5);
+    results[name] = rows;
+  };
+  if (!ELECTRON) return headlessPage(PILL, body);
+  const p = await electronPage(PILL);
+  try { await body(p); } finally { await p.close(); }
+}
+
 (async () => {
   const results = {};
+  process.stdout.write('bar-mem: ' + (ELECTRON ? 'Electron ' + process.versions.electron + ', Chromium ' + process.versions.chrome : 'headless Chromium (page-harness)') +
+    '; image-cache primitive in preload.js: ' + (preloadImageCacheSource() ? 'yes' : 'no') + '\n');
   for (const name of WANT) {
-    if (!SCEN[name]) { process.stdout.write(`bar-mem: no scenario "${name}"\n`); continue; }
-    await H.withBrowser(async (open) => {
-      const pg = await open(PILL, Object.assign({}, W, { reply: QUEUE_REPLY }));
-      const browser = pg.page.context().browser();
-      const m = await probe(pg, browser);
-      // a first pop-up picture so every scenario starts with the dark glass path warmed
-      await pg.eval((b) => { window.__probeBd = b; }, png(350, 219, 18));
-      const rows = [await m.measure(name + ' start', { cycle: 0 })];
-      // one warm cycle: first-use allocations (fonts, the card's code paths) are not growth
-      await SCEN[name](pg, 0);
-      rows.push(await m.measure(name + ' warm', { cycle: 1 }));
-      for (let i = 1; i <= N; i++) {
-        await SCEN[name](pg, i);
-        if (i % Math.ceil(N / STEPS) === 0 || i === N) rows.push(await m.measure(name + ' ' + i, { cycle: i + 1 }));
-      }
-      await m.purge();
-      rows.push(await m.measure(name + ' after critical pressure', { cycle: N + 1 }));
-      rows.errors = pg.errors.slice(0, 5);
-      results[name] = rows;
-    });
+    if (!SCEN[name]) { process.stdout.write('bar-mem: no scenario "' + name + '"\n'); continue; }
+    await scenario(name, results);
   }
-  process.stdout.write('\nbar-mem SUMMARY (N=' + N + ', after forced GC; priv = the renderer\'s private bytes)\n');
+  process.stdout.write('\nbar-mem SUMMARY (N=' + N + ', after forced GC; priv / ws = the bar renderer\'s private bytes / working set)\n');
   for (const [name, rows] of Object.entries(results)) {
     const w = rows[1], e = rows[rows.length - 2], p = rows[rows.length - 1];
     const d = (k) => (e[k] != null && w[k] != null ? Math.round((e[k] - w[k]) * 10) / 10 : 'n/a');
-    process.stdout.write(`bar-mem ${name}: warm -> ${N}: priv ${w.rendererPrivMB} -> ${e.rendererPrivMB} MB (${d('rendererPrivMB')}), after pressure ${p.rendererPrivMB} MB; ` +
-      `js ${w.jsUsedMB} -> ${e.jsUsedMB} MB (${d('jsUsedMB')}); nodes ${w.nodes} -> ${e.nodes} (${d('nodes')}); listeners ${w.listeners} -> ${e.listeners} (${d('listeners')}); ` +
-      `resources ${w.resources} -> ${e.resources} (${d('resources')}); page errors ${rows.errors.length}${rows.errors.length ? ': ' + rows.errors.join(' | ') : ''}\n`);
+    process.stdout.write('bar-mem ' + name + ': warm -> ' + N + ': priv ' + w.rendererPrivMB + ' -> ' + e.rendererPrivMB + ' MB (' + d('rendererPrivMB') + '), ws ' +
+      w.rendererWsMB + ' -> ' + e.rendererWsMB + ' MB (' + d('rendererWsMB') + '), after pressure priv ' + p.rendererPrivMB + ' / ws ' + p.rendererWsMB + ' MB; ' +
+      (ELECTRON ? 'browser process priv ' + w.browserPrivMB + ' -> ' + e.browserPrivMB + ' MB; image cache ' + w.imageCache + ' -> ' + e.imageCache + '; trims ' + JSON.stringify(e.trim) + '; ' : '') +
+      'js ' + w.jsUsedMB + ' -> ' + e.jsUsedMB + ' MB; nodes ' + w.nodes + ' -> ' + e.nodes + '; listeners ' + w.listeners + ' -> ' + e.listeners +
+      '; page errors ' + rows.errors.length + (rows.errors.length ? ': ' + rows.errors.join(' | ') : '') + '\n');
   }
-})().catch((e) => { process.stdout.write('bar-mem: FAILED ' + (e && e.stack || e) + '\n'); process.exit(1); });
+  if (ELECTRON) { try { fs.rmSync(electronPage.dir, { recursive: true, force: true }); } catch (_) { /* temp */ } require('electron').app.exit(0); }
+})().catch((e) => {
+  process.stdout.write('bar-mem: FAILED ' + (e && e.stack || e) + '\n');
+  if (ELECTRON) require('electron').app.exit(1); else process.exit(1);
+});
