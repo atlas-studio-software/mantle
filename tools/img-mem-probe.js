@@ -9,6 +9,8 @@
  *   img-data      <img src="data:..."> shown, then removed (what the bar did)
  *   img-same      the SAME pictures every cycle (control: should stay flat)
  *   img-blob      the bytes as a Blob, <img src="blob:...">, URL revoked when removed
+ *   img-blob-load the same, URL revoked on the picture's own load event (what the bar does)
+ *   img-blob-keep the same, URL never revoked (control: does the revoke matter?)
  *   css-data      a data: url() as a background-image, then cleared
  *   bitmap        createImageBitmap(blob) drawn into a <canvas>, bitmap.close()
  *   img-data-clear  img-data plus webFrame.clearCache() after each cycle
@@ -17,6 +19,8 @@
  * kept bytes say WHICH copy is kept: ~360 KB per picture = the decoded pixels, a few KB = the URL/bytes.
  *
  *   electron tools/img-mem-probe.js        (IMG_PROBE_N cycles, default 30, of IMG_PROBE_K=20 pictures)
+ * First (IMG_PROBE_SYNC=0 skips it) a sync line: is a picture complete the moment its src is set, and on the
+ * next two frames, for data:, blob:, and blob: after another element decoded the same URL (revoked or not).
  * Hidden windows only (show:false + lib/test-quiet.js); its own temp profile; never Mantle's.
  */
 const path = require('path');
@@ -74,14 +78,21 @@ fs.writeFileSync(PAGE, '<!doctype html><meta http-equiv="Content-Security-Policy
   'function bytes(u){var s=atob(u.slice(u.indexOf(",")+1)),a=new Uint8Array(s.length);for(var i=0;i<s.length;i++)a[i]=s.charCodeAt(i);return new Blob([a],{type:"image/png"});}' +
   'window.urls=[];' +
   'window.show=async function(kind,list){var box=document.getElementById("box");' +
-  ' box.querySelectorAll("img").forEach(function(i){if(i.src.indexOf("blob:")===0)URL.revokeObjectURL(i.src);});' +
+  ' if(kind!=="img-blob-keep")box.querySelectorAll("img").forEach(function(i){if(i.src.indexOf("blob:")===0)URL.revokeObjectURL(i.src);});' +
   ' box.textContent="";var waits=[];' +
   ' for(var j=0;j<list.length;j++){var u=list[j];' +
   '  if(kind==="css-data"){var d=document.createElement("div");d.style.cssText="width:34px;height:34px;background-size:cover;background-image:url(\\""+u+"\\")";box.appendChild(d);}' +
   '  else if(kind==="bitmap"){var c=document.createElement("canvas");c.width=68;c.height=68;c.style.width="34px";c.style.height="34px";box.appendChild(c);' +
   '   waits.push(createImageBitmap(bytes(u),{resizeWidth:68,resizeHeight:68,resizeQuality:"high"}).then((function(c){return function(bm){c.getContext("2d").drawImage(bm,0,0);bm.close();};})(c)));}' +
-  '  else{var im=document.createElement("img");im.width=34;im.height=34;im.src=kind==="img-blob"?URL.createObjectURL(bytes(u)):u;box.appendChild(im);waits.push(im.decode().catch(function(){}));}' +
-  ' }await Promise.all(waits);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r);});});return true;};' +
+  '  else if(kind==="img-blob-load"){var il=document.createElement("img");il.width=34;il.height=34;var bu=URL.createObjectURL(bytes(u));il.onload=il.onerror=(function(x){return function(){URL.revokeObjectURL(x);};})(bu);il.src=bu;box.appendChild(il);waits.push(il.decode().catch(function(){}));}'+
+  '  else{var im=document.createElement("img");im.width=34;im.height=34;im.src=/^img-blob/.test(kind)?URL.createObjectURL(bytes(u)):u;box.appendChild(im);waits.push(im.decode().catch(function(){}));}' +
+  ' }await Promise.all(waits);await new Promise(function(r){requestAnimationFrame(function(){requestAnimationFrame(r);});});return true;};'+
+  /* is a picture there the moment its src is set, and on the next frame? data:, blob:, and blob: again after another element decoded it */
+  'window.syncTest=async function(u){var out={};var f1=function(){return new Promise(function(r){requestAnimationFrame(function(){r();});});};' +
+  ' var t=function(name,src){var im=document.createElement("img");im.decoding="sync";im.src=src;document.body.appendChild(im);var o={now:im.complete&&im.naturalWidth>0};return f1().then(function(){o.frame1=im.complete&&im.naturalWidth>0;return f1();}).then(function(){o.frame2=im.complete&&im.naturalWidth>0;out[name]=o;im.remove();});};' +
+  ' await t("data",u);var b1=URL.createObjectURL(bytes(u));await t("blob",b1);' +
+  ' var b2=URL.createObjectURL(bytes(u));var pre=new Image();pre.src=b2;await pre.decode();await t("blob-after-decode",b2);' +
+  ' var b3=URL.createObjectURL(bytes(u));var pre3=new Image();pre3.src=b3;await pre3.decode();URL.revokeObjectURL(b3);await t("blob-after-decode-revoked",b3);return out;};' +
   '</script>');
 
 async function run(kind) {
@@ -127,6 +138,15 @@ async function run(kind) {
 app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   process.stdout.write(`img-mem: Electron ${process.versions.electron}, Chromium ${process.versions.chrome}\n`);
+  if (process.env.IMG_PROBE_SYNC !== '0') {
+    try {
+      const win = new BrowserWindow({ show: true, width: 400, height: 300, webPreferences: { sandbox: true, contextIsolation: true, preload: PRELOAD, backgroundThrottling: false } });
+      const page = path.join(dir, 'page-sync.html'); fs.copyFileSync(PAGE, page); await win.loadFile(page);
+      const r = await win.webContents.executeJavaScript('syncTest(' + JSON.stringify(png()) + ').then(JSON.stringify)');
+      process.stdout.write('img-mem sync: ' + r + '\n');
+      win.destroy();
+    } catch (e) { process.stdout.write('img-mem sync: FAILED ' + (e && e.message || e) + '\n'); }
+  }
   for (const v of VARIANTS) { try { await run(v.trim()); } catch (e) { process.stdout.write(`img-mem ${v}: FAILED ${e && e.stack || e}\n`); } }
   try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */ }
   app.quit();
