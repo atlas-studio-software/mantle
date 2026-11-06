@@ -142,5 +142,6 @@ async function measureBench(label) {
   }
   const pick = (k) => results.map((x) => `${x.label}=${x.rest && x.rest[k]}`).join(' ');
   say(`SUMMARY head ${head}${BASE ? ` vs base ${BASE} (${FILES.join(', ')})` : ''}: electron private ${pick('electronPrivMB')} | ws ${pick('electronWsMB')} | renderers ${pick('renderers')} | electron cpu% ${pick('electronCpuPct')} | sidecar cpu% ${pick('sidecarCpuPct')} | sidecar private ${pick('sidecarPrivMB')}`);
+  if (OUT) { fs.mkdirSync(path.dirname(path.resolve(OUT)), { recursive: true }); }
   if (OUT) fs.writeFileSync(path.resolve(OUT), JSON.stringify({ head, base: BASE || null, files: FILES, results }, null, 1));
 })().catch((err) => { say(`crashed: ${err.stack}`); process.exit(1); });
