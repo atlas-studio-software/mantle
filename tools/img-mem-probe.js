@@ -30,7 +30,7 @@ const N = Math.max(2, Number(process.env.IMG_PROBE_N) || 30);
 const K = Math.max(1, Number(process.env.IMG_PROBE_K) || 20);
 const SIDE = 300;
 const GRAIN = Math.max(0, Number(process.env.IMG_PROBE_GRAIN) || 0);   // 0: ~1 KB each; 1: ~53 KB, about a real cover
-const VARIANTS = (process.env.IMG_PROBE || 'img-data,img-same,img-blob,css-data,bitmap,img-data-clear,img-data-gc').split(',');
+const VARIANTS = (process.env.IMG_PROBE || 'img-data,img-same,img-blob,css-data,bitmap,img-data-clear').split(',');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-img-probe-'));
 app.setPath('userData', path.join(dir, 'profile'));
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -123,6 +123,8 @@ async function run(kind) {
   win.destroy();
 }
 
+// one window per variant: without this, closing the first one quits the app (Electron's default)
+app.on('window-all-closed', () => {});
 app.whenReady().then(async () => {
   process.stdout.write(`img-mem: Electron ${process.versions.electron}, Chromium ${process.versions.chrome}\n`);
   for (const v of VARIANTS) { try { await run(v.trim()); } catch (e) { process.stdout.write(`img-mem ${v}: FAILED ${e && e.stack || e}\n`); } }
