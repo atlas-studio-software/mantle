@@ -58,10 +58,13 @@
       <Border x:Name="Glass" CornerRadius="{ThemeResource LgPillCorner}">
         <Border.Background><ImageBrush x:Name="GlassImage" Stretch="Fill"/></Border.Background>
       </Border>
-      <Border x:Name="Tint" CornerRadius="{ThemeResource LgPillCorner}" Background="{ThemeResource LgPaneFill}"
-              BorderBrush="{ThemeResource LgEdgeOut}" BorderThickness="1"/>
+      <!-- the fill runs under the hairline (bar.css .bar::after: background-clip: border-box), and the
+           hairline is its own background-less layer on top: a Border with both a Background and a
+           translucent BorderBrush drew the hairline nearly opaque on the runner (spike run 1) -->
+      <Border x:Name="Tint" CornerRadius="{ThemeResource LgPillCorner}" Background="{ThemeResource LgPaneFill}"/>
       <Border x:Name="Lip" Margin="1" CornerRadius="{ThemeResource LgLipCorner}" BorderBrush="{ThemeResource LgLip}"
               BorderThickness="0,1,0,0"/>
+      <Border x:Name="Edge" CornerRadius="{ThemeResource LgPillCorner}" BorderBrush="{ThemeResource LgEdgeOut}" BorderThickness="1"/>
 
       <Grid x:Name="Content" Padding="8,0,8,0">
         <Grid.ColumnDefinitions>

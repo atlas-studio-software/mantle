@@ -95,6 +95,36 @@ public static class BenchNative
 
     public static bool AnyIconic(uint pid) { foreach (var h in WindowsOf(pid)) if (IsIconic(h)) return true; return false; }
 
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, System.Text.StringBuilder sb, int n);
+    [DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr h, int i);
+
+    /// Tile every ordinary app window into the top part of the screen, so the bottom `clear` pixels
+    /// show only the wallpaper (the same picture behind both bars). Returns how many it moved.
+    public static int ClearBottom(int screenW, int screenH, int clear)
+    {
+        var skip = new HashSet<string> { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd" };
+        var list = new List<IntPtr>();
+        EnumWindows((h, l) => {
+            if (!IsWindowVisible(h) || GetWindow(h, 4) != IntPtr.Zero) return true;
+            if ((GetWindowLongPtrW(h, -20).ToInt64() & 0x80) != 0) return true;   // tool windows
+            var sb = new System.Text.StringBuilder(256); GetClassNameW(h, sb, 256);
+            if (skip.Contains(sb.ToString())) return true;
+            var t = new System.Text.StringBuilder(256); GetWindowTextW(h, t, 256);
+            if (t.Length == 0 || t.ToString().StartsWith("Mantle", StringComparison.Ordinal)) return true;
+            list.Add(h);
+            return true;
+        }, IntPtr.Zero);
+        int n = list.Count, cols = Math.Max(1, Math.Min(4, n)), w = screenW / cols, hgt = Math.Max(200, screenH - clear);
+        for (int i = 0; i < n; i++) {
+            if (IsZoomed(list[i]) || IsIconic(list[i])) ShowWindow(list[i], 9 /* SW_RESTORE */);
+            SetWindowPos(list[i], IntPtr.Zero, (i % cols) * w, 0, w, hgt, 0x4 | 0x10 /* NOZORDER | NOACTIVATE */);
+        }
+        return n;
+    }
+
     // ---- desktop setup
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SystemParametersInfoW(uint a, uint b, string c, uint d);
     public static bool SetWallpaper(string path) => SystemParametersInfoW(0x0014, 0, path, 0x3);

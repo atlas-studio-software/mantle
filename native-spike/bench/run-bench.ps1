@@ -129,7 +129,7 @@ function Get-Mem([int]$root) {
     try { $pr = [System.Diagnostics.Process]::GetProcessById($p) } catch { continue }
     $type = if ($cmd[$p] -match '--type=([a-z-]+)') { $Matches[1] } else { 'main' }
     if ($cmd[$p] -match '--utility-sub-type=([A-Za-z.]+)') { $type += ':' + $Matches[1] }
-    [ordered]@{ pid = $p; name = $pr.ProcessName; type = $type
+    [pscustomobject]@{ pid = $p; name = $pr.ProcessName; type = $type
       privateMB = [Math]::Round($pr.PrivateMemorySize64 / 1MB, 1); wsMB = [Math]::Round($pr.WorkingSet64 / 1MB, 1)
       privWsMB = [Math]::Round(($raw[$p]) / 1MB, 1) }
   }
@@ -176,6 +176,7 @@ function Run-Electron([string]$theme) {
   Set-Content -Path (Join-Path $profileDir 'theme.json') -Value ('{ "mode": "' + $theme + '" }') -Encoding utf8
   $probe = Join-Path $Out "probe-$theme"
   New-Item -ItemType Directory -Force -Path $probe | Out-Null
+  [BenchNative]::ClearBottom($scr.Width, $scr.Height, 320) | Out-Null
   [BenchNative]::SetCursorPos($park.x, $park.y) | Out-Null
   Start-Sleep -Milliseconds 800
   $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
@@ -240,7 +241,9 @@ function Run-Native([string]$theme) {
   Set-WinTheme $theme
   $dir = Join-Path $Out $tag
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
-  [BenchNative]::SetCursorPos($park.x, $park.y) | Out-Null
+  [BenchNative]::ClearBottom($scr.Width, $scr.Height, 320) | Out-Null
+  # not the bottom edge: that un-hides Windows' own auto-hide taskbar, which would land in the captured backdrop
+  [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Milliseconds 800
   $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
   $launch = NowMs
@@ -257,7 +260,6 @@ function Run-Native([string]$theme) {
   $selfMs = if ($ready) { [long]$ready.firstFrameUnixMs - $launch } else { $null }
   $wait = 45000 - ((NowMs) - $launch); if ($Mode -eq 'smoke') { $wait = 12000 - ((NowMs) - $launch) }
   if ($wait -gt 0) { Start-Sleep -Milliseconds $wait }
-  [BenchNative]::SetCursorPos($park.x, $park.y) | Out-Null
   Start-Sleep -Seconds 2
   $shotBar = Save-Shot "$tag-bar.png" $shot
   $shotFull = Save-Shot "$tag-full.png" @{ x = 0; y = 0; w = $scr.Width; h = $scr.Height }
