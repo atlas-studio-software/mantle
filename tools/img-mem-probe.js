@@ -29,6 +29,7 @@ const { app, BrowserWindow } = require('electron');
 const N = Math.max(2, Number(process.env.IMG_PROBE_N) || 30);
 const K = Math.max(1, Number(process.env.IMG_PROBE_K) || 20);
 const SIDE = 300;
+const GRAIN = Math.max(0, Number(process.env.IMG_PROBE_GRAIN) || 0);   // 0: ~1 KB each; 1: ~53 KB, about a real cover
 const VARIANTS = (process.env.IMG_PROBE || 'img-data,img-same,img-blob,css-data,bitmap,img-data-clear,img-data-gc').split(',');
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-img-probe-'));
 app.setPath('userData', path.join(dir, 'profile'));
@@ -54,7 +55,7 @@ function png() {
     let prev = [0, 0, 0, 0];
     for (let x = 0; x < w; x++) {
       const t = y / h;
-      const px = [0, 1, 2].map((k) => Math.round(a[k] + (b[k] - a[k]) * t)).concat([255]);
+      const px = [0, 1, 2].map((k) => Math.max(0, Math.min(255, Math.round(a[k] + (b[k] - a[k]) * t + (GRAIN ? (rnd() - 0.5) * GRAIN : 0))))).concat([255]);
       for (let k = 0; k < 4; k++) raw[o++] = (px[k] - prev[k]) & 255;
       prev = px;
     }
@@ -85,16 +86,21 @@ fs.writeFileSync(PAGE, '<!doctype html><meta http-equiv="Content-Security-Policy
 
 async function run(kind) {
   const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: { sandbox: true, contextIsolation: true, preload: PRELOAD, backgroundThrottling: false } });
-  await win.loadFile(PAGE);
+  const page = path.join(dir, 'page-' + kind + '.html');
+  fs.copyFileSync(PAGE, page);
+  for (let i = 0; ; i++) { try { await win.loadFile(page); break; } catch (e) { if (i >= 4) throw e; await sleep(1000); } }
   const wc = win.webContents;
   wc.debugger.attach('1.3');
   const send = (m, p) => wc.debugger.sendCommand(m, p || {});
   const gc = async () => { for (let i = 0; i < 2; i++) { await send('HeapProfiler.collectGarbage'); await sleep(120); } };
   const priv = () => { const pid = wc.getOSProcessId(); const m = app.getAppMetrics().find((x) => x.pid === pid); return m ? Math.round(m.memory.privateBytes / 1024 * 10) / 10 : null; };
+  const ws = () => { const pid = wc.getOSProcessId(); const m = app.getAppMetrics().find((x) => x.pid === pid); return m ? Math.round(m.memory.workingSetSize / 1024 * 10) / 10 : null; };
+  const imgs = async () => { const u = JSON.parse(await wc.executeJavaScript('JSON.stringify(probe.usage().images)')); return u.count + ' images ' + Math.round(u.size / 1048576) + ' MB (live ' + Math.round(u.liveSize / 1048576) + ')'; };
+  const browserPriv = () => { const m = app.getAppMetrics().find((x) => x.type === 'Browser'); return m ? Math.round(m.memory.privateBytes / 1024) : null; };
   const same = []; for (let i = 0; i < K; i++) same.push(png());
   const one = (k) => wc.executeJavaScript(`show(${JSON.stringify(k === 'img-same' ? 'img-data' : k.replace(/-(clear|gc)$/, ''))}, ${JSON.stringify(k === 'img-same' ? same : Array.from({ length: K }, png))})`);
   await one(kind); await gc(); await sleep(300);
-  const warm = priv();
+  const warm = priv(), warmWs = ws(), warmBrowser = browserPriv();
   const marks = [];
   for (let c = 1; c <= N; c++) {
     await one(kind);
@@ -102,14 +108,18 @@ async function run(kind) {
     if (kind === 'img-data-gc') await gc();
     if (c % Math.ceil(N / 3) === 0 || c === N) { await gc(); await sleep(300); marks.push(c + ':' + priv()); }
   }
-  const usage = await wc.executeJavaScript('JSON.stringify(probe.usage().images)').catch(() => null);
+  const usage = await imgs().catch((e) => 'n/a: ' + e.message);
+  const endWs = ws(), endBrowser = browserPriv();
   await send('Memory.simulatePressureNotification', { level: 'critical' }); await sleep(1500); await gc(); await sleep(300);
-  const after = priv();
+  const after = priv(), afterUsage = await imgs().catch(() => 'n/a');
+  await wc.executeJavaScript('probe.clearCache()'); await gc(); await sleep(500);
+  const cleared = priv(), clearedWs = ws(), clearedUsage = await imgs().catch(() => 'n/a');
   const end = Number(marks[marks.length - 1].split(':')[1]);
   const perPic = Math.round((end - warm) * 1024 / (N * K));
   process.stdout.write(`img-mem ${kind}: renderer private warm ${warm} MB -> ${marks.join(' ')} MB after ${N} cycles x ${K} pictures; ` +
     `after critical pressure ${after} MB; kept ~${perPic} KB per new picture (decoded ${Math.round(SIDE * SIDE * 4 / 1024)} KB, encoded ~${Math.round(same[0].length * 0.75 / 1024)} KB); ` +
-    `webFrame images ${usage}\n`);
+    `webFrame cache: ${usage}; after pressure ${afterUsage}; ws ${warmWs} -> ${endWs} MB; browser process private ${warmBrowser} -> ${endBrowser} MB; ` +
+    `then ONE webFrame.clearCache(): private ${cleared} MB, ws ${clearedWs} MB, cache ${clearedUsage}\n`);
   win.destroy();
 }
 
