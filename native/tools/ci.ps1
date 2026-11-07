@@ -215,6 +215,7 @@ function Stage-smoke {
       $d1 = P @('-Mode', 'diff', '-A', (Join-Path $dir 'band-before.png'), '-B', (Join-Path $dir 'band-after.png'), '-Row', $top)
       $d2 = P @('-Mode', 'diff', '-A', (Join-Path $dir 'band-before.png'), '-B', (Join-Path $dir 'band-after.png'), '-Row', ($top + 1))
       $notes.Add("frame line: mean RGB change on the window's top row $d1 (row above $d0, row inside $d2; 0 = untouched)")
+      if (($d1 -as [double]) -gt 8) { $fails.Add("frame line: the window's top row changed by $d1 (the area above the pill must be see-through)") }
     } else { $notes.Add('frame line: the top row is outside the captured band, not measured') }
 
     # the log
@@ -238,6 +239,11 @@ function Stage-smoke {
       $ids = @($uia.items | ForEach-Object { $_.id })
       $missing = @('bar.window', 'bar.pill', 'bar.start', 'bar.apps', 'bar.clock', 'bar.clock.time', 'bar.clock.date', 'bar.downloads', 'bar.volume', 'bar.network', 'bar.notifications', 'bar.more' | Where-Object { $ids -notcontains $_ })
       if ($missing.Count) { $fails.Add('UI Automation ids missing: ' + ($missing -join ', ')) }
+      $pill = @($uia.items | Where-Object { $_.id -eq 'bar.pill' })[0]
+      if ($pill) {
+        $notes.Add("UI Automation: bar.pill at $($pill.x),$($pill.y) $($pill.w)x$($pill.h); ready.json pill $($ready.pill.x),$($ready.pill.y) $($ready.pill.w)x$($ready.pill.h)")
+        if ([math]::Abs($pill.x - $ready.pill.x) -gt 1 -or [math]::Abs($pill.y - $ready.pill.y) -gt 1) { $fails.Add("UI Automation: bar.pill is at $($pill.x),$($pill.y), the code placed it at $($ready.pill.x),$($ready.pill.y) (a window frame insets the content)") }
+      }
       $apps = @($uia.items | Where-Object { $_.id -like 'bar.app.*' })
       $notes.Add("UI Automation: $($ids.Count) bar.* elements; apps: " + (($apps | ForEach-Object { "$($_.id)='$($_.name)' ($($_.help)) at $($_.x),$($_.y) $($_.w)x$($_.h)" }) -join '; '))
       if ($np -and -not $np.HasExited -and $apps.Count -eq 0) { $fails.Add('UI Automation: notepad is running but there is no bar.app.* element') }
