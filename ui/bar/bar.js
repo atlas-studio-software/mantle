@@ -399,6 +399,20 @@
 
   // the picture is drawn with the frame that first shows it: the glass never shows bare for a frame (barpolish)
   el.backdrop.decoding = 'sync';
+  /* THE STRIP'S MEMORY (lane mantle-bar-leak, 2026-11-06). Each strip is a NEW data: picture, and an <img>
+     that has shown a data: picture keeps about its decoded size in the renderer for good (~0.5 MB a
+     reveal, measured: ../shared/pic-url.js). So the strip goes on through its own blob: URL (the same
+     bytes, decoder and pixels; a data: picture was not on screen any sooner: both land the next frame),
+     and the URL is let go once the <img> has the picture, or when a newer strip or a clear replaces it.
+     A strip that does not decode says so; before, it was a silent hole. */
+  var bdUrl = null;
+  function releaseBd() { if (bdUrl) { window.MantlePic.release(bdUrl); bdUrl = null; } }
+  el.backdrop.addEventListener('load', function () { if (bdUrl && el.backdrop.src === bdUrl) releaseBd(); });
+  el.backdrop.addEventListener('error', function () {
+    if (!el.backdrop.getAttribute('src')) return;
+    releaseBd();
+    fail('backdrop', 'Glass not blurred', 'The picture of the screen behind the bar did not decode, so the bar is showing a thicker tint instead');
+  });
   function setBackdrop(p) {
     if (!p || typeof p.png !== 'string' || p.png.slice(0, 5) !== 'data:') {
       fail('backdrop', 'Glass not blurred', 'Mantle did not get a picture of the screen behind the bar, so it cannot' +
@@ -409,7 +423,10 @@
     clearFail('backdrop');
     bdAt = p.at && p.at.w > 0 && p.at.h > 0 ? { at: p.at, win: p.win || null } : null;
     placeBdrop();
-    el.backdrop.src = p.png;                 // the ONLY per-frame work: a src swap
+    releaseBd();
+    var src = window.MantlePic ? window.MantlePic.once(p.png) : p.png;
+    if (src !== p.png) bdUrl = src;
+    el.backdrop.src = src;                   // the ONLY per-frame work: a src swap
     if (!haveBackdrop) {
       haveBackdrop = true;
       el.body.classList.remove('no-backdrop');
@@ -497,14 +514,19 @@
     }
     clearFail('popbackdrop');
     var mine = popBd = { key: p.key, at: p.at || { x: 0, y: 0, w: 1, h: 1 }, win: p.win || null, img: null, pic: null, url: null, ms: p.ms };
-    var im = new Image();
-    im.onload = function () { if (popBd === mine) { mine.img = im; placePopBd(); } };
+    /* through a blob: URL, let go on load (../shared/pic-url.js): an Image that has decoded a data: picture
+       keeps ~its decoded size in the renderer for good, and this is a new one on every open */
+    var im = new Image(), blobUrl = null;
+    im.onload = function () { if (blobUrl) { window.MantlePic.release(blobUrl); blobUrl = null; } if (popBd === mine) { mine.img = im; placePopBd(); } };
     im.onerror = function () {
+      if (blobUrl) { window.MantlePic.release(blobUrl); blobUrl = null; }
       if (popBd !== mine) return;
       popBdHold(false);
       fail('popbackdrop', 'Pop-up not blurred', 'The picture of what is behind this pop-up did not decode, so it is showing its thicker fill');
     };
-    im.src = p.png;
+    var src = window.MantlePic ? window.MantlePic.once(p.png) : p.png;
+    if (src !== p.png) blobUrl = src;
+    im.src = src;
   }
   /* The picture as the glass shows it: the token's filter with its blur rescaled from CSS px to
      picture px, and NOTHING else. The edges are clamped out into a margin first (the outermost row
@@ -620,6 +642,7 @@
 
   function clearBackdrop() {
     haveBackdrop = false;
+    releaseBd();
     el.bdrop.classList.remove('on');
     /* removeAttribute, never src='': an empty src re-requests the PAGE in some engines. With no
        src at all the <img> draws nothing, which is what a hidden bar should hold. */
@@ -3398,7 +3421,8 @@
     if (src) {
       var img = document.createElement('img'); img.alt = '';
       img.onerror = function () { box.dataset.kind = 'none'; box.innerHTML = svg(MEDIA_SVG.note, 12); };
-      img.src = src;
+      // through MantlePic's cache (../shared/pic-url.js): a data: <img> keeps its picture in the renderer for good
+      if (window.MantlePic) window.MantlePic.set(img, src); else img.src = src;
       box.appendChild(img);
     } else {
       box.innerHTML = svg(MEDIA_SVG.note, 12);
