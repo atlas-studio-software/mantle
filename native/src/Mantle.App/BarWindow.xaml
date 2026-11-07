@@ -83,6 +83,10 @@
           <Button AutomationProperties.AutomationId="bar.downloads" AutomationProperties.Name="Downloads" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
           <Button AutomationProperties.AutomationId="bar.volume" AutomationProperties.Name="Volume" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
           <Button AutomationProperties.AutomationId="bar.network" AutomationProperties.Name="Network" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NetworkHost" Width="16" Height="16"/></Button>
+          <!-- Electron's battery button while it is hidden: .btn's display:flex beats [hidden], so with no battery it
+               still takes 14 px (.battery: width auto, padding 0 7px) + the 4 px gap. Kept so the cluster sits where
+               Electron's does (the parity known gap "right-cluster"); the battery itself (glyph + percent) is round 3. -->
+          <Button x:Name="BatteryBtn" AutomationProperties.AutomationId="bar.battery" AutomationProperties.Name="Battery" Style="{StaticResource LgBtn}" Width="14" IsTabStop="False"/>
           <Button x:Name="ClockBtn" AutomationProperties.AutomationId="bar.clock" AutomationProperties.Name="Clock" Style="{StaticResource LgBtn}" Padding="9,0,9,0" MinWidth="62">
             <StackPanel Spacing="2" HorizontalAlignment="Right">
               <TextBlock x:Name="ClockT" AutomationProperties.AutomationId="bar.clock.time" FontSize="13" MinWidth="80" TextAlignment="Right" HorizontalAlignment="Right"
@@ -94,7 +98,16 @@
             </StackPanel>
           </Button>
           <Button AutomationProperties.AutomationId="bar.notifications" AutomationProperties.Name="Notifications" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NotifsHost" Width="16" Height="16"/></Button>
-          <Button AutomationProperties.AutomationId="bar.more" AutomationProperties.Name="More" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="MoreHost" Width="16" Height="16"/></Button>
+          <Button x:Name="MoreBtn" AutomationProperties.AutomationId="bar.more" AutomationProperties.Name="More" Style="{StaticResource LgBtn}" Width="36">
+            <!-- bar.css .more .mpip: one pip for every chip, 6 px at top 7 / right 7, a 2 px ring of the fill behind it -->
+            <Grid Width="36" Height="36">
+              <Canvas x:Name="MoreHost" Width="16" Height="16" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+              <local:UiaGrid x:Name="MorePip" AutomationProperties.AutomationId="bar.more.pip" AutomationProperties.Name="More pip" Visibility="Collapsed" Width="10" Height="10" HorizontalAlignment="Right" VerticalAlignment="Top" Margin="0,5,5,0" IsHitTestVisible="False">
+                <Ellipse x:Name="MorePipRing" Width="10" Height="10"/>
+                <Ellipse x:Name="MorePipDot" Width="6" Height="6" Fill="{ThemeResource LgInk2}"/>
+              </local:UiaGrid>
+            </Grid>
+          </Button>
         </StackPanel>
       </Grid>
 
