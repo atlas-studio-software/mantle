@@ -119,7 +119,7 @@ public sealed class Win32TrayIcon : ITrayIcon
             var wc = new WNDCLASSEXW
             {
                 cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(),
-                lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc),
+                lpfnWndProc = Marshal.GetFunctionPointerForDelegate<WndProcFn>(_proc),
                 hInstance = inst,
                 lpszClassName = Marshal.StringToHGlobalUni(_class),
             };

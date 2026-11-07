@@ -7,7 +7,8 @@ using System.Threading;
 using Mantle.Core.Features.Tray;
 using Xunit;
 
-namespace Mantle.Core.Tests;
+namespace Mantle.Core.Tests
+{
 
 /// <summary>A test that puts something real on the desktop (a tray icon, a global shortcut, the clipboard): it runs
 /// only on a CI runner (CI / GITHUB_ACTIONS set), and is reported as skipped, with why, anywhere else.</summary>
@@ -32,7 +33,9 @@ internal static class Wait
     }
 }
 
-namespace Features
+}
+
+namespace Mantle.Core.Tests.Features
 {
     public class Win32TrayIconTests
     {
