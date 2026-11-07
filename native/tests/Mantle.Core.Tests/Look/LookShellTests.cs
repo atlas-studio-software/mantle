@@ -84,6 +84,10 @@ public class LookShellTests
             Assert.Contains((n, "LookShell", false), Catalogs.Commands);
         }
         var get = await r.Call("theme.get");
+        // LOOK-012: lib/theme.js view(), key for key and in its order
+        Assert.Equal(new[] { "ok", "mode", "theme", "windows", "windowsWhy", "pinned", "note", "reason" }, get.Result.EnumerateObject().Select(x => x.Name).ToArray());
+        Assert.True(get.Result.GetProperty("ok").GetBoolean());
+        Assert.Equal("light", get.Result.GetProperty("windows").GetString());
         Assert.Equal("system", get.Result.GetProperty("mode").GetString());
         Assert.Equal("light", get.Result.GetProperty("theme").GetString());
         var bad = await r.Call("theme.set", new JsonObject { ["mode"] = "blue" });
@@ -101,6 +105,9 @@ public class LookShellTests
         var dark = r.NextTheme(p => p.Theme == "dark");
         var sw = Stopwatch.StartNew();
         var set = await r.Call("theme.set", new JsonObject { ["mode"] = "dark" });
+        // LOOK-011: the full view plus value
+        Assert.Equal(new[] { "ok", "mode", "theme", "windows", "windowsWhy", "pinned", "note", "reason", "value" }, set.Result.EnumerateObject().Select(x => x.Name).ToArray());
+        Assert.Equal("dark", set.Result.GetProperty("theme").GetString());
         Assert.Equal("dark", set.Result.GetProperty("value").GetString());
         var p = await Within(dark, 1000, "the theme event after theme.set");
         Assert.True(sw.ElapsedMilliseconds < 1000, "theme event after " + sw.ElapsedMilliseconds + " ms");

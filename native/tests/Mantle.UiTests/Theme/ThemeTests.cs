@@ -119,6 +119,7 @@ public class ThemeTests
             StringAssert.Contains(app.Log, "(MANTLE_TEST_THEME_KEY), never the user's own");
             Thread.Sleep(1200);
             double light = Host.Luminance(probe);
+            Assert.IsFalse(app.Log.Contains("Windows apps are dark now"), "the log said dark before the key changed:\n" + Tail(app.Log));
             var sw = Stopwatch.StartNew();
             using (var k = Registry.CurrentUser.OpenSubKey(sub, true)!) k.SetValue("AppsUseLightTheme", 0, RegistryValueKind.DWord);
             Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Windows apps are dark now, so Mantle is dark"), 3000, 20), "the host did not follow the scratch key:\n" + Tail(app.Log));
