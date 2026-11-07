@@ -80,6 +80,9 @@
   <ItemGroup>
     <Compile Include="..\..\..\sidecar\*.cs" Exclude="$(SidecarExcludeFiles)" Link="sidecar\%(Filename)%(Extension)" />
     <Compile Include="Shims\**\*.cs" />
+    <!-- SidecarEdited=true: sidecar/ carries edit E1 (sidecar-edits.psd1), so the stopgap goes.
+         Only check.ps1 -ProveEdits sets it, on the runner's patched checkout. -->
+    <Compile Remove="Shims\FileStreamShadow.cs" Condition="'$(SidecarEdited)' == 'true'" />
   </ItemGroup>
 
   <ItemGroup>

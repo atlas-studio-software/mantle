@@ -47,9 +47,18 @@ namespace Mantle.Sidecar.Tests {
       t.Start();
       _p.ErrorDataReceived += (s, e) => { if (e.Data != null) lock (Logs) Logs.Add("stderr: " + e.Data); };
       _p.BeginErrorReadLine();
-      Ready = Next(20000);
+      // The README says `ready` is the first line; record anything that came before it.
+      while (sw.ElapsedMilliseconds < 20000) {
+        string l = Next((int)Math.Max(1, 20000 - sw.ElapsedMilliseconds));
+        if (l == null) break;
+        if (l.Contains("\"ev\":\"ready\"")) { Ready = l; break; }
+        BeforeReady.Add(l);
+      }
       ReadyMs = sw.ElapsedMilliseconds;
     }
+
+    public readonly List<string> BeforeReady = new List<string>();
+
 
     string Next(int ms) {
       string l;
@@ -83,6 +92,37 @@ namespace Mantle.Sidecar.Tests {
     }
   }
 
+  /// Another role of the same exe (--rec-standin, --record): its own process, its stdout read by a
+  /// thread into a queue (one reader per stream, so a timed-out wait never leaves a read pending).
+  internal sealed class RoleProc {
+    public readonly Process P;
+    readonly BlockingCollection<string> _lines = new BlockingCollection<string>();
+    public RoleProc(string exe, string args) {
+      var psi = new ProcessStartInfo(exe, args) {
+        UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, RedirectStandardError = false,
+        CreateNoWindow = true, StandardOutputEncoding = new UTF8Encoding(false)
+      };
+      P = Process.Start(psi);
+      P.StandardInput.AutoFlush = true;
+      new System.Threading.Thread(() => {
+        try { string l; while ((l = P.StandardOutput.ReadLine()) != null) _lines.Add(l); } catch (Exception) { }
+        _lines.CompleteAdding();
+      }) { IsBackground = true }.Start();
+    }
+    public string Until(Func<string, bool> want, int ms) {
+      var sw = Stopwatch.StartNew();
+      while (sw.ElapsedMilliseconds < ms) {
+        if (!_lines.TryTake(out var l, (int)Math.Max(1, ms - sw.ElapsedMilliseconds))) return null;
+        if (want(l)) return l;
+      }
+      return null;
+    }
+    public void Say(string line) { try { P.StandardInput.WriteLine(line); } catch (Exception) { } }
+    public void End(int ms) {
+      try { if (!P.HasExited) { P.StandardInput.Close(); if (!P.WaitForExit(ms)) P.Kill(); } } catch (Exception) { }
+    }
+  }
+
   [TestClass]
   public class Stdio {
     static string Exe(string env) {
@@ -111,6 +151,8 @@ namespace Mantle.Sidecar.Tests {
       using var csc = new SidecarProc("csc", cscExe);
       using var net = new SidecarProc("net", netExe);
       Report("ready: csc " + (csc.Ready ?? "NONE") + " in " + csc.ReadyMs + " ms; net " + (net.Ready ?? "NONE") + " in " + net.ReadyMs + " ms");
+      Report("lines before ready (README: ready is the first line): csc " + csc.BeforeReady.Count + ", net " + net.BeforeReady.Count +
+             (csc.BeforeReady.Count + net.BeforeReady.Count > 0 ? "; first: " + (csc.BeforeReady.Concat(net.BeforeReady).First().Length > 160 ? csc.BeforeReady.Concat(net.BeforeReady).First().Substring(0, 160) + "..." : csc.BeforeReady.Concat(net.BeforeReady).First()) : ""));
       Assert.IsNotNull(csc.Ready, "the csc exe never said ready");
       Assert.IsNotNull(net.Ready, "the .NET exe never said ready");
       Assert.AreEqual(Shape.Of(csc.Ready).Count, Shape.Of(net.Ready).Count, "the ready lines differ in shape");
@@ -162,9 +204,102 @@ namespace Mantle.Sidecar.Tests {
           if (!fa.SequenceEqual(fb)) failures.Add("ping.features.commands differ");
         }
       }
-      lock (csc.Logs) foreach (string l in csc.Logs.Take(10)) Report("csc log: " + l);
-      lock (net.Logs) foreach (string l in net.Logs.Take(10)) Report("net log: " + l);
+      lock (csc.Logs) foreach (string l in csc.Logs.Take(6)) Report("csc log: " + l);
+      lock (net.Logs) foreach (string l in net.Logs.Take(6)) Report("net log: " + l);
       Assert.AreEqual(0, failures.Count, string.Join(" | ", failures));
+    }
+
+    /// The recorder role (Recorder.cs: WinRT GraphicsCapture + D3D + Media Foundation), the part of
+    /// the sidecar with the most WinRT interop. Each exe records ITS OWN stand-in window (test mode:
+    /// never the screen, never another window) for ~1.5 s. REPORT-ONLY: whether the runner can
+    /// capture at all is what the csc baseline says; a difference is written to compare.txt.
+    [TestMethod]
+    public void Recorder_SameOutcomeAsCsc() {
+      string cscExe = Exe("MANTLE_SIDECAR_CSC_EXE"), netExe = Exe("MANTLE_SIDECAR_NET_EXE");
+      string a = RecordOnce("csc", cscExe), b = RecordOnce("net", netExe);
+      Report("recorder: csc " + a + " | net " + b);
+      bool aDone = a.StartsWith("done", StringComparison.Ordinal), bDone = b.StartsWith("done", StringComparison.Ordinal);
+      if (aDone != bDone) Report("recorder: OUTCOME DIFFERS (csc " + (aDone ? "recorded" : "did not record") + ", net " + (bDone ? "recorded" : "did not record") + ")");
+    }
+
+    static string RecordOnce(string name, string exe) {
+      string dir = Path.Combine(Shape.OutDir(), "rec-" + name);
+      Directory.CreateDirectory(dir);
+      RoleProc standin = null, rec = null;
+      try {
+        standin = new RoleProc(exe, "--rec-standin --at=under,320,240 --secs=60");
+        string si = standin.Until(l => l.Contains("\"ev\":\"standin\""), 15000);
+        if (si == null) return "no stand-in window (" + (standin.P.HasExited ? "exited " + standin.P.ExitCode : "silent") + ")";
+        using var sdoc = JsonDocument.Parse(si);
+        var s = sdoc.RootElement;
+        if (s.TryGetProperty("hidden", out var hidden) && hidden.ValueKind != JsonValueKind.True) return "the stand-in would have been visible: " + si;
+        string hwnd = s.GetProperty("hwnd").ToString();
+        int pid = s.GetProperty("pid").GetInt32();
+        rec = new RoleProc(exe, "--record");
+        rec.Say("{\"mode\":\"window\",\"hwnd\":\"" + hwnd + "\",\"fps\":30,\"audio\":false,\"mic\":false,\"cursor\":false,\"test\":true,\"allowPid\":" + pid +
+                ",\"out\":" + JsonSerializer.Serialize(Path.Combine(dir, "rec.mp4")) + ",\"maxSecs\":10}");
+        var events = new List<string>();
+        var sw = Stopwatch.StartNew();
+        long startedAt = -1;
+        bool stopped = false;
+        string end = null;
+        while (sw.ElapsedMilliseconds < 30000 && end == null) {
+          string l = rec.Until(_ => true, 500);
+          if (l == null && rec.P.HasExited) break;
+          if (l != null) {
+            if (!l.Contains("\"ev\":\"tick\"")) events.Add(l.Length > 200 ? l.Substring(0, 200) + "..." : l);
+            if (l.Contains("\"ev\":\"done\"") || l.Contains("\"ev\":\"error\"")) end = l;
+            if (l.Contains("\"ev\":\"started\"")) startedAt = sw.ElapsedMilliseconds;
+          }
+          if (!stopped && startedAt >= 0 && sw.ElapsedMilliseconds - startedAt > 1500) { rec.Say("stop"); stopped = true; }
+        }
+        Shape.Note("compare.txt", "recorder " + name + " events: " + string.Join(" ", events.Take(6)));
+        if (end == null) return "no done/error event in 30 s (" + events.Count + " events" + (rec.P.HasExited ? ", exited " + rec.P.ExitCode : "") + ")";
+        using var edoc = JsonDocument.Parse(end);
+        var e2 = edoc.RootElement;
+        return e2.GetProperty("ev").GetString() == "done"
+          ? "done: " + e2.GetProperty("frames") + " frames, " + e2.GetProperty("secs") + " s"
+          : "error: " + e2.GetProperty("error").GetString();
+      } catch (Exception ex) {
+        return "test error " + ex.GetType().Name + ": " + ex.Message;
+      } finally {
+        if (rec != null) rec.End(8000);
+        if (standin != null) { standin.Say("close"); standin.End(5000); }
+      }
+    }
+
+    /// AudioMixer/SysSound send "sid:<string hash>" keys; .NET randomises string.GetHashCode per
+    /// process, so edit E8/E9 uses NetShimText.FrameworkHash. Proven here against the real .NET
+    /// Framework: Windows PowerShell 5.1 runs on it (64-bit), so its String.GetHashCode is the csc
+    /// sidecar's.
+    [TestMethod]
+    public void FrameworkHash_MatchesDotNetFramework() {
+      string ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
+      if (!File.Exists(ps)) Assert.Inconclusive("no Windows PowerShell 5.1 to ask");
+      string[] samples = { "", "a", "ab", "abc", "abcd", "abcde", "{0.0.0.00000000}.{5a7d3e1b-1c4f-4f8a-9b1e-123456789abc}|#%b{9f2e}", "é中😀", "Mantle.Sidecar" };
+      var psi = new ProcessStartInfo(ps, "-NoProfile -NonInteractive -Command -") {
+        UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, CreateNoWindow = true, StandardOutputEncoding = new UTF8Encoding(false)
+      };
+      using var p = Process.Start(psi);
+      // Each sample travels as base64 UTF-16 so no quoting or console code page can touch it.
+      foreach (string s in samples)
+        p.StandardInput.WriteLine("[Environment]::Is64BitProcess.ToString() + ' ' + [Text.Encoding]::Unicode.GetString([Convert]::FromBase64String('" + Convert.ToBase64String(Encoding.Unicode.GetBytes(s)) + "')).GetHashCode()");
+      p.StandardInput.Close();
+      string[] got = p.StandardOutput.ReadToEnd().Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries);
+      p.WaitForExit(20000);
+      Assert.AreEqual(samples.Length, got.Length, "powershell answered: " + string.Join(" / ", got));
+      var shim = typeof(Mantle.Json).Assembly.GetType("Mantle.NetShimText", true).GetMethod("FrameworkHash");
+      int same = 0;
+      for (int i = 0; i < samples.Length; i++) {
+        var parts = got[i].Split(' ');
+        Assert.AreEqual("True", parts[0], "Windows PowerShell was not 64-bit");
+        int fw = int.Parse(parts[1]);
+        int mine = (int)shim.Invoke(null, new object[] { samples[i] });
+        if (fw == mine) same++;
+        else Report("FrameworkHash MISMATCH for sample " + i + ": framework " + fw + ", shim " + mine);
+      }
+      Report("FrameworkHash: " + same + "/" + samples.Length + " samples equal to .NET Framework's String.GetHashCode; .NET's own is randomised (\"abc\" -> " + "abc".GetHashCode() + " in this process)");
+      Assert.AreEqual(samples.Length, same);
     }
   }
 }
