@@ -47,7 +47,8 @@ internal sealed class OsdSurface : ISurface
     Window _win = null!;
     IntPtr _hwnd;
     Grid _root = null!, _shadowHost = null!, _pill = null!, _level = null!;
-    Border _pane = null!, _lip = null!, _glyph = null!, _more = null!, _fill = null!, _track = null!, _pillLine = null!;
+    Border _pane = null!, _lip = null!, _fill = null!, _track = null!, _pillLine = null!;
+    Button _glyph = null!, _more = null!;
     Ellipse _knob = null!;
     StackPanel _stack = null!, _panel = null!, _apps = null!, _why = null!;
     TextBlock _num = null!, _whyText = null!, _dev = null!;
@@ -162,13 +163,16 @@ internal sealed class OsdSurface : ISurface
     }
 
     /// A flat icon button (osd.css .glyph/.more): 28 tall, --lg-r-ctl, transparent; hover/press/on painted in Paint().
-    Border Btn(UIElement content, double w, string id, Action click, Action<bool> hover)
+    /// A real Button (UIA Invoke, keyboard, EarlyClicks-compatible) drawn flat: its own template's states get the
+    /// osd.css colours through the Button* resources set in Paint (hover, press); Background carries "on".
+    Button Btn(UIElement content, double w, string id, Action click, Action<bool> hover)
     {
-        var b = new Border { Width = w, Height = 28, CornerRadius = new CornerRadius(6), Child = content, Background = B("LgFill0") };
+        var b = new Button { Width = w, Height = 28, MinWidth = 0, MinHeight = 0, Padding = new Thickness(0), CornerRadius = new CornerRadius(6), Content = content,
+            Background = B("LgFill0"), BorderThickness = new Thickness(0), HorizontalContentAlignment = HorizontalAlignment.Center, VerticalContentAlignment = VerticalAlignment.Center, IsTabStop = false };
         AutomationProperties.SetAutomationId(b, id);
         b.PointerEntered += (_, _) => hover(true);
         b.PointerExited += (_, _) => hover(false);
-        b.Tapped += (_, e) => { e.Handled = true; click(); };
+        b.Click += (_, _) => click();
         return b;
     }
 
@@ -279,7 +283,8 @@ internal sealed class OsdSurface : ISurface
         string ink = _dark ? (on || _glyphHover ? "LgInk" : "LgInk2") : on ? "LgAccOn" : "LgInk";
         if (!vol && _dark) ink = "LgInk2";
         _glyphBox.Child = GlyphCanvas(vol ? OsdModel.VolumeGlyph(d.Dead ? null : d.Fill, muted) : OsdModel.SunGlyph(d.Dead ? null : d.Fill), ink);
-        _glyph.Background = on ? (_dark ? B("LgPress") : B("LgAcc")) : _glyphHover && vol && !d.Dead ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
+        _glyph.Background = on ? (_dark ? B("LgPress") : B("LgAcc")) : B("LgFill0");
+        _glyph.IsEnabled = vol && !d.Dead;
         _glyph.BorderBrush = on && _dark ? B("LgEdgeOut") : null;
         _glyph.BorderThickness = new Thickness(on && _dark ? 1 : 0);
         _glyph.Opacity = _mutePending ? .6 : 1;
@@ -294,7 +299,14 @@ internal sealed class OsdSurface : ISurface
         cc.Children.Add(PathOf("M4.5 9.8L8 6.3l3.5 3.5", false, 1.4, _dark && _moreHover ? "LgInk" : "LgInk2"));
         _chev.Child = cc;
         ((RotateTransform)_chev.RenderTransform).Angle = _open ^ _below ? 180 : 0;
-        _more.Background = _moreHover ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
+        _more.Background = B("LgFill0");
+        foreach (var btn in new[] { _glyph, _more })
+        {
+            btn.Resources["ButtonBackgroundPointerOver"] = btn == _glyph && on ? btn.Background : _dark ? B("LgPress") : B("LgHover");
+            btn.Resources["ButtonBackgroundPressed"] = btn == _glyph && on ? btn.Background : _dark ? B("LgCard") : B("LgPress");
+            btn.Resources["ButtonBackgroundDisabled"] = B("LgFill0");
+            btn.Resources["ButtonBorderBrushPointerOver"] = btn.Resources["ButtonBorderBrushPressed"] = btn.BorderBrush ?? B("LgFill0");
+        }
         AutomationProperties.SetName(_more, _open ? "Hide the apps" : "Show every app’s volume");
 
         // the level, the number

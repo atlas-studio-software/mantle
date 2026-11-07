@@ -150,7 +150,7 @@ public class OsdSurfaceTests
         Assert.IsTrue(light > 200, $"the light face reads {light:N0} (want > 200)");
 
         // the glyph: a click mutes through qs.set; this build has no qs.set, so the refusal is a line of why (never silent)
-        Mouse.Click(new Point(r.Left + (int)(41 * s), pillY));
+        Press(win, "glyph");
         var why = Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId("why")) is { } w && (w.Name ?? "").Length > 0 ? w : null, 4000);
         Assert.IsNotNull(why, "the glyph click left no line of why:\n" + Tail(app.Log));
         StringAssert.StartsWith(why!.Name, "Mute did not take: ");
@@ -159,7 +159,7 @@ public class OsdSurfaceTests
         // the chevron: the panel opens over the pill, wider, with the apps (here the "can't be read" block)
         GetWindowRect(osd, out r);
         pillY = (int)num.BoundingRectangle.Top + (int)(num.BoundingRectangle.Height / 2);
-        Mouse.Click(new Point(r.Right - (int)(41 * s), pillY));
+        Press(win, "more");
         Assert.IsTrue(Host.Until(() => win.FindFirstDescendant(cf => cf.ByName("Sound")) != null, 4000), "the chevron did not open the panel:\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => app.Log.Contains("(panel open)") && app.Log.Contains("osd: page drew 384x"), 4000), "the open panel did not report its size:\n" + Tail(app.Log));
         Assert.IsNotNull(Host.Until(() => win.FindFirstDescendant(cf => cf.ByName("The apps can’t be read")), 4000), "the panel shows no apps and no state block");
@@ -187,6 +187,14 @@ public class OsdSurfaceTests
         Assert.IsTrue(Host.Until(() => app.Log.Contains("osd: faded and hidden (seq 2)"), 6000), "the key's pop-up did not fade by itself (1.5 s hold + the fade):\n" + Tail(app.Log));
         Assert.IsFalse(Win32.IsWindowVisible(osd), "the faded pop-up's window is still on screen");
         StringAssert.DoesNotMatch(app.Log, new System.Text.RegularExpressions.Regex("osd.volume.*\"dry\":false"), "a --test run stepped the real volume");
+    }
+
+    /// The pill's buttons through UI Automation (Invoke): the click's own road, without a pointer race on the runner.
+    static void Press(AutomationElement win, string id)
+    {
+        var b = Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId(id)), 4000);
+        Assert.IsNotNull(b, "no " + id + " button on the pill");
+        b!.AsButton().Invoke();
     }
 
     /// a is above b in the z-order (walk up from b: GW_HWNDPREV).
