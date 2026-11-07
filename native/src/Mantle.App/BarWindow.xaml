@@ -122,10 +122,11 @@
             <StackPanel Orientation="Horizontal">
               <Rectangle Width="1" Height="22" Margin="3,0,9,0" VerticalAlignment="Center" Fill="{ThemeResource LgEdgeOut}"
                          Visibility="{x:Bind DividerVisibility, Mode=OneWay}"/>
-              <Button Style="{StaticResource LgBtn}" Width="36" Click="Cell_Click" PointerReleased="Cell_PointerReleased" Tag="{x:Bind}"
+              <Button Style="{StaticResource LgBtn}" Width="36" Click="Cell_Click" Loaded="Cell_Loaded" Tag="{x:Bind}"
                       AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
                       AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
                       AutomationProperties.HelpText="{x:Bind ExeName, Mode=OneWay}"
+                      AutomationProperties.ItemStatus="{x:Bind Status, Mode=OneWay}"
                       ToolTipService.ToolTip="{x:Bind Tip, Mode=OneWay}">
                 <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Grid Width="24" Height="24" CornerRadius="6">

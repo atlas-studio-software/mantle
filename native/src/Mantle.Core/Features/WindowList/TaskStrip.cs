@@ -37,6 +37,34 @@ public sealed record TaskList(bool Ok, string? Reason, IReadOnlyList<TaskItem> I
 /// then every running app no pin claimed, in Windows' order (or this session's dragged order).</summary>
 public static class TaskStripBuilder
 {
+    /// <summary>
+    /// ui/bar/bar.js renderWindows: every windows push re-marks which window is the active one AT ONCE (the accent
+    /// line follows the window in front), while the rest of the strip waits for the rate-limited rebuild. Native
+    /// also takes each window's minimised flag from the push. The same instance comes back when nothing changed.
+    /// </summary>
+    public static TaskList MarkActive(TaskList list, IReadOnlyList<WinEntry> windows)
+    {
+        var by = new Dictionary<string, WinEntry>(StringComparer.Ordinal);
+        foreach (var w in windows) by[w.Hwnd] = w;
+        bool any = false;
+        var items = new List<TaskItem>(list.Items.Count);
+        foreach (var it in list.Items) {
+            bool changed = false;
+            var ws = new TaskWindow[it.Windows.Count];
+            for (int k = 0; k < ws.Length; k++) {
+                var w = it.Windows[k];
+                bool known = by.TryGetValue(w.Hwnd, out var e);
+                bool act = known && e!.Foreground && !e.Minimized;
+                bool min = known ? e!.Minimized : w.Minimized;
+                ws[k] = act == w.Active && min == w.Minimized ? w : w with { Active = act, Minimized = min };
+                changed |= !ReferenceEquals(ws[k], w);
+            }
+            items.Add(changed ? it with { Windows = ws } : it);
+            any |= changed;
+        }
+        return any ? list with { Items = items } : list;
+    }
+
     public sealed class Input
     {
         /// The running windows (already without Mantle's own), or null when they could not be read.

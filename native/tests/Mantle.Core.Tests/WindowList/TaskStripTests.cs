@@ -167,6 +167,51 @@ public class TaskStripTests
     }
 
     [Fact]
+    public void A_windows_push_moves_the_active_mark_at_once_between_the_rate_limited_rebuilds()
+    {
+        var host = new ManualScheduler();
+        var p = new FakePlatform();
+        p.SetStatus(PlatformState.Ok, "sidecar running", new PlatformInfo(9, true, "0"));
+        p.Answer("windows", "[]");
+        var got = new List<TaskList>();
+        var marks = new List<TaskList>();
+        using var d = new TestDir("marks");
+        using var svc = new TaskStripService(new TaskStripOptions {
+            Platform = p, Host = host, PinsDir = null, PinsNote = "no pins", UserData = d.Path,
+            Publish = got.Add, Marks = marks.Add, WatchPins = false,
+        });
+        svc.Start();
+        host.Advance(0);
+        static string Two(bool a, bool b, bool aMin = false) =>
+            "{\"list\":[{\"hwnd\":\"5\",\"exe\":\"C:\\\\x\\\\a.exe\",\"title\":\"A\",\"foreground\":" + (a ? "true" : "false") + ",\"minimized\":" + (aMin ? "true" : "false") + ",\"icon\":\"data:image/png;base64,AA\"}," +
+            "{\"hwnd\":\"6\",\"exe\":\"C:\\\\x\\\\b.exe\",\"title\":\"B\",\"foreground\":" + (b ? "true" : "false") + ",\"icon\":\"data:image/png;base64,BB\"}]}";
+        p.Raise("windows", Two(true, false));
+        host.Advance(1100);
+        Assert.Equal(2, got.Count);
+        Assert.True(got[1].Items[0].Active);
+        Assert.False(got[1].Items[1].Active);
+        Assert.Empty(marks);                                  // nothing to re-mark before the first list with windows
+
+        p.Raise("windows", Two(false, true));                 // B comes to the front 100 ms after the rebuild
+        Assert.Equal(2, got.Count);                           // the rebuild still waits for its second
+        Assert.Single(marks);                                 // the marks do not (bar.js renderWindows)
+        Assert.False(marks[0].Items[0].Active);
+        Assert.True(marks[0].Items[1].Active);
+        Assert.Same(marks[0], svc.Last);                      // a click decides from what the user sees
+
+        p.Raise("windows", Two(false, true));                 // the same marks again: nothing sent
+        Assert.Single(marks);
+        p.Raise("windows", Two(true, false, aMin: true));     // a minimised window is never the active one
+        Assert.Equal(2, marks.Count);
+        Assert.False(marks[1].Items[0].Active);
+        Assert.True(marks[1].Items[0].Windows[0].Minimized);
+        Assert.False(marks[1].Items[1].Active);
+        host.Advance(1000);
+        Assert.Equal(3, got.Count);
+        Assert.False(got[2].Items[0].Active);
+    }
+
+    [Fact]
     public void The_service_reads_the_windows_push_rate_limits_its_pushes_and_says_a_broken_list()
     {
         var host = new ManualScheduler();

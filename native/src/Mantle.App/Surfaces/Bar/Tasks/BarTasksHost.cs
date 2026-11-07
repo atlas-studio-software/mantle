@@ -67,6 +67,7 @@ internal sealed partial class BarTasksHost : IDisposable
             Platform = platform, Host = host, PinsDir = dir, PinsNote = note, ReadFavorites = fav, UserData = Host.Paths.DataRoot,
             Log = _log, Actions = new BarTaskActions(platform, _ui, Host.Args.Kind == RunKind.Live, _log),
             Publish = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
+            Marks = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
             WindowsProblem = p => _ui.TryEnqueue(() => { if (WindowsProblem == p) return; WindowsProblem = p; Changed?.Invoke(); }),
         });
         _log($"bar tasks: the strip reads the running apps from the platform's windows push; pins: {(dir != null ? (Host.Args.Kind == RunKind.Live ? "Windows' taskbar pins" : "the scratch folder MANTLE_TEST_PINS_DIR") : note)}");

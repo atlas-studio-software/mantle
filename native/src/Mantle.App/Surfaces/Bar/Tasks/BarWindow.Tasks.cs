@@ -43,7 +43,18 @@ public sealed partial class CellVm : INotifyPropertyChanged
     public Visibility RunVisibility => _run && !_act ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ActVisibility => _act ? Visibility.Visible : Visibility.Collapsed;
     public Visibility DividerVisibility => _div ? Visibility.Visible : Visibility.Collapsed;
-    internal bool Divider { set { if (_div == value) return; _div = value; Changed(nameof(DividerVisibility)); } }
+    internal bool Divider { set { if (_div == value) return; _div = value; Changed(nameof(DividerVisibility)); SetStatus(true); } }
+    /// UI Automation ItemStatus (the UI tests read it): the kind ("pinned" / "running"), then "open" while it has
+    /// windows, "active" while one is the active window (the accent line), "after divider" on the first running-only
+    /// app. The same fields drive the running line and the hairline, so the status says what the cell draws.
+    public string Status { get; private set; } = "";
+    void SetStatus(bool notify)
+    {
+        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "");
+        if (s == Status) return;
+        Status = s;
+        if (notify) Changed(nameof(Status));
+    }
     int _index = -1;
     public int Index { get => _index; set { if (_index == value) return; _index = value; Changed(nameof(AutomationId)); } }
     public string AutomationId => "bar.app." + _index.ToString(CultureInfo.InvariantCulture);
@@ -72,6 +83,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
         if (Tip != tip) { Tip = tip; if (notify) Changed(nameof(Tip)); }
         if (ExeName != exeName) { ExeName = exeName; if (notify) Changed(nameof(ExeName)); }
         if (_run != run || _act != act) { _run = run; _act = act; if (notify) { Changed(nameof(RunVisibility)); Changed(nameof(ActVisibility)); } }
+        SetStatus(notify);
     }
 
     void Set(ref string field, string v, string prop, bool notify) { if (field == v) return; field = v; if (notify) Changed(prop); }
@@ -169,6 +181,19 @@ public sealed partial class BarWindow
         OpenCell(vm, fresh: false);
     }
 
+    PointerEventHandler? _cellMiddle;
+
+    /// The middle-click handler goes on with handledEventsToo: a Button may mark the pointer events it sees handled,
+    /// and a XAML PointerReleased attribute would then never hear the middle button. Remove-then-add keeps it to one
+    /// handler however often a recycled cell is loaded again.
+    void Cell_Loaded(object sender, RoutedEventArgs e)
+    {
+        if (sender is not Button b) return;
+        _cellMiddle ??= new PointerEventHandler(Cell_PointerReleased);
+        b.RemoveHandler(UIElement.PointerReleasedEvent, _cellMiddle);
+        b.AddHandler(UIElement.PointerReleasedEvent, _cellMiddle, true);
+    }
+
     /// Middle-click: a new window or instance (bar.open {fresh:true}, BAR-200, BAR-206).
     void Cell_PointerReleased(object sender, PointerRoutedEventArgs e)
     {
@@ -202,7 +227,7 @@ public sealed partial class BarWindow
             int x = _winPx.X + (int)Math.Round(p.X * _scale), y = _winPx.Y + (int)Math.Round(p.Y * _scale);
             var c = _cells[i];
             list.Add(new CellJson(c.Name, c.Title, c.AutomationId, c.Item.Exe ?? "", (uint)(c.Item.Windows.FirstOrDefault()?.Pid ?? 0), c.Active, c.Icon != null,
-                x, y, (int)Math.Round(btn.ActualWidth * _scale), (int)Math.Round(btn.ActualHeight * _scale)));
+                x, y, (int)Math.Round(btn.ActualWidth * _scale), (int)Math.Round(btn.ActualHeight * _scale), c.Status));
         }
         Write("cells.json", JsonSerializer.Serialize(new CellsJson(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _syncs, list.ToArray()), BenchJson.Default.CellsJson));
     }

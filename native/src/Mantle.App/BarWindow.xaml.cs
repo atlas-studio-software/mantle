@@ -33,7 +33,7 @@ internal sealed record RectJson(int x, int y, int w, int h);
 internal sealed record MarkJson(string name, double sinceStartMs);
 internal sealed record ReadyJson(long processStartUnixMs, long mainUnixMs, long firstFrameUnixMs, double scale, string theme, string backdrop,
     RectJson window, RectJson pill, bool quiet, string frame, string title, MarkJson[] marks);
-internal sealed record CellJson(string name, string title, string automationId, string exe, uint pid, bool active, bool hasIcon, int x, int y, int w, int h);
+internal sealed record CellJson(string name, string title, string automationId, string exe, uint pid, bool active, bool hasIcon, int x, int y, int w, int h, string status);
 internal sealed record CellsJson(long at, int rebuilds, CellJson[] cells);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]

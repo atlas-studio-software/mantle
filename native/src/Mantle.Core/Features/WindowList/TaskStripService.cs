@@ -24,6 +24,8 @@ public sealed class TaskStripOptions
     public Action<TaskList> Publish = _ => { };
     /// A windows push that is not a list (BAR-259), or null when a good one clears it.
     public Action<string?> WindowsProblem = _ => { };
+    /// The active marks re-read from a windows push, between rebuilds (bar.js renderWindows), on the host thread.
+    public Action<TaskList>? Marks;
     public Action<string> Log = _ => { };
     /// Watch the pins folder (500 ms debounce, re-arm every 30 s). Off in unit tests.
     public bool WatchPins = true;
@@ -91,6 +93,10 @@ public sealed class TaskStripService : IDisposable
         }
         _o.WindowsProblem(null);
         _lastWindows = list;
+        // bar.js renderWindows: the active line follows the window in front on every push, not once a second, and a
+        // click decides focus or minimise from the same marks the user sees
+        var marked = TaskStripBuilder.MarkActive(Last, list);
+        if (!ReferenceEquals(marked, Last)) { Last = marked; _o.Marks?.Invoke(marked); }
         Schedule("the running windows changed");
     }
 
@@ -135,6 +141,8 @@ public sealed class TaskStripService : IDisposable
         TaskList res;
         try { res = await BuildAsync().ConfigureAwait(true); }
         catch (Exception e) { res = new TaskList(false, "the pinned list could not be built: " + e.Message, Array.Empty<TaskItem>()); }
+        // a push that arrived while it was built: its marks win over the ones the build started from
+        if (_lastWindows != null) res = TaskStripBuilder.MarkActive(res, _lastWindows);
         _building = null;
         Last = res;
         Builds++;
