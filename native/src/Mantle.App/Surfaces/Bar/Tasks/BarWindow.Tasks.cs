@@ -95,6 +95,7 @@ public sealed partial class BarWindow
 {
     BarTasksHost? _tasks;
     int _syncs;
+    bool _cellsDirty;
     readonly Dictionary<string, ImageSource?> _iconBitmaps = new(StringComparer.Ordinal);
 
     /// Made in the constructor; attached to the host once OnLaunched has returned (TasksWiring.cs).
@@ -102,6 +103,9 @@ public sealed partial class BarWindow
     {
         _tasks = new BarTasksHost(DispatcherQueue, Host.Log.Line);
         _tasks.Changed += SyncCells;
+        // cells.json once the strip is laid out: a cell inserted or moved has no container until the next layout
+        // pass, and an icon lands after its sync (it decodes asynchronously)
+        Dock.LayoutUpdated += (_, _) => { if (_cellsDirty && _benchOut != null) WriteCells(); };
         DispatcherQueue.TryEnqueue(() => MantleApp.AttachBarTasks(_tasks));
     }
 
@@ -136,6 +140,7 @@ public sealed partial class BarWindow
         }
         for (int i = 0; i < _cells.Count; i++) _cells[i].Index = i;   // bar.app.<n>, in display order
         _syncs++;
+        _cellsDirty = true;
         if (_benchOut != null) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, WriteCells);
     }
 
@@ -156,7 +161,7 @@ public sealed partial class BarWindow
         if (vm.IconUrl == url) return;
         vm.IconUrl = url;
         if (url == null) { vm.Icon = null; return; }
-        if (_iconBitmaps.TryGetValue(url, out var known)) { vm.Icon = known; return; }
+        if (_iconBitmaps.TryGetValue(url, out var known)) { vm.Icon = known; _cellsDirty = true; return; }
         ImageSource? img = null;
         try {
             int comma = url.IndexOf(',');
@@ -172,7 +177,7 @@ public sealed partial class BarWindow
         }
         if (_iconBitmaps.Count > 256) _iconBitmaps.Clear();
         _iconBitmaps[url] = img;
-        if (vm.IconUrl == url) vm.Icon = img;
+        if (vm.IconUrl == url) { vm.Icon = img; _cellsDirty = true; }
     }
 
     void Cell_Click(object sender, RoutedEventArgs e)
@@ -219,9 +224,10 @@ public sealed partial class BarWindow
 
     void WriteCells()
     {
+        if (!_cellsDirty) return;
         var list = new List<CellJson>();
         for (int i = 0; i < _cells.Count; i++) {
-            if (Dock.ContainerFromIndex(i) is not FrameworkElement fe) continue;
+            if (Dock.ContainerFromIndex(i) is not FrameworkElement fe) return;   // not laid out yet: LayoutUpdated comes back
             var btn = FindButton(fe) ?? fe;
             var p = btn.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
             int x = _winPx.X + (int)Math.Round(p.X * _scale), y = _winPx.Y + (int)Math.Round(p.Y * _scale);
@@ -229,6 +235,7 @@ public sealed partial class BarWindow
             list.Add(new CellJson(c.Name, c.Title, c.AutomationId, c.Item.Exe ?? "", (uint)(c.Item.Windows.FirstOrDefault()?.Pid ?? 0), c.Active, c.Icon != null,
                 x, y, (int)Math.Round(btn.ActualWidth * _scale), (int)Math.Round(btn.ActualHeight * _scale), c.Status));
         }
+        _cellsDirty = false;
         Write("cells.json", JsonSerializer.Serialize(new CellsJson(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _syncs, list.ToArray()), BenchJson.Default.CellsJson));
     }
 

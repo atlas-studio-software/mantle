@@ -77,6 +77,8 @@ public static class TaskStripBuilder
         public string? OverlayProblem;
         public IconResolver? Icons;
         public RunningOrder? RunningOrder;
+        /// Native: running-only apps keep their first-seen place for the session (see <see cref="FirstSeenOrder"/>).
+        public FirstSeenOrder? FirstSeen;
     }
 
     public static async ValueTask<TaskList> BuildAsync(Input i)
@@ -141,8 +143,35 @@ public static class TaskStripBuilder
         }
 
         var said = problems.Concat(notes).ToList();
+        if (i.FirstSeen != null) items = i.FirstSeen.Apply(items, runningRead);
         var ordered = i.RunningOrder != null ? i.RunningOrder.Apply(items, it => it.Kind == "running", it => it.Id, prune: runningRead) : items;
         return new TaskList(problems.Count == 0, said.Count > 0 ? string.Join("; ", said) : null, ordered);
+    }
+}
+
+/// <summary>
+/// DEVIATION from Electron (main.js#buildPinned BAR-289 lists running-only apps in the sidecar's EnumWindows order,
+/// which is the z-order): native keeps each running-only app where it first appeared this session, as Windows' own
+/// taskbar does and as the native strip did before it read the sidecar. In z-order an app jumps to the front of the
+/// running-only apps when it is focused and to the back when it is minimised, so a second click on the same spot
+/// lands on another app (the bench's focus/minimise/restore clicks found it). An app that closes loses its place
+/// (only when the running list was read cleanly); one that opens goes last. A dragged order still wins over this.
+/// </summary>
+public sealed class FirstSeenOrder
+{
+    readonly Dictionary<string, long> _seen = new(StringComparer.Ordinal);
+    long _next;
+
+    public List<TaskItem> Apply(List<TaskItem> items, bool prune)
+    {
+        if (prune) {
+            var here = new HashSet<string>(items.Where(x => x.Kind == "running").Select(x => x.Id), StringComparer.Ordinal);
+            foreach (var gone in _seen.Keys.Where(k => !here.Contains(k)).ToList()) _seen.Remove(gone);
+        }
+        foreach (var it in items) if (it.Kind == "running" && !_seen.ContainsKey(it.Id)) _seen[it.Id] = _next++;
+        var run = items.Where(x => x.Kind == "running").OrderBy(x => _seen[x.Id]).ToList();
+        int k = 0;
+        return items.Select(x => x.Kind == "running" ? run[k++] : x).ToList();
     }
 }
 

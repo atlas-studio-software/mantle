@@ -167,6 +167,24 @@ public class TaskStripTests
     }
 
     [Fact]
+    public void Running_only_apps_keep_their_first_seen_place_when_focus_or_minimise_reorders_the_windows()
+    {
+        var o = new FirstSeenOrder();
+        static TaskItem R(string id) => new("running:" + id, id, "running", null, null, null, "x", new[] { new TaskWindow("1", 1, id, false, false) });
+        static TaskItem P(string id) => new(id, id, "pinned", null, null, null, "x", Array.Empty<TaskWindow>());
+        static string[] Ids(List<TaskItem> l) => l.Select(x => x.Id).ToArray();
+        Assert.Equal(new[] { "p", "running:a", "running:b", "running:c" }, Ids(o.Apply(new() { P("p"), R("a"), R("b"), R("c") }, true)));
+        // the sidecar's z-order after c is focused and a minimised: the strip does not move
+        Assert.Equal(new[] { "p", "running:a", "running:b", "running:c" }, Ids(o.Apply(new() { P("p"), R("c"), R("b"), R("a") }, true)));
+        // b closes and d opens: d goes last; b back again goes after d
+        Assert.Equal(new[] { "p", "running:a", "running:c", "running:d" }, Ids(o.Apply(new() { P("p"), R("d"), R("c"), R("a") }, true)));
+        Assert.Equal(new[] { "p", "running:a", "running:c", "running:d", "running:b" }, Ids(o.Apply(new() { P("p"), R("b"), R("d"), R("c"), R("a") }, true)));
+        // a running list that was not read cleanly forgets nobody
+        o.Apply(new() { P("p") }, false);
+        Assert.Equal(new[] { "running:a", "running:c" }, Ids(o.Apply(new() { R("c"), R("a") }, true)));
+    }
+
+    [Fact]
     public void A_windows_push_moves_the_active_mark_at_once_between_the_rate_limited_rebuilds()
     {
         var host = new ManualScheduler();

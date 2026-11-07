@@ -113,6 +113,10 @@ public class StripTests
         return r.ReadToEnd();
     }
 
+    /// The app's own lines about clicks, for a failure message.
+    static string ClickLines(string profile) =>
+        string.Join(" / ", LogSince(profile, 0).Split('\n').Where(l => l.Contains("bar tasks: click", StringComparison.Ordinal) || l.Contains("bar.open", StringComparison.Ordinal)).TakeLast(8).Select(l => l.Trim()));
+
     static long LogLength(string profile) => File.Exists(LogPath(profile)) ? new FileInfo(LogPath(profile)).Length : 0;
 
     [TestMethod]
@@ -121,7 +125,8 @@ public class StripTests
         string tag = Guid.NewGuid().ToString("N")[..6];
         // made out of order on purpose: with no Favorites value the pins fall back to alphabetical order (lib/pinned.js)
         var pins = PinFolder("order-" + tag, ("Gamma Reg", RegeditExe), ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
-        using var app = BarApp.Launch("uitest-strip-order", env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
+        const string profile = "uitest-strip-order";
+        using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
         using var a = new Host.Fixture($"Strip pinned {tag}", 60, 60);                 // powershell.exe: Alpha Shell's app
         using var b = new Host.Fixture($"Strip running {tag}", 520, 60, "pwsh.exe");   // pinned by nobody: after the divider
 
@@ -163,10 +168,10 @@ public class StripTests
         // the active line follows the window in front: click the running-only app, then the pin
         Click(Named(cs, b.Title)!);
         Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, b.Title) is { Active: true } && Named(cs, a.Title) is { Active: false }; }, 6000, 200),
-            $"after a click on the running-only app it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())})");
+            $"after a click on the running-only app it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
         Click(Named(cs, a.Title)!);
         Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, a.Title) is { Active: true } && Named(cs, b.Title) is { Active: false }; }, 6000, 200),
-            $"after a click on the pin it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())})");
+            $"after a click on the pin it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
         Thread.Sleep(600);
         cs = Cells(app);
         int active = LinePixels(Named(cs, a.Title)!);
@@ -212,7 +217,7 @@ public class StripTests
             Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "a click on the pin of the window in front did not minimise it");
         }
         Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a click did not bring the pinned app's window to the front (foreground: {Win32.Title(Win32.GetForegroundWindow())})");
+        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a click did not bring the pinned app's window to the front (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
         Assert.IsTrue(Host.Until(() => Alpha().Active, 4000), $"the focused pin is not the active one: {Describe(cs)}");
         Click(Alpha());
         Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "a second click on the pin of the window in front did not minimise it");
