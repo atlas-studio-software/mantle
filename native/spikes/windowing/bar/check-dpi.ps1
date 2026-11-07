@@ -54,7 +54,7 @@ foreach ($pct in $scales) {
   Start-Sleep -Milliseconds 900
   $xr = Wait-Ev 'dpi' 'xamlRoot' $t 1 { [Math]::Abs($_.scale - $s) -lt 0.01 }
   $xs = if ($xr) { $xr.scale } elseif ($pct -eq $pct0) { $d.r.xamlScale } else { $null }
-  $mon = Prim; $want = Want $mon $s
+  $mon = Prim; $want = Want $mon.rect $s
   $wa = J ([BarProbe]::WorkArea()); $wr = J ([BarProbe]::Rect($d.r.hwnd))
   $ok = $null -ne $pl -and $pl.pill.w -eq $want.w -and $pl.pill.h -eq $want.h -and $wr.h -eq $want.h -and ($wa.y + $wa.h) -eq ($mon.rect.y + $mon.rect.h - $want.h) -and $null -ne $xs -and [Math]::Abs($xs - $s) -lt 0.01
   Check "dpi ${pct}%: dock bar re-placed" $ok ("set: $set; monitor dpi $($mon.dpi); app place $(if ($pl) { "dpi $($pl.dpi) pill $($pl.pill | ConvertTo-Json -Compress)" } else { 'NONE in 8 s' }); " +
@@ -73,7 +73,7 @@ $h = Start-Bar 'dpih' @('--mode=hover', '--anim=comp')
 foreach ($step in @(@{ pct = 150; set = $false }, @{ pct = 125; set = $true }, @{ pct = $pct0; set = $true })) {
   $s = $step.pct / 100.0
   if ($step.set) { Set-Scale $step.pct | Out-Null }   # the bar is hidden while this happens
-  $mon = Prim; $want = Want $mon $s
+  $mon = Prim; $want = Want $mon.rect $s
   $t = NowMs
   [BarProbe]::Cursor($mon.rect.x + [int]($mon.rect.w * 0.4), $mon.rect.y + $mon.rect.h - 1) | Out-Null
   $rv = Wait-Ev 'dpih' 'revealDone' $t 3
@@ -95,7 +95,7 @@ $d = Start-Bar 'res' @('--mode=dock')
 foreach ($res in @(@(1024, 768), @(1920, 1080))) {
   $t = NowMs
   $code = [WinHarness]::SetResolution($res[0], $res[1]); Start-Sleep -Milliseconds 1500
-  $mon = Prim; $want = Want $mon 1.0
+  $mon = Prim; $want = Want $mon.rect 1.0
   $pl = Wait-Ev 'res' 'place' $t 6 { $_.mon.w -eq $res[0] }
   $wa = J ([BarProbe]::WorkArea()); $wr = J ([BarProbe]::Rect($d.r.hwnd))
   Check "resolution $($res[0])x$($res[1]): re-placed" ($code -eq 0 -and $null -ne $pl -and $pl.pill.w -eq $want.w -and $pl.pill.x -eq $want.x -and $wr.w -eq $mon.rect.w -and ($wa.y + $wa.h) -eq ($mon.rect.h - 48)) `
