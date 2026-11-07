@@ -67,6 +67,7 @@ public static class DesktopLayer
         long st = GetWindowLongPtrW(hwnd, GWL_STYLE).ToInt64();
         st &= ~(WS_POPUP | WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX);
         st |= WS_CHILD | WS_CLIPSIBLINGS;
+        KeepFrameless(hwnd);
         SetWindowLongPtrW(hwnd, GWL_STYLE, new IntPtr(st));
         SetParent(hwnd, target);
         int err = Marshal.GetLastWin32Error();
@@ -131,6 +132,8 @@ public static class DesktopLayer
     public static string? Detach(IntPtr hwnd)
     {
         if (!IsWindow(hwnd)) return "the window is gone";
+        // our window procedure out first (it would strip the frame we are about to give back)
+        if (s_oldProc.Remove(hwnd.ToInt64(), out IntPtr old)) SetWindowLongPtrW(hwnd, -4, old);
         SetParent(hwnd, IntPtr.Zero);
         if (_origFor == hwnd) {
             SetWindowLongPtrW(hwnd, GWL_STYLE, _origStyle);
@@ -139,6 +142,39 @@ public static class DesktopLayer
         SetWindowPos(hwnd, IntPtr.Zero, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE | SWP_FRAMECHANGED);
         return null;
     }
+
+    // ------------------------------------------------------------------ no frame
+    // WinUI's AppWindow puts WS_DLGFRAME | WS_SYSMENU back after our style swap (seen on the runner:
+    // style 0x54480000 and a 3 px ring of wallpaper on the layer's left, top and right edges, the
+    // non-client frame DComp content never covers). A window subclass keeps the frame bits out
+    // (WM_STYLECHANGING) and makes the client area the whole window (WM_NCCALCSIZE).
+    // (A GWLP_WNDPROC subclass, not comctl32's SetWindowSubclass: that needs comctl32 v6 activated.)
+    static WndProc? s_frameless;
+    static readonly System.Collections.Generic.Dictionary<long, IntPtr> s_oldProc = new();
+    const uint WM_STYLECHANGING = 0x007C, WM_NCCALCSIZE = 0x0083;
+    const long FrameBits = WS_CAPTION | WS_THICKFRAME | WS_SYSMENU | WS_MINIMIZEBOX | WS_MAXIMIZEBOX;
+
+    static void KeepFrameless(IntPtr hwnd)
+    {
+        if (s_oldProc.ContainsKey(hwnd.ToInt64())) return;
+        s_frameless ??= new WndProc(Frameless);
+        s_oldProc[hwnd.ToInt64()] = SetWindowLongPtrW(hwnd, -4 /* GWLP_WNDPROC */, Marshal.GetFunctionPointerForDelegate(s_frameless));
+    }
+
+    static IntPtr Frameless(IntPtr h, uint msg, IntPtr w, IntPtr l)
+    {
+        if (msg == WM_STYLECHANGING && w.ToInt64() == GWL_STYLE) {
+            // STYLESTRUCT { DWORD styleOld; DWORD styleNew; }
+            long n = (uint)Marshal.ReadInt32(l, 4);
+            Marshal.WriteInt32(l, 4, unchecked((int)(n & ~FrameBits)));
+        } else if (msg == WM_NCCALCSIZE && w != IntPtr.Zero) {
+            return IntPtr.Zero;   // client = window: no frame at all
+        }
+        return CallWindowProcW(s_oldProc[h.ToInt64()], h, msg, w, l);
+    }
+
+    delegate IntPtr WndProc(IntPtr h, uint msg, IntPtr w, IntPtr l);
+    [DllImport("user32.dll")] static extern IntPtr CallWindowProcW(IntPtr prev, IntPtr h, uint msg, IntPtr w, IntPtr l);
 
     static IntPtr FindSiblingWorkerW()
     {

@@ -56,6 +56,9 @@ $pi = Get-ProbeIcon
 Note 'iconsBefore' ([ordered]@{ error = $pi.error; icons = @($pi.all | ForEach-Object { "$($_.Name) @ $($_.X),$($_.Y) $($_.W)x$($_.H)" }) })
 Check 'probe icon on the desktop' ($null -ne $pi.icon) $(if ($pi.icon) { "'$($pi.icon.Name)' at $($pi.icon.X),$($pi.icon.Y) $($pi.icon.W)x$($pi.icon.H)" } else { "not in the icon list after 12 s ($($pi.error))" })
 Note 'treeBeforeLayer' ([DeskProbe]::Tree())
+# the runner's own console (and anything else) out of the way: every measure is of the whole screen
+(New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep -Seconds 1
+Note 'shownAfterMinimizeAll' ([DeskProbe]::Foreground())
 $wall = Grab @{ x = 0; y = 0; w = $SW; h = $SH }
 Save-Screen 'wallpaper.png' | Out-Null
 
@@ -78,7 +81,12 @@ function Measure-Layer([string]$shot) {
   $btn = [DeskProbe]::Near($px, $SW, $BtnBand.x, $BtnBand.y, $BtnBand.w, $BtnBand.h, $Cyan[0], $Cyan[1], $Cyan[2], 6, @(), 2)
   $yel = [DeskProbe]::Near($px, $SW, $BtnBand.x, $BtnBand.y, $BtnBand.w, $BtnBand.h, $Yellow[0], $Yellow[1], $Yellow[2], 6, @(), 2)
   $wallDiff = [WinHarness]::Diff($wall, $px)
-  $r = [ordered]@{ fieldMagenta = (Frac $field); fieldSamples = $field[1]; buttonCyan = (Frac $btn); buttonYellow = (Frac $yel); meanDiffFromWallpaper = [Math]::Round($wallDiff, 1) }
+  # the outermost 3 px (left, top, right; the bottom is under the taskbar): a frame ring shows here
+  $edge = [DeskProbe]::Near($px, $SW, 0, 0, 3, $SH - 60, $Magenta[0], $Magenta[1], $Magenta[2], 6, $ex, 1)
+  $top = [DeskProbe]::Near($px, $SW, 0, 0, $SW, 3, $Magenta[0], $Magenta[1], $Magenta[2], 6, $ex, 1)
+  $right = [DeskProbe]::Near($px, $SW, $SW - 3, 0, 3, $SH - 60, $Magenta[0], $Magenta[1], $Magenta[2], 6, $ex, 1)
+  $edgeAll = @(($edge[0] + $top[0] + $right[0]), ($edge[1] + $top[1] + $right[1]))
+  $r = [ordered]@{ edgeMagenta = (Frac $edgeAll); edgeSamples = $edgeAll[1]; fieldMagenta = (Frac $field); fieldSamples = $field[1]; buttonCyan = (Frac $btn); buttonYellow = (Frac $yel); meanDiffFromWallpaper = [Math]::Round($wallDiff, 1) }
   if ($p.icon) {
     $i = $p.icon
     # inside the icon rect: how much is NOT the layer's magenta (the icon and its label drawn over us)
@@ -167,6 +175,7 @@ Check 'z-order: straight under the icons' ($dv -ge 0 -and $me -eq $dv + 1) "Prog
 $m = Measure-Layer 'layer.png'
 Note 'layer' $m
 Check 'renders over the wallpaper' ($m.fieldMagenta -ge 0.98 -and $m.meanDiffFromWallpaper -gt 40) "$([Math]::Round(100 * $m.fieldMagenta, 2)) % of $($m.fieldSamples) sampled px are the layer's magenta (icons, button, taskbar excluded); mean diff from the wallpaper grab $($m.meanDiffFromWallpaper)"
+Check 'no frame ring' ($m.edgeMagenta -ge 0.98) "$([Math]::Round(100 * $m.edgeMagenta, 2)) % of the $($m.edgeSamples) px in the outer 3 px (left, top, right, icons excluded) are the layer's magenta; style $($s.window.style)"
 Check 'button drawn' ($m.buttonCyan -ge 0.95) "$([Math]::Round(100 * $m.buttonCyan, 1)) % of the button band is cyan"
 Check 'under the icons' ($m.icon -and $m.iconNotMagenta -ge 0.03 -and $m.iconRingMagenta -ge 0.9) "probe icon $($m.icon): $([Math]::Round(100 * $m.iconNotMagenta, 1)) % of its rect is NOT magenta (icon + label drawn over the layer), ring 6-14 px outside $([Math]::Round(100 * $m.iconRingMagenta, 1)) % magenta"
 
@@ -205,9 +214,8 @@ $md = Measure-Layer 'after-win-d.png'
 $sd = Read-State
 Note 'winD' ([ordered]@{ sent = $sent; foregroundBefore = $fgBefore; foregroundAfter = $fgAfter; notepadMinimised = $npIconic; order = (Order-Line) })
 Check 'Win+D: the layer stays' ($md.fieldMagenta -ge 0.98 -and $sd.window.parentClass -eq 'Progman' -and $sd.window.visible) "after Win+D ($sent events; notepad minimised: $npIconic; foreground $fgAfter): $([Math]::Round(100 * $md.fieldMagenta, 2)) % magenta, parent $($sd.window.parentClass), visible $($sd.window.visible), icon over it $([Math]::Round(100 * $md.iconNotMagenta, 1)) %"
-[DeskProbe]::Chord(0x5B, 0x44) | Out-Null
-Start-Sleep -Milliseconds 800
 Get-Process -Name notepad -ErrorAction SilentlyContinue | Stop-Process -Force -ErrorAction SilentlyContinue
+(New-Object -ComObject Shell.Application).MinimizeAll(); Start-Sleep -Milliseconds 800
 
 # ------------------------------------------------------------------ Explorer restart (the recheck path)
 $gen0 = (Read-State).gen; $rejoin0 = [int](Read-State).rejoins
