@@ -78,4 +78,9 @@ public static class ThemeFollow
     [SupportedOSPlatform("windows")]
     public static IDisposable Start(ThemeCore theme, Action<Action> post, ILogSink log, string subKey = ThemeCore.PersonalizeKey)
         => new WindowsThemeWatcher(() => post(() => theme.WindowsChanged()), log, subKey);
+
+    /// <summary>The same, for a caller that guards its theme core itself (LookShell): <paramref name="changed"/> runs on the host thread.</summary>
+    [SupportedOSPlatform("windows")]
+    public static IDisposable Start(Action changed, Action<Action> post, ILogSink log, string subKey = ThemeCore.PersonalizeKey)
+        => new WindowsThemeWatcher(() => post(changed), log, subKey);
 }

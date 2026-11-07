@@ -9,6 +9,7 @@ using Mantle.Core.Data;
 using Mantle.Core.Features;
 using Mantle.Core.Features.Tray;
 using Mantle.Core.Lifecycle;
+using Mantle.Core.Look;
 using Mantle.Core.Platform;
 using Mantle.Core.Safety;
 using Mantle.Core.State;
@@ -40,11 +41,26 @@ public partial class MantleApp : Application
             _ => Host.Data.Theme.Value.Mode,
         };
 
+    /// The key Match Windows reads and watches: Windows' own, or a --test run's scratch key (MANTLE_TEST_THEME_KEY).
+    internal static string ThemeKey => ThemeCore.KeyFor(Host.Args.Test, Host.Env);
+
+    /// The theme rebroadcast's UI end (main.js broadcast('theme')): raised on the UI thread after every change of the
+    /// theme or of its --lg-* overrides (theme.set, Match Windows, another app's look). Surfaces built from descriptors
+    /// get the same payload as the host's "theme" event; the bar (BarWindow) takes it here until it is one.
+    internal static event Action<ThemePayload>? ThemeShown;
+    /// The last payload ThemeShown carried (null before the host is up).
+    internal static ThemePayload? ThemeNow { get; private set; }
+
     public MantleApp()
     {
         var mode = StartMode();
         if (mode == ThemeMode.Dark) RequestedTheme = ApplicationTheme.Dark;
         else if (mode == ThemeMode.Light) RequestedTheme = ApplicationTheme.Light;
+        else {
+            // Match Windows: resolved from the key this run watches (a test's scratch key, never the user's, in a test run)
+            var w = ThemeCore.ReadWindowsMode(ThemeKey);
+            RequestedTheme = w.Mode == "dark" ? ApplicationTheme.Dark : ApplicationTheme.Light;
+        }
         InitializeComponent();
         UnhandledException += (_, e) => {
             Host.Log.Line("UNHANDLED: " + e.Exception);
@@ -70,7 +86,7 @@ public partial class MantleApp : Application
         Host.Data.Changed += c => _queue.TryEnqueue(() => _window?.OnDataChanged(c));
         Host.Data.StartWatching();
         StartHost();
-        _session = SessionWindow.Create(Host.Log.Line, (q, wp, lp) => OnSession(q, wp, lp));
+        _session = SessionWindow.Create(Host.Log.Line, (q, wp, lp) => OnSession(q, wp, lp), why => _hostLoop?.Post(() => OnWake(why)));
         Host.Instance.Listen(
             argv => _hostLoop?.Post(() => OnSecondLaunch(argv)),
             err => Host.Log.Line("single instance: " + err));
@@ -90,6 +106,7 @@ public partial class MantleApp : Application
     Mantle.Core.Keys.IGlobalHotkeys? _hotkeys;
     StateBroadcast? _broadcast;
     Stores? _stores;
+    LookShell? _look;
     SessionEnd? _sessionEnd;
     readonly Shutdown _shutdown = new(l => Host.Log.Line(l), Host.RecoveryCommand);
     readonly List<IDisposable> _offs = new();
@@ -178,7 +195,22 @@ public partial class MantleApp : Application
                 System.Text.Encoding.UTF8.GetBytes(text), System.IO.Path.Combine(Host.Paths.DataRoot, "diagnostic-report.txt.tmp")),
         });
         if (_tray.Start() is { } trayWhy) log("mantle: tray: " + trayWhy);
-        // TODO(data-look-2): ThemeFollow.Start + LookHost (look.get/glass/accent/sync, theme rebroadcast, Refresh on resume/unlock)
+
+        // the look (main.js getTheme + getLook): theme.json and look-sync.json through the ONE gate's stores, look.json
+        // through its writer (only a --live sole shell writes the user's own; test and scratch runs their own folder)
+        string themeKey = ThemeKey;
+        if (themeKey != ThemeCore.PersonalizeKey) log($"theme: this test run follows Windows' mode from HKCU\\{themeKey} (MANTLE_TEST_THEME_KEY), never the user's own");
+        _look = new LookShell(new LookShellOptions {
+            Stores = _stores, Files = Host.Files, LookDir = Host.Paths.LookSyncDir, WindowsMode = () => ThemeCore.ReadWindowsMode(themeKey),
+            Post = loop.Post, Events = _events, Log = Host.Log, PinnedTheme = Host.Args.Theme,
+        });
+        _offs.Add(Catalogs.Register(_bus, _look));
+        _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => ThemeShown?.Invoke(p)); };
+        ThemeNow = _look.Payload();
+        _look.Start();
+        _look.FollowWindows(themeKey);   // Match Windows follows a change at once (RegNotifyChangeKeyValue), not by polling
+        log($"theme: Mantle is {_look.Now}; the host's theme reaches {ThemeShown?.GetInvocationList().Length ?? 0} surface(s) directly" +
+            (ThemeShown == null ? " (the bar still follows theme.json itself)" : ""));
         // TODO(feature-host-2): RestCoordinator with the surfaces' IRestParts, rest.TrimSoon("60 s after start")
 
         // SAFE-020..024: crash recovery with the native record (MantleNative.exe, never Electron)
@@ -295,6 +327,13 @@ public partial class MantleApp : Application
         return IntPtr.Zero;
     }
 
+    /// Resume and unlock (host thread): fs watching can miss events across sleep, so the shared look is read once.
+    void OnWake(string why)
+    {
+        if (_look != null) _look.Refresh(why);
+        else Host.Log.Line($"mantle: {why}; the look is not up yet, so there is nothing to re-read");
+    }
+
     // ------------------------------------------------------------------ the ONE shutdown (CORE-025/026)
 
     readonly TaskCompletionSource<int> _quitDone = new(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -310,7 +349,7 @@ public partial class MantleApp : Application
             steps.Add(new("unregister the global shortcuts", TimeSpan.FromSeconds(1), _ => { _hotkeys?.UnregisterAll(); return Task.CompletedTask; }));
             steps.Add(new("put Windows back", TimeSpan.FromSeconds(10), _ => RestoreAsync(why)));
             steps.Add(new("stop the sidecar", TimeSpan.FromSeconds(4), async _ => { if (_platform != null) await _platform.StopAsync(why).ConfigureAwait(true); }));
-            steps.Add(new("destroy the tray", TimeSpan.FromSeconds(1), _ => { _tray?.Dispose(); (_hotkeys as IDisposable)?.Dispose(); _broadcast?.Dispose(); foreach (var o in _offs) o.Dispose(); _stores?.Dispose(); return Task.CompletedTask; }));
+            steps.Add(new("destroy the tray", TimeSpan.FromSeconds(1), _ => { _tray?.Dispose(); (_hotkeys as IDisposable)?.Dispose(); _broadcast?.Dispose(); _look?.Dispose(); foreach (var o in _offs) o.Dispose(); _stores?.Dispose(); return Task.CompletedTask; }));
             _shutdown.RunAsync(why, code, steps).ContinueWith(t => {
                 int exit = t.IsCompletedSuccessfully ? t.Result : code;
                 Program.ExitCode = exit;
@@ -323,10 +362,14 @@ public partial class MantleApp : Application
     /// A hidden top-level window: the only kind Windows asks WM_QUERYENDSESSION / WM_ENDSESSION.
     static class SessionWindow
     {
-        const uint WM_QUERYENDSESSION = 0x0011, WM_ENDSESSION = 0x0016;
+        const uint WM_QUERYENDSESSION = 0x0011, WM_ENDSESSION = 0x0016, WM_POWERBROADCAST = 0x0218, WM_WTSSESSION_CHANGE = 0x02B1;
+        const int PBT_APMRESUMEAUTOMATIC = 0x12, WTS_SESSION_UNLOCK = 0x8;
         delegate IntPtr WndProc(IntPtr h, uint m, IntPtr w, IntPtr l);
         static WndProc? _proc;
         static Func<bool, IntPtr, IntPtr, IntPtr>? _on;
+        static Action<string>? _wake;
+        [DllImport("wtsapi32.dll", SetLastError = true)] static extern bool WTSRegisterSessionNotification(IntPtr h, int flags);
+        [DllImport("wtsapi32.dll")] static extern bool WTSUnRegisterSessionNotification(IntPtr h);
 
         [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
         struct WNDCLASSEXW { public uint cbSize, style; public IntPtr lpfnWndProc; public int cbClsExtra, cbWndExtra; public IntPtr hInstance, hIcon, hCursor, hbrBackground; public string? lpszMenuName; public string lpszClassName; public IntPtr hIconSm; }
@@ -337,24 +380,30 @@ public partial class MantleApp : Application
         [DllImport("user32.dll")] static extern bool DestroyWindow(IntPtr h);
         [DllImport("kernel32.dll", CharSet = CharSet.Unicode)] static extern IntPtr GetModuleHandleW(string? name);
 
-        public static object? Create(Action<string> log, Func<bool, IntPtr, IntPtr, IntPtr> on)
+        /// <param name="wake">resume from sleep and session unlock (main.js powerMonitor 'resume' / 'unlock-screen'), on this window's thread</param>
+        public static object? Create(Action<string> log, Func<bool, IntPtr, IntPtr, IntPtr> on, Action<string> wake)
         {
             try {
-                _on = on;
+                _on = on; _wake = wake;
                 _proc = Proc;
                 var c = new WNDCLASSEXW { cbSize = (uint)Marshal.SizeOf<WNDCLASSEXW>(), lpfnWndProc = Marshal.GetFunctionPointerForDelegate(_proc), hInstance = GetModuleHandleW(null), lpszClassName = "MantleNativeSession" };
                 if (RegisterClassExW(ref c) == 0) { log($"mantle: the session-end window class was not registered (error {Marshal.GetLastWin32Error()}); a sign-out then ends Mantle without its restore, and the sidecar's own restore on stdin EOF puts Windows back"); return null; }
                 IntPtr h = CreateWindowExW(0x00000080 /* WS_EX_TOOLWINDOW */, "MantleNativeSession", "Mantle session", 0x80000000 /* WS_POPUP */, 0, 0, 0, 0, IntPtr.Zero, IntPtr.Zero, c.hInstance, IntPtr.Zero);
                 if (h == IntPtr.Zero) { log($"mantle: the session-end window was not made (error {Marshal.GetLastWin32Error()}); the sidecar's own restore covers a sign-out"); return null; }
                 log("mantle: listening for Windows sign-out, restart and shut down (session-end window)");
+                // the same window hears resume (WM_POWERBROADCAST goes to every top-level window) and, once registered, unlock
+                if (!WTSRegisterSessionNotification(h, 0 /* NOTIFY_FOR_THIS_SESSION */))
+                    log($"mantle: unlock notices were not registered (error {Marshal.GetLastWin32Error()}); the shared look is still re-read on resume and on every change");
                 return h;
             } catch (Exception e) { log("mantle: the session-end window failed: " + e.Message); return null; }
         }
 
-        public static void Destroy(object? h) { if (h is IntPtr p && p != IntPtr.Zero) DestroyWindow(p); }
+        public static void Destroy(object? h) { if (h is IntPtr p && p != IntPtr.Zero) { WTSUnRegisterSessionNotification(p); DestroyWindow(p); } }
 
         static IntPtr Proc(IntPtr h, uint m, IntPtr w, IntPtr l)
         {
+            if (m == WM_POWERBROADCAST && (long)w == PBT_APMRESUMEAUTOMATIC) { try { _wake?.Invoke("the PC woke from sleep"); } catch (Exception) { } return (IntPtr)1; }
+            if (m == WM_WTSSESSION_CHANGE && (long)w == WTS_SESSION_UNLOCK) { try { _wake?.Invoke("the screen was unlocked"); } catch (Exception) { } return IntPtr.Zero; }
             if ((m == WM_QUERYENDSESSION || m == WM_ENDSESSION) && _on != null) {
                 try { return _on(m == WM_QUERYENDSESSION, w, l); } catch (Exception) { return m == WM_QUERYENDSESSION ? (IntPtr)1 : IntPtr.Zero; }
             }
