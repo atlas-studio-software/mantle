@@ -11,28 +11,29 @@ Runtime. Never run it on a work machine.
 | `run-bench.ps1` | the bench. Last line: `BENCH: ok (...)` or `BENCH: FAILED (...)` |
 | `BenchNative.cs` | Win32 helpers (screen grabs, clicks, process tree, screen size), compiled with `Add-Type` |
 | `electron-probe.js` | loaded into Electron Mantle's main process (`NODE_OPTIONS=--require`) for per-window marks and `app.getAppMetrics()` |
-| `aot-root.targets` | used by build mode `aot-json` only (see below); never part of the app's project |
 
 ## How to run
 
 Everything runs through `cloudtest` from a checkout whose HEAD is pushed (the public repo runs for free in
-committed mode). Each command brings back `native/out/**` (results.json, summary.md, logs, screenshots).
+committed mode). Each command brings back `native/out/bench/**` only (results.json, summary.md, logs,
+screenshots): never `native/out/**`, which would also pull the published app folders (~220 MB each).
 
 ```
-# native only, light + dark, short holds: what CI's bench stage calls (about 3-4 min of build, < 2 min of runs)
-cloudtest --committed --os windows --no-install --timeout 30 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode smoke"
+# native only, light + dark, short holds: what CI's bench stage calls (native/tools/ci.ps1 passes its own
+# build in MANTLE_NATIVE_EXE, so there it does not build again)
+cloudtest --committed --os windows --no-install --timeout 30 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/bench/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode smoke"
 
 # Electron Mantle live vs native, light then dark (the recipe installs npm deps and builds the sidecar)
-cloudtest --recipe mantle-core-public --timeout 45 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode full"
+cloudtest --recipe mantle-core-public --timeout 45 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/bench/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode full"
 
 # the build-mode table (native only, light)
-cloudtest --committed --os windows --no-install --timeout 60 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode modes"
+cloudtest --committed --os windows --no-install --timeout 60 --env MANTLE_CLOUD_RES=1920x1080 --artifacts "native/out/bench/**" -- "pwsh -NoProfile -File native/bench/run-bench.ps1 -Mode modes"
 ```
 
 Options: `-Project <csproj>` (default `native/src/Mantle.App/Mantle.App.csproj`; the exe name is the
 project's `AssemblyName`, asked of MSBuild), `-Exe <path>` (skip the build in full/smoke), `-Out <dir>`
 (default `native/out/bench`), `-Res WxH` (default `$env:MANTLE_CLOUD_RES`; the runner desktop starts at
-1024x768), `-BuildModes sc-r2r,sc,fd-r2r,aot,aot-json`, `-Themes light,dark`.
+1024x768), `-BuildModes sc-r2r,sc,fd-r2r,aot,aot-partial`, `-Themes light,dark`.
 
 ## What each number means
 

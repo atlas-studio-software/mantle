@@ -95,6 +95,10 @@ public static class BenchNative
 
     public static bool AnyIconic(uint pid) { foreach (var h in WindowsOf(pid)) if (IsIconic(h)) return true; return false; }
 
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    /// left, top, right, bottom of a window (screen pixels).
+    public static int[] RectOf(IntPtr h) { GetWindowRect(h, out RECT r); return new[] { r.l, r.t, r.r, r.b }; }
+
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);

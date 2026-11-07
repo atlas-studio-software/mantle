@@ -37,10 +37,16 @@ if (dir) {
   try { fs.mkdirSync(dir, { recursive: true }); } catch (_) { /* exists */ }
   let resolvesTo = null;
   try { resolvesTo = require.resolve('electron'); } catch (err) { resolvesTo = 'unresolved: ' + String(err && err.message || err); }
+  // What the spike's probe got: `require('electron')` at load time (the npm package's index.js returns a string).
+  let early = null;
+  try {
+    const x = require('electron');
+    early = { type: typeof x, hasApp: !!(x && x.app), value: typeof x === 'string' ? x : undefined };
+  } catch (err) { early = { error: String(err && err.message || err) }; }
   writeJson(`probe-loaded-${process.pid}.json`, {
     pid: process.pid, atUnixMs: loadedAt, processType: process.type || null,
     electron: process.versions.electron || null, node: process.versions.node,
-    argv: process.argv.slice(1), electronResolvesTo: resolvesTo,
+    argv: process.argv.slice(1), electronResolvesTo: resolvesTo, requireElectronAtLoad: early,
   });
 }
 
@@ -65,6 +71,7 @@ if (dir && process.versions.electron && (process.type === 'browser' || !process.
     'requestAnimationFrame(() => requestAnimationFrame(() => f(Date.now()))); setTimeout(() => f(-1), 30000); })';
 
   let el = null;
+  let bootedBy = null;
   const watchWindow = (win) => {
     if (!win || marks.windows.some((w) => w.id === win.id)) return;
     const rec = { id: win.id, createdUnixMs: Date.now() };
@@ -92,7 +99,7 @@ if (dir && process.versions.electron && (process.type === 'browser' || !process.
   const boot = (electron) => {
     if (el) return;
     el = electron;
-    marks.bootUnixMs = Date.now(); save();
+    marks.bootUnixMs = Date.now(); marks.bootedBy = bootedBy; save();
     const { app, BrowserWindow, webContents } = el;
     app.on('browser-window-created', (_e, win) => watchWindow(win));
     try { for (const w of BrowserWindow.getAllWindows()) watchWindow(w); } catch (_) { /* none yet */ }
@@ -135,7 +142,7 @@ if (dir && process.versions.electron && (process.type === 'browser' || !process.
   // If this Electron ever runs --require after its own init, the API is already here.
   try {
     const r = require.resolve('electron') === 'electron' ? require('electron') : null;
-    if (r && r.app && r.BrowserWindow) boot(r);
+    if (r && r.app && r.BrowserWindow) { bootedBy = 'the API was already there at load'; boot(r); }
   } catch (_) { /* the normal case: not yet */ }
 
   if (!el) {
@@ -143,6 +150,7 @@ if (dir && process.versions.electron && (process.type === 'browser' || !process.
     Module._load = function (request) {
       const r = origLoad.apply(this, arguments);
       if (!el && request === 'electron' && r && r.app && r.BrowserWindow) {
+        bootedBy = 'Module._load hook: the first require("electron") that returned the API (main.js)';
         try { boot(r); } catch (err) { marks.bootError = String(err && err.stack || err); save(); }
       }   // (not unhooked: something may have wrapped Module._load after us; once booted this is one compare)
       return r;

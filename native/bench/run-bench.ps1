@@ -4,7 +4,7 @@
 # Windows App Runtime. Never on a work machine.
 #
 #   pwsh -NoProfile -File native/bench/run-bench.ps1 [-Mode full|smoke|modes] [-Project <csproj>] [-Exe <path>]
-#        [-Out <dir>] [-Res 1920x1080] [-BuildModes sc-r2r,sc,fd-r2r,aot,aot-json] [-Themes light,dark]
+#        [-Out <dir>] [-Res 1920x1080] [-BuildModes sc-r2r,sc,fd-r2r,aot,aot-partial] [-Themes light,dark]
 #
 # full : build (self-contained + ReadyToRun); then for light, then dark: Electron Mantle live, then native.
 # smoke: build; native only, light and dark, short holds (no npm/Electron). CI's bench stage (< 3 min after build).
@@ -28,7 +28,7 @@ param(
   [string]$Exe,
   [string]$Out,
   [string]$Res = $env:MANTLE_CLOUD_RES,
-  [string]$BuildModes = 'sc-r2r,sc,fd-r2r,aot,aot-json',
+  [string]$BuildModes = 'sc-r2r,sc,fd-r2r,aot,aot-partial',
   [string]$Themes
 )
 $ErrorActionPreference = 'Stop'
@@ -246,6 +246,18 @@ function Get-Cpu([int]$rootPid, [bool]$electron, [int]$seconds) {
   return [ordered]@{ seconds = [Math]::Round($wall / 1000, 1); cpuMs = [Math]::Round($used); pctOfOneCore = [Math]::Round(100 * $used / $wall, 3) }
 }
 
+# The same foreground window before every CPU window, for both apps: charmap (it has no blinking caret; a
+# console's or notepad's caret blinks twice a second, and a bar that follows window events pays for each).
+# A real click on its caption, then the cursor where the measurement wants it. Returns the foreground process.
+function Focus-Steady($cursorTo) {
+  $h = @([BenchNative]::WindowsOf([uint32]$charmapPid)) | Select-Object -First 1
+  if ($h) { $r = [BenchNative]::RectOf($h); [BenchNative]::Click([int](($r[0] + $r[2]) / 2), $r[1] + 12) | Out-Null; Start-Sleep -Milliseconds 400 }
+  [BenchNative]::SetCursorPos($cursorTo.x, $cursorTo.y) | Out-Null
+  Start-Sleep -Seconds 2
+  $fp = [BenchNative]::ForegroundPid()
+  return $(try { (Get-Process -Id $fp -ErrorAction Stop).ProcessName } catch { "pid $fp" })
+}
+
 # Never walk the tree of a root that has exited: its pid may already be someone else's.
 function Stop-App($proc, [bool]$electron) {
   if ($proc.HasExited) { return }
@@ -302,11 +314,12 @@ function Run-Electron([string]$theme) {
   for ($i = 0; $i -lt 20 -and -not (Test-Path $mp); $i++) { Start-Sleep -Milliseconds 250 }
   if (Test-Path $mp) { $mUp = Get-Content $mp -Raw | ConvertFrom-Json }
   $mem = Get-Mem (Get-AppPids $proc.Id $true) $(if ($mUp) { $mUp.pages } else { $null })
-  $cpuUp = Get-Cpu $proc.Id $true 60
+  $fg = Focus-Steady $park
+  $cpuUp = Get-Cpu $proc.Id $true 60; $cpuUp.foreground = $fg
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Seconds 6
   $shots += Save-Shot "$tag-hidden.png" $shot
-  $cpuHidden = Get-Cpu $proc.Id $true 60
+  $cpuHidden = Get-Cpu $proc.Id $true 60; $cpuHidden.foreground = (Focus-Steady $away)
   Set-Content -Path (Join-Path $probe 'dump-hidden.req') -Value 'x'
   $memHidden = Get-Mem (Get-AppPids $proc.Id $true) $(if ($mUp) { $mUp.pages } else { $null })
   Start-Sleep -Seconds 2
@@ -328,12 +341,12 @@ function Run-Electron([string]$theme) {
   elseif (-not ($barMarks.firstPaintMs -or $barMarks.readyToShowMs -or $barMarks.paintedMs)) { Problem "$tag bar window has no paint mark" }
   if (-not $mUp) { Problem "$tag probe answered no metrics dump" }
   $barPid = if ($mUp) { (@($mUp.pages | Where-Object { $_.url -match 'ui/bar/(index|bar)\.html' }) | Select-Object -First 1).pid } else { $null }
-  # The spike's estimate of a bar-only Electron app: what it would still carry (main, GPU, network service,
-  # one renderer, the sidecar). An ESTIMATE from this run's rows, not a measured bar-only build.
+  # The spike's estimate of a bar-only Electron app: what it would still carry (main, which hosts the GPU
+  # thread here, network service, one renderer, the sidecar). An ESTIMATE from this run's rows, not a measured bar-only build.
   $est = @($mem.rows | Where-Object { $_.scope -eq 'tree' -and ($_.type -in 'main', 'gpu-process', 'sidecar' -or $_.type -like 'utility:network*' -or ($barPid -and $_.pid -eq $barPid)) })
   $barOnly = [ordered]@{ estimate = $true; barRendererPid = $barPid; processes = $est.Count
     privateMB = [Math]::Round(($est | Measure-Object privateMB -Sum).Sum, 1); wsMB = [Math]::Round(($est | Measure-Object wsMB -Sum).Sum, 1)
-    privWsMB = [Math]::Round(($est | Measure-Object privWsMB -Sum).Sum, 1); what = 'main + gpu + network service + the bar renderer + sidecar(s) in the tree' }
+    privWsMB = [Math]::Round(($est | Measure-Object privWsMB -Sum).Sum, 1); what = 'main (GPU in-process: Mantle passes --in-process-gpu) + network service + the bar renderer + sidecar(s) in the tree' }
 
   # quit the way the user does (Windows comes back), then make sure every Mantle process is gone
   $q = Start-Process -FilePath $electronExe -ArgumentList '.', '--quit' -WorkingDirectory $root -PassThru -NoNewWindow
@@ -421,7 +434,8 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   $cornerDiff = [Math]::Round([BenchNative]::Diff([BenchNative]::Grab($cornerAt.x, $cornerAt.y, 16, 16), $cornerBase), 2)
   if ($cornerDiff -gt 3) { Problem "$tag window is not see-through outside the pill (corner differs by $cornerDiff)" }
   $mem = Get-Mem (Get-AppPids $proc.Id $false) $null
-  $cpuUp = Get-Cpu $proc.Id $false $cpuS
+  $fg = Focus-Steady $away
+  $cpuUp = Get-Cpu $proc.Id $false $cpuS; $cpuUp.foreground = $fg
 
   # Focus on click, through the real input queue: notepad, then charmap, then charmap again (minimize), then again (restore).
   $focus = [ordered]@{}
@@ -465,7 +479,7 @@ $modeDefs = [ordered]@{
   'sc'       = @{ what = 'self-contained, no ReadyToRun (JIT at start)'; props = @('--self-contained', 'true', '-p:WindowsAppSDKSelfContained=true', '-p:PublishReadyToRun=false', '-p:PublishAot=false', '-p:PublishTrimmed=false') }
   'fd-r2r'   = @{ what = 'framework-dependent: .NET runtime and Windows App Runtime installed separately; ReadyToRun'; props = @('--self-contained', 'false', '-p:WindowsAppSDKSelfContained=false', '-p:PublishReadyToRun=true', '-p:PublishAot=false', '-p:PublishTrimmed=false') }
   'aot'      = @{ what = 'Native AOT + full trimming, the app as it is'; props = @('--self-contained', 'true', '-p:WindowsAppSDKSelfContained=true', '-p:PublishAot=true', '-p:PublishReadyToRun=false') }
-  'aot-json' = @{ what = 'Native AOT + trimming, with the bench''s JSON workaround (app assembly rooted, reflection JSON on)'; props = @('--self-contained', 'true', '-p:WindowsAppSDKSelfContained=true', '-p:PublishAot=true', '-p:PublishReadyToRun=false', '-p:JsonSerializerIsReflectionEnabledByDefault=true', "-p:CustomAfterMicrosoftCommonTargets=$(Join-Path $bench 'aot-root.targets')") }
+  'aot-partial' = @{ what = 'Native AOT + trimming, with every type CsWinRT1028 names marked partial (a bench-only patch to the temp copy, never to the repo)'; partial = $true; props = @('--self-contained', 'true', '-p:WindowsAppSDKSelfContained=true', '-p:PublishAot=true', '-p:PublishReadyToRun=false') }
 }
 $tmpRoot = Join-Path $(if ($env:RUNNER_TEMP) { $env:RUNNER_TEMP } else { [IO.Path]::GetTempPath() }) 'mantle-bench'
 
@@ -501,14 +515,39 @@ function Install-WinAppRuntime([string]$projCopy) {
   return $r
 }
 
+# aot-partial: mark partial every class the CsWinRT1028 warning names (it must be, for CsWinRT to generate the
+# WinRT vtables an AOT build needs when the object crosses the ABI). Reads build-aot.log of this run, or makes
+# one with an extra publish. Patches the temp copy only. Returns "file: class" per patch.
+function Add-Partial([string]$m, [string]$projCopy, [string[]]$props) {
+  $log = Join-Path $Out 'build-aot.log'
+  if (-not (Test-Path $log)) { $null = Publish-Native 'aot' $projCopy (Join-Path (Join-Path $tmpRoot $m) 'probe') $props }
+  $copyNative = Join-Path (Join-Path $tmpRoot $m) 'native'
+  $done = @()
+  foreach ($l in @(Get-Content $log | Where-Object { $_ -match 'warning CsWinRT1028' } | Sort-Object -Unique)) {
+    if ($l -notmatch '\\native\\(.+?\.cs)\(\d+,\d+\): warning CsWinRT1028: Class ''([^'']+)''') { continue }
+    $rel = $Matches[1]; $cls = ($Matches[2] -split '\.')[-1]
+    $f = Join-Path $copyNative $rel
+    if (-not (Test-Path $f)) { continue }
+    $t = Get-Content $f -Raw
+    if ($t -match "partial\s+class\s+$cls\b") { continue }
+    $t2 = $t -replace "\bclass\s+$cls\b", "partial class $cls"
+    if ($t2 -ne $t) { Set-Content -Path $f -Value $t2 -NoNewline -Encoding utf8; $done += "$($rel -replace '\\', '/'): $cls" }
+  }
+  Say "  $m`: marked partial: $(if ($done.Count) { $done -join ', ' } else { 'nothing (no CsWinRT1028 in build-aot.log)' })"
+  return $done
+}
+
 function Run-BuildMode([string]$m) {
   $def = $modeDefs[$m]
   if (-not $def) { Problem "unknown build mode $m"; return $null }
   Say "=== mode $m`: $($def.what)"
   $projCopy = Copy-NativeTree $m
   $dest = Join-Path (Join-Path $tmpRoot $m) 'publish'
+  $patches = @(if ($def.partial) { Add-Partial $m $projCopy $def.props })
+  # every mode starts with cold build tools (no MSBuild node or compiler server left warm by the mode before)
+  Push-Location (SdkDir $projCopy); try { & dotnet build-server shutdown 2>&1 | Out-Null } finally { Pop-Location }
   $b = Publish-Native $m $projCopy $dest $def.props
-  $rec = [ordered]@{ mode = $m; what = $def.what; build = $b; runtime = $null; launches = @(); run = $null; works = $false; verdict = '' }
+  $rec = [ordered]@{ mode = $m; what = $def.what; build = $b; patches = $patches; runtime = $null; launches = @(); run = $null; works = $false; verdict = '' }
   if (-not $b.ok) { $e1 = [string](($b.firstErrors | Select-Object -First 1) -replace '^.*?error ', 'error ' -replace ';', ',')
     $rec.verdict = "build FAILED (exit $($b.exitCode), $($b.errors) errors, first: $($e1.Substring(0, [Math]::Min(160, $e1.Length))))"; return $rec }
   if ($m -like 'fd*') {
@@ -622,6 +661,7 @@ if ($results.modes) {
     $md.Add("$($m.mode): $($m.what); props: $($m.build.props)")
     if ($m.build.warningCodes.Count) { $md.Add("  warning codes: " + (($m.build.warningCodes.GetEnumerator() | Sort-Object Name | ForEach-Object { "$($_.Name) x$($_.Value)" }) -join ', ')) }
     if ($m.build.firstErrors.Count) { $m.build.firstErrors | ForEach-Object { $md.Add("  error: $_") } }
+    if ($m.patches.Count) { $md.Add("  bench-only patch (temp copy): partial on " + ($m.patches -join ', ')) }
     if ($m.runtime) { $md.Add("  runtime: Windows App Runtime $($m.runtime.installerVersion) from $($m.runtime.url) (exit $($m.runtime.exitCode), $($m.runtime.seconds) s): $($m.runtime.packages -join '; '); .NET: $($m.runtime.dotnetRuntimes)") }
     if ($m.problems.Count) { $md.Add("  findings: $($m.problems -join '; ')") }
   }
