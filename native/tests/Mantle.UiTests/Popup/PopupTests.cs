@@ -14,6 +14,33 @@ public sealed class PopupTests
     static void ClickEl(BarApp app, string id) { var r = app.Find(id).BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(450); }
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 25))); }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Pt p);
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] struct Pt { public int X, Y; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, System.Text.StringBuilder b, int n);
+
+    /// What is under a point and in front, from outside (for a failure message: where a click went).
+    static string Under(int x, int y)
+    {
+        static string Desc(IntPtr h)
+        {
+            if (h == IntPtr.Zero) return "none";
+            GetWindowThreadProcessId(h, out uint pid);
+            var c = new System.Text.StringBuilder(256); GetClassNameW(h, c, 256);
+            return $"0x{h.ToInt64():X} pid {pid} class {c} \"{Win32.Title(h)}\"";
+        }
+        IntPtr w = WindowFromPoint(new Pt { X = x, Y = y });
+        return $"at ({x},{y}): {Desc(w)}, root {Desc(GetAncestor(w, 2))}; in front: {Desc(Win32.GetForegroundWindow())}";
+    }
+
+    /// A failure's whole app log, kept with the UI artifacts (native/out/ui) as well as in the message's tail.
+    static string Keep(string dir, string name)
+    {
+        try { File.WriteAllText(Path.Combine(Host.OutDir, name + "-native-log.txt"), FrameProbe.Log(dir)); } catch (IOException) { }
+        return Tail(dir);
+    }
+
     /// WIN-014 + BAR-375/376 (one at a time, toggle, replace), parking only the instant kind (WIN-006/010),
     /// BAR-392 (a press on the bar outside the pop-up), BAR-394/WIN-017 (outside click, Esc from another app's
     /// keyboard), BAR-396 (another app to the front closes it), WIN-011 (raised above the app in front).
@@ -95,8 +122,13 @@ public sealed class PopupTests
         int pid = app.Proc.Id;
         IntPtr More() => FrameProbe.Find(pid, "Mantle pop-up: More");
         IntPtr Cal() => FrameProbe.Find(pid, "Mantle pop-up: Calendar");
+        var r0 = app.Find("bar.more").BoundingRectangle;
+        int cx = r0.Left + r0.Width / 2, cy = r0.Top + r0.Height / 2;
+        FrameProbe.GetWindowRect(app.Hwnd, out var wr);
+        string before = $"bar.more {r0}; bar window ({wr.Left},{wr.Top})-({wr.Right},{wr.Bottom}); under the click {Under(cx, cy)}; app log lines before the click {FrameProbe.Log(dir).Split('\n').Length}";
         ClickEl(app, "bar.more");
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000), "More did not open. Log:\n" + Tail(dir));
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000),
+            $"More did not open. Before the click: {before}. Now: bar.more {app.Find("bar.more").BoundingRectangle}; under it {Under(cx, cy)}. Log:\n" + Keep(dir, "popmotion"));
         IntPtr m = More();
 
         // its own button: closed in state at once, on screen until the exit has played

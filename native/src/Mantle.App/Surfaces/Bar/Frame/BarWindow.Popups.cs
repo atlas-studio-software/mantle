@@ -30,7 +30,13 @@ public sealed partial class BarWindow
         if (live || Host.Env("MANTLE_TEST_POPUPS") != "1") return;
         var more = new PopupKind("more", "More", 260, 180, Focusable: false, Instant: true, Away: true, () => Stand("more", "More"));
         var cal = new PopupKind("cal", "Calendar", 268, 300, Focusable: true, Instant: false, Away: true, () => Stand("cal", "Calendar"));
-        MoreBtn.Click += (_, _) => { _popAnchor = MoreBtn; Popups.Toggle(more, MoreBtn); };
+        // the stand-in runs only: every press and release on the bar is logged, so a click that opened nothing says
+        // whether it reached the bar at all and on what
+        static string Who(object? o) => o is FrameworkElement f ? $"{f.GetType().Name} '{f.Name}' '{AutomationProperties.GetAutomationId(f)}'" : o?.GetType().Name ?? "nothing";
+        Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) => Host.Log.Line($"bar: test: pressed on {Who(e.OriginalSource)} at {e.GetCurrentPoint(Root).Position}")), true);
+        Root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) => Host.Log.Line($"bar: test: released on {Who(e.OriginalSource)} at {e.GetCurrentPoint(Root).Position}")), true);
+        MoreBtn.PointerCaptureLost += (_, _) => Host.Log.Line("bar: test: More lost the pointer capture");
+        MoreBtn.Click += (_, _) => { Host.Log.Line("bar: test: More clicked"); _popAnchor = MoreBtn; Popups.Toggle(more, MoreBtn); };
         ClockBtn.Click += (_, _) => { _popAnchor = ClockBtn; Popups.Toggle(cal, ClockBtn); };
         Popups.Anchor(MoreBtn); Popups.Anchor(ClockBtn);
         Host.Log.Line("pop-ups: MANTLE_TEST_POPUPS=1: More opens the stand-in \"more\" (instant, parked), the clock \"cal\" (on demand, focusable)");
