@@ -60,6 +60,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         public bool Sync;
         public string Init = "";          // feature: the attribute rebuilt as C#
         public string? Options;           // feature: the static Options member, when present
+        public string Owner = "";         // command: the owner's words (a "const string Owner" on the type, else its name)
         public bool AtStart;              // surface
         public string? Error;             // plain words when the mark is malformed
         public DiagnosticDescriptor? ErrorKind;
@@ -100,6 +101,8 @@ public sealed class CatalogGenerator : IIncrementalGenerator
             Kind = "command", Name = StringArg(c.Attributes[0], 0) ?? "", TypeName = t.ToDisplayString(SymbolDisplayFormat.FullyQualifiedFormat),
             TypeShort = t.Name, Method = m.Name, Static = m.IsStatic, Where = c.TargetNode.GetLocation(),
         };
+        bool hasOwner = t.GetMembers("Owner").OfType<IFieldSymbol>().Any(x => x.IsConst && x.Type.SpecialType == SpecialType.System_String && x.DeclaredAccessibility != Accessibility.Private);
+        f.Owner = hasOwner ? f.TypeName + ".Owner" : Lit(t.Name);
         string? why = null;
         if (!CommandName.IsMatch(f.Name)) { f.ErrorKind = BadName; f.Error = "lower-case words joined by dots, like \"qs.set\" or \"bar.pin\""; return f; }
         string ret = m.ReturnType.ToDisplayString();
@@ -246,7 +249,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         s.Append($"        public static global::System.IDisposable RegisterStatic({Bus} bus)\n        {{\n");
         s.Append("            var made = new Batch();\n            try {\n");
         foreach (var f in good.Where(x => x.Static))
-            s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {Lit(f.TypeShort)}, {Handler(f, f.TypeName)})));\n");
+            s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, f.TypeName)})));\n");
         s.Append("            } catch { made.Dispose(); throw; }\n            return made;\n        }\n");
         foreach (var g in good.Where(x => !x.Static).GroupBy(x => x.TypeName).OrderBy(x => x.Key, StringComparer.Ordinal)) {
             string shortName = g.First().TypeShort;
@@ -254,7 +257,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
             s.Append($"        public static global::System.IDisposable RegisterCommands(this {Bus} bus, {g.Key} owner)\n        {{\n");
             s.Append("            if (owner == null) throw new global::System.ArgumentNullException(nameof(owner));\n");
             s.Append("            var made = new Batch();\n            try {\n");
-            foreach (var f in g) s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {Lit(f.TypeShort)}, {Handler(f, "owner")})));\n");
+            foreach (var f in g) s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, "owner")})));\n");
             s.Append("            } catch { made.Dispose(); throw; }\n            return made;\n        }\n");
         }
         s.Append("\n        sealed class Batch : global::System.IDisposable\n        {\n");
