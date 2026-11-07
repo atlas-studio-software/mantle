@@ -99,6 +99,18 @@ public static class BenchNative
     /// left, top, right, bottom of a window (screen pixels).
     public static int[] RectOf(IntPtr h) { GetWindowRect(h, out RECT r); return new[] { r.l, r.t, r.r, r.b }; }
 
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    /// The process whose top-level window is on screen at a point (what a click there would hit).
+    public static uint PidAt(int x, int y)
+    {
+        IntPtr h = GetAncestor(WindowFromPoint(new POINT { x = x, y = y }), 2 /* GA_ROOT */);
+        GetWindowThreadProcessId(h, out uint p); return p;
+    }
+    /// Top of the z-order without activating it (activation is left to a real click).
+    public static bool Raise(IntPtr h) => SetWindowPos(h, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 /* NOSIZE | NOMOVE | NOACTIVATE */);
+
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);

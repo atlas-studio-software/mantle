@@ -249,9 +249,16 @@ function Get-Cpu([int]$rootPid, [bool]$electron, [int]$seconds) {
 # The same foreground window before every CPU window, for both apps: charmap (it has no blinking caret; a
 # console's or notepad's caret blinks twice a second, and a bar that follows window events pays for each).
 # A real click on its caption, then the cursor where the measurement wants it. Returns the foreground process.
+# On a small screen the tiled windows overlap: raise charmap first, and click a caption point that is
+# charmap's on screen (a click that lands on notepad would make the click checks start from notepad).
 function Focus-Steady($cursorTo) {
   $h = @([BenchNative]::WindowsOf([uint32]$charmapPid)) | Select-Object -First 1
-  if ($h) { $r = [BenchNative]::RectOf($h); [BenchNative]::Click([int](($r[0] + $r[2]) / 2), $r[1] + 12) | Out-Null; Start-Sleep -Milliseconds 400 }
+  if ($h) {
+    [BenchNative]::Raise($h) | Out-Null; Start-Sleep -Milliseconds 250
+    $r = [BenchNative]::RectOf($h); $y = $r[1] + 12
+    $x = @([int](($r[0] + $r[2]) / 2), ($r[0] + 80), ($r[0] + 140)) | Where-Object { [BenchNative]::PidAt($_, $y) -eq $charmapPid } | Select-Object -First 1
+    if ($null -ne $x) { [BenchNative]::Click([int]$x, $y) | Out-Null; Start-Sleep -Milliseconds 400 }
+  }
   [BenchNative]::SetCursorPos($cursorTo.x, $cursorTo.y) | Out-Null
   Start-Sleep -Seconds 2
   $fp = [BenchNative]::ForegroundPid()
