@@ -24,14 +24,20 @@ internal sealed class CpuGlass
     // geometry, physical px
     readonly int _px, _py, _pw, _ph, _grow, _over, _pitch, _scrW, _scrH;
     readonly double _sigma, _sat;
+    readonly bool _small;
     // the work buffers, kept between frames
     float[] _down = Array.Empty<float>(), _tmp = Array.Empty<float>(), _buf = Array.Empty<float>();
     public readonly byte[] Output;
     public double LastCaptureMs, LastRenderMs;
 
     /// light: grow 0, over 14, pitch 4, sigma 12, sat 1.5. dark: grow 16, over 16, pitch 8, sigma 5, sat 1.
-    public CpuGlass(int px, int py, int pw, int ph, int grow, int over, int pitch, double sigma, double sat, int scrW, int scrH)
+    /// small: blur the 1/pitch picture itself (sigma scaled to it, per axis) and only then stretch it, instead of
+    /// stretching first and blurring every screen pixel. Offline against the full order on the reference
+    /// wallpaper (light): max 0.1 of 255 apart, for ~1/16 of the work. Used for light, whose picture is redone
+    /// 4x a second; dark's one cut per landing keeps the full order.
+    public CpuGlass(int px, int py, int pw, int ph, int grow, int over, int pitch, double sigma, double sat, int scrW, int scrH, bool small)
     {
+        _small = small;
         _px = px; _py = py; _pw = pw; _ph = ph; _grow = grow; _over = over; _pitch = pitch; _sigma = sigma; _sat = sat;
         _scrW = scrW; _scrH = scrH;
         Output = new byte[pw * ph * 4];
@@ -82,6 +88,8 @@ internal sealed class CpuGlass
                 int d = (i * sw + x) * 3; _down[d] = b; _down[d + 1] = g; _down[d + 2] = r;
             }
 
+        if (_small) { BlurSmallThenStretch(sw, sh); return; }
+
         // 2. up: bilinear to the shown rectangle (pill + over), into a zero (transparent) padded
         //    premultiplied BGRA float buffer, alpha 1 inside the picture
         int ow = _pw + 2 * _over, oh = _ph + 2 * _over;
@@ -124,6 +132,105 @@ internal sealed class CpuGlass
                 Output[d + 1] = (byte)Math.Clamp(Math.Clamp(G, 0, 255) * a + 0.5, 0, 255);
                 Output[d + 2] = (byte)Math.Clamp(Math.Clamp(R, 0, 255) * a + 0.5, 0, 255);
                 Output[d + 3] = (byte)Math.Clamp(a * 255 + 0.5, 0, 255);
+            }
+    }
+
+    void BlurSmallThenStretch(int sw, int sh)
+    {
+        int ow = _pw + 2 * _over, oh = _ph + 2 * _over;
+        double sx = _sigma * sw / ow, sy = _sigma * sh / oh;          // the CSS sigma in the small picture's pixels
+        int pad = (int)Math.Ceiling(3 * Math.Max(sx, sy)) + 1;
+        int bw = sw + 2 * pad, bh = sh + 2 * pad;
+        Ensure(ref _buf, bw * bh * 4); Array.Clear(_buf, 0, bw * bh * 4);
+        for (int y = 0; y < sh; y++)
+            for (int x = 0; x < sw; x++) {
+                int s = (y * sw + x) * 3, d = ((y + pad) * bw + x + pad) * 4;
+                _buf[d] = _down[s]; _buf[d + 1] = _down[s + 1]; _buf[d + 2] = _down[s + 2]; _buf[d + 3] = 1f;
+            }
+        Ensure(ref _tmp, bw * bh * 4);
+        GaussH(_buf, _tmp, bw, bh, sx);
+        GaussV(_tmp, _buf, bw, bh, sy);
+        // stretch: pill pixel x -> shown x + over -> the small picture's x (pixel centres lined up), bilinear
+        var tx = new (int, int, float)[_pw]; var ty = new (int, int, float)[_ph];
+        for (int x = 0; x < _pw; x++) tx[x] = Lin((x + _over + 0.5) * sw / ow - 0.5 + pad, bw);
+        for (int y = 0; y < _ph; y++) ty[y] = Lin((y + _over + 0.5) * sh / oh - 0.5 + pad, bh);
+        for (int y = 0; y < _ph; y++) {
+            var (y0, y1, fy) = ty[y];
+            for (int x = 0; x < _pw; x++) {
+                var (x0, x1, fx) = tx[x];
+                int a = (y0 * bw + x0) * 4, b = (y0 * bw + x1) * 4, c = (y1 * bw + x0) * 4, e = (y1 * bw + x1) * 4;
+                float w00 = (1 - fx) * (1 - fy), w01 = fx * (1 - fy), w10 = (1 - fx) * fy, w11 = fx * fy;
+                float pb = _buf[a] * w00 + _buf[b] * w01 + _buf[c] * w10 + _buf[e] * w11;
+                float pg = _buf[a + 1] * w00 + _buf[b + 1] * w01 + _buf[c + 1] * w10 + _buf[e + 1] * w11;
+                float pr = _buf[a + 2] * w00 + _buf[b + 2] * w01 + _buf[c + 2] * w10 + _buf[e + 2] * w11;
+                float pa = _buf[a + 3] * w00 + _buf[b + 3] * w01 + _buf[c + 3] * w10 + _buf[e + 3] * w11;
+                Put((y * _pw + x) * 4, pb, pg, pr, pa);
+            }
+        }
+    }
+
+    static (int, int, float) Lin(double c, int n)
+    {
+        c = Math.Clamp(c, 0, n - 1);
+        int j0 = (int)Math.Floor(c), j1 = Math.Min(j0 + 1, n - 1);
+        return (j0, j1, (float)(c - j0));
+    }
+
+    /// One output pixel from premultiplied B, G, R, A: straight colour, saturate, back to premultiplied bytes.
+    void Put(int d, float pb, float pg, float pr, float pa)
+    {
+        double a = Math.Clamp(pa, 0f, 1f);
+        if (a < 1e-4) { Output[d] = Output[d + 1] = Output[d + 2] = Output[d + 3] = 0; return; }
+        double B = pb / a, G = pg / a, R = pr / a;
+        if (Math.Abs(_sat - 1) > 0.001) {
+            double s = _sat;
+            double r2 = (0.213 + 0.787 * s) * R + (0.715 - 0.715 * s) * G + (0.072 - 0.072 * s) * B;
+            double g2 = (0.213 - 0.213 * s) * R + (0.715 + 0.285 * s) * G + (0.072 - 0.072 * s) * B;
+            double b2 = (0.213 - 0.213 * s) * R + (0.715 - 0.715 * s) * G + (0.072 + 0.928 * s) * B;
+            R = r2; G = g2; B = b2;
+        }
+        Output[d] = (byte)Math.Clamp(Math.Clamp(B, 0, 255) * a + 0.5, 0, 255);
+        Output[d + 1] = (byte)Math.Clamp(Math.Clamp(G, 0, 255) * a + 0.5, 0, 255);
+        Output[d + 2] = (byte)Math.Clamp(Math.Clamp(R, 0, 255) * a + 0.5, 0, 255);
+        Output[d + 3] = (byte)Math.Clamp(a * 255 + 0.5, 0, 255);
+    }
+
+    // An exact Gaussian (taps to 3 sigma, normalised over the whole kernel) on premultiplied RGBA floats;
+    // outside the buffer counts as transparent (zero), so the picture's edges pull transparency in, as CSS does.
+    static float[] Kernel(double s, out int r)
+    {
+        r = Math.Max(1, (int)Math.Ceiling(3 * s));
+        var k = new float[2 * r + 1]; double sum = 0;
+        for (int i = -r; i <= r; i++) { double v = Math.Exp(-0.5 * (i / s) * (i / s)); k[i + r] = (float)v; sum += v; }
+        for (int i = 0; i < k.Length; i++) k[i] = (float)(k[i] / sum);
+        return k;
+    }
+    static void GaussH(float[] src, float[] dst, int w, int h, double s)
+    {
+        var k = Kernel(s, out int r);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float b = 0, g = 0, rr = 0, a = 0;
+                for (int i = -r; i <= r; i++) {
+                    int xx = x + i; if (xx < 0 || xx >= w) continue;
+                    int o = (y * w + xx) * 4; float kv = k[i + r];
+                    b += src[o] * kv; g += src[o + 1] * kv; rr += src[o + 2] * kv; a += src[o + 3] * kv;
+                }
+                int d = (y * w + x) * 4; dst[d] = b; dst[d + 1] = g; dst[d + 2] = rr; dst[d + 3] = a;
+            }
+    }
+    static void GaussV(float[] src, float[] dst, int w, int h, double s)
+    {
+        var k = Kernel(s, out int r);
+        for (int y = 0; y < h; y++)
+            for (int x = 0; x < w; x++) {
+                float b = 0, g = 0, rr = 0, a = 0;
+                for (int i = -r; i <= r; i++) {
+                    int yy = y + i; if (yy < 0 || yy >= h) continue;
+                    int o = (yy * w + x) * 4; float kv = k[i + r];
+                    b += src[o] * kv; g += src[o + 1] * kv; rr += src[o + 2] * kv; a += src[o + 3] * kv;
+                }
+                int d = (y * w + x) * 4; dst[d] = b; dst[d + 1] = g; dst[d + 2] = rr; dst[d + 3] = a;
             }
     }
 

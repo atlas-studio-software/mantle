@@ -10,7 +10,7 @@
 // On top, in every mode, the island's layers from ui/shared/glass-light.css + ui/bar/bar.css: the tint
 // (border-box), the 1 px lip (inset 0 1px 0), the 1 px hairline, and in light the drop shadow (--lg-drop-up).
 //
-//   Glass.exe --out=<dir> --mode=cpu|gpu|acrylic --theme=light|dark [--sigma=N] [--fps=4] [--stretch]
+//   Glass.exe --out=<dir> --mode=cpu|gpu|acrylic --theme=light|dark [--sigma=N] [--fps=4] [--raw]
 // Writes <out>/ready.json once the first frame has been on screen for 700 ms, and <out>/log.txt.
 // While <out>/pause exists the cpu mode takes no new picture (the check's screenshots then never
 // land inside a capture-exclusion window).
@@ -39,7 +39,7 @@ public partial class App : Application
 {
     string _out = ".", _mode = "cpu", _theme = "light";
     double _sigmaArg = -1, _fps = 4;
-    bool _dark, _stretch;
+    bool _dark, _raw;
     // the bar's geometry (main.js barGeometry): min(1120, screen - 28) wide, 48 tall, 14 above the bottom
     const double BarH = 48, Lift = 14, ShadowTop = 56, ShadowSide = 28;
     double _scale = 1, _pillW;
@@ -58,6 +58,17 @@ public partial class App : Application
     int _frames, _skipped;
     double _captureMsSum, _renderMsSum;
     bool _busy;
+    // every DispatcherQueueTimer is kept here: a timer only held by a local is collected and stops firing
+    // (run 2: the 4 fps loop died after ~10 s)
+    readonly System.Collections.Generic.List<Microsoft.UI.Dispatching.DispatcherQueueTimer> _timers = new();
+    Microsoft.UI.Dispatching.DispatcherQueueTimer After(double ms, bool repeat, Action a)
+    {
+        var t = _win!.DispatcherQueue.CreateTimer();
+        t.Interval = TimeSpan.FromMilliseconds(ms); t.IsRepeating = repeat;
+        t.Tick += (q, _) => { if (!q.IsRepeating) _timers.Remove(q); a(); };
+        _timers.Add(t); t.Start();
+        return t;
+    }
 
     public App()
     {
@@ -66,7 +77,7 @@ public partial class App : Application
             else if (a.StartsWith("--mode=")) _mode = a[7..];
             else if (a.StartsWith("--theme=")) _theme = a[8..];
             else if (a.StartsWith("--sigma=")) _sigmaArg = double.Parse(a[8..], System.Globalization.CultureInfo.InvariantCulture);
-            else if (a == "--stretch") _stretch = true;
+            else if (a == "--raw") _raw = true;
             else if (a.StartsWith("--fps=")) _fps = double.Parse(a[6..], System.Globalization.CultureInfo.InvariantCulture);
         }
         _dark = _theme == "dark";
@@ -93,6 +104,11 @@ public partial class App : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         Log($"launched: mode {_mode}, theme {_theme}, sigma {Sigma}, saturate {Sat}");
+        // what decides whether Windows draws blur-behind (acrylic falls back to its solid colour without it)
+        try {
+            var ui = new Windows.UI.ViewManagement.UISettings();
+            Log($"system: AdvancedEffectsEnabled {ui.AdvancedEffectsEnabled}, remote session {GetSystemMetrics(0x1000) != 0}, energy saver {Windows.System.Power.PowerManager.EnergySaverStatus}");
+        } catch (Exception e) { Log("system: could not read the effect settings: " + e.Message); }
         _scrW = GetSystemMetrics(0); _scrH = GetSystemMetrics(1);
 
         var root = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
@@ -128,14 +144,13 @@ public partial class App : Application
         int pref = 1 /* DWMWCP_DONOTROUND */; DwmSetWindowAttribute(_hwnd, 33 /* DWMWA_WINDOW_CORNER_PREFERENCE */, ref pref, 4);
         int none = unchecked((int)0xFFFFFFFE) /* DWMWA_COLOR_NONE */; DwmSetWindowAttribute(_hwnd, 34 /* DWMWA_BORDER_COLOR */, ref none, 4);
         SetWindowLongPtrW(_hwnd, -20, new IntPtr(GetWindowLongPtrW(_hwnd, -20).ToInt64() | 0x80 /* WS_EX_TOOLWINDOW */));
+        Log("frame: " + StripFrame());
 
         float wPx = _winPx.Right - _winPx.Left, hPx = _winPx.Bottom - _winPx.Top;
         if (_mode == "gpu") {
             int on = 1; int hr = DwmSetWindowAttribute(_hwnd, 17 /* DWMWA_USE_HOSTBACKDROPBRUSH */, ref on, 4);
             Log($"DWMWA_USE_HOSTBACKDROPBRUSH: hr 0x{hr:X8}");
-            // --stretch (light): Electron's picture of the pill is shown over the pill + 14 px each side
-            float kx = _stretch ? (pwPx + 28f * (float)_scale) / pwPx : 1f, ky = _stretch ? (phPx + 28f * (float)_scale) / phPx : 1f;
-            _host = new HostBlurBackdrop((float)(Sigma * _scale), (float)Sat, wPx, hPx, sideP, topP, pwPx, phPx, (float)(Radius * _scale), kx, ky);
+            _host = new HostBlurBackdrop((float)(Sigma * _scale), (float)Sat, wPx, hPx, sideP, topP, pwPx, phPx, (float)(Radius * _scale), _raw);
             _win.SystemBackdrop = _host;
             Log("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
         } else if (_mode == "acrylic") {
@@ -147,8 +162,8 @@ public partial class App : Application
             _win.SystemBackdrop = new TransparentBackdrop();
             Log("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
             _cpu = _dark
-                ? new CpuGlass(pxPx, pyPx, pwPx, phPx, (int)Math.Round(16 * _scale), (int)Math.Round(16 * _scale), 8, Sigma * _scale, Sat, _scrW, _scrH)
-                : new CpuGlass(pxPx, pyPx, pwPx, phPx, 0, (int)Math.Round(14 * _scale), 4, Sigma * _scale, Sat, _scrW, _scrH);
+                ? new CpuGlass(pxPx, pyPx, pwPx, phPx, (int)Math.Round(16 * _scale), (int)Math.Round(16 * _scale), 8, Sigma * _scale, Sat, _scrW, _scrH, small: false)
+                : new CpuGlass(pxPx, pyPx, pwPx, phPx, 0, (int)Math.Round(14 * _scale), 4, Sigma * _scale, Sat, _scrW, _scrH, small: true);
             _bmp = new WriteableBitmap(pwPx, phPx);
             glass.Background = new ImageBrush { ImageSource = _bmp, Stretch = Stretch.Fill };
             // the first picture before the window shows (Electron's pre-reveal frame): nothing of ours is on screen yet
@@ -159,24 +174,18 @@ public partial class App : Application
         Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += OnRendering;
         _win.Activate();
         SetWindowLongPtrW(_hwnd, -20, new IntPtr(GetWindowLongPtrW(_hwnd, -20).ToInt64() | 0x08000000 /* WS_EX_NOACTIVATE */));
-        // the frame ring the spike's setup leaves (WS_DLGFRAME|WS_SYSMENU still on): a plain popup instead
-        SetWindowLongPtrW(_hwnd, -16, new IntPtr(unchecked((int)0x80000000) /* WS_POPUP */ | 0x10000000 /* WS_VISIBLE */));
+        // after Activate the presenter may have touched the style again: the filter keeps the frame bits off
+        SetWindowLongPtrW(_hwnd, -16, new IntPtr(GetWindowLongPtrW(_hwnd, -16).ToInt64() & ~0x00CC0000L));
         SetWindowPos(_hwnd, new IntPtr(-1) /* TOPMOST */, _winPx.Left, _winPx.Top, (int)wPx, (int)hPx, 0x10 | 0x20 /* NOACTIVATE FRAMECHANGED */);
         if (_mode == "acrylic") _acrylicCfg!.IsInputActive = true;
 
         if (_cpu != null) {
             if (!_dark) {
-                var t = _win.DispatcherQueue.CreateTimer();
-                t.Interval = TimeSpan.FromMilliseconds(1000 / _fps); t.IsRepeating = true;
-                t.Tick += (_, _) => Tick();
-                t.Start();
+                After(1000 / _fps, true, Tick);
             } else {
                 WatchWallpaper();   // dark: a new cut only when the wallpaper changes (no loop)
             }
-            var rep = _win.DispatcherQueue.CreateTimer();
-            rep.Interval = TimeSpan.FromSeconds(10); rep.IsRepeating = true;
-            rep.Tick += (_, _) => Log($"cpu glass: {_frames} pictures, {_skipped} skipped (paused), mean capture {(_frames > 0 ? _captureMsSum / _frames : 0):0.0} ms, mean render {(_frames > 0 ? _renderMsSum / _frames : 0):0.0} ms");
-            rep.Start();
+            After(10000, true, () => Log($"cpu glass: {_frames} pictures, {_skipped} skipped (paused), mean capture {(_frames > 0 ? _captureMsSum / _frames : 0):0.0} ms, mean render {(_frames > 0 ? _renderMsSum / _frames : 0):0.0} ms"));
         }
     }
 
@@ -205,10 +214,7 @@ public partial class App : Application
         _busy = true;
         // exclude the window from capture, give DWM a frame to drop it (Electron: BACKDROP_SETTLE_MS 25), shoot
         SetWindowDisplayAffinity(_hwnd, 0x11 /* WDA_EXCLUDEFROMCAPTURE */);
-        var t = _win!.DispatcherQueue.CreateTimer();
-        t.Interval = TimeSpan.FromMilliseconds(30); t.IsRepeating = false;
-        t.Tick += (_, _) => { Refresh(exclude: true, null); _busy = false; };
-        t.Start();
+        After(30, false, () => { Refresh(exclude: true, null); _busy = false; });
     }
 
     void Refresh(bool exclude, string? why)
@@ -225,6 +231,31 @@ public partial class App : Application
         if (why != null) Log($"{why}: capture {_cpu.LastCaptureMs:0.0} ms, render {_cpu.LastRenderMs:0.0} ms ({_cpu.Describe()})");
     }
 
+    // ------------------------------------------------------------------ no frame
+    // Run 2: the presenter put WS_DLGFRAME|WS_SYSMENU back after SetWindowLongPtr (style 0x94480000), so the
+    // client area sat 3 px in from the window's edge and a frame ring showed round the window. Two guards:
+    // WM_STYLECHANGING drops the frame bits whoever sets them, and WM_NCCALCSIZE gives the whole window to
+    // the client area (no non-client area at all), whatever the style says.
+    SubclassProc? _frameProc;
+    string StripFrame()
+    {
+        _frameProc = (h, msg, wp, lp, id, data) => {
+            if (msg == 0x0083 /* WM_NCCALCSIZE */ && wp != IntPtr.Zero) return IntPtr.Zero;
+            if (msg == 0x007C /* WM_STYLECHANGING */ && wp.ToInt64() == -16 /* GWL_STYLE */) {
+                var ss = Marshal.PtrToStructure<STYLESTRUCT>(lp);
+                ss.styleNew &= ~(0x00C00000u /* WS_CAPTION = BORDER|DLGFRAME */ | 0x00040000u /* THICKFRAME */ | 0x00080000u /* SYSMENU */);
+                Marshal.StructureToPtr(ss, lp, false);
+            }
+            return DefSubclassProc(h, msg, wp, lp);
+        };
+        bool sub = SetWindowSubclass(_hwnd, _frameProc, new UIntPtr(3), IntPtr.Zero);
+        long st = GetWindowLongPtrW(_hwnd, -16).ToInt64() & ~0x00CC0000L;
+        SetWindowLongPtrW(_hwnd, -16, new IntPtr(st));
+        SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, 0x1 | 0x2 | 0x4 | 0x10 | 0x20 /* NOSIZE NOMOVE NOZORDER NOACTIVATE FRAMECHANGED */);
+        return $"subclass {(sub ? "on" : "FAILED")}, style now 0x{GetWindowLongPtrW(_hwnd, -16).ToInt64():X8}";
+    }
+    [StructLayout(LayoutKind.Sequential)] struct STYLESTRUCT { public uint styleOld, styleNew; }
+
     // dark: Windows says the wallpaper changed -> a new cut, 400 ms later (Explorer repaints first)
     delegate IntPtr SubclassProc(IntPtr hwnd, uint msg, IntPtr wp, IntPtr lp, UIntPtr id, IntPtr data);
     SubclassProc? _wallProc;
@@ -232,17 +263,11 @@ public partial class App : Application
     {
         _wallProc = (h, msg, wp, lp, id, data) => {
             if (msg == 0x001A /* WM_SETTINGCHANGE */ && wp.ToInt64() == 0x0014 /* SPI_SETDESKWALLPAPER */) {
-                var t = _win!.DispatcherQueue.CreateTimer();
-                t.Interval = TimeSpan.FromMilliseconds(400); t.IsRepeating = false;
-                t.Tick += (_, _) => {
+                After(400, false, () => {
                     if (File.Exists(Path.Combine(_out, "pause"))) { _skipped++; return; }
                     SetWindowDisplayAffinity(_hwnd, 0x11);
-                    var t2 = _win!.DispatcherQueue.CreateTimer();
-                    t2.Interval = TimeSpan.FromMilliseconds(30); t2.IsRepeating = false;
-                    t2.Tick += (_, _) => Refresh(exclude: true, null);
-                    t2.Start();
-                };
-                t.Start();
+                    After(30, false, () => Refresh(exclude: true, null));
+                });
             }
             return DefSubclassProc(h, msg, wp, lp);
         };
@@ -290,10 +315,7 @@ public partial class App : Application
         _rendered = true;
         Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= OnRendering;
         Log("first frame");
-        var t = _win!.DispatcherQueue.CreateTimer();
-        t.Interval = TimeSpan.FromMilliseconds(700); t.IsRepeating = false;
-        t.Tick += (_, _) => WriteReady();
-        t.Start();
+        After(700, false, WriteReady);
     }
 
     void WriteReady()

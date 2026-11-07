@@ -96,24 +96,25 @@ internal class TransparentBackdrop : SystemBackdrop
 /// Sizes are in the window's own pixels; the mask is stretched over whatever area the system draws.
 internal sealed class HostBlurBackdrop : TransparentBackdrop
 {
-    readonly float _sigma, _sat, _winW, _winH, _px, _py, _pw, _ph, _r, _kx, _ky;
+    readonly float _sigma, _sat, _winW, _winH, _px, _py, _pw, _ph, _r;
+    readonly bool _raw;
     public string State { get; private set; } = "not connected yet";
 
-    /// kx, ky != 1: magnify the backdrop about the pill's centre before the blur, as Electron's light glass
-    /// does without meaning to (its picture of the pill is stretched over the pill plus 14 px each side).
-    public HostBlurBackdrop(float sigma, float sat, float winW, float winH, float px, float py, float pw, float ph, float r, float kx = 1, float ky = 1)
-    { _sigma = sigma; _sat = sat; _winW = winW; _winH = winH; _px = px; _py = py; _pw = pw; _ph = ph; _r = r; _kx = kx; _ky = ky; }
+    /// raw: the bare host backdrop brush over the whole window (no blur, no mask): a diagnostic of whether
+    /// DWM hands this window a backdrop at all.
+    public HostBlurBackdrop(float sigma, float sat, float winW, float winH, float px, float py, float pw, float ph, float r, bool raw = false)
+    { _sigma = sigma; _sat = sat; _winW = winW; _winH = winH; _px = px; _py = py; _pw = pw; _ph = ph; _r = r; _raw = raw; }
 
     protected override Windows.UI.Composition.CompositionBrush MakeBrush()
     {
         try {
             var c = SystemCompositor();
-            IGraphicsEffectSource src = new Windows.UI.Composition.CompositionEffectSourceParameter("bd");
-            if (Math.Abs(_kx - 1) > 0.0001f || Math.Abs(_ky - 1) > 0.0001f)
-                src = new Transform2DEffect { Name = "Stretch", Source = src, TransformMatrix = Matrix3x2.CreateScale(_kx, _ky, new Vector2(_px + _pw / 2, _py + _ph / 2)) };
+            if (_raw) { State = "raw host backdrop brush over the whole window (diagnostic)"; return c.CreateHostBackdropBrush(); }
+            // (a Transform2DEffect in front of the blur, to copy Electron's light stretch, was refused by this
+            // effect factory on the runner: ArgumentException "The parameter is incorrect", run 2)
             IGraphicsEffect fx = new GaussianBlurEffect {
                 Name = "Blur", BlurAmount = _sigma, BorderMode = EffectBorderMode.Hard, Optimization = EffectOptimization.Quality,
-                Source = src,
+                Source = new Windows.UI.Composition.CompositionEffectSourceParameter("bd"),
             };
             if (Math.Abs(_sat - 1) > 0.001f) fx = new ColorMatrixEffect { Name = "Sat", Source = (IGraphicsEffectSource)fx, ColorMatrix = SaturateMatrix(_sat), ClampOutput = true };
             var eb = c.CreateEffectFactory(fx).CreateBrush();
@@ -127,7 +128,7 @@ internal sealed class HostBlurBackdrop : TransparentBackdrop
             var vs = c.CreateVisualSurface(); vs.SourceVisual = sv; vs.SourceSize = new Vector2(_winW, _winH);
             var sb = c.CreateSurfaceBrush(vs); sb.Stretch = Windows.UI.Composition.CompositionStretch.Fill;
             var mb = c.CreateMaskBrush(); mb.Source = eb; mb.Mask = sb;
-            State = $"host backdrop brush: stretch {_kx:0.###}x{_ky:0.###}, blur {_sigma} px, saturate {_sat}, masked to the pill ({_pw}x{_ph} r{_r} at {_px},{_py})";
+            State = $"host backdrop brush: blur {_sigma} px, saturate {_sat}, masked to the pill ({_pw}x{_ph} r{_r} at {_px},{_py})";
             return mb;
         } catch (Exception e) {
             State = "FAILED: " + e.GetType().Name + ": " + e.Message;

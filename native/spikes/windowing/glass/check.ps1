@@ -156,8 +156,8 @@ Note 'baseline' $base
 
 # ------------------------------------------------------------------ the runs
 $runs = @(
-  @{ theme = 'light'; mode = 'cpu' }, @{ theme = 'light'; mode = 'gpu' }, @{ theme = 'light'; mode = 'gpu'; extra = '--stretch'; tag = 'gpu-stretch' }, @{ theme = 'light'; mode = 'acrylic' },
-  @{ theme = 'dark'; mode = 'cpu' }, @{ theme = 'dark'; mode = 'gpu' }, @{ theme = 'dark'; mode = 'gpu'; sigma = '6.9'; tag = 'gpu-s6.9' }, @{ theme = 'dark'; mode = 'acrylic' }
+  @{ theme = 'light'; mode = 'cpu' }, @{ theme = 'light'; mode = 'gpu' }, @{ theme = 'light'; mode = 'gpu'; extra = '--raw'; tag = 'gpu-raw'; quick = $true },
+  @{ theme = 'light'; mode = 'acrylic' }, @{ theme = 'dark'; mode = 'cpu' }, @{ theme = 'dark'; mode = 'gpu' }, @{ theme = 'dark'; mode = 'acrylic' }
 )
 $Results.runs = [ordered]@{}
 foreach ($run in $runs) {
@@ -191,7 +191,9 @@ foreach ($run in $runs) {
     $res.vsElectron = [ordered]@{ glass = (StatObj $sGlass); pill = (StatObj $sPill); rim = (StatObj $sRim) }
     $res.meanRgb = [ordered]@{ native = [GlassTools]::MeanRgb($g, $m.glass); electron = [GlassTools]::MeanRgb($E, $m.glass); bare = [GlassTools]::MeanRgb($hidden, $m.glass) }
     $drawn = [GlassTools]::Stats($g, $hidden, $m.glass)
-    Check "$name glass drawn" ($drawn[0] -ge 5) ("glass vs the bare wallpaper under it: " + (Fmt $drawn) + ' (pass: mean >= 5)')
+    # (a claim only for the cpu mode: a gpu backdrop that comes out black also differs from the wallpaper)
+    if ($run.mode -eq 'cpu') { Check "$name glass drawn" ($drawn[0] -ge 5) ("glass vs the bare wallpaper under it: " + (Fmt $drawn) + ' (pass: mean >= 5)') }
+    else { Note "${name}_vsBare" ("glass vs the bare wallpaper under it: " + (Fmt $drawn)) }
     if ($t -eq 'light') {
       $sHalo = [GlassTools]::Stats($g, $E, $m.halo)
       $res.vsElectron.shadowBand = StatObj $sHalo
@@ -206,7 +208,8 @@ foreach ($run in $runs) {
       if ($run.mode -eq 'cpu') { Check "$name matches Electron's dark recipe" ($sRecipe[0] -le 3) "$line (pass: glass-only mean <= 3 vs the recipe)" }
       else { Note "${name}_vsElectron" $line }
     }
-    # CPU: idle with the island up, then the wallpaper swapping every second
+    # CPU: idle with the island up, then the wallpaper swapping every second (not for a diagnostic run)
+    if ($run.quick) { $res.mem = Get-Mem $p.Id; Get-Content (Join-Path $dir 'log.txt') -ErrorAction SilentlyContinue | Select-Object -Last 8 | ForEach-Object { Say "app ${name}: $_" }; Stop-Tree $p.Id; $Results.runs[$name] = $res; Start-Sleep -Seconds 1; continue }
     $roots = @{ app = $p.Id; dwm = $dwm.Id }
     $snap = Cpu-Begin $roots
     Start-Sleep -Seconds $Seconds
