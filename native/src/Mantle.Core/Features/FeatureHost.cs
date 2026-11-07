@@ -114,6 +114,12 @@ public sealed partial class FeatureHost
     /// The names of the features resting for a game right now.
     public IReadOnlyList<string> Resting => _order.Select(n => _features[n]).Where(f => f.Resting != null).Select(f => f.Name).ToArray();
 
+    /// The one game watch every feature shares (lib/features/_game-watch.js).
+    public GameWatch GameWatch { get; } = new();
+
+    /// Where host.rest(on, why) goes (the RestCoordinator sets itself here); null = no rest in this build.
+    public IRestHost? RestHost { get; set; }
+
     /// True once StopAllAsync has begun.
     public bool IsStopping => _stopping != null;
 
