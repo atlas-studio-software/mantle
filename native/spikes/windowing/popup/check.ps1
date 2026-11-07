@@ -8,7 +8,8 @@ Add-Type -Path (Join-Path $PSScriptRoot 'CheckNative.cs')
 
 # The technique each primitive's Checks hold to the bar; the others are measured as Notes.
 $FrameWinner = 'nc'
-$HitWorks = @('nchittest', 'layered')   # click-through techniques held to the bar (run 1: both pass to another process)
+$HitWorks = @('nchittest', 'layered', 'region', 'ncregion')   # pass clicks to ANOTHER process (runs 1-2)
+$SameThreadWorks = @('layered', 'region')         # also to a window of the popup's own thread; nchittest does NOT (runs 1-2)
 $ParkWinner = 'apphide'
 $Tol = 8
 
@@ -222,7 +223,8 @@ Save-Screen 'hit-screen.png' | Out-Null
 
 $p = Start-Popup 'hit'
 # layered last: in run 1 everything after it ran with the runner's console in front (since fixed)
-$hitModes = @('none', 'nchittest', 'region', 'ncregion', 'layered')
+# ncregion straight after the control (nothing left over from another technique); the control again at the end
+$hitModes = @('none', 'ncregion', 'nchittest', 'region', 'layered', 'none-after')
 foreach ($mode in $hitModes) {
   if (-not $p) { break }
   $id++
@@ -230,7 +232,7 @@ foreach ($mode in $hitModes) {
   [void][PopupProbe]::RaiseByTitle('popup-fixture')
   Start-Sleep -Milliseconds 300
   $before = Grab $HA
-  $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$mode x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
+  $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$($mode -replace '-after$', '') x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
   if (-not $o) { continue }
   Start-Sleep -Milliseconds 800
   $after = Grab $HA
@@ -282,6 +284,30 @@ foreach ($mode in $hitModes) {
   $r.passesToOtherProcess = ($fixDown -ge 1 -and $popPass -eq 0 -and $mv -ge 1)
   $r.shapeTakesClicks = ($popShape -ge 1 -and $fixShape -eq 0)
   Note "hit_$mode" $r
+  if ($mode -like 'none*') {
+    Check "control: hit=none takes the corner click itself ($mode)" ($popPass -ge 1 -and $fixDown -eq 0 -and $ctl -ge 1) "transparent corner: popup $popPass press(es), fixture $fixDown; control click on the fixture $ctl"
+  }
+  if ($mode -eq 'region') {
+    # a window region on a WinUI window: still drawn after a resize (region re-applied), corners still anti-aliased
+    $rz = Cmd "resize id=$id w=440 h=220"
+    Start-Sleep -Milliseconds 700
+    $big = Grab $HA
+    Save-Shot 'hit-region-resized.png' $HA | Out-Null
+    $g2 = if ($rz) { Test-Glass $rz $before $big $HA } else { @{ ok = $false } }
+    Check 'region: still drawn after a resize' ([bool]$rz -and $g2.ok) "$(if ($rz) { GlassText $g2 } else { 'no reply' })"
+    Cmd "close id=$id" | Out-Null
+    $id++
+    $o2 = Cmd "open id=$id frame=$FrameWinner theme=light fill=solid hit=region x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
+    Start-Sleep -Milliseconds 700
+    $after2 = Grab $HA
+    if ($o2) {
+      $s = $o2.shape
+      Save-Shot 'corner-region.png' @{ x = $s.x - 6; y = $s.y - 6; w = 48; h = 48 } | Out-Null
+      $aa = [PopupProbe]::CornerAA($before, $after2, $HA.w, $s.x - $HA.x, $s.y - $HA.y, $s.w, $s.h, $s.r, 255, 0, 255)
+      $st3 = Stray $before $after2 $HA $s
+      Check 'region: corners still anti-aliased, nothing outside' ($aa[1] -ge 8 -and $aa[2] -eq 0 -and $aa[4] -eq 0 -and $st3.changed -eq 0) "arc band $($aa[0]) px, $($aa[1]) partly covered; inside not full $($aa[2]); painted outside the arc $($aa[4]); stray $($st3.changed)"
+    } else { Check 'region: corners still anti-aliased, nothing outside' $false 'no reply' }
+  }
   if ($mode -eq 'none' -or $HitWorks -contains $mode) {
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 300
     Note "hit_${mode}_cpu" (Get-Cpu $p.Id 10)
@@ -309,7 +335,7 @@ foreach ($mode in $hitModes) {
   Start-Sleep -Milliseconds 300
 }
 # A window of the popup's OWN thread under the transparent corner (Mantle's case: a popup over its
-# own bar). HTTRANSPARENT is documented to pass only to those; layered passes to anything.
+# own bar). Documented: HTTRANSPARENT passes only to those. Measured here (runs 1-2): the opposite.
 if ($p) {
   foreach ($mode in $HitWorks) {
     $id++
@@ -323,7 +349,12 @@ if ($p) {
     $ev = Cmd 'events'
     $same = [ordered]@{ fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
     Note "hit_${mode}_sameThread" $same
-    Check "click-through to a window of the popup's own thread: hit=$mode" ($same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) "same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
+    $sd = "same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
+    if ($SameThreadWorks -contains $mode) {
+      Check "click-through to a window of the popup's own thread: hit=$mode" ($same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) $sd
+    } elseif ($mode -eq 'nchittest') {
+      Check "HTTRANSPARENT does NOT reach a window of the popup's own thread (the popup keeps the click)" ($same.fixtureSameThreadPressed -eq 0 -and $same.popupPressed -ge 1) $sd
+    }
     Cmd "close id=$id" | Out-Null
     Cmd 'unfixture' | Out-Null
     Start-Sleep -Milliseconds 300
