@@ -121,17 +121,17 @@ Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the
 # gate stays -MinSsim / -MaxDiffPct for everything else) and gets its own line per theme:
 #   PARITY known-gap <id> <theme>: still there (diffpx X% in its area) - <what>; owner <lane>
-#   PARITY known-gap <id> <theme>: NOT seen any more (diffpx X%): remove it from $knownGaps so the gate covers it
+#   PARITY known-gap <id> <theme>: NOT seen any more (diffpx X%): remove it from $gapList so the gate covers it
 # Measured on the runner at 1920x1080, 100 % (run 42355091758, native/infra 0f4532b), relative to the pill's right
 # end. -KnownGaps $false scores the whole crop as before.
 $pillR = $pillX + $pw
-$knownGaps = @(
+$gapList = @(
   [ordered]@{ id = 'right-cluster'; owner = 'the bar lane'; rect = @(($pillR - 340), $pillY, 152, $pillH)
     what = 'the native right cluster (divider, downloads, volume, network) sits ~18 px further right than Electron''s' }
   [ordered]@{ id = 'more-dot'; owner = 'the bar lane'; rect = @(($pillR - 28), ($pillY + 6), 20, 20)
     what = 'Electron shows an orange dot on "more"; the native bar has none' }
 )
-if (-not $KnownGaps) { $knownGaps = @() }
+if (-not $KnownGaps) { $gapList = @() }
 
 # The runner's taskbar must not cover the bar when a capture is scored: a covered capture is a problem, not a score.
 function Clear-Taskbar([string]$tag) {
@@ -190,7 +190,7 @@ foreach ($t in $themes) {
   Set-WinTheme $t; Start-Sleep -Seconds 2
   $r = [ordered]@{ theme = $t; crop = $crop; masks = @(, $clockSlot) }
   if ($MaskApps) { $r.masks += , $appsSlot }
-  foreach ($g in $knownGaps) { $r.masks += , $g.rect }
+  foreach ($g in $gapList) { $r.masks += , $g.rect }
   $ePx = $null; $nPx = $null
 
   # Electron Mantle (--test instance, made visible)
@@ -245,12 +245,12 @@ foreach ($t in $themes) {
       meanAbsRGB = @([Math]::Round($s.MeanAbsR, 2), [Math]::Round($s.MeanAbsG, 2), [Math]::Round($s.MeanAbsB, 2))
       compared = $s.Compared; masked = $s.Masked; pixelThreshold = $PixelThreshold }
     $r.knownGaps = @()
-    foreach ($g in $knownGaps) {
+    foreach ($g in $gapList) {
       $gd = [ParityNative]::RegionDiff($ePx, $nPx, $crop.w, $crop.h, ($g.rect[0] - $crop.x), ($g.rect[1] - $crop.y), $g.rect[2], $g.rect[3], $PixelThreshold)
       $still = $gd[0] -ge 1.0
       $r.knownGaps += [ordered]@{ id = $g.id; stillThere = $still; diffPxPct = [Math]::Round($gd[0], 2); meanAbs = [Math]::Round($gd[1], 2); rect = $g.rect; what = $g.what; owner = $g.owner }
       if ($still) { Write-Host ("PARITY known-gap {0} {1}: still there (diffpx {2:N2}% in its area) - {3}; owner {4}" -f $g.id, $t, $gd[0], $g.what, $g.owner) }
-      else { Write-Host ("PARITY known-gap {0} {1}: NOT seen any more (diffpx {2:N2}%): remove it from `$knownGaps in run-parity.ps1 so the gate covers that area again" -f $g.id, $t, $gd[0]) }
+      else { Write-Host ("PARITY known-gap {0} {1}: NOT seen any more (diffpx {2:N2}%): remove it from `$gapList in run-parity.ps1 so the gate covers that area again" -f $g.id, $t, $gd[0]) }
     }
     $pass = ($s.Ssim -ge $MinSsim) -and ($s.DiffPxPct -le $MaxDiffPct)
     $r.ok = $pass
@@ -265,7 +265,7 @@ if (-not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction 
 # The taskbar stays on auto-hide (runner only): later stages measure the bottom edge too.
 $results | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $Out 'parity.json')
 $parts = @(foreach ($t in $results.Keys) { $x = $results[$t]; if ($x.score) { "$t ssim=$($x.score.ssim) diffpx=$($x.score.diffPxPct)%" } else { "$t no score" } })
-if ($knownGaps.Count) { $parts += 'known gaps masked: ' + (($knownGaps | ForEach-Object { $_.id }) -join ', ') + ' (see the known-gap lines)' }
+if ($gapList.Count) { $parts += 'known gaps masked: ' + (($gapList | ForEach-Object { $_.id }) -join ', ') + ' (see the known-gap lines)' }
 if ($problems.Count -eq 0) { Write-Host ("PARITY: ok (" + ($parts -join '; ') + ")"); exit 0 }
 Write-Host ("PARITY: FAILED (" + ($parts -join '; ') + "; " + $problems.Count + " problem(s): " + ($problems -join '; ') + ")")
 exit 1

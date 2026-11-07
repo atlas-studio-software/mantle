@@ -245,7 +245,7 @@ function Stage-smoke {
         if ($txt -notlike "*$want*") { $fails.Add("the log has no '$want'") }
       }
       if (Test-Path $fixtures) {
-        $read = @(Get-Content $nativeLog | Where-Object { $_ -match ' data: (theme\.json|look-sync\.json|look\.json|features\.json|features\jumplist\.json): ' })
+        $read = @(Get-Content $nativeLog | Where-Object { $_ -match ' data: (theme\.json|look-sync\.json|look\.json|features\.json|features\\jumplist\.json): ' })
         $notes.Add('data files: ' + (($read | ForEach-Object { ($_ -replace '^.*? data: ', '') -replace '^(.{90}).+$', '$1...' }) -join ' | '))
         foreach ($f in $dataFiles) {
           if (-not ($read | Where-Object { $_ -like "* data: ${f}: ok*" })) { $fails.Add("data file $f was not read as ok from the fixture profile ($(@($read | Where-Object { $_ -like "* data: ${f}:*" })[0]))") }
@@ -410,7 +410,7 @@ function Desk-During([string]$tag, [int]$from) {
   $shown = @($new | Where-Object { $_ -match ' taskbar shown ' })
   $last = @($new | Where-Object { $_ -match ' taskbar (shown|hidden)' } | Select-Object -Last 1)
   $who = @($flash | ForEach-Object { ($_ -replace '^\S+ FLASH ', '') -replace " \d+ '", " '" } | Group-Object | ForEach-Object { "$($_.Name) x$($_.Count)" })
-  Say ("  DESK $tag during: taskbar shown $($shown.Count)x" + $(if ($last) { ", ends $(($last[0] -split ' ')[2])" } else { '' }) +
+  Say ("  DESK $tag during: taskbar shown $($shown.Count)x" + $(if ($last) { ", ends $((($last[0] -split ' ')[2]).TrimEnd(';'))" } else { '' }) +
     "; $($flash.Count) attention request(s)" + $(if ($who.Count) { ': ' + ($who -join '; ') } else { '' }))
   foreach ($l in @($new | Where-Object { $_ -match ' (FLASH|taskbar shown) ' } | Select-Object -First 6)) { Say ('    ' + (Short $l)) }
 }
