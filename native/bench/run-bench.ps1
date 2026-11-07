@@ -482,7 +482,28 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   $cells = if (Test-Path $cellsPath) { @((Get-Content $cellsPath -Raw | ConvertFrom-Json).cells) } else { @() }
   $focus.cells = @($cells | ForEach-Object { "$($_.name)$(if ($_.hasIcon) { '' } else { ' (no icon)' })" })
   function CellOf([string]$name) { $cells | Where-Object { $_.name -ieq $name } | Select-Object -First 1 }
-  function ClickCell($c) { [BenchNative]::Click([int]($c.x + $c.w / 2), [int]($c.y + $c.h / 2)) | Out-Null; Start-Sleep -Milliseconds 700 }
+  # Running-only apps follow the z-order as in Electron (BAR-289): a focused app moves to the front of them and a
+  # minimised one to the back, so every click finds its cell again in a fresh, settled cells.json (the strip
+  # rebuilds at most once a second, so it is read 1.5 s after the last click at the earliest and only once two
+  # reads 400 ms apart agree).
+  $script:lastClickAt = 0
+  function CellNow([string]$name) {
+    $until = (NowMs) + 5000
+    do {
+      $since = (NowMs) - $script:lastClickAt
+      if ($since -lt 1500) { Start-Sleep -Milliseconds (1500 - $since) }
+      $t1 = if (Test-Path $cellsPath) { Get-Content $cellsPath -Raw } else { '' }
+      Start-Sleep -Milliseconds 400
+      $t2 = if (Test-Path $cellsPath) { Get-Content $cellsPath -Raw } else { '' }
+    } while ($t1 -ne $t2 -and (NowMs) -lt $until)
+    if (-not $t2) { return $null }
+    return @(($t2 | ConvertFrom-Json).cells) | Where-Object { $_.name -ieq $name } | Select-Object -First 1
+  }
+  function ClickCell($cell) {
+    $c = CellNow $cell.n
+    if (-not $c) { Problem "$tag the $($cell.n) cell is gone from cells.json before a click"; return }
+    [BenchNative]::Click([int]($c.x + $c.w / 2), [int]($c.y + $c.h / 2)) | Out-Null; $script:lastClickAt = NowMs; Start-Sleep -Milliseconds 700
+  }
   $np = CellOf 'notepad'; $cm = CellOf 'charmap'
   $focus.icons = [bool]($np -and $cm -and $np.hasIcon -and $cm.hasIcon)
   if (-not $focus.icons) { Problem "$tag notepad/charmap cells missing or without their real icon (cells: $($focus.cells -join ', '))" }
@@ -495,10 +516,10 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
     $a = @{ c = $np; pid = $notepadPid; n = 'notepad' }; $b = @{ c = $cm; pid = $charmapPid; n = 'charmap' }
     if ($fgNow -eq $notepadPid) { $a, $b = $b, $a }
     $focus.order = "$($a.n), then $($b.n) (in front before: $(PName $fgNow))"
-    ClickCell $a.c; $focus.clickBringsAFront = ([BenchNative]::ForegroundPid() -eq $a.pid)
-    ClickCell $b.c; $focus.clickBringsBFront = ([BenchNative]::ForegroundPid() -eq $b.pid)
-    ClickCell $b.c; $focus.clickAgainMinimizes = [BenchNative]::AnyIconic($b.pid)
-    ClickCell $b.c; $focus.clickAgainRestores = (-not [BenchNative]::AnyIconic($b.pid)) -and ([BenchNative]::ForegroundPid() -eq $b.pid)
+    ClickCell $a; $focus.clickBringsAFront = ([BenchNative]::ForegroundPid() -eq $a.pid)
+    ClickCell $b; $focus.clickBringsBFront = ([BenchNative]::ForegroundPid() -eq $b.pid)
+    ClickCell $b; $focus.clickAgainMinimizes = [BenchNative]::AnyIconic($b.pid)
+    ClickCell $b; $focus.clickAgainRestores = (-not [BenchNative]::AnyIconic($b.pid)) -and ([BenchNative]::ForegroundPid() -eq $b.pid)
     $shots += Save-Shot "$tag-after-clicks.png" $shot
     foreach ($k in 'clickBringsAFront', 'clickBringsBFront', 'clickAgainMinimizes', 'clickAgainRestores') { if (-not $focus[$k]) { Problem "$tag focus check $k failed ($($focus.order))" } }
   }

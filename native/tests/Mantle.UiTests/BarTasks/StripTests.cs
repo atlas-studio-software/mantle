@@ -23,9 +23,16 @@ public class StripTests
     [TestCleanup]
     public void Cleanup()
     {
-        if (TestContext.CurrentTestOutcome != UnitTestOutcome.Passed && Host.Allowed) Host.Screenshot(TestContext.TestName ?? "test");
+        if (TestContext.CurrentTestOutcome != UnitTestOutcome.Passed && Host.Allowed) {
+            Host.Screenshot(TestContext.TestName ?? "test");
+            // the app's whole log, for what its UI thread and the strip did around a failed click
+            if (_profile != null && File.Exists(LogPath(_profile)))
+                try { File.WriteAllText(Path.Combine(Host.OutDir, $"strip-{_profile}-{DateTime.Now:HHmmss}-native-log.txt"), LogSince(_profile, 0)); } catch (IOException) { }
+        }
         Host.KillAll();
     }
+
+    string? _profile;
 
     static string PowerShellExe => Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe");
     static string CharmapExe => Path.Combine(Environment.SystemDirectory, "charmap.exe");
@@ -95,6 +102,16 @@ public class StripTests
     }
 
     static DateTime _lastClick = DateTime.MinValue;
+    static Point _lastAt;
+
+    /// Where the last click went: the point, the window under it now, and where the named cell is now.
+    static string Landed(BarApp app, string name)
+    {
+        var cs = Cells(app);
+        var c = Named(cs, name);
+        IntPtr top = GetAncestor(WindowFromPoint(_lastAt), 2);
+        return $"clicked at {_lastAt}, under it now: '{Win32.Title(top)}' pid {PidAt(_lastAt)} (the app is {app.Proc.Id}); {name} now at {(c != null ? c.Rect.ToString() : "nowhere")}; cells {Describe(cs)}";
+    }
 
     /// A click at the cell's centre; never within 700 ms of the last one, so two clicks on one cell are never a double-click.
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
@@ -117,6 +134,7 @@ public class StripTests
         }
         Mouse.Click(at, button);
         _lastClick = DateTime.UtcNow;
+        _lastAt = at;
         Thread.Sleep(400);
     }
 
@@ -146,6 +164,7 @@ public class StripTests
         // made out of order on purpose: with no Favorites value the pins fall back to alphabetical order (lib/pinned.js)
         var pins = PinFolder("order-" + tag, ("Gamma Reg", RegeditExe), ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
         const string profile = "uitest-strip-order";
+        _profile = profile;
         using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
         using var a = new Host.Fixture($"Strip pinned {tag}", 60, 60);                 // powershell.exe: Alpha Shell's app
         using var b = new Host.Fixture($"Strip running {tag}", 520, 60, "pwsh.exe");   // pinned by nobody: after the divider
@@ -212,6 +231,7 @@ public class StripTests
     public void Clicks_launch_a_pin_as_a_dry_run_focus_and_minimise_its_window_and_middle_click_asks_for_another()
     {
         const string profile = "uitest-strip-click";
+        _profile = profile;
         string tag = Guid.NewGuid().ToString("N")[..6];
         var pins = PinFolder("click-" + tag, ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
         using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
@@ -227,7 +247,7 @@ public class StripTests
         Click(Named(cs, "Beta Map")!);
         string log = "";
         Assert.IsTrue(Host.Until(() => { log = LogSince(profile, at); return log.Contains("launch dry run", StringComparison.Ordinal); }, 6000, 200),
-            $"no dry-run line after a click on a pin that is not running; the log since: {Tail(log)}");
+            $"no dry-run line after a click on a pin that is not running ({Landed(app, "Beta Map")}); the log since: {Tail(log)}");
         StringAssert.Contains(log, "would open", $"the dry run does not say it would open the shortcut: {Tail(log)}");
         StringAssert.Contains(log, "Beta Map.lnk", $"the dry run names another shortcut: {Tail(log)}");
         Thread.Sleep(800);

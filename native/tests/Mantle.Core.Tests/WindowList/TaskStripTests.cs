@@ -167,21 +167,32 @@ public class TaskStripTests
     }
 
     [Fact]
-    public void Running_only_apps_keep_their_first_seen_place_when_focus_or_minimise_reorders_the_windows()
+    public async Task Running_only_apps_follow_the_z_order_so_focus_and_minimise_move_them_and_a_dragged_order_wins()
     {
-        var o = new FirstSeenOrder();
-        static TaskItem R(string id) => new("running:" + id, id, "running", null, null, null, "x", new[] { new TaskWindow("1", 1, id, false, false) });
-        static TaskItem P(string id) => new(id, id, "pinned", null, null, null, "x", Array.Empty<TaskWindow>());
-        static string[] Ids(List<TaskItem> l) => l.Select(x => x.Id).ToArray();
-        Assert.Equal(new[] { "p", "running:a", "running:b", "running:c" }, Ids(o.Apply(new() { P("p"), R("a"), R("b"), R("c") }, true)));
-        // the sidecar's z-order after c is focused and a minimised: the strip does not move
-        Assert.Equal(new[] { "p", "running:a", "running:b", "running:c" }, Ids(o.Apply(new() { P("p"), R("c"), R("b"), R("a") }, true)));
-        // b closes and d opens: d goes last; b back again goes after d
-        Assert.Equal(new[] { "p", "running:a", "running:c", "running:d" }, Ids(o.Apply(new() { P("p"), R("d"), R("c"), R("a") }, true)));
-        Assert.Equal(new[] { "p", "running:a", "running:c", "running:d", "running:b" }, Ids(o.Apply(new() { P("p"), R("b"), R("d"), R("c"), R("a") }, true)));
-        // a running list that was not read cleanly forgets nobody
-        o.Apply(new() { P("p") }, false);
-        Assert.Equal(new[] { "running:a", "running:c" }, Ids(o.Apply(new() { R("c"), R("a") }, true)));
+        // main.js#buildPinned BAR-289: running-only apps in the sidecar's EnumWindows order (the z-order), then
+        // lib/features/_jumplist-pins.js#orderRunning: this session's dragged order, pruned on a clean read.
+        var ro = new RunningOrder();
+        async Task<string[]> Build(params WinEntry[] ws) => (await TaskStripBuilder.BuildAsync(new TaskStripBuilder.Input {
+            Running = ws, RunningOrder = ro,
+            Pins = new PinnedResult(true, null, new[] { MkPin("p.lnk", @"c:\x\p.exe", 0) }),
+        })).Items.Select(i => i.Id).ToArray();
+        static WinEntry A(bool fg = false, bool min = false) => W("1", @"C:\x\a.exe", fg: fg, min: min);
+        static WinEntry B(bool fg = false) => W("2", @"C:\x\b.exe", fg: fg);
+        static WinEntry C(bool fg = false) => W("3", @"C:\x\c.exe", fg: fg);
+        static WinEntry P() => W("4", @"C:\x\p.exe");
+        const string a = @"running:c:\x\a.exe", b = @"running:c:\x\b.exe", c = @"running:c:\x\c.exe";
+        Assert.Equal(new[] { "p.lnk", a, b, c }, await Build(A(fg: true), P(), B(), C()));
+        // c focused: it is at the top of the z-order, so it leads the running-only apps; the pin never moves
+        Assert.Equal(new[] { "p.lnk", c, a, b }, await Build(C(fg: true), A(), P(), B()));
+        // a minimised: Windows puts it at the bottom of the z-order, so it goes last
+        Assert.Equal(new[] { "p.lnk", c, b, a }, await Build(C(fg: true), P(), B(), A(min: true)));
+        // a dragged order wins over the z-order; ids it does not name keep their z-order after it
+        ro.Set(new[] { b });
+        Assert.Equal(new[] { "p.lnk", b, c, a }, await Build(C(fg: true), P(), B(), A(min: true)));
+        // b closes on a clean read: it is forgotten, so when it starts again it is in z-order like any other
+        Assert.Equal(new[] { "p.lnk", c, a }, await Build(C(fg: true), A()));
+        Assert.Empty(ro.Current);
+        Assert.Equal(new[] { "p.lnk", b, c, a }, await Build(B(fg: true), C(), A()));
     }
 
     [Fact]
