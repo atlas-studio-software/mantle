@@ -26,7 +26,7 @@ internal sealed class AppEntry
     public bool AllMinimized;
 }
 
-internal sealed class WindowList : IDisposable
+internal sealed partial class WindowList : IDisposable
 {
     static readonly HashSet<string> SkipClasses = new(StringComparer.Ordinal) {
         "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd",
