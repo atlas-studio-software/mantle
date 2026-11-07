@@ -28,19 +28,26 @@ public sealed class DataPaths
     public string LookSyncDir { get; }
     /// Native's own log file.
     public string LogFile { get; }
-    /// True when the root is the user's real profile (not --test, not --user-data).
+    /// True when the root is the user's real profile: the live run, or a --user-data / --test root that
+    /// resolves to the same folder (so a mistyped flag can never open the gate on the user's own files).
     public bool IsUserProfile { get; }
+    /// True when the look folder is the user's real shared one (%APPDATA%\look-sync), whatever the flags.
+    public bool IsUserLook { get; }
     /// One line for the log: which root and why.
     public string Why { get; }
 
-    DataPaths(string root, string lookDir, bool user, string why)
+    DataPaths(string root, string lookDir, bool user, string why, string appData)
     {
         DataRoot = Path.TrimEndingDirectorySeparator(Path.GetFullPath(root));
         LookSyncDir = Path.TrimEndingDirectorySeparator(Path.GetFullPath(lookDir));
         LogFile = Path.Combine(DataRoot, LogFileName);
-        IsUserProfile = user;
+        IsUserProfile = user || Same(DataRoot, Path.Combine(appData, "mantle"));
+        IsUserLook = Same(LookSyncDir, Path.Combine(appData, "look-sync"));
         Why = why;
     }
+
+    static bool Same(string a, string b)
+        => string.Equals(Path.TrimEndingDirectorySeparator(Path.GetFullPath(a)), Path.TrimEndingDirectorySeparator(Path.GetFullPath(b)), StringComparison.OrdinalIgnoreCase);
 
     /// <param name="args">parsed and valid (args.Ok)</param>
     /// <param name="env">environment lookup (Environment.GetEnvironmentVariable in the app)</param>
@@ -51,12 +58,12 @@ public sealed class DataPaths
         string? lookEnv = env("LOOK_SYNC_DIR") is { Length: > 0 } ls ? ls : null;
         if (args.UserData != null) {
             string root = args.UserData;
-            return new DataPaths(root, lookEnv ?? Path.Combine(root, "look-sync"), false, "--user-data");
+            return new DataPaths(root, lookEnv ?? Path.Combine(root, "look-sync"), false, "--user-data", appData);
         }
         if (args.Test) {
             string root = Path.Combine(tempDir, "mantle-test-" + args.ProfileName);
-            return new DataPaths(root, lookEnv ?? Path.Combine(root, "look-sync"), false, "--test --profile-name=" + args.ProfileName);
+            return new DataPaths(root, lookEnv ?? Path.Combine(root, "look-sync"), false, "--test --profile-name=" + args.ProfileName, appData);
         }
-        return new DataPaths(Path.Combine(appData, "mantle"), lookEnv ?? Path.Combine(appData, "look-sync"), true, "the user's profile");
+        return new DataPaths(Path.Combine(appData, "mantle"), lookEnv ?? Path.Combine(appData, "look-sync"), true, "the user's profile", appData);
     }
 }

@@ -1,0 +1,2 @@
+# Byte-exact fixtures: never convert line endings (CI checks out with autocrlf).
+* -text
