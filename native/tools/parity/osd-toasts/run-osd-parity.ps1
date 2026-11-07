@@ -47,7 +47,9 @@ $pick = @($States -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $al
 # ---- Electron
 $specs = @($pick | ForEach-Object { "$_=$($all[$_].q)" })
 Say "Electron page: $($specs -join ' ')"
-& node (Join-Path $PSScriptRoot 'electron-osd.cjs') $Out $Bg @specs
+$electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
+if (-not (Test-Path $electron)) { throw "no Electron at $electron (npm ci first; the recipe's setup does)" }
+& $electron (Join-Path $PSScriptRoot 'electron-osd.cjs') $Out $Bg @specs 2>&1 | Where-Object { "$_" -match 'ELECTRON-OSD' } | ForEach-Object { Write-Host "$_" }
 if ($LASTEXITCODE) { throw "electron-osd.cjs failed ($LASTEXITCODE)" }
 
 # ---- the backdrop: one solid colour behind the native window (another process, not topmost)
