@@ -276,7 +276,7 @@ namespace Mantle.Sidecar.Tests {
     public void FrameworkHash_MatchesDotNetFramework() {
       string ps = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.System), "WindowsPowerShell", "v1.0", "powershell.exe");
       if (!File.Exists(ps)) Assert.Inconclusive("no Windows PowerShell 5.1 to ask");
-      string[] samples = { "", "a", "ab", "abc", "abcd", "abcde", "{0.0.0.00000000}.{5a7d3e1b-1c4f-4f8a-9b1e-123456789abc}|#%b{9f2e}", "é中😀", "Mantle.Sidecar" };
+      string[] samples = { "", "a", "ab", "abc", "abcd", "abcde", "{0.0.0.00000000}.{5a7d3e1b-1c4f-4f8a-9b1e-123456789abc}|#%b{9f2e}", "é中😀", "Mantle.Sidecar", "ab" + (char)0 + "cd" };
       var psi = new ProcessStartInfo(ps, "-NoProfile -NonInteractive -Command -") {
         UseShellExecute = false, RedirectStandardInput = true, RedirectStandardOutput = true, CreateNoWindow = true, StandardOutputEncoding = new UTF8Encoding(false)
       };
