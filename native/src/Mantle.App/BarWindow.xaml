@@ -118,28 +118,34 @@
         </local:UiaItemsControl.ItemsPanel>
         <local:UiaItemsControl.ItemTemplate>
           <DataTemplate x:DataType="local:CellVm">
-            <Button Style="{StaticResource LgBtn}" Width="36" Click="Cell_Click" Tag="{x:Bind}"
-                    AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
-                    AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
-                    AutomationProperties.HelpText="{x:Bind ExeName}"
-                    ToolTipService.ToolTip="{x:Bind Name}">
-              <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
-                <Grid Width="24" Height="24" CornerRadius="6">
-                  <Border Background="{ThemeResource LgTile}" Visibility="{x:Bind TileVisibility}">
-                    <TextBlock Text="{x:Bind Letter}" FontSize="12.5" FontWeight="SemiBold" CharacterSpacing="20"
-                               Foreground="{ThemeResource LgInk}" FontFamily="{StaticResource LgFont}"
-                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
-                  </Border>
-                  <Image Source="{x:Bind Icon}" Width="24" Height="24" Visibility="{x:Bind IconVisibility}"/>
-                </Grid>
-                <Grid Height="3" Width="16">
-                  <Border Width="6" Height="3" CornerRadius="1.5" Background="{ThemeResource LgInk2}"
-                          HorizontalAlignment="Center" Visibility="{x:Bind RunVisibility, Mode=OneWay}"/>
-                  <Border Width="16" Height="3" CornerRadius="1.5" Background="{ThemeResource LgAcc}"
-                          HorizontalAlignment="Center" Visibility="{x:Bind ActVisibility, Mode=OneWay}"/>
-                </Grid>
-              </StackPanel>
-            </Button>
+            <!-- bar.js renderDock / bar.css .dock .div: a 1x22 hairline, 3 px each side, before the first running-only app -->
+            <StackPanel Orientation="Horizontal">
+              <Rectangle Width="1" Height="22" Margin="3,0,9,0" VerticalAlignment="Center" Fill="{ThemeResource LgEdgeOut}"
+                         Visibility="{x:Bind DividerVisibility, Mode=OneWay}"/>
+              <Button Style="{StaticResource LgBtn}" Width="36" Click="Cell_Click" PointerReleased="Cell_PointerReleased" Tag="{x:Bind}"
+                      AutomationProperties.AutomationId="{x:Bind AutomationId, Mode=OneWay}"
+                      AutomationProperties.Name="{x:Bind Title, Mode=OneWay}"
+                      AutomationProperties.HelpText="{x:Bind ExeName, Mode=OneWay}"
+                      ToolTipService.ToolTip="{x:Bind Tip, Mode=OneWay}">
+                <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                  <Grid Width="24" Height="24" CornerRadius="6">
+                    <Border Background="{ThemeResource LgTile}" Visibility="{x:Bind TileVisibility, Mode=OneWay}">
+                      <TextBlock Text="{x:Bind Letter, Mode=OneWay}" FontSize="12.5" FontWeight="SemiBold" CharacterSpacing="20"
+                                 Foreground="{ThemeResource LgInk}" FontFamily="{StaticResource LgFont}"
+                                 HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                    </Border>
+                    <Image Source="{x:Bind Icon, Mode=OneWay}" Width="24" Height="24" Visibility="{x:Bind IconVisibility, Mode=OneWay}"/>
+                  </Grid>
+                  <!-- .cell .ind: laid out for every cell (hidden, not absent) so an icon never shifts when an app opens -->
+                  <Grid Height="3" Width="16">
+                    <Border Width="6" Height="3" CornerRadius="1.5" Background="{ThemeResource LgInk2}"
+                            HorizontalAlignment="Center" Visibility="{x:Bind RunVisibility, Mode=OneWay}"/>
+                    <Border Width="16" Height="3" CornerRadius="1.5" Background="{ThemeResource LgAcc}"
+                            HorizontalAlignment="Center" Visibility="{x:Bind ActVisibility, Mode=OneWay}"/>
+                  </Grid>
+                </StackPanel>
+              </Button>
+            </StackPanel>
           </DataTemplate>
         </local:UiaItemsControl.ItemTemplate>
       </local:UiaItemsControl>
