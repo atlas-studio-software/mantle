@@ -245,7 +245,7 @@ public sealed class ShellGuard
     void OnDied(JsonElement m)
     {
         if (_o.Test) return;
-        string how = m.ValueKind == JsonValueKind.Object && m.TryGetProperty("code", out var c) && c.TryGetInt32(out int code)
+        string how = m.ValueKind == JsonValueKind.Object && m.TryGetProperty("code", out var c) && c.TryGetInt64(out long code)
             ? "code " + code.ToString(CultureInfo.InvariantCulture)
             : Str(m, "signal") is { } sig ? "killed by " + sig : "code unknown";
         if (_lastRestoreDone == true) { MarkRestored($"the sidecar restored Windows and then exited ({how})"); return; }
@@ -326,8 +326,7 @@ public sealed class ShellGuard
     {
         try { await prev.ConfigureAwait(true); } catch (Exception) { /* the earlier one said its own failure */ }
         try { await Restore(why).ConfigureAwait(true); }
-        catch (Exception e) { _o.Log($"mantle: restore path threw, which it never should: {e}
-    run: {_o.RecoveryCommand}"); }
+        catch (Exception e) { _o.Log($"mantle: restore path threw, which it never should: {e}\n    run: {_o.RecoveryCommand}"); }
     }
 
     async Task Restore(string why)

@@ -2,6 +2,7 @@ using System;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using Mantle.Core;
 using Mantle.Core.Data;
 using Mantle.Core.Logging;
@@ -22,11 +23,20 @@ internal static class Host
     public static MantleData Data = null!;
     public static SingleInstance Instance = null!;
     public static bool Quiet;
+    /// THE ONE write gate for this run (Data/WriteGate, told about Electron by Safety/TwoShells) and its writer.
+    public static WriteGate Gate = null!;
+    public static SafeFile Files = null!;
+    public static string StateFile => Path.Combine(Paths.DataRoot, "shell-state.json");
+    public static string RestoreScript => Path.Combine(AppContext.BaseDirectory, "tools", "restore-windows.ps1");
+    public static string RecoveryCommand => "powershell -NoProfile -ExecutionPolicy Bypass -File \"" + RestoreScript + "\" -StateFile \"" + StateFile + "\"";
     public static string? Env(string name) => Environment.GetEnvironmentVariable(name);
 }
 
 internal static class Program
 {
+    /// The exit code the ONE shutdown chose (0, or 1 after an uncaught error).
+    public static int ExitCode;
+
     [DllImport("Microsoft.ui.xaml.dll")]
     static extern void XamlCheckProcessRequirements();
 
@@ -52,7 +62,19 @@ internal static class Program
         }
 
         var paths = DataPaths.Resolve(args, Host.Env, Path.GetTempPath());
-        var log = new MantleLog(paths.LogFile, new LogOptions {
+        // LOG-001: --log=<path> is the file (appending, the folder made), and every line still reaches the terminal.
+        // Electron's own mantle.log in the user's profile is never taken over: native keeps its own file there.
+        string logFile = paths.LogFile;
+        string? logNote = null;
+        if (args.LogPath is { } wanted) {
+            string full = Path.GetFullPath(wanted);
+            bool electrons = paths.IsUserProfile && string.Equals(Path.GetDirectoryName(full), Path.GetFullPath(paths.DataRoot).TrimEnd(Path.DirectorySeparatorChar), StringComparison.OrdinalIgnoreCase)
+                && Path.GetFileName(full).StartsWith("mantle.log", StringComparison.OrdinalIgnoreCase);
+            if (electrons) logNote = $"--log={wanted} names Electron Mantle's own log, so native logs to {logFile} instead";
+            else logFile = full;
+        }
+        var log = new MantleLog(logFile, new LogOptions {
+            Echo = args.LogPath != null ? (line => Say(Console.Out, line)) : null,
             Scrub = LogScrubber.ForThisMachine(),
             MirrorFile = args.BenchOut != null ? Path.Combine(args.BenchOut, "native-log.txt") : null,
         });
@@ -61,6 +83,9 @@ internal static class Program
         marks.Add("main");
         log.Line($"data root: {paths.DataRoot} ({paths.Why}); shared look: {paths.LookSyncDir}");
         foreach (var u in args.Unknown) log.Line("argument not understood (ignored): " + u);
+        if (logNote != null) log.Line(logNote);
+        var rejections = new Mantle.Core.Lifecycle.RejectionLog(log.Line);
+        TaskScheduler.UnobservedTaskException += (_, e) => { rejections.Note(e.Exception.GetBaseException()); e.SetObserved(); };
 
         string key = InstanceKey.For(paths.DataRoot);
         var claim = SingleInstance.TryClaim(key, out string claimWhy);
@@ -104,7 +129,7 @@ internal static class Program
         }
         if (args.Kind == RunKind.Live) {
             // NEVER TWO SHELLS (SAFE-038): Electron Mantle running live owns the taskbar, the hooks and the app bar
-            string electron = System.IO.Path.Combine(Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "mantle");
+            string electron = Mantle.Core.Safety.TwoShells.ElectronProfile(Host.Env);
             string? refusal = Mantle.Core.Safety.TwoShells.Verdict(Mantle.Core.Safety.TwoShells.Probe(electron, Mantle.Core.Safety.TwoShells.InstalledExe(Host.Env)));
             if (refusal != null) {
                 log.Line("mantle: " + refusal);
@@ -123,6 +148,10 @@ internal static class Program
         Host.Quiet = TestQuiet.Wanted(args, Host.Env);
         log.Line(TestQuiet.Describe(args, Host.Env));
 
+        Host.Gate = Mantle.Core.Safety.TwoShells.Gate(paths, args, Host.Env);
+        Host.Files = new SafeFile(Host.Gate);
+        log.Line("writes: " + Host.Gate.Describe());
+
         var data = new MantleData(paths, log);
         data.Load();
         Host.Data = data;
@@ -138,6 +167,7 @@ internal static class Program
                 _ = new MantleApp();
             });
             log.Line("exit: the app loop ended");
+            code = ExitCode;
         } catch (Exception e) {
             log.Line("exit: FAILED: " + e);
             code = 1;
