@@ -24,6 +24,7 @@ internal sealed class PopupWindow
     public Win32.RECT Rect { get; private set; }
     public bool Parked { get; private set; }
     public bool Painted { get; set; }
+    bool _activated;
 
     public PopupWindow(string key, string name, bool focusable, bool instant, bool dark, UIElement body)
     {
@@ -66,6 +67,14 @@ internal sealed class PopupWindow
     public void Show()
     {
         if (Parked) { WindowKinds.Cloak(Hwnd, false); Parked = false; }
+        else if (!_activated) {
+            // WinUI starts drawing a window's content at its first Activate; a no-focus kind gives the foreground
+            // straight back to the app that had it (the bar's own first show does the same)
+            _activated = true;
+            IntPtr prev = Win32.GetForegroundWindow();
+            Win.Activate();
+            if (!Focusable && prev != IntPtr.Zero && prev != Hwnd && Win32.GetForegroundWindow() == Hwnd) Win32.SetForegroundWindow(prev);
+        }
         else Win32.ShowWindow(Hwnd, Win32.SW_SHOWNOACTIVATE);
         WindowKinds.StripFrame(Hwnd);   // the presenter puts frame bits back at a show
     }
