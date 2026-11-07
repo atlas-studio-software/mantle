@@ -40,7 +40,7 @@ internal sealed class BarApp : IDisposable
 
     BarApp(Process p, string profile) { Proc = p; Profile = profile; }
 
-    public static BarApp Launch(string profile, string theme = "light", bool wait = true, IDictionary<string, string>? env = null)
+    public static BarApp Launch(string profile, string theme = "light", bool wait = true, IDictionary<string, string>? env = null, IEnumerable<string>? extra = null)
     {
         Host.Guard();
         if (!File.Exists(Host.ExePath))
@@ -49,6 +49,7 @@ internal sealed class BarApp : IDisposable
         Directory.CreateDirectory(ud);
         var psi = new ProcessStartInfo(Host.ExePath) { UseShellExecute = false };
         foreach (var a in new[] { "--test", $"--profile-name={profile}", $"--user-data={ud}", $"--theme={theme}" }) psi.ArgumentList.Add(a);
+        if (extra != null) foreach (var a in extra) psi.ArgumentList.Add(a);
         psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
         if (env != null) foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
         var app = new BarApp(Host.Track(Process.Start(psi)!), profile);

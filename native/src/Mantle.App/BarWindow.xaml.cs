@@ -88,11 +88,12 @@ public sealed partial class BarWindow : Window
     const double ShadowTop = 56, ShadowSide = 28;   // room in the window for the light drop shadow
 
     readonly IntPtr _hwnd;
-    readonly double _scale;
-    readonly Win32.RECT _monitor;
-    readonly double _pillW;
-    readonly RectInt32 _winPx;
-    readonly Win32.RECT _pillPx;
+    // the current geometry (Surfaces/Bar/Frame/BarGeometry.cs), re-read on display changes and every reveal
+    double _scale;
+    Win32.RECT _monitor;
+    double _pillW;
+    RectInt32 _winPx;
+    Win32.RECT _pillPx;
     readonly string? _benchOut = Host.Args.BenchOut;
     bool _dark;
     readonly ObservableCollection<CellVm> _cells = new();
@@ -111,35 +112,17 @@ public sealed partial class BarWindow : Window
         _dark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
 
-        // the primary monitor and its scale, before anything is placed
-        IntPtr mon = Win32.MonitorFromPoint(new Win32.POINT { X = 0, Y = 0 }, 1 /* PRIMARY */);
-        var mi = new Win32.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Win32.MONITORINFO>() };
-        Win32.GetMonitorInfoW(mon, ref mi);
-        _monitor = mi.rcMonitor;
-        _scale = Win32.GetDpiForMonitor(mon, 0, out uint dpi, out _) == 0 ? dpi / 96.0 : 1.0;
-        double monWdip = (_monitor.Right - _monitor.Left) / _scale;
-        _pillW = Math.Min(MaxW, Math.Max(120, monWdip - SideGapTotal));
-
-        int wPx = (int)Math.Round((_pillW + 2 * ShadowSide) * _scale), hPx = (int)Math.Round((ShadowTop + BarH + Lift) * _scale);
-        int xPx = _monitor.Left + ((_monitor.Right - _monitor.Left) - wPx) / 2, yPx = _monitor.Bottom - hPx;
-        _winPx = new RectInt32(xPx, yPx, wPx, hPx);
-        _pillPx = new Win32.RECT {
-            Left = xPx + (int)Math.Round(ShadowSide * _scale), Top = yPx + (int)Math.Round(ShadowTop * _scale),
-        };
-        _pillPx.Right = _pillPx.Left + (int)Math.Round(_pillW * _scale);
-        _pillPx.Bottom = _pillPx.Top + (int)Math.Round(BarH * _scale);
-
-        Root.Width = _pillW + 2 * ShadowSide;
-        Root.Height = ShadowTop + BarH + Lift;
+        // the primary monitor and its scale, before anything is placed; the frame mode (hover, dock or up)
+        FrameMode = PickMode();
+        ApplyGeometry(Surfaces.Bar.Frame.BarGeometry.Compute(), "start");
         Root.RequestedTheme = _dark ? ElementTheme.Dark : ElementTheme.Light;
-        Pill.Width = _pillW;
-        Pill.Margin = new Thickness(ShadowSide, ShadowTop, 0, 0);
 
         SystemBackdrop = new TransparentBackdrop();
         ConfigureWindow();
         PaintBackdrop();
         if (!_dark) AddShadow();   // dark: the lip only, no drop shadow (bar.css, dark .bar --pane-drop)
         BuildGlyphs();
+        PoseDown();
 
         Dock.ItemsSource = _cells;
         _list = new WindowList(DispatcherQueue);
@@ -216,6 +199,7 @@ public sealed partial class BarWindow : Window
             DispatcherQueue.TryEnqueue(() => { if (n != null) _chips.Fail(n.Key, n.Label, n.Reason, n.Tone); RenderPip(); });
         });
         Tick();
+        StartFrame();
     }
 
     // ------------------------------------------------------------------ the glass
@@ -340,6 +324,8 @@ public sealed partial class BarWindow : Window
         if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
         else AddShadow();
         RenderGlass();
+        if (FrameMode == "hover" && !IsUp) ClearPicture();   // a hidden bar keeps no picture (BAR-035)
+        _live?.Retheme(dark);
         RenderPip(force: true);
         Host.Log.Line($"look: theme.json says {ThemeSettings.Word(Host.Data.Theme.Value.Mode)}; the bar now shows {(dark ? "dark" : "light")}");
     }
@@ -432,7 +418,7 @@ public sealed partial class BarWindow : Window
         string d = now.ToString("d", CultureInfo.CurrentCulture);
         if (ClockD.Text != d) ClockD.Text = d;
         // one timer, re-aimed at the next second boundary (+20 ms: never paint the previous second)
-        _clock.Interval = TimeSpan.FromMilliseconds(1000 - now.Millisecond + 20);
+        _clock.Interval = ClockInterval(now);   // seconds while up, minutes while down (BAR-417)
         _clock.Start();
     }
 

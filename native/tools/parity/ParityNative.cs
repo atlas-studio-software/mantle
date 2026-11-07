@@ -17,6 +17,42 @@ public static class ParityNative
     public static bool DpiAware() => SetProcessDpiAwarenessContext(new IntPtr(-4)) != IntPtr.Zero;
 
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+    // ---- the display scale (bar pairs at 100 % and 150 %): DisplayConfigGet/SetDeviceInfo with the undocumented
+    // types -3 (get) / -4 (set), as SetDpi-style tools do (spikes/windowing/bar/probe/BarProbe.cs DpiSetPercent).
+    [StructLayout(LayoutKind.Sequential)] struct DcHdr { public int type; public int size; public uint lo; public int hi; public uint id; }
+    [StructLayout(LayoutKind.Sequential)] struct DcGet { public DcHdr h; public int min, cur, max; }
+    [StructLayout(LayoutKind.Sequential)] struct DcSet { public DcHdr h; public int rel; }
+    [DllImport("user32.dll")] static extern int GetDisplayConfigBufferSizes(uint f, out uint np, out uint nm);
+    [DllImport("user32.dll")] static extern int QueryDisplayConfig(uint f, ref uint np, IntPtr paths, ref uint nm, IntPtr modes, IntPtr topo);
+    [DllImport("user32.dll", EntryPoint = "DisplayConfigGetDeviceInfo")] static extern int DcGetDpi(ref DcGet p);
+    [DllImport("user32.dll", EntryPoint = "DisplayConfigSetDeviceInfo")] static extern int DcSetDpi(ref DcSet p);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(long pt, uint flags);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr mon, int type, out uint x, out uint y);
+    static readonly int[] DpiSteps = { 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500 };
+
+    public static int PrimaryDpi() { uint x, y; return GetDpiForMonitor(MonitorFromPoint(0, 1), 0, out x, out y) == 0 ? (int)x : 96; }
+
+    /// The first active display source (the runner has one) to `percent`; "ok: ..." or why not.
+    public static string SetScale(int percent)
+    {
+        uint np, nm;
+        if (GetDisplayConfigBufferSizes(2, out np, out nm) != 0 || np == 0) return "no active display path";
+        IntPtr paths = Marshal.AllocHGlobal((int)np * 72), modes = Marshal.AllocHGlobal((int)nm * 64);
+        try {
+            if (QueryDisplayConfig(2, ref np, paths, ref nm, modes, IntPtr.Zero) != 0) return "QueryDisplayConfig failed";
+            var h = new DcHdr { lo = (uint)Marshal.ReadInt32(paths, 0), hi = Marshal.ReadInt32(paths, 4), id = (uint)Marshal.ReadInt32(paths, 8) };
+            var g = new DcGet { h = h }; g.h.type = -3; g.h.size = Marshal.SizeOf(typeof(DcGet));
+            int hr = DcGetDpi(ref g);
+            if (hr != 0) return "get failed: " + hr;
+            int idx = Array.IndexOf(DpiSteps, percent), rel = idx + g.min;
+            if (idx < 0) return percent + " % is not a Windows scale step";
+            if (rel < g.min || rel > g.max) return percent + " % is outside what Windows allows here (rel " + rel + ", allowed " + g.min + ".." + g.max + ")";
+            var st = new DcSet { h = h, rel = rel }; st.h.type = -4; st.h.size = Marshal.SizeOf(typeof(DcSet));
+            int hs = DcSetDpi(ref st);
+            return hs == 0 ? "ok (rel " + rel + ")" : "set failed: " + hs;
+        } finally { Marshal.FreeHGlobal(paths); Marshal.FreeHGlobal(modes); }
+    }
+
     public static int[] Screen() => new[] { GetSystemMetrics(0), GetSystemMetrics(1) };
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -106,6 +142,141 @@ public static class ParityNative
             return bits;
         }
         finally { DeleteObject(b); DeleteDC(m); ReleaseDC(IntPtr.Zero, s); }
+    }
+
+    // ------------------------------------------------------------------ a clean shot: nothing excluded, nothing on top
+    // Both bars' light glass takes a picture of what is behind the bar 4 times a second, and for each picture the bar
+    // switches WDA_EXCLUDEFROMCAPTURE on (Electron main.js#captureBackdrop: 25 ms settle + the sidecar's shot, which
+    // took over a second while the sidecar was busy starting; native LiveGlass the same way). A screen grab in that
+    // moment has NO bar in it: run 42369550297 scored Electron light 0.7251 on a crop of bare wallpaper while the
+    // whole-screen shot taken right after it showed the bar, and run 42369209048 (native/r2-core-2) had the opposite pair.
+    [DllImport("user32.dll")] static extern bool GetWindowDisplayAffinity(IntPtr h, out uint affinity);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern bool ShowWindowAsync(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint flags);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, char[] b, int n);
+    [DllImport("dwmapi.dll")] static extern int DwmGetWindowAttribute(IntPtr h, int attr, out int v, int size);
+    [DllImport("winmm.dll")] static extern uint timeBeginPeriod(uint ms);
+    [DllImport("winmm.dll")] static extern uint timeEndPeriod(uint ms);
+
+    static bool Reaches(RECT r, int x, int y, int w, int h) => r.Right > r.Left && r.Bottom > r.Top && r.Left < x + w && r.Right > x && r.Top < y + h && r.Bottom > y;
+    static bool Cloaked(IntPtr h) => DwmGetWindowAttribute(h, 14 /* DWMWA_CLOAKED */, out int c, 4) == 0 && c != 0;
+    static string ClassOf(IntPtr h) { var b = new char[128]; int n = GetClassNameW(h, b, b.Length); return new string(b, 0, n); }
+    static string TitleOf(IntPtr h) { var b = new char[256]; int n = GetWindowTextW(h, b, b.Length); return new string(b, 0, n); }
+    // the desktop and the runner's own (auto-hidden) taskbar are part of the scene, never "in the way"
+    static readonly HashSet<string> ShellClasses = new HashSet<string> { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd" };
+
+    /// <summary>Visible, uncloaked, not minimised top-level windows that reach into the rect; with own = true the
+    /// ones of the given pids, else the ones of every OTHER process (shell windows left out).</summary>
+    static List<IntPtr> WindowsOver(int x, int y, int w, int h, int[] pids, bool own)
+    {
+        var keep = new HashSet<uint>(); foreach (int p in pids ?? new int[0]) keep.Add((uint)p);
+        var list = new List<IntPtr>();
+        EnumWindows((hw, l) =>
+        {
+            if (!IsWindowVisible(hw) || IsIconic(hw) || Cloaked(hw) || !GetWindowRect(hw, out RECT r) || !Reaches(r, x, y, w, h)) return true;
+            GetWindowThreadProcessId(hw, out uint pid);
+            if (keep.Contains(pid) != own) return true;
+            if (!own && ShellClasses.Contains(ClassOf(hw))) return true;
+            list.Add(hw);
+            return true;
+        }, IntPtr.Zero);
+        return list;
+    }
+    static string Describe(IntPtr hw)
+    {
+        GetWindowRect(hw, out RECT r); GetWindowThreadProcessId(hw, out uint pid);
+        return $"{hw.ToInt64():x} pid {pid} '{TitleOf(hw)}' [{ClassOf(hw)}] {r.Left},{r.Top},{r.Right},{r.Bottom}";
+    }
+
+    /// <summary>Windows of other processes than keepPids over the rect ("hwnd pid 'title' [class] l,t,r,b"): the
+    /// runner's own consoles grow with the display scale and covered the whole bar at 150 % (run 42369550297).</summary>
+    public static string[] Covering(int x, int y, int w, int h, int[] keepPids)
+    {
+        var o = new List<string>(); foreach (var hw in WindowsOver(x, y, w, h, keepPids, false)) o.Add(Describe(hw)); return o.ToArray();
+    }
+
+    /// <summary>Minimises (without activating anything) every window Covering() lists; one that cannot minimise is
+    /// moved to the top left corner instead. Returns what it did, one line per window.</summary>
+    public static string[] ClearRect(int x, int y, int w, int h, int[] keepPids)
+    {
+        var o = new List<string>();
+        foreach (var hw in WindowsOver(x, y, w, h, keepPids, false))
+        {
+            string d = Describe(hw);
+            ShowWindowAsync(hw, 7 /* SW_SHOWMINNOACTIVE */);
+            System.Threading.Thread.Sleep(150);
+            if (!IsIconic(hw) && IsWindowVisible(hw))
+            {
+                SetWindowPos(hw, IntPtr.Zero, 0, 0, 0, 0, 0x0001 | 0x0004 | 0x0010 /* NOSIZE | NOZORDER | NOACTIVATE */);
+                o.Add("moved " + d);
+            }
+            else o.Add("minimised " + d);
+        }
+        return o.ToArray();
+    }
+
+    static bool AnyExcluded(List<IntPtr> wins)
+    {
+        foreach (var hw in wins) if (GetWindowDisplayAffinity(hw, out uint a) && a != 0) return true;
+        return false;
+    }
+
+    public sealed class Shot { public byte[] Px = Array.Empty<byte>(); public bool Clean; public int WaitedMs, Tries, Windows; }
+
+    /// <summary>A Grab taken while none of the pids' windows over the rect is excluded from capture: the display
+    /// affinity of each must read 0 for quietMs before the grab and still read 0 right after it (an exclusion
+    /// takes 25 ms + a picture, so it cannot come and go unseen inside one grab). Waits and tries again up to
+    /// timeoutMs; Clean = false if it never got one (the last grab is returned so the caller can still save it).</summary>
+    public static Shot CleanGrab(int[] pids, int x, int y, int w, int h, int quietMs, int timeoutMs)
+    {
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        var wins = WindowsOver(x, y, w, h, pids, true);
+        var shot = new Shot { Windows = wins.Count };
+        timeBeginPeriod(1);
+        try
+        {
+            while (true)
+            {
+                long quietSince = -1;
+                while (sw.ElapsedMilliseconds < timeoutMs)
+                {
+                    if (AnyExcluded(wins)) quietSince = -1;
+                    else if (quietSince < 0) quietSince = sw.ElapsedMilliseconds;
+                    else if (sw.ElapsedMilliseconds - quietSince >= quietMs) break;
+                    System.Threading.Thread.Sleep(2);
+                }
+                shot.Tries++;
+                shot.Px = Grab(x, y, w, h);
+                shot.Clean = quietSince >= 0 && sw.ElapsedMilliseconds - quietSince >= quietMs && !AnyExcluded(wins);
+                if (shot.Clean || sw.ElapsedMilliseconds >= timeoutMs) { shot.WaitedMs = (int)sw.ElapsedMilliseconds; return shot; }
+            }
+        }
+        finally { timeEndPeriod(1); }
+    }
+
+    /// <summary>Mean absolute difference (0-255) of a crop against the same rect inside a whole-screen grab of
+    /// width fw: did the screen change between the two shots of Shoot?</summary>
+    public static double CropVsFull(byte[] crop, int cw, int ch, byte[] full, int fw, int cx, int cy)
+    {
+        double s = 0;
+        for (int row = 0; row < ch; row++)
+            for (int col = 0; col < cw; col++)
+            {
+                int a = (row * cw + col) * 4, b = ((cy + row) * fw + cx + col) * 4;
+                s += Math.Abs(crop[a] - full[b]) + Math.Abs(crop[a + 1] - full[b + 1]) + Math.Abs(crop[a + 2] - full[b + 2]);
+            }
+        return s / (cw * ch * 3.0);
+    }
+
+    /// <summary>Motion over clean grabs only (see CleanGrab): a grab without the bar in it is not motion.</summary>
+    public static double MotionClean(int[] pids, int x, int y, int w, int h, int gapMs)
+    {
+        var pa = CleanGrab(pids, x, y, w, h, 60, 3000).Px;
+        System.Threading.Thread.Sleep(gapMs);
+        var pb = CleanGrab(pids, x, y, w, h, 60, 3000).Px;
+        double s = 0; for (int i = 0; i < pa.Length; i++) if (i % 4 != 3) s += Math.Abs(pa[i] - pb[i]);
+        return s / (pa.Length / 4 * 3);
     }
 
     /// <summary>Mean absolute difference (0-255) between two grabs of the same rect a moment apart: is it still moving?</summary>
