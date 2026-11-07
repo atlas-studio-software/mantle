@@ -137,6 +137,43 @@ public class ThemeTests
     }
 
     [TestMethod]
+    public void Theme_set_switches_the_bar_within_1_s_of_the_call_and_answers_the_full_view()
+    {
+        // LOOK-011 / LOOK-025: theme.set {mode} (the call a page makes, here from a --test second start) switches every
+        // Mantle window at once (the bar is the only one in this build) and answers the full view plus value
+        const string profile = "uitest-themeset";
+        using var app = Launch(profile, null, ud => File.WriteAllText(Path.Combine(ud, "theme.json"), "{\n  \"mode\": \"light\"\n}\n"));
+        var probe = Probe(app);
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Mantle is light"), 8000), "the host never said its theme:\n" + Tail(app.Log));
+        Thread.Sleep(1500);   // first frame + backdrop
+        double light = Host.Luminance(probe);
+        var psi = new ProcessStartInfo(Host.ExePath) { UseShellExecute = false };
+        foreach (var a in new[] { "--test", $"--profile-name={profile}", $"--user-data={app.Ud}", "--test-theme=dark" }) psi.ArgumentList.Add(a);
+        psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
+        var sw = Stopwatch.StartNew();
+        using (var second = Process.Start(psi)!) {
+            long handed = -1, dark = -1;
+            double last = light;
+            while (sw.ElapsedMilliseconds < 8000 && (handed < 0 || dark < 0)) {
+                if (handed < 0 && app.Log.Contains("a second launch handed off: --test --profile-name=" + profile)) handed = sw.ElapsedMilliseconds;
+                if (dark < 0 && (last = Host.Luminance(probe)) + 30 < light) dark = sw.ElapsedMilliseconds;
+                Thread.Sleep(20);
+            }
+            second.WaitForExit(10000);
+            Console.WriteLine($"theme.set: second start handed off at {handed} ms, the pill went dark at {dark} ms (luminance {light:0.0} -> {last:0.0}); from the call {(dark >= 0 && handed >= 0 ? Math.Max(0, dark - handed) : -1)} ms");
+            Assert.IsTrue(handed >= 0, "the running Mantle never logged the hand-off:\n" + Tail(app.Log));
+            Assert.IsTrue(dark >= 0, $"the bar never went dark within 8 s of theme.set (luminance {light:0.0} -> {last:0.0}):\n" + Tail(app.Log));
+            Assert.IsTrue(dark - handed < 1000, $"the bar went dark {dark - handed} ms after the call reached Mantle; the target is under 1 s");
+        }
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("mantle: test-theme dark: ok: "), 3000), "theme.set did not answer ok:\n" + Tail(app.Log));
+        string answer = app.Log.Split('\n').Last(l => l.Contains("mantle: test-theme dark: ok: "));
+        foreach (var part in new[] { "\"ok\":true", "\"mode\":\"dark\"", "\"theme\":\"dark\"", "\"value\":\"dark\"" })
+            StringAssert.Contains(answer, part, "theme.set's answer is not the full view plus value");
+        // the host's theme reached the bar (ThemeShown); theme.json's own path may have got there first ("already shows")
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("look: the host's theme is dark (Dark); the bar "), 3000), "the host's theme never reached the bar:\n" + Tail(app.Log));
+    }
+
+    [TestMethod]
     public void Resume_and_unlock_re_read_the_shared_look()
     {
         // main.js powerMonitor 'resume' / 'unlock-screen' -> lookHost.refresh: the session window hears both

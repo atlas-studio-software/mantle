@@ -274,6 +274,13 @@ public partial class MantleApp : Application
         if (surfaces == null) { log("surfaces: the surface host was never made, so no surface is made"); return; }
         var feed = _feed = new StateFeed(hub.Current, surfaces.PostUi, log);
         _offs.Add(hub.OnChange(feed.Push));
+        // a rest while a game runs ("mantle.rest" from the rest coordinator): every surface destroyed; the AtStart ones made
+        // again on the wake, the others on their next use
+        _offs.Add(_events!.Subscribe<RestSignal>("mantle.rest", sig => surfaces.PostUi(() => {
+            if (surfaces.Set is not { } set) return;
+            var names = sig.On ? set.Rest(sig.Why ?? "a game runs") : set.Wake(sig.Why ?? "the rest is over");
+            Host.Log.Line($"surfaces: {(sig.On ? "rest" : "wake")}: {(names.Count == 0 ? "nothing to " + (sig.On ? "destroy" : "make again") : (sig.On ? "destroyed " : "made again ") + string.Join(", ", names))}");
+        })));
         var wires = new SurfaceWires { PostUi = surfaces.PostUi, PostHost = loop.Post, Bus = _bus!, Events = _events!, Feed = feed, Log = Host.Log };
         if (!surfaces.PostUi(() => surfaces.Start(wires, "start"))) log("surfaces: the UI thread is gone, so no surface was made");
     }
@@ -300,6 +307,14 @@ public partial class MantleApp : Application
         var r = await _bus.CallAsync("surface." + verb, new System.Text.Json.Nodes.JsonObject { ["name"] = name, ["why"] = who }, who).ConfigureAwait(true);
         string said = r.Ok && r.Result.ValueKind == System.Text.Json.JsonValueKind.Object && r.Result.TryGetProperty("said", out var w) ? w.GetString() ?? "" : r.Error ?? "";
         Host.Log.Line($"mantle: test-surface {verb}:{name}: {(r.Ok ? "ok" : "NOT ok")}: {said}");
+    }
+
+    /// --test-theme=&lt;mode&gt; from a second start (test only): theme.set {mode}, the call a page makes; the answer is logged.
+    async Task ThemeFromSecondAsync(string mode)
+    {
+        if (_bus == null) { Host.Log.Line($"mantle: test-theme {mode}: the command bus is not up"); return; }
+        var r = await _bus.CallAsync("theme.set", new System.Text.Json.Nodes.JsonObject { ["mode"] = mode }, "a second instance (test)").ConfigureAwait(true);
+        Host.Log.Line($"mantle: test-theme {mode}: {(r.Ok ? "ok: " + (r.Result.ValueKind == System.Text.Json.JsonValueKind.Undefined ? "(no answer)" : r.Result.GetRawText()) : "NOT ok: " + r.Error)}");
     }
 
     async Task OnReadyAsync()
@@ -356,6 +371,7 @@ public partial class MantleApp : Application
             case SecondAsk.Quit: Quit("Mantle was asked to quit (--quit)", 0); break;
             case SecondAsk.Open: _ = OpenAsync(argv); break;
             case SecondAsk.Surface: _ = SurfaceFromSecondAsync(value ?? ""); break;
+            case SecondAsk.Theme: _ = ThemeFromSecondAsync(value ?? ""); break;
             case SecondAsk.Tray: Host.Log.Line("mantle: test-tray: " + (_tray?.TestTrayLine() ?? "the tray was never built")); break;
             case SecondAsk.Report:
                 if (_tray != null) _ = _tray.CopyReportAsync("a second instance (test)").ContinueWith(t => { if (t.IsFaulted) Host.Log.Line("mantle: test-report failed: " + t.Exception?.GetBaseException().Message); }, TaskScheduler.Default);

@@ -392,6 +392,8 @@ public class SurfaceHostTests
 
         Assert.Equal((SecondAsk.Surface, "toggle:test-lazy"), SecondLaunch.Route(new[] { "--test", "--test-surface=toggle:test-lazy" }, true));
         Assert.Equal(SecondAsk.Plain, SecondLaunch.Route(new[] { "--test-surface=show:x" }, false).Ask);   // never outside a test run
+        Assert.Equal((SecondAsk.Theme, "dark"), SecondLaunch.Route(new[] { "--test", "--test-theme=dark" }, true));
+        Assert.Equal(SecondAsk.Plain, SecondLaunch.Route(new[] { "--test-theme=dark" }, false).Ask);
         var args = LaunchArgs.Parse(new[] { "x.exe", "--test-surface=show:x", "--user-data=C:\\scratch" });
         Assert.Contains("--test-surface", args.IgnoredTestSwitches());
         Assert.Empty(args.Unknown);
