@@ -23,8 +23,11 @@ public class ReadOnlyTests
     [Fact]
     public void The_data_api_has_no_writing_method()
     {
+        // IStore is round 2's writing CONTRACT (PLAN.md 3.7 (a), native/docs/contracts.md): an interface
+        // with no implementation in Mantle.Core.Data yet, so the readers are still read-only. The lane
+        // that implements it (native-data-look) decides how this guard changes when the stores land.
         var types = typeof(MantleData).Assembly.GetTypes()
-            .Where(t => t.Namespace == "Mantle.Core.Data" && (t.IsPublic || t.IsNestedPublic));
+            .Where(t => t.Namespace == "Mantle.Core.Data" && (t.IsPublic || t.IsNestedPublic) && t != typeof(IStore));
         var bad = new List<string>();
         foreach (var t in types)
             foreach (var m in t.GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.Static | BindingFlags.DeclaredOnly)) {
