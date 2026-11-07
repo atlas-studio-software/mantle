@@ -44,7 +44,8 @@ if (dir) {
   });
 }
 
-if (dir && process.versions.electron && process.type === 'browser') {
+// process.type is 'browser' in the main process; tolerate it being unset this early (probe-loaded says which).
+if (dir && process.versions.electron && (process.type === 'browser' || !process.type)) {
   // Keep the hook out of everything Mantle starts (sidecar, PowerShell, renderers): only this process.
   delete process.env.NODE_OPTIONS;
   delete process.env.SPIKE_PROBE_OUT;

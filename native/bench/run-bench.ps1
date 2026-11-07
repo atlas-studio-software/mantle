@@ -84,15 +84,23 @@ function Set-WinTheme([string]$t) {
 }
 
 # ------------------------------------------------------------------ the project
+# dotnet runs from the folder that holds the project's global.json (native/): the SDK pin is read from the
+# CURRENT folder upward, not the project's, so from the repo root the runner's newest SDK would build it.
+function SdkDir([string]$proj) {
+  $d = Split-Path -Parent $proj
+  while ($d) { if (Test-Path (Join-Path $d 'global.json')) { return $d }; $up = Split-Path -Parent $d; if ($up -eq $d) { break }; $d = $up }
+  return (Split-Path -Parent $proj)
+}
 $tfm = if ($sdks -match '^10\.') { 'net10.0' } elseif ($sdks -match '^9\.') { 'net9.0' } else { 'net8.0' }
 $projText = Get-Content $Project -Raw
 $tfmProps = @(if ($projText -match 'SpikeTfm') { "-p:SpikeTfm=$tfm" })
 $asm = $null
+Push-Location (SdkDir $Project)
 try {
   $j = (& dotnet msbuild $Project -nologo -getProperty:AssemblyName -getProperty:TargetFramework @tfmProps 2>$null) -join "`n"
   $pj = $j | ConvertFrom-Json
   $asm = $pj.Properties.AssemblyName; $projTfm = $pj.Properties.TargetFramework
-} catch { $asm = $null }
+} catch { $asm = $null } finally { Pop-Location }
 if (-not $asm) { $asm = if ($projText -match '<AssemblyName>([^<]+)</AssemblyName>') { $Matches[1] } else { [IO.Path]::GetFileNameWithoutExtension($Project) } }
 Say "project: $([IO.Path]::GetRelativePath($root, $Project)), exe $asm.exe, $projTfm"
 
@@ -103,8 +111,12 @@ function Publish-Native([string]$tag, [string]$proj, [string]$dest, [string[]]$p
   $cmd = @('publish', $proj, '-c', 'Release', '-r', 'win-x64', '-o', $dest, '-nologo', '-clp:NoSummary') + $tfmProps + $props
   Say "publish $tag`: dotnet $((@($cmd | Select-Object -Skip 2) | ForEach-Object { if ($_ -like '*\*') { Split-Path -Leaf $_ } else { $_ } }) -join ' ')"
   $t0 = Get-Date
-  & dotnet @cmd 2>&1 | Tee-Object -FilePath $log | Select-Object -Last 12 | ForEach-Object { Write-Host "  $_" }
-  $code = $LASTEXITCODE
+  Push-Location (SdkDir $proj)
+  try {
+    Say "  SDK in $((Get-Location).Path | Split-Path -Leaf): $(& dotnet --version 2>$null)"
+    & dotnet @cmd 2>&1 | Tee-Object -FilePath $log | Select-Object -Last 12 | ForEach-Object { Write-Host "  $_" }
+    $code = $LASTEXITCODE
+  } finally { Pop-Location }
   $secs = [Math]::Round(((Get-Date) - $t0).TotalSeconds)
   $exePath = Join-Path $dest "$asm.exe"
   $lines = @(Get-Content $log | Where-Object { $_ -match ':\s*(\w+ analysis )?warning ' } | Sort-Object -Unique)
@@ -527,7 +539,8 @@ function Run-BuildMode([string]$m) {
 # ------------------------------------------------------------------ run
 if ($Mode -eq 'modes') {
   if ($Exe) { Say '-Exe is ignored in -Mode modes (every mode is published from -Project)' }
-  & dotnet restore $Project -r win-x64 -nologo @tfmProps 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Host "  restore: $_" }   # warms the NuGet cache
+  Push-Location (SdkDir $Project)
+  try { & dotnet restore $Project -r win-x64 -nologo @tfmProps 2>&1 | Select-Object -Last 3 | ForEach-Object { Write-Host "  restore: $_" } } finally { Pop-Location }   # warms the NuGet cache
   $results.modes = @()
   foreach ($m in @($BuildModes -split ',' | ForEach-Object { $_.Trim() } | Where-Object { $_ })) {
     $before = $problems.Count
@@ -541,6 +554,8 @@ if ($Mode -eq 'modes') {
     elseif ($r -and -not $r.works) { Problem "baseline mode sc-r2r: $($r.verdict)" }
   }
 } else {
+  # native/tools/ci.ps1 sets MANTLE_NATIVE_EXE to the app its build stage published: no second build in CI
+  if (-not $Exe -and $env:MANTLE_NATIVE_EXE -and (Test-Path $env:MANTLE_NATIVE_EXE)) { $Exe = $env:MANTLE_NATIVE_EXE; Say "MANTLE_NATIVE_EXE is set: using that build" }
   if ($Exe) {
     $exePath = (Resolve-Path $Exe).Path
     $results.build = [ordered]@{ skipped = $true; exe = $exePath }
