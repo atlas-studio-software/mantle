@@ -6,6 +6,8 @@ using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Markup;
+using Microsoft.UI.Xaml.Media;
+using Mantle.App.Surfaces.Bar.Frame;
 
 namespace Mantle.App;
 
@@ -49,12 +51,11 @@ public sealed partial class BarWindow
     int _inFrames;
     [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
     static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);
-    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
 
     void WatchInputForTest()
     {
         IntPtr Site() => FindWindowExW(_hwnd, IntPtr.Zero, "Microsoft.UI.Content.DesktopChildSiteBridge", null);
-        string Where(IntPtr h) { if (h == IntPtr.Zero) return "none"; FrameNative.GetWindowRect(h, out var r); return $"0x{h.ToInt64():X} {FrameNative.Rect(r)}{(IsWindowVisible(h) ? "" : " hidden")}"; }
+        string Where(IntPtr h) { if (h == IntPtr.Zero) return "none"; FrameNative.GetWindowRect(h, out var r); return $"0x{h.ToInt64():X} {FrameNative.Rect(r)}{(Mantle.App.Native.Win32.IsWindowVisible(h) ? "" : " hidden")}"; }
         int seen = 0;
         _inSub = (h, msg, wp, lp, id, data) => {
             if (seen < 40 && msg is 0x21 or 0x84 or 0xA1 or 0x201 or 0x202 or 0x241 or 0x242 or 0x245 or 0x246 or 0x247 or 0x24B or 0x200) {
@@ -66,14 +67,14 @@ public sealed partial class BarWindow
         bool a = FrameNative.SetWindowSubclass(_hwnd, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero);
         bool b = site != IntPtr.Zero && FrameNative.SetWindowSubclass(site, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero);
         Host.Log.Line($"bar: test: window {Where(_hwnd)}; input site {Where(site)}; watched {a}/{b}");
-        void Tick(object? s, object e)
+        void OnFrame(object? s, object e)
         {
-            if (++_inFrames > 4) { CompositionTarget.Rendering -= Tick; return; }
+            if (++_inFrames > 4) { CompositionTarget.Rendering -= OnFrame; return; }
             IntPtr now = Site();
             if (!b && now != IntPtr.Zero) { b = FrameNative.SetWindowSubclass(now, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero); Host.Log.Line($"bar: test: input site watched from frame {_inFrames}: {b}"); }
             Host.Log.Line($"bar: test: frame {_inFrames}: input site {Where(now)}");
         }
-        CompositionTarget.Rendering += Tick;
+        CompositionTarget.Rendering += OnFrame;
     }
 
     /// A stand-in body: the kind's name, findable as popup.&lt;key&gt; (AUTOMATION.md).
