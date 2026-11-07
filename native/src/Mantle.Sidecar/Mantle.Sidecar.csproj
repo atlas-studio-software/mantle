@@ -1,0 +1,99 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Mantle.Sidecar: the Electron build's C# sidecar (sidecar/*.cs) compiled UNDER MODERN .NET, as a
+    class library, from the SAME source files. Nothing is copied: every sidecar file is LINKED from
+    ../../../sidecar, so the csc.exe (.NET Framework 4, C# 5) build in sidecar/build.ps1 and this
+    build always compile identical text. Anything this build needs that the csc build must not see
+    lives in THIS folder (Shims/), never in sidecar/.
+
+    Properties (all optional):
+      SidecarVariant   winmd (default) | winrt | none. The three csc variants of sidecar/build.ps1:
+                         winmd  split System32\WinMetadata route (-NoUnion, the shipped installer
+                                build and a clone without the Windows SDK): MANTLE_WINMD + MANTLE_UIA.
+                                Bluetooth AND media in-process.
+                         winrt  union-winmd route (a machine WITH the Windows SDK, e.g. the hosted
+                                runner without -NoUnion): MANTLE_WINRT + MANTLE_UIA. Bluetooth via
+                                AsTask, media "not built in".
+                         none   neither (no WinRT at all): MANTLE_UIA only.
+                       Under .NET all three get their WinRT types from the CsWinRT projection that the
+                       windows10.0.x target framework brings; the defines only pick the same code
+                       paths the matching csc build compiles.
+      SidecarExe       true = build Mantle.Sidecar.exe (WinExe, entry point Mantle.Program.Main), the
+                       stdio sidecar itself under .NET, for the side-by-side test with the csc exe.
+                       Default: a class library (Main is then just a method nobody calls).
+      SidecarTfm       net10.0 (default) or net9.0 / net8.0.
+      SidecarWinSdk    the Windows SDK projection version, default 10.0.26100.0: Recorder.cs uses
+                       GraphicsCaptureSession.IncludeSecondaryWindows and MinUpdateInterval, which
+                       the 22621 projection does not have (CS1061). A project that references this
+                       library needs a windows10.0.26100.0 (or later) target framework too.
+                       TargetPlatformMinVersion stays 19041: the API version, not the OS floor.
+  -->
+  <PropertyGroup>
+    <SidecarTfm Condition="'$(SidecarTfm)' == ''">net10.0</SidecarTfm>
+    <SidecarWinSdk Condition="'$(SidecarWinSdk)' == ''">10.0.26100.0</SidecarWinSdk>
+    <SidecarVariant Condition="'$(SidecarVariant)' == ''">winmd</SidecarVariant>
+    <TargetFramework>$(SidecarTfm)-windows$(SidecarWinSdk)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <OutputType>Library</OutputType>
+    <OutputType Condition="'$(SidecarExe)' == 'true'">WinExe</OutputType>
+    <StartupObject Condition="'$(SidecarExe)' == 'true'">Mantle.Program</StartupObject>
+    <AssemblyName>Mantle.Sidecar</AssemblyName>
+    <RootNamespace>Mantle</RootNamespace>
+
+    <!-- The csc build is C# 5 with no nullable context and no global usings: keep it that way, or
+         the same text would mean something else here. -->
+    <LangVersion>latest</LangVersion>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <AllowUnsafeBlocks>false</AllowUnsafeBlocks>
+    <EnableDefaultCompileItems>false</EnableDefaultCompileItems>
+
+    <!-- System.Windows.Forms, System.Drawing (MsgForm, Application.Run, Screen, icons). -->
+    <UseWindowsForms>true</UseWindowsForms>
+    <!-- UIAutomationClient / UIAutomationTypes / WindowsBase: TrayUia.cs, MenuBar.cs, Emoji.cs
+         (MANTLE_UIA). They ship in the WPF part of the desktop runtime. -->
+    <UseWPF>true</UseWPF>
+
+    <!-- This project only measures; a warning is never a build break here. -->
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <GenerateDocumentationFile>false</GenerateDocumentationFile>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <InvariantGlobalization>false</InvariantGlobalization>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(SidecarVariant)' == 'winmd'">
+    <DefineConstants>$(DefineConstants);MANTLE_WINMD;MANTLE_UIA</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SidecarVariant)' == 'winrt'">
+    <DefineConstants>$(DefineConstants);MANTLE_WINRT;MANTLE_UIA</DefineConstants>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(SidecarVariant)' == 'none'">
+    <DefineConstants>$(DefineConstants);MANTLE_UIA</DefineConstants>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <!-- Files of sidecar/ that cannot compile here even with a shim, as ..\..\..\sidecar\Name.cs
+         separated by ';' (each one says why in README.md). Empty means every sidecar file compiles. -->
+    <SidecarExcludeFiles></SidecarExcludeFiles>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Compile Include="..\..\..\sidecar\*.cs" Exclude="$(SidecarExcludeFiles)" Link="sidecar\%(Filename)%(Extension)" />
+    <Compile Include="Shims\**\*.cs" />
+    <!-- SidecarEdited=true: sidecar/ carries edit E1 (sidecar-edits.psd1), so the stopgap goes.
+         Only check.ps1 -ProveEdits sets it, on the runner's patched checkout. -->
+    <Compile Remove="Shims\FileStreamShadow.cs" Condition="'$(SidecarEdited)' == 'true'" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- In the .NET Framework these were GAC assemblies (/r: in build.ps1); under .NET they are
+         Windows-only NuGet packages. -->
+    <PackageReference Include="System.Management" Version="10.0.0" />
+    <PackageReference Include="System.Data.OleDb" Version="10.0.0" />
+    <PackageReference Include="System.ServiceProcess.ServiceController" Version="10.0.0" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Mantle.Sidecar.Tests" />
+  </ItemGroup>
+</Project>
