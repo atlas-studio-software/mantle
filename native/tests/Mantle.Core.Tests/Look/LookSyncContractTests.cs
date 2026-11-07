@@ -248,15 +248,39 @@ public class LookSyncContractTests
             Assert.Matches(@"Can't write .*E(BUSY|PERM|ACCES) \(after 4 tries\)", (await err).Reason);
         }
         Assert.Empty(Directory.GetFiles(d, "*.tmp"));
-        // released before the retries run out: it lands
+        // released before the retries run out: it lands. The release follows the writer, not the clock: a thread of its
+        // own (never the pool, which the writer's retry sleeps and a busy test run can starve: a Task.Delay(8)
+        // continuation once came after all four tries) waits until the writer has closed its tmp copy, the step right
+        // before the first rename, which the holder refuses. It lets go 20 ms later, inside the first 50 ms retry delay.
         var holder = new FileStream(FileIn(d), FileMode.Open, FileAccess.Read, FileShare.Read);
         var clock = System.Diagnostics.Stopwatch.StartNew();
-        long releasedAt = -1;
-        _ = Task.Delay(8).ContinueWith(_ => { holder.Dispose(); releasedAt = clock.ElapsedMilliseconds; });
+        long closedAt = -1, releasedAt = -1;
+        var releaser = new Thread(() => {
+            try {
+                while (clock.ElapsedMilliseconds < 10000) {
+                    foreach (var tmp in Directory.GetFiles(d, "look.json.helm.*.tmp")) {
+                        try { using (new FileStream(tmp, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { } }
+                        catch (Exception) { continue; }   // still open for writing (FileShare.None), or gone
+                        closedAt = clock.ElapsedMilliseconds;
+                        Thread.Sleep(20);
+                        return;
+                    }
+                    Thread.Sleep(1);
+                }
+            } finally {
+                holder.Dispose();
+                releasedAt = clock.ElapsedMilliseconds;
+            }
+        }) { IsBackground = true, Name = "look test: the reader that lets go" };
+        releaser.Start();
         using var slow = new LookSync(new LookSyncOptions { App = "helm", Dir = d, Files = new SafeFile(WriteGate.Scratch(d)), RetryDelays = new[] { 50, 100, 200 } });
         var landed = await slow.PublishAsync("theme", V("\"light\""));
         long answeredAt = clock.ElapsedMilliseconds;
-        Assert.True(landed.Ok, $"the publish answered at +{answeredAt} ms ({landed.Reason}); the holder was released at +{releasedAt} ms (-1: not yet); pool {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued");
+        releaser.Join(10000);
+        Assert.True(landed.Ok, $"the publish answered at +{answeredAt} ms ({landed.Reason}); the writer closed its tmp copy at +{closedAt} ms, the holder let go at +{releasedAt} ms");
+        Assert.True(closedAt >= 0, "the writer's tmp copy was never seen closed");
+        Assert.Equal("light", ReadJson(d)["look"]!["theme"]!["v"]!.GetValue<string>());
+        Assert.Empty(Directory.GetFiles(d, "*.tmp"));
         holder.Dispose();
     }
 
