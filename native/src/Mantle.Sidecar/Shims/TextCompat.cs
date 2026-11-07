@@ -29,29 +29,25 @@ namespace Mantle {
       }
     }
 
-    /// String.GetHashCode() of .NET Framework 4.x on a 64-bit process (the non-randomised default):
-    /// two djb2-style lanes over the UTF-16 text read as 32-bit words, terminator included.
+    /// String.GetHashCode() of .NET Framework 4.x in a 64-bit process (the non-randomised default,
+    /// the non-WIN32 branch of the Framework's String.GetHashCode): two djb2 lanes over alternate
+    /// UTF-16 chars, stopping at the first NUL (the Framework walks the char* to its terminator, so
+    /// an embedded U+0000 ends the hash there too).
     public static int FrameworkHash(string s) {
       if (s == null) throw new ArgumentNullException("s");
       unchecked {
         int hash1 = 5381, hash2 = 5381;
-        int len = s.Length, i = 0;
-        while (len > 2) {
-          hash1 = ((hash1 << 5) + hash1 + (hash1 >> 27)) ^ Word(s, i);
-          hash2 = ((hash2 << 5) + hash2 + (hash2 >> 27)) ^ Word(s, i + 2);
-          i += 4;
-          len -= 4;
+        for (int i = 0; i < s.Length; i += 2) {
+          int c = s[i];
+          if (c == 0) break;
+          hash1 = ((hash1 << 5) + hash1) ^ c;
+          if (i + 1 >= s.Length) break;
+          c = s[i + 1];
+          if (c == 0) break;
+          hash2 = ((hash2 << 5) + hash2) ^ c;
         }
-        if (len > 0) hash1 = ((hash1 << 5) + hash1 + (hash1 >> 27)) ^ Word(s, i);
         return hash1 + (hash2 * 1566083941);
       }
-    }
-
-    /// The 32-bit word at char index k of the string in memory (chars past the end are the 0 terminator).
-    static int Word(string s, int k) {
-      int lo = k < s.Length ? s[k] : 0;
-      int hi = k + 1 < s.Length ? s[k + 1] : 0;
-      return lo | (hi << 16);
     }
   }
 }

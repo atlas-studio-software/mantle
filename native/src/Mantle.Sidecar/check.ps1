@@ -30,7 +30,7 @@ $proj = Join-Path $here 'Mantle.Sidecar.csproj'
 $testProj = Join-Path $root 'native\tests\Mantle.Sidecar.Tests\Mantle.Sidecar.Tests.csproj'
 $sidecarDir = Join-Path $root 'sidecar'
 $log = New-Object System.Collections.Generic.List[string]
-function Say([string]$s) { Write-Output $s; $log.Add($s) }
+function Say([string]$s) { Write-Host $s; [void]$log.Add($s) }   # Write-Host: inside Invoke-Pass, output would become its return value
 function Cut([string]$s, [int]$n) { if ($s.Length -gt $n) { return $s.Substring(0, $n) + '...' } return $s }
 function Rel([string]$p) {
   if (-not $p) { return $p }
@@ -177,6 +177,7 @@ if ($ProveEdits) {
   New-Item -ItemType Directory -Force $edOut | Out-Null
   $spec = Import-PowerShellDataFile (Join-Path $here 'sidecar-edits.psd1')
   $proof = New-Object System.Collections.Generic.List[string]
+  function Proof([string]$s) { [void]$proof.Add($s) }   # a function: in $list.Add(... -f a, b) the commas split the method arguments
   $editOk = $true
   $origText = @{}
   foreach ($e in $spec.Edits) {
@@ -186,12 +187,12 @@ if ($ProveEdits) {
     $nl = $(if ($text.Contains("`r`n")) { "`r`n" } else { "`n" })
     $lines = [System.Collections.Generic.List[string]]($text -split "`r?`n")
     $hits = @(for ($i = 0; $i -lt $lines.Count; $i++) { if ($lines[$i].Contains($e.Find)) { $i } })
-    if ($hits.Count -ne 1) { $proof.Add('{0} {1}: FAILED, the Find text occurs {2} times' -f $e.Id, $e.File, $hits.Count); $editOk = $false; continue }
+    if ($hits.Count -ne 1) { Proof ('{0} {1}: FAILED, the Find text occurs {2} times' -f $e.Id, $e.File, $hits.Count); $editOk = $false; continue }
     $at = $hits[0]; $orig = $lines[$at]
     $lines.RemoveAt($at)
     $lines.InsertRange($at, [string[]]@('#if NET', $orig.Replace($e.Find, $e.Replace), '#else', $orig, '#endif'))
     [System.IO.File]::WriteAllText($path, ($lines -join $nl), (New-Object System.Text.UTF8Encoding($false)))
-    $proof.Add('{0} {1}:{2} applied' -f $e.Id, $e.File, ($at + 1))
+    Proof ('{0} {1}:{2} applied' -f $e.Id, $e.File, ($at + 1))
   }
   # The csc view: drop every "#if NET ... #else" head and its "#endif"; the file must equal the original.
   foreach ($f in $origText.Keys) {
@@ -206,14 +207,14 @@ if ($ProveEdits) {
       $view.Add($l)
     }
     $same = (($view -join "`n") -eq (($origText[$f] -split "`r?`n") -join "`n"))
-    $proof.Add('csc view of {0}: {1}' -f $f, $(if ($same) { 'identical to the committed file' } else { 'DIFFERENT' }))
+    Proof ('csc view of {0}: {1}' -f $f, $(if ($same) { 'identical to the committed file' } else { 'DIFFERENT' }))
     if (-not $same) { $editOk = $false }
   }
   # Both csc routes still compile the edited files (union = MANTLE_WINRT where the SDK is present; -NoUnion = MANTLE_WINMD).
   foreach ($route in @(@{ N = 'csc -NoUnion'; A = @('-NoUnion') }, @{ N = 'csc union'; A = @() })) {
     $o = Join-Path $bin ('edited-csc-' + ($route.N -replace '[^a-z]', '') + '\Mantle.Sidecar.exe')
     $cl = & powershell -NoProfile -ExecutionPolicy Bypass -File (Join-Path $sidecarDir 'build.ps1') @($route.A) -Out $o 2>&1
-    $proof.Add('{0} build of the edited sidecar: {1}' -f $route.N, $(if ($LASTEXITCODE -eq 0) { 'ok, ' + (Cut ((@($cl) | Where-Object { $_ -match 'note:' } | Select-Object -First 1) -replace [regex]::Escape($root), '.') 140) } else { 'FAILED: ' + ((@($cl) | Select-Object -Last 3) -join ' / ') }))
+    Proof ('{0} build of the edited sidecar: {1}' -f $route.N, $(if ($LASTEXITCODE -eq 0) { 'ok, ' + (Cut ((@($cl) | Where-Object { $_ -match 'note:' } | Select-Object -First 1) -replace [regex]::Escape($root), '.') 140) } else { 'FAILED: ' + ((@($cl) | Select-Object -Last 3) -join ' / ') }))
     if ($LASTEXITCODE -ne 0) { $editOk = $false }
   }
   Set-Content -Encoding utf8 -Path (Join-Path $edOut 'proof.txt') -Value $proof
