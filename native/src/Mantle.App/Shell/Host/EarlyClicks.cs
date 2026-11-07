@@ -2,6 +2,7 @@ using System;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation.Peers;
+using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Controls.Primitives;
 using Microsoft.UI.Xaml.Input;
 using Microsoft.UI.Xaml.Media;
@@ -96,12 +97,12 @@ internal sealed class EarlyClicks
 
     void Give(ButtonBase b, string who)
     {
-        var peer = FrameworkElementAutomationPeer.FromElement(b) ?? FrameworkElementAutomationPeer.CreatePeerForElement(b);
-        if (peer is ButtonAutomationPeer bp) {
-            _given++;
-            _log($"{_name}: input: a click on {who} came before the window took the pointer itself (its first moments), so Mantle pressed {who} for it");
-            bp.Invoke();
-        } else _log($"{_name}: input: a click on {who} came before the window took the pointer itself and was not passed on ({peer?.GetType().Name ?? "no automation peer"} is not a plain button)");
+        // a peer of our own: the element's own peer comes back typed as FrameworkElementAutomationPeer in the AOT
+        // build (CI run 42382341244), so it cannot be told from a button by its type
+        if (b is not Button button) { _log($"{_name}: input: a click on {who} came before the window took the pointer itself and was not passed on ({b.GetType().Name} is not a plain button)"); return; }
+        _given++;
+        _log($"{_name}: input: a click on {who} came before the window took the pointer itself (its first moments), so Mantle pressed {who} for it");
+        new ButtonAutomationPeer(button).Invoke();
     }
 
     ButtonBase? ButtonAt(int x, int y)
