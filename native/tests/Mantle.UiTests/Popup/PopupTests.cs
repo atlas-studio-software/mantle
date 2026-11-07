@@ -14,6 +14,33 @@ public sealed class PopupTests
     static void ClickEl(BarApp app, string id) { var r = app.Find(id).BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(450); }
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 25))); }
 
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Pt p);
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)] struct Pt { public int X, Y; }
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, System.Text.StringBuilder b, int n);
+
+    /// What is under a point and in front, from outside (for a failure message: where a click went).
+    static string Under(int x, int y)
+    {
+        static string Desc(IntPtr h)
+        {
+            if (h == IntPtr.Zero) return "none";
+            GetWindowThreadProcessId(h, out uint pid);
+            var c = new System.Text.StringBuilder(256); GetClassNameW(h, c, 256);
+            return $"0x{h.ToInt64():X} pid {pid} class {c} \"{Win32.Title(h)}\"";
+        }
+        IntPtr w = WindowFromPoint(new Pt { X = x, Y = y });
+        return $"at ({x},{y}): {Desc(w)}, root {Desc(GetAncestor(w, 2))}; in front: {Desc(Win32.GetForegroundWindow())}";
+    }
+
+    /// A failure's whole app log, kept with the UI artifacts (native/out/ui) as well as in the message's tail.
+    static string Keep(string dir, string name)
+    {
+        try { File.WriteAllText(Path.Combine(Host.OutDir, $"{name}-{DateTime.Now:HHmmss}-native-log.txt"), FrameProbe.Log(dir)); } catch (IOException) { }
+        return Tail(dir);
+    }
+
     /// WIN-014 + BAR-375/376 (one at a time, toggle, replace), parking only the instant kind (WIN-006/010),
     /// BAR-392 (a press on the bar outside the pop-up), BAR-394/WIN-017 (outside click, Esc from another app's
     /// keyboard), BAR-396 (another app to the front closes it), WIN-011 (raised above the app in front).
@@ -95,8 +122,18 @@ public sealed class PopupTests
         int pid = app.Proc.Id;
         IntPtr More() => FrameProbe.Find(pid, "Mantle pop-up: More");
         IntPtr Cal() => FrameProbe.Find(pid, "Mantle pop-up: Calendar");
-        ClickEl(app, "bar.more");
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000), "More did not open. Log:\n" + Tail(dir));
+        // the click as the user's hand makes it, right after the start: nothing read before it (that would shift its time)
+        var r0 = app.Find("bar.more").BoundingRectangle;
+        string clickAt = DateTime.Now.ToString("HH:mm:ss.fff");
+        ZOrder.Click(r0.Left + r0.Width / 2, r0.Top + r0.Height / 2);
+        Thread.Sleep(450);
+        if (!(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000))) {
+            FrameProbe.GetWindowRect(app.Hwnd, out var wr);
+            Assert.Fail($"More did not open. Clicked at {clickAt} on bar.more {r0} (now {app.Find("bar.more").BoundingRectangle}); bar window ({wr.Left},{wr.Top})-({wr.Right},{wr.Bottom}); " +
+                $"under the click now {Under(r0.Left + r0.Width / 2, r0.Top + r0.Height / 2)}. Log:\n" + Keep(dir, "popmotion"));
+        }
+        Console.WriteLine(FrameProbe.Log(dir).Contains("bar: input: a click on bar.more came before", StringComparison.Ordinal)
+            ? $"the first click ({clickAt}) came before the bar's island took the pointer; the bar passed it to More (EarlyClicks)" : $"the first click ({clickAt}) reached XAML itself");
         IntPtr m = More();
 
         // its own button: closed in state at once, on screen until the exit has played

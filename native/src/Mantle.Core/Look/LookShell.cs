@@ -120,6 +120,14 @@ public sealed class LookShell : IDisposable
         catch (Exception e) { _o.Log.Line("theme: Windows' light/dark change could not be followed: " + e.Message); return false; }
     }
 
+    /// theme.json changed on disk (host thread): the host's theme follows it, so every surface hears it through "theme".
+    public bool ThemeFileChanged()
+    {
+        if (_closed) return false;
+        try { lock (_theme) return Theme.FileChanged(); }
+        catch (Exception e) { _o.Log.Line("theme: theme.json's change could not be followed: " + e.Message); return false; }
+    }
+
     /// Re-read the shared look: on resume ("the PC woke from sleep") and on unlock ("the screen was unlocked").
     public void Refresh(string why) { if (!_closed) Look.Refresh(why); }
 

@@ -190,4 +190,26 @@ public class ThemeCoreTests
         Assert.Null(t.Get().Note);
         Assert.Equal("{\"mode\":\"light\"}", File.ReadAllText(r.File));
     }
+    [Fact]
+    public void Theme_json_changed_on_disk_moves_the_host_theme_and_a_pinned_run_ignores_it()
+    {
+        // native: the host's theme follows theme.json written by Electron's Settings (or a test), so every surface
+        // hears it through "theme"; before, only the bar re-read the file
+        using var r = new Rig();
+        System.IO.File.WriteAllText(r.File, "{ \"mode\": \"light\" }\n");
+        var t = r.Make();
+        var told = new System.Collections.Generic.List<string>();
+        t.On(v => told.Add(v.Theme));
+        Assert.Equal("light", t.Theme);
+        Assert.False(t.FileChanged());   // nothing moved: nobody is told
+        System.IO.File.WriteAllText(r.File, "{ \"mode\": \"dark\" }\n");
+        Assert.True(t.FileChanged());
+        Assert.Equal(("dark", "dark"), (t.Mode, t.Theme));
+        Assert.Equal(new[] { "dark" }, told);
+        Assert.Contains("theme: theme.json changed: Dark -> Mantle is dark", r.Log.Lines);
+        var pinned = r.Make("light");
+        System.IO.File.WriteAllText(r.File, "{ \"mode\": \"system\" }\n");
+        Assert.False(pinned.FileChanged());
+        Assert.Equal("light", pinned.Theme);
+    }
 }

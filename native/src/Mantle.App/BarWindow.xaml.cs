@@ -259,23 +259,37 @@ public sealed partial class BarWindow : Window
         }
     }
 
-    /// light/dark from a mode; System follows Windows' app mode (AppsUseLightTheme), light when unknown.
+    // The host's theme (MantleApp.ThemeShown: theme.set, Match Windows through the host's own watch of the key this run
+    // follows, another app's look, theme.json changed on disk): the bar shows what the host shows. theme.json's own path
+    // (OnDataChanged) stays as well: both resolve Match Windows from the same key, so they agree, and SetTheme is a no-op
+    // for the second. App.OnLaunched calls this once, before the host starts.
+    internal void FollowHostTheme()
+    {
+        MantleApp.ThemeShown += OnThemeShown;
+        Closed += (_, _) => MantleApp.ThemeShown -= OnThemeShown;
+        if (MantleApp.ThemeNow is { } now) OnThemeShown(now);
+    }
+
+    void OnThemeShown(Mantle.Core.Look.ThemePayload p)
+    {
+        if (p.Theme is not ("dark" or "light")) { Host.Log.Line($"look: the host's theme \"{p.Theme}\" is not light or dark; the bar keeps {(_dark ? "dark" : "light")}"); return; }
+        SetTheme(p.Theme == "dark", $"the host's theme is {p.Theme} ({Mantle.Core.Look.ThemeCore.ModeWords(p.View.Mode)})");
+    }
+
+    /// light/dark from a mode; System follows Windows' app mode from the key this run follows (MantleApp.ThemeKey: a
+    /// test run's scratch key, else Windows' own), the same read as the host's; light when unknown.
     static bool Resolve(ThemeMode mode)
     {
         if (mode == ThemeMode.Dark) return true;
         if (mode == ThemeMode.Light) return false;
-        try {
-            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-            return k?.GetValue("AppsUseLightTheme") is int v && v == 0;
-        } catch (Exception e) {
-            Host.Log.Line("look: Windows' app mode could not be read (" + e.Message + "); Match Windows shows light");
-            return false;
-        }
+        var w = Mantle.Core.Look.ThemeCore.ReadWindowsMode(MantleApp.ThemeKey);
+        if (w.Mode is not ("dark" or "light")) Host.Log.Line("look: Windows' app mode could not be read (" + (w.Why ?? "no answer") + "); Match Windows shows light");
+        return w.Mode == "dark";
     }
 
-    void SetTheme(bool dark)
+    void SetTheme(bool dark, string? why = null)
     {
-        if (dark == _dark) { Host.Log.Line($"look: the bar already shows {(dark ? "dark" : "light")}"); return; }
+        if (dark == _dark) { Host.Log.Line($"look: {(why != null ? why + "; " : "")}the bar already shows {(dark ? "dark" : "light")}"); return; }
         _dark = dark;
         Root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
@@ -284,7 +298,7 @@ public sealed partial class BarWindow : Window
         if (FrameMode == "hover" && !IsUp) ClearPicture();   // a hidden bar keeps no picture (BAR-035)
         _live?.Retheme(dark);
         RenderPip(force: true);
-        Host.Log.Line($"look: theme.json says {ThemeSettings.Word(Host.Data.Theme.Value.Mode)}; the bar now shows {(dark ? "dark" : "light")}");
+        Host.Log.Line($"look: {why ?? "theme.json says " + ThemeSettings.Word(Host.Data.Theme.Value.Mode)}; the bar now shows {(dark ? "dark" : "light")}");
     }
 
     // The light island's drop shadow, from glass-light.css -lg-drop-up:

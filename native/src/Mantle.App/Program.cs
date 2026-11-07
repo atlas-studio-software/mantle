@@ -99,7 +99,8 @@ internal static class Program
                 if (sent) Say(Console.Out, "mantle: asked the running Mantle to put Windows back and quit.");
                 handoff = sent ? ExitCodes.Ok : ExitCodes.Failed;
             } else if (args.Kind == RunKind.Open) {
-                var req = args.OpenRequest;
+                // a --test start may also --open the build's test stand-in surfaces; everything else keeps Electron's allow-list
+                var req = args.Test ? OpenRequest.From(args.Raw, Mantle.App.Shell.Hosting.SurfaceHost.TestTargets()) : args.OpenRequest;
                 if (req is not { Ok: true }) { Say(Console.Error, req?.Line ?? "mantle: --open needs a value"); handoff = ExitCodes.OpenRefused; }
                 else if (sent) Say(Console.Out, $"mantle: asked the running Mantle ({paths.DataRoot}) to open its {req.Label}.");
                 else { Say(Console.Error, OpenRequest.NotRunningLine(req)); handoff = ExitCodes.OpenNotRunning; }

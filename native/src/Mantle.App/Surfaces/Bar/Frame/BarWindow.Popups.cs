@@ -18,6 +18,9 @@ public sealed partial class BarWindow
     internal PopupHost? Popups { get; private set; }
     internal bool Dark => _dark;
     FrameworkElement? _popAnchor;
+    Mantle.App.Shell.Hosting.EarlyClicks? _early;
+    /// Clicks of the bar's first moments that Mantle passed to their buttons (Shell/Host/EarlyClicks).
+    internal int EarlyClicksGiven => _early?.Given ?? 0;
 
     void StartPopups()
     {
@@ -27,6 +30,8 @@ public sealed partial class BarWindow
         bool watch = live || asked || askedAway, away = live || askedAway;
         Popups = new PopupHost(this, watch, "a test run watches nothing unless --test-popwatch (or --test-popwatch-away)", away);
         Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) => Popups.BarPressed(e.OriginalSource as DependencyObject, _popAnchor)), true);
+        // a click in the bar's first moments, before its island takes the pointer, still reaches its button (Shell/Host/EarlyClicks)
+        _early = Mantle.App.Shell.Hosting.EarlyClicks.Watch(_hwnd, Root, "bar", Host.Log.Line, src => Popups.BarPressed(src, _popAnchor));
         if (live || Host.Env("MANTLE_TEST_POPUPS") != "1") return;
         var more = new PopupKind("more", "More", 260, 180, Focusable: false, Instant: true, Away: true, () => Stand("more", "More"));
         var cal = new PopupKind("cal", "Calendar", 268, 300, Focusable: true, Instant: false, Away: true, () => Stand("cal", "Calendar"));
