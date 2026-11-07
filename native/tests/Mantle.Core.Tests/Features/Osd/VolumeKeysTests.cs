@@ -117,7 +117,8 @@ public class VolumeKeysTests
         var presses = Enumerable.Range(0, 8).Select(_ => k.K.OnKeyAsync("VolumeUp")).ToList();
         Assert.Equal(VolumeKeys.MaxWaiting, k.K.Waiting);
         Assert.Equal(8, k.K.Presses);
-        Assert.Single(k.Logs.Where(l => l.Contains("presses are already waiting on the sidecar")));   // one line per reason
+        // presses 7 and 8 are dropped; each said once (a shown pop-up in between resets the once-per-reason line, as in osd.js)
+        Assert.Equal(2, k.Logs.Count(l => l == "no pop-up: VolumeUp: 6 presses are already waiting on the sidecar, so this one was dropped"));
         // the queue sends one step at a time: each reads what the previous wrote
         Assert.Equal(1, k.P.Waiting);
         for (int i = 0; i < 6; i++)

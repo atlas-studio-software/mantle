@@ -95,8 +95,9 @@ public sealed class BannerSafety
             return Task.FromResult(_last);
         }
         _log($"Windows' own pop-ups are being put back ({how})");
-        _running = RunCore(how);
-        return _running;
+        var t = RunCore(how);
+        _running = t.IsCompleted ? null : t;   // a script that answered at once has already cleared _running inside RunCore
+        return t;
     }
 
     async Task<SafetyRun> RunCore(string how)
