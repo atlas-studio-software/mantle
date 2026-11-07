@@ -148,12 +148,10 @@ public class LookShellTests
             await Within(dark, 1000, "Helm's theme as the theme event");
         } catch (Xunit.Sdk.XunitException e) {
             r.Log.Line("gave up; " + r.Log.Pool());
-            throw new Xunit.Sdk.XunitException(e.Message + "
-" + r.Log.All);
+            throw new Xunit.Sdk.XunitException(e.Message + "\n" + r.Log.All);
         }
         r.Log.Line("test resumed; " + r.Log.Pool());
-        Assert.True(sw.ElapsedMilliseconds < 1000, "followed after " + sw.ElapsedMilliseconds + " ms
-" + r.Log.All);
+        Assert.True(sw.ElapsedMilliseconds < 1000, "followed after " + sw.ElapsedMilliseconds + " ms\n" + r.Log.All);
         Assert.Equal("dark", (await r.Call("theme.get")).Result.GetProperty("mode").GetString());
         await Task.Delay(300);
         Assert.Equal("helm", ThemeBy(r.Shared()));   // applied from sync, never re-shared as Mantle's own pick
