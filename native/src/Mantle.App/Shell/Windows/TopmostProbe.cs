@@ -84,8 +84,6 @@ internal static class TopmostProbe
             sb.Append($"{{\"name\":\"{name}\",\"hwnd\":{h},\"swp\":{(swp ? "true" : "false")},\"lastError\":{le},\"topmostNow\":{(WindowKinds.IsTopmost(h) ? "true" : "false")},\"fgBefore\":{fg0},\"fgAfter\":{Win32.GetForegroundWindow()},\"error\":\"{err.Replace("\"", "'")}\"}}");
         }
         void Place(Window w, RectInt32 r) => w.AppWindow.MoveAndResize(r);
-        // A: the spike's way (presenter always-on-top, Activate)
-        One("activate", (w, h, r) => { Place(w, r); w.Activate(); }, true, Colors.Red);
         // B: presenter always-on-top, shown without activation
         One("show", (w, h, r) => { Place(w, r); w.AppWindow.Show(false); }, true, Colors.Orange);
         // C: no presenter always-on-top, shown without activation
@@ -102,6 +100,9 @@ internal static class TopmostProbe
         One("parked", (w, h, r) => { Win32.SetWindowPos(h, IntPtr.Zero, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */); WindowKinds.Cloak(h, false); }, true, Colors.Teal, _parked);
         // I: hidden window re-created by the bar's thread with WS_EX_TOPMOST in the style before the first show
         One("exstyle", (w, h, r) => { Place(w, r); Win32.SetWindowLongPtr(h, Win32.GWL_EXSTYLE, new IntPtr(Win32.GetWindowLongPtr(h, Win32.GWL_EXSTYLE).ToInt64() | 0x8)); Win32.ShowWindow(h, 8); }, false, Colors.Purple);
+        // LAST: the spike's way (presenter always-on-top, Activate); Activate may take the foreground, so it
+        // runs after every no-activate technique has been read
+        One("activate", (w, h, r) => { Place(w, r); w.Activate(); }, true, Colors.Red);
         // WindowKinds.Raise (WIN-011): shown, raised, checked 60 ms later against the app in front
         IntPtr fgAtGo = Win32.GetForegroundWindow();
         var rw = Make("raise", aot: true, Colors.HotPink); IntPtr rh = Hwnd(rw);

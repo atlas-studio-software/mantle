@@ -189,7 +189,13 @@ public sealed partial class BarWindow : Window
     internal void ShowBar()
     {
         if (Host.Quiet) AppWindow.Show(false);   // never activated: a test window never takes the keyboard
-        else Activate();
+        else {
+            // WinUI starts drawing at Activate; the bar is not focusable (WIN-001), so the app that was in front
+            // gets the foreground straight back (CI: a cold start took it from the app in front)
+            IntPtr prevFg = Win32.GetForegroundWindow();
+            Activate();
+            if (prevFg != IntPtr.Zero && prevFg != _hwnd && Win32.GetForegroundWindow() == _hwnd) Win32.SetForegroundWindow(prevFg);
+        }
         // after the first show: a click on the bar must never take the focus from the app in front
         long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE).ToInt64() | Win32.WS_EX_NOACTIVATE;
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));

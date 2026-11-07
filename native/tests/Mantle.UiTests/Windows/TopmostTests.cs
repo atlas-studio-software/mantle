@@ -98,12 +98,14 @@ public sealed class TopmostTests
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "result.json")));
         var lines = new List<string> { $"[{tag}] ready: " + ready, $"[{tag}] bar: topmost {barTop}, above the fixture {barAbove}; now topmost {ZOrder.IsTopmost(app.Hwnd)}, above {ZOrder.IsAbove(app.Hwnd, fx.Hwnd)}", $"[{tag}] fixture {fx.Hwnd}, foreground now {Win32.GetForegroundWindow()}" };
         var verdict = new Dictionary<string, bool>();
+        var tookFg = new List<string>();
         foreach (var w in doc.RootElement.GetProperty("windows").EnumerateArray())
         {
             string name = w.GetProperty("name").GetString()!;
             var h = new IntPtr(w.GetProperty("hwnd").GetInt64());
             bool top = ZOrder.IsTopmost(h), above = ZOrder.IsAbove(h, fx.Hwnd), vis = Win32.IsWindowVisible(h);
             verdict[name] = top && above && vis;
+            if (name != "activate" && w.GetProperty("fgAfter").GetInt64() != fx.Hwnd.ToInt64()) tookFg.Add(name);
             lines.Add($"TOPMOST-PROBE [{tag}] {name}: topmost {top}, above the fixture {above}, visible {vis}; in-app: {w}");
         }
         Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "raise.txt")), 5000), "WindowKinds.Raise never reported");
@@ -113,7 +115,9 @@ public sealed class TopmostTests
         Host.Screenshot("topmost-probe-" + tag);
         File.WriteAllLines(Path.Combine(Host.OutDir, $"topmost-probe-{tag}.txt"), lines);
         foreach (var l in lines) Console.WriteLine(l);
-        Assert.AreEqual(fx.Hwnd, Win32.GetForegroundWindow(), "a probe window took the foreground from the app in front");
+        Assert.AreEqual(fx.Hwnd.ToInt64(), doc.RootElement.GetProperty("fgAtGo").GetInt64(), "Mantle took the foreground from the app in front before the pop-ups opened" + Environment.NewLine + string.Join(Environment.NewLine, lines));
+        Assert.AreEqual(0, tookFg.Count, "these no-activate pop-ups took the foreground: " + string.Join(", ", tookFg));
+        Assert.IsTrue(verdict.Where(kv => kv.Key != "activate").All(kv => kv.Value), "a no-activate technique came up under the app in front:" + Environment.NewLine + string.Join(Environment.NewLine, lines));
         Assert.IsTrue(ZOrder.IsTopmost(app.Hwnd) && ZOrder.IsAbove(app.Hwnd, fx.Hwnd), "the bar is not above the app in front:" + Environment.NewLine + string.Join(Environment.NewLine, lines));
         Assert.AreEqual("ok", raise[1], "WindowKinds.Raise said the pop-up is covered:" + Environment.NewLine + string.Join(Environment.NewLine, lines));
         Assert.IsTrue(ZOrder.IsTopmost(rh) && ZOrder.IsAbove(rh, fx.Hwnd), "WindowKinds.Raise said ok, but from outside the pop-up is not above the app in front");
