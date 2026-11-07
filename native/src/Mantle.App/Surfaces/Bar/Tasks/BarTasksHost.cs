@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Mantle.App.Native;
-using Mantle.Core.Args;
+using Mantle.Core;
 using Mantle.Core.Features.Pinned;
 using Mantle.Core.Features.WindowList;
 using Mantle.Core.Lifecycle;
