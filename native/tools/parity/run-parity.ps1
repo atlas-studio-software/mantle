@@ -174,7 +174,11 @@ $themes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
 # ------------------------------------------------------------------ per display scale
 $scaleList = @($Scales -split ',' | ForEach-Object { [int]$_.Trim() } | Where-Object { $_ -gt 0 })
 foreach ($pct in $scaleList) {
-  $set = [ParityNative]::SetScale($pct); Start-Sleep -Seconds 3
+  # only a real change touches the display: re-applying the current scale resets the display too (run 42368866513:
+  # light, the first capture after it, scored 0.73 while dark, captured later, scored 0.99); after a change the
+  # desktop gets 8 s to repaint before anything is shot
+  if ([Math]::Abs([ParityNative]::PrimaryDpi() / 96.0 * 100 - $pct) -lt 1) { $set = 'already there, not touched' }
+  else { $set = [ParityNative]::SetScale($pct); Start-Sleep -Seconds 8; [void][ParityNative]::SetWallpaper($wall); Start-Sleep -Seconds 2 }
   $scale = [ParityNative]::PrimaryDpi() / 96.0
   $scr = [ParityNative]::Screen(); $W = $scr[0]; $H = $scr[1]
   Say ("display scale {0} %: {1}; primary dpi now {2} ({3} %), screen {4}x{5}" -f $pct, $set, [int]($scale * 96), [Math]::Round($scale * 100), $W, $H)
@@ -269,7 +273,7 @@ foreach ($pct in $scaleList) {
     $results[$tag] = $r
   }
 }
-if (($scaleList | Where-Object { $_ -ne 100 }).Count) { Say ("display scale back to 100 %: " + [ParityNative]::SetScale(100)); Start-Sleep -Seconds 2 }
+if ([Math]::Abs([ParityNative]::PrimaryDpi() / 96.0 * 100 - 100) -ge 1) { Say ("display scale back to 100 %: " + [ParityNative]::SetScale(100)); Start-Sleep -Seconds 2 }
 
 if (-not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
 # The taskbar stays on auto-hide (runner only): later stages measure the bottom edge too.
