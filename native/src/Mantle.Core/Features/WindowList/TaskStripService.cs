@@ -122,8 +122,12 @@ public sealed class TaskStripService : IDisposable
     public Task<TaskList> BuildOnceAsync()
     {
         if (_building != null) return _building;
-        _building = BuildCoreAsync();
-        return _building;
+        // A build that finishes synchronously (windows already pushed, pins cached, every icon known) has already
+        // cleared _building inside BuildCoreAsync: keeping its finished task here would answer every later build
+        // with that first list, and the strip would never change again.
+        var t = BuildCoreAsync();
+        if (!t.IsCompleted) _building = t;
+        return t;
     }
 
     async Task<TaskList> BuildCoreAsync()

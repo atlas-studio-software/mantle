@@ -188,7 +188,7 @@ public static class PinnedReader
         if (o.Call == null) sidecarReason = "no sidecar connection was passed to listPinned";
         else if (full.Count > 0) {
             try {
-                var paths = new JsonArray(); foreach (var p in full) paths.Add(p);
+                var paths = new JsonArray(); foreach (var p in full) paths.Add((JsonNode?)JsonValue.Create(p));   // the JsonNode overload: JsonArray.Add<T> is not trim-safe (IL2026)
                 var res = await o.Call("lnk", new JsonObject { ["paths"] = paths }, TimeSpan.FromMilliseconds(8000)).ConfigureAwait(true);
                 var list = TaskJson.Get(res, "items");
                 if (list.ValueKind != JsonValueKind.Array) sidecarReason = "the sidecar's lnk command returned no items";
