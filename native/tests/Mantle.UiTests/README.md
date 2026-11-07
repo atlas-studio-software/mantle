@@ -44,7 +44,15 @@ no UIA peer in WinUI, so the container ids need one (a small subclass) to be fin
 
 ## Results so far
 
-Run 42351787470 (2026-11-07) against the base app (the spike bar, before the app lane's contract): it
-built and ran all 8 tests, and all 8 failed at the first step. The base window's title is
-`Mantle bar (native spike)`, not `Mantle bar`. That confirms launch, window lookup and the failure
-messages work. A run against the contract app is still to come.
+- Run 42351787470 (base app, the spike bar): built; all 8 tests failed at the first step on the window
+  title (`Mantle bar (native spike)`), which proved launch, window lookup and the failure messages.
+- Run 42353609992 (the contract app, 842935b): 5 of 8 passed. Two of the failures were harness bugs, both
+  fixed: the two fixtures shared one exe, and the bar groups windows by app, so they got one button; and
+  System.Drawing rejects CAPTUREBLT. One was real (below).
+- Run 42354085200 (2026-11-07, harness 435baf8 on app 842935b): `STAGE ui: FAILED (1 of 8 failed:
+  Pill_sits_where_the_spec_says)`. 7 of 8 pass. The failure is real: UIA puts the pill at 403,1021
+  (1120x48) on a 1920x1080 monitor at 100 %, 3 px right of and 3 px below the spec's 400,1018 (gap 11, not
+  14). The app's own ready.json says 400,1018, so its content is inset from where the code thinks it is.
+  The parity screenshots show the same shift.
+- A `--test` bar on the runner also lists the runner's hosted-compute-agent console window as a running
+  app. That is expected: it is a real visible window.
