@@ -2,8 +2,9 @@
 
 These are the seams the four round-2 lanes code against in parallel (PLAN.md section 7). They hold
 interfaces, attributes and plain records only. Nothing here routes, logs, writes a file or talks to
-Windows: the real implementations are the lanes' work. Each contract has a test in
+Windows: the real implementations are the lanes' work. Each `Mantle.Core` contract has a test in
 `tests/Mantle.Core.Tests/<Area>/` that proves it compiles and can be met, using a small test double.
+The two `Mantle.App` contracts (surfaces, theme) are proved by the build and smoke stages.
 
 **Rule for round 2:** a contract is frozen for the round. The lane that owns its folder may fix
 words and add helpers next to it. It must not change or remove a member, and it must not add a
@@ -151,7 +152,10 @@ these shared or unowned files, each with a proposed fix:
    `LaunchArgs`, `SingleInstance`, `TestQuiet` and their tests (Args / Lifecycle). R2-2 takes
    `DataPaths` and the reader tests with `Fixtures/` (Data). `TestDir.cs` stays shared and frozen.
    `DataPaths` is also where R2-1's `--test` isolation lands, so R2-1 asks R2-2 for any change there
-   rather than editing it.
+   rather than editing it. `ReadOnlyTests` ("native never writes Electron's data") now exempts only
+   the `IStore` interface from its no-writing-method check. Its source scan will flag the first real
+   atomic write in `Data/`, so R2-2 has to decide how that guard changes, and say so in its report.
+   That decision is about the user's live files, not just a test.
 5. **`tests/Mantle.UiTests` root files** (`Host.cs`, `Win32.cs`, `BarTests.cs`, the csproj,
    `run-ui.ps1`) are unowned; the lanes own only subfolders. Fix: `BarTests.cs` goes to R2-3.
    `Host.cs` and `Win32.cs` are frozen, and a lane that needs a helper adds it in its own subfolder.
