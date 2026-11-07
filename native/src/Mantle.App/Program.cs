@@ -30,15 +30,22 @@ internal static class Program
     [DllImport("Microsoft.ui.xaml.dll")]
     static extern void XamlCheckProcessRequirements();
 
+    /// A line for whoever started us (a console, a redirected pipe); a WinExe with neither just drops it.
+    static void Say(TextWriter w, string line) { try { w.WriteLine(line); w.Flush(); } catch (IOException) { } catch (ObjectDisposedException) { } }
+
     [STAThread]
     static int Main(string[] mainArgs)
     {
         var argv = Environment.GetCommandLineArgs();
         var args = LaunchArgs.Parse(argv);
         if (!args.Ok) {
-            // no data root is known yet, so nothing is written: the reasons go to stderr only
-            try { Console.Error.WriteLine("mantle-native: cannot start: " + string.Join("; ", args.Errors)); } catch (IOException) { }
-            return 2;
+            // no data root is known yet, so nothing is written: the reason goes to stderr only (lib/args.js ArgError)
+            Say(Console.Error, "mantle: " + args.Errors[0] + (args.Errors.Count > 1 ? $" (and {args.Errors.Count - 1} more: {string.Join("; ", System.Linq.Enumerable.Skip(args.Errors, 1))})" : ""));
+            return ExitCodes.BadArgs;
+        }
+        if (args.Kind == RunKind.Refused) {
+            Say(Console.Out, StartLines.LiveGate);   // CORE-001: before any window or platform exists
+            return ExitCodes.BadArgs;
         }
         if (args.BenchOut != null) {
             try { Directory.CreateDirectory(args.BenchOut); } catch (Exception e) { Console.Error.WriteLine("mantle-native: --bench-out cannot be made (" + e.Message + ")"); }
@@ -62,16 +69,55 @@ internal static class Program
             log.Line(sent
                 ? $"single instance: another MantleNative already runs on this data root; {sendWhy}; this one exits"
                 : $"single instance: another MantleNative holds this data root but the hand-off failed: {sendWhy}; this one exits");
+            int handoff = ExitCodes.Ok;
+            if (args.Kind == RunKind.Quit) {
+                if (sent) Say(Console.Out, "mantle: asked the running Mantle to put Windows back and quit.");
+                handoff = sent ? ExitCodes.Ok : ExitCodes.Failed;
+            } else if (args.Kind == RunKind.Open) {
+                var req = args.OpenRequest;
+                if (req is not { Ok: true }) { Say(Console.Error, req?.Line ?? "mantle: --open needs a value"); handoff = ExitCodes.OpenRefused; }
+                else if (sent) Say(Console.Out, $"mantle: asked the running Mantle ({paths.DataRoot}) to open its {req.Label}.");
+                else { Say(Console.Error, OpenRequest.NotRunningLine(req)); handoff = ExitCodes.OpenNotRunning; }
+            } else {
+                Say(Console.Error, $"mantle: another instance is already using {paths.DataRoot}; this one is exiting");
+            }
             log.Dispose();
-            return sent ? 0 : 3;
+            return handoff;
         }
         log.Line("single instance: " + claimWhy + (claim.Note != null ? " (" + claim.Note + ")" : ""));
-        if (args.Quit) {
-            log.Line("--quit: no MantleNative was running on this data root, so there is nothing to quit");
+        if (args.Kind == RunKind.Quit) {
+            // CORE-009: a message, not an instance; nothing answered on this data root
+            string none = $"mantle: no Mantle is running (nothing answered on {paths.DataRoot}), so there is nothing to quit.";
+            log.Line(none);
+            Say(Console.Out, none);
             claim.Dispose();
             log.Dispose();
-            return 0;
+            return ExitCodes.Failed;
         }
+        if (args.Kind == RunKind.Open) {
+            string line = OpenRequest.NotRunningLine(args.OpenRequest);
+            log.Line(line);
+            Say(Console.Error, line);
+            claim.Dispose();
+            log.Dispose();
+            return ExitCodes.OpenNotRunning;
+        }
+        if (args.Kind == RunKind.Live) {
+            // NEVER TWO SHELLS (SAFE-038): Electron Mantle running live owns the taskbar, the hooks and the app bar
+            string electron = System.IO.Path.Combine(Environment.GetEnvironmentVariable("APPDATA") ?? Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "mantle");
+            string? refusal = Mantle.Core.Safety.TwoShells.Verdict(Mantle.Core.Safety.TwoShells.Probe(electron, Mantle.Core.Safety.TwoShells.InstalledExe(Host.Env)));
+            if (refusal != null) {
+                log.Line("mantle: " + refusal);
+                Say(Console.Error, "mantle: " + refusal);
+                claim.Dispose();
+                log.Dispose();
+                return ExitCodes.Failed;
+            }
+            foreach (var l in StartLines.LiveLines(System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "restore-windows.ps1"), System.IO.Path.Combine(paths.DataRoot, "shell-state.json"))) { log.Line(l); Say(Console.Out, l); }
+            var (_, countdown) = StartWake.Countdown(true, console: false);   // a WinExe has no console to press Ctrl+C in
+            log.Line("mantle: " + countdown);
+        }
+        foreach (var t in args.IgnoredTestSwitches()) log.Line($"{t} is ignored: it works only with --test");
 
         Host.Args = args; Host.Paths = paths; Host.Log = log; Host.Marks = marks; Host.Instance = claim;
         Host.Quiet = TestQuiet.Wanted(args, Host.Env);
