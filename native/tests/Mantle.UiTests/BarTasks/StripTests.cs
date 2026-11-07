@@ -219,30 +219,42 @@ public class StripTests
         Assert.AreEqual(charmaps, Process.GetProcessesByName("charmap").Length, "a test run started the pinned app");
         Assert.IsFalse(LogSince(profile, at).Contains("App did not open", StringComparison.Ordinal), "the dry run was reported as a failed open");
 
-        // the pin of a running app: focus, minimise when it is the window in front, restore (bar.open, BAR-197..199)
+        // the pin of a running app (bar.open, BAR-192, BAR-198): the window in front minimises, any other comes to the front
+        // (restored if minimised). The bar decides from its own marks (the sidecar's windows push), so each click waits
+        // until they agree with Windows: a window outside the strip (the runner's search flyout once) can take the front
         bool Fg() => Win32.GetForegroundWindow() == a.Hwnd;
         Cell Alpha() { cs = Cells(app); return Named(cs, a.Title) ?? throw new AssertFailedException($"Alpha Shell's cell is gone: {Describe(cs)}"); }
-        if (Fg()) {
+        string Why() => $"{Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}";
+        int minimised = 0, restored = 0, focused = 0;
+        for (int k = 1; k <= 4; k++) {
+            Assert.IsTrue(Host.Until(() => Alpha().Active == (Fg() && !Win32.IsIconic(a.Hwnd)), 4000, 100),
+                $"click {k}: the bar's active mark never agreed with Windows: {Why()}");
+            Thread.Sleep(300);
+            bool wasActive = Alpha().Active, wasIconic = Win32.IsIconic(a.Hwnd);
             Click(Alpha());
-            Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"a click on the pin of the window in front did not minimise it; the app's click lines: {ClickLines(profile)}");
+            if (wasActive) {
+                Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"click {k} on the pin of the window in front did not minimise it: {Why()}");
+                Assert.IsTrue(Host.Until(() => !Alpha().Active && Alpha().Open, 4000), $"click {k}: the minimised window kept the active line or lost its running line: {Why()}");
+                minimised++;
+            } else {
+                Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"click {k} did not bring the pinned app's window to the front{(wasIconic ? " from minimised" : "")}: {Why()}");
+                Assert.IsTrue(Host.Until(() => Alpha().Active, 4000), $"click {k}: the focused pin is not the active one: {Why()}");
+                if (wasIconic) restored++; else focused++;
+            }
         }
-        Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a click did not bring the pinned app's window to the front (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
-        Assert.IsTrue(Host.Until(() => Alpha().Active, 4000), $"the focused pin is not the active one: {Describe(cs)}");
-        Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"a second click on the pin of the window in front did not minimise it; the app's click lines: {ClickLines(profile)}");
-        Assert.IsTrue(Host.Until(() => !Alpha().Active && Alpha().Open, 4000), $"a minimised window still shows the active line, or lost its running line: {Describe(cs)}");
-        Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a third click did not restore the minimised window to the front; the app's click lines: {ClickLines(profile)}");
+        Assert.IsTrue(minimised >= 1 && restored >= 1, $"4 clicks: {minimised} minimise(s), {restored} restore(s), {focused} focus(es); want at least one minimise and one restore");
 
         // middle-click: another copy, from the pin's shortcut, never the window already open (BAR-200)
         at = LogLength(profile);
+        bool iconicBefore = Win32.IsIconic(a.Hwnd);
         Click(Alpha(), MouseButton.Middle);
         Assert.IsTrue(Host.Until(() => { log = LogSince(profile, at); return log.Contains("launch dry run", StringComparison.Ordinal); }, 6000, 200),
             $"no dry-run line after a middle-click on a running pin; the log since: {Tail(log)}");
         StringAssert.Contains(log, "would another copy of open", $"a middle-click did not ask for another copy: {Tail(log)}");
         StringAssert.Contains(log, "Alpha Shell.lnk", $"the middle-click dry run names another shortcut: {Tail(log)}");
-        Assert.IsFalse(Win32.IsIconic(a.Hwnd), "a middle-click minimised the open window");
+        Assert.AreEqual(iconicBefore, Win32.IsIconic(a.Hwnd), "a middle-click minimised or restored the open window");
+        StringAssert.Contains(log, "1 window(s), fresh", $"the middle-click was not a fresh open: {Tail(log)}");
+        Assert.IsFalse(LogSince(profile, at).Contains("1 window(s), active", StringComparison.Ordinal), "a middle-click was also taken as a plain click");
         Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
     }
 
