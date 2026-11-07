@@ -39,8 +39,22 @@ internal static class Backdrop
         return raw == null ? null : new Shot { Px = raw, X0 = x0, Y0 = y0, W = w, H = h };
     }
 
-    /// Blur (and saturate) a copy of the shot, cropped to the pill.
-    public static WriteableBitmap Render(Shot shot, Win32.RECT pill, double sigmaPx, double saturate)
+    /// Blur (and saturate) a copy of the shot, cropped to the pill. `into` is reused when it has the pill's size
+    /// (the light glass loop swaps ~4 pictures a second; a new bitmap each time would only churn memory).
+    public static WriteableBitmap Render(Shot shot, Win32.RECT pill, double sigmaPx, double saturate, WriteableBitmap? into = null)
+        => ToBitmap(Blurred(shot, pill, sigmaPx, saturate), pill.Right - pill.Left, pill.Bottom - pill.Top, into);
+
+    /// The UI-thread half of Render: the cropped BGRA pixels into a bitmap.
+    public static WriteableBitmap ToBitmap(byte[] crop, int cw, int ch, WriteableBitmap? into = null)
+    {
+        var bmp = into != null && into.PixelWidth == cw && into.PixelHeight == ch ? into : new WriteableBitmap(cw, ch);
+        crop.CopyTo(bmp.PixelBuffer);
+        bmp.Invalidate();
+        return bmp;
+    }
+
+    /// The thread-free half of Render (no XAML object): blur, saturate, crop to the pill. Safe off the UI thread.
+    public static byte[] Blurred(Shot shot, Win32.RECT pill, double sigmaPx, double saturate)
     {
         byte[] px = (byte[])shot.Px.Clone();
         int w = shot.W, h = shot.H;
@@ -58,10 +72,7 @@ internal static class Backdrop
                 crop[d] = px[s]; crop[d + 1] = px[s + 1]; crop[d + 2] = px[s + 2]; crop[d + 3] = 255;
             }
         }
-        var bmp = new WriteableBitmap(cw, ch);
-        crop.CopyTo(bmp.PixelBuffer);
-        bmp.Invalidate();
-        return bmp;
+        return crop;
     }
 
     static byte[]? Grab(int x, int y, int w, int h)
