@@ -221,11 +221,13 @@ $fixShown = @(Fix-Lines) -match '^shown'
 Check 'fixture window of another process up' ([bool]$fixShown) "$(if ($fixShown) { $fixShown[0] } else { 'no shown line in 30 s' }); pwsh pid $(if ($fixP) { $fixP.Id }), check pid $PID"
 Save-Screen 'hit-screen.png' | Out-Null
 
-$p = Start-Popup 'hit'
-# layered last: in run 1 everything after it ran with the runner's console in front (since fixed)
-# ncregion straight after the control (nothing left over from another technique); the control again at the end
-$hitModes = @('none', 'ncregion', 'nchittest', 'region', 'layered', 'none-after')
-foreach ($mode in $hitModes) {
+# Each technique in a FRESH app process, between a hit=none control before and after it (run 3: a
+# plain window passed clicks after the other techniques had run in the same process). Then the
+# same-thread test in that process.
+$hitTechs = @('ncregion', 'nchittest', 'region', 'layered')
+foreach ($tech in $hitTechs) {
+$p = Start-Popup "hit-$tech"
+foreach ($mode in @('none', $tech, 'none-after')) {
   if (-not $p) { break }
   $id++
   [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
@@ -283,9 +285,9 @@ foreach ($mode in $hitModes) {
   }
   $r.passesToOtherProcess = ($fixDown -ge 1 -and $popPass -eq 0 -and $mv -ge 1)
   $r.shapeTakesClicks = ($popShape -ge 1 -and $fixShape -eq 0)
-  Note "hit_$mode" $r
+  Note $(if ($mode -like 'none*') { "hit_${tech}_$mode" } else { "hit_$mode" }) $r
   if ($mode -like 'none*') {
-    Check "control: hit=none takes the corner click itself ($mode)" ($popPass -ge 1 -and $fixDown -eq 0 -and $ctl -ge 1) "transparent corner: popup $popPass press(es), fixture $fixDown; control click on the fixture $ctl"
+    Check "control in the $tech process: hit=none takes the corner click itself ($mode)" ($popPass -ge 1 -and $fixDown -eq 0 -and $ctl -ge 1) "transparent corner: popup $popPass press(es), fixture $fixDown; control click on the fixture $ctl"
   }
   if ($mode -eq 'region') {
     # a window region on a WinUI window: still drawn after a resize (region re-applied), corners still anti-aliased
@@ -300,6 +302,7 @@ foreach ($mode in $hitModes) {
     $o2 = Cmd "open id=$id frame=$FrameWinner theme=light fill=solid hit=region x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
     Start-Sleep -Milliseconds 700
     $after2 = Grab $HA
+    Save-Shot 'hit-region-solid.png' $HA | Out-Null
     if ($o2) {
       $s = $o2.shape
       Save-Shot 'corner-region.png' @{ x = $s.x - 6; y = $s.y - 6; w = 48; h = 48 } | Out-Null
@@ -308,7 +311,7 @@ foreach ($mode in $hitModes) {
       Check 'region: corners still anti-aliased, nothing outside' ($aa[1] -ge 8 -and $aa[2] -eq 0 -and $aa[4] -eq 0 -and $st3.changed -eq 0) "arc band $($aa[0]) px, $($aa[1]) partly covered; inside not full $($aa[2]); painted outside the arc $($aa[4]); stray $($st3.changed)"
     } else { Check 'region: corners still anti-aliased, nothing outside' $false 'no reply' }
   }
-  if ($mode -eq 'none' -or $HitWorks -contains $mode) {
+  if ($mode -eq $tech -or ($mode -eq 'none' -and $tech -eq $hitTechs[0])) {
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 300
     Note "hit_${mode}_cpu" (Get-Cpu $p.Id 10)
   }
@@ -337,7 +340,7 @@ foreach ($mode in $hitModes) {
 # A window of the popup's OWN thread under the transparent corner (Mantle's case: a popup over its
 # own bar). Documented: HTTRANSPARENT passes only to those. Measured here (runs 1-2): the opposite.
 if ($p) {
-  foreach ($mode in $HitWorks) {
+  foreach ($mode in @($tech)) {
     $id++
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
     Cmd 'fixture x=560 y=560 w=120 h=120' | Out-Null
@@ -360,7 +363,8 @@ if ($p) {
     Start-Sleep -Milliseconds 300
   }
 }
-Stop-Popup $p
+  Stop-Popup $p
+}
 if ($fixP) { Stop-Tree $fixP.Id }
 
 # ================================================================== 7. instant-open cost
