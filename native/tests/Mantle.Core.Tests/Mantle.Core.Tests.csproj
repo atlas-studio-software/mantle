@@ -13,9 +13,12 @@
     <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
     <PackageReference Include="xunit" Version="2.9.3" />
     <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+    <!-- GeneratorDiagnosticsTests runs Mantle.Generators in-process (same Roslyn line as the generator) -->
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" />
   </ItemGroup>
   <ItemGroup>
     <ProjectReference Include="..\..\src\Mantle.Core\Mantle.Core.csproj" />
+    <ProjectReference Include="..\..\src\Mantle.Generators\Mantle.Generators.csproj" />
   </ItemGroup>
   <ItemGroup>
     <Content Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />

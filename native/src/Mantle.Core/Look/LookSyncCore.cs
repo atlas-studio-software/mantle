@@ -209,7 +209,16 @@ public static class LookSyncCore
     {
         string file = Path.Combine(dir, FileName);
         byte[] buf;
-        try { buf = File.ReadAllBytes(file); }
+        // Node's readFileSync opens with FILE_SHARE_READ | WRITE | DELETE (libuv). File.ReadAllBytes shares READ only, so a
+        // native read held look.json against every other app's replace-rename (their EPERM) and was itself refused while
+        // one was in flight (EBUSY: a lost publish, since Mutate re-reads first). Open it the way Node does.
+        try {
+            using var fs = new FileStream(file, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete, 4096, FileOptions.SequentialScan);
+            buf = new byte[fs.Length];
+            int got = 0;
+            while (got < buf.Length) { int n = fs.Read(buf, got, buf.Length - got); if (n == 0) break; got += n; }
+            if (got < buf.Length) Array.Resize(ref buf, got);
+        }
         catch (Exception e) {
             string code = SafeFile.Code(e);
             if (code == "ENOENT") return new LookRead("missing", null, Array.Empty<LookSkip>(), "no shared look file yet", null, null);

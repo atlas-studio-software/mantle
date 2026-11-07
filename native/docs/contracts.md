@@ -194,3 +194,25 @@ The read-only guard (`ReadOnlyTests`): until switch-over, native must never writ
 native-data-look implements writes behind one gate: writes go only to a test or scratch profile directory unless the
 app runs `--live` as the only shell. The guard test changes from "no writes anywhere" to "no write path that skips
 the gate", and keeps failing on any direct file write outside the store.
+
+## native-core-3 additions (2026-11-07, append only)
+
+- `[Command("name", When = nameof(X))]`: the generated registration registers the command only when the bool
+  property or field `X` of the same type reads true at that moment (main.js's `if (flags.test) COMMANDS[...] = ...`).
+  A `When` that is missing, not a bool, static against an instance handler (or the reverse), or private is MANTLE003.
+  `features.fire` uses it (`When = nameof(TestRun)`), so `Catalogs.Register(bus, new FeatureCommands(host))` is the
+  only registration and a live run never has the command. `FeatureCommands.Register` (by hand) is gone.
+- `Mantle.Core.Look.LookShell` is the look as the app wires it: theme core + look host behind one lock, the
+  generated `theme.get/theme.set/look.get/look.sync/look.glass/look.accent` (`Catalogs.Register(bus, look)`), and the
+  rebroadcast. Every change of the theme or of its `--lg-*` overrides is published on the host's events as
+  `"theme"` with a `ThemePayload(ThemeView View, JsonObject Look)`, every look change as `"look"` (the look host's
+  view), on the host thread. Surfaces built from descriptors subscribe `ctx.On<ThemePayload>("theme", ...)`.
+- Until the bar is a descriptor surface, `MantleApp.ThemeShown` (static event, raised on the UI thread) and
+  `MantleApp.ThemeNow` carry the same payload. **Asked of native-windows:** BarWindow subscribes `ThemeShown` and
+  applies `p.Theme == "dark"` through its own `SetTheme`, instead of re-resolving Match Windows from Windows' real key
+  (its `Resolve` reads `HKCU\...\Personalize` directly, so a test's scratch key and a live Match Windows change never
+  reach the bar today). The app logs which it is at start: `theme: ... reaches N surface(s) directly`.
+- `MANTLE_TEST_THEME_KEY=<key under HKCU>`: a `--test` run reads and watches Windows' app mode there instead of
+  `Software\Microsoft\Windows\CurrentVersion\Themes\Personalize` (ThemeCore.KeyFor); a live run never takes it.
+- `--test-popwatch` and `--test-popwatch-away` are known test-only switches (LaunchArgs; ignored with a log line
+  without `--test`), for the windows lane to read as `Host.Args.Test && Host.Args.Has("test-popwatch")`.

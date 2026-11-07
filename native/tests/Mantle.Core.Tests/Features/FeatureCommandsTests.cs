@@ -3,6 +3,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using Mantle.Core.Commands;
 using Mantle.Core.Features;
 using Xunit;
 
@@ -23,7 +24,7 @@ public class FeatureCommandsTests
         };
         rig.Host.Load(new[] { rig.D("osd", chords: new[] { "VolumeUp" }, options: opts, label: "Volume pop-up"), rig.D("notes", defaultOn: false) });
         await rig.Host.Installed;
-        using var reg = new FeatureCommands(rig.Host).Register(rig.Bus);
+        using var reg = Catalogs.Register(rig.Bus, new FeatureCommands(rig.Host));
         var r = await rig.Bus.CallAsync("features.list");
         Assert.True(r.Ok);
         var list = r.Result.EnumerateArray().ToArray();
@@ -54,7 +55,7 @@ public class FeatureCommandsTests
         var hits = 0;
         rig.Host.Load(new[] { rig.D("snap", f => f.Install = c => { c.OnChord("Win+Z", _ => hits++); return ValueTask.CompletedTask; }, chords: new[] { "Win+Z" }) });
         await rig.Host.Installed;
-        using var reg = new FeatureCommands(rig.Host).Register(rig.Bus);
+        using var reg = Catalogs.Register(rig.Bus, new FeatureCommands(rig.Host));
         var r = await rig.Bus.CallAsync("features.fire", new JsonObject { ["chord"] = "Win+Z" }, "test");
         Assert.True(r.Ok);
         Assert.Equal(1, hits);
@@ -65,7 +66,7 @@ public class FeatureCommandsTests
 
         var live = new Rig(t, test: false);
         live.Host.Load(Array.Empty<FeatureDescriptor>());
-        using var liveReg = new FeatureCommands(live.Host).Register(live.Bus);
+        using var liveReg = Catalogs.Register(live.Bus, new FeatureCommands(live.Host));
         Assert.True(live.Bus.Has("features.list"));
         Assert.False(live.Bus.Has("features.fire"));
         Assert.Equal("features.fire works only in a test run (a live run uses the real keys)", (await new FeatureCommands(live.Host).Fire(default)).Error);

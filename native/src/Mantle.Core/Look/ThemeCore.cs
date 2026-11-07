@@ -169,10 +169,23 @@ public sealed class ThemeCore
 
     /// <summary>Windows' app mode from HKCU\...\Themes\Personalize AppsUseLightTheme (what nativeTheme follows).</summary>
     [SupportedOSPlatform("windows")]
-    public static WindowsMode ReadWindowsMode() => ReadWindowsMode(() => {
-        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(PersonalizeKey);
+    public static WindowsMode ReadWindowsMode() => ReadWindowsMode(PersonalizeKey);
+
+    /// <summary>The same from another key under HKCU: a test run's scratch key (MANTLE_TEST_THEME_KEY), never the user's own.</summary>
+    [SupportedOSPlatform("windows")]
+    public static WindowsMode ReadWindowsMode(string subKey) => ReadWindowsMode(() => {
+        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(subKey);
         return k?.GetValue(AppsUseLightTheme);
     });
+
+    /// <summary>The key Match Windows watches in this run: <c>MANTLE_TEST_THEME_KEY</c> (a key under HKCU) in a --test run
+    /// that sets it, so a UI test flips Windows' mode without touching the user's; else Windows' own Personalize key.
+    /// A live run never takes the variable.</summary>
+    public static string KeyFor(bool test, Func<string, string?> env)
+    {
+        string? k = test ? env("MANTLE_TEST_THEME_KEY") : null;
+        return string.IsNullOrWhiteSpace(k) ? PersonalizeKey : k.Trim().TrimStart('\\');
+    }
 
     /// <summary>The app mode from the registry value <paramref name="readValue"/> answers (tests fake it): a DWORD 0 is dark,
     /// any other DWORD light; no value (or not a DWORD) is Windows' default, light apps. A read that throws is the caller's

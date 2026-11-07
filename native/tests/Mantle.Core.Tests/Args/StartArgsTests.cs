@@ -67,6 +67,20 @@ public class StartArgsTests
     }
 
     [Fact]
+    public void Test_popwatch_switches_are_known_and_ignored_outside_test()
+    {
+        // lib/popwatch.js: --test-popwatch arms the watch in a test run, --test-popwatch-away reads the real foreground
+        var t = P("--test", "--profile-name=a", "--test-popwatch", "--test-popwatch-away");
+        Assert.True(t.Ok);
+        Assert.Empty(t.Unknown);
+        Assert.True(t.Has("test-popwatch") && t.Has("test-popwatch-away"));
+        Assert.Empty(t.IgnoredTestSwitches());
+        var live = P("--live", "--test-popwatch");
+        Assert.Empty(live.Unknown);
+        Assert.Equal(new[] { "--test-popwatch" }, live.IgnoredTestSwitches().ToArray());
+    }
+
+    [Fact]
     public void CORE010_open_requests_follow_the_allow_list_and_carry_play_files()
     {
         var ok = P("--open=Player", @"--play=C:\v\a.mp4", "--play=relative.mp4", "--play=\"D:\\b.mkv\"").OpenRequest!;
