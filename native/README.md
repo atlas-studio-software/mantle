@@ -67,7 +67,25 @@ three linked build variants + the sidecar tests).
 - The repo is public: fixtures are synthetic, no user data, no machine paths, no personal names in
   committed text. Commits pass the oss-guard hooks (never `--no-verify`).
 
-## Build mode
+## Build mode: Native AOT recommended
 
-Self-contained + ReadyToRun (`publish.ps1 -Mode sc`) is the CI default, as in the spike. The measured
-trade-off between it, framework-dependent and Native AOT is in `bench/README.md`.
+Measured on the same runner (`bench/README.md`, modes run 42357655845, app 511a8ff, light theme):
+
+| mode | folder | first frame (median of 3) | private / working set at 45 s | needs installed |
+|---|---|---|---|---|
+| self-contained + ReadyToRun (`sc`, today's CI default) | 217.7 MB, 495 files | 314 ms | 43.7 / 112.6 MB | nothing |
+| self-contained, no ReadyToRun | 173.9 MB | 588 ms | 36.3 / 115.3 MB | nothing |
+| framework-dependent + ReadyToRun (`fd`) | 50.0 MB, 40 files | 406 ms | 38.8 / 116.5 MB | .NET 10 + Windows App Runtime 1.7 (67.9 MB installer), updated outside the app |
+| Native AOT + trimming (`aot`), with the fix below | 105.6 MB, 276 files | 141 ms | 31.0 / 77.1 MB | nothing |
+
+AOT is the lowest on memory and the fastest to start, at half today's size, with nothing to install.
+Plain `aot` builds but crashes at start: `TransparentBackdrop` must be `partial` (CsWinRT1028). After
+that one-word change it works. Before CI and shipping move to AOT:
+- make the CsWinRT/trim/AOT warnings errors;
+- point ci.ps1's build stage at `publish.ps1 -Mode aot`;
+- run the UI tests, the hand-off, `--quit` and real data files under AOT (not yet covered).
+
+The full list is in `bench/README.md`.
+
+For comparison, the same runner measured Electron Mantle at 16 processes and 700-717 MB private (all
+surfaces), against 39-44 MB for the native bar in one process (full run 42358360469).
