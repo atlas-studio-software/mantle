@@ -324,6 +324,13 @@ function themeAtFirstPaint(theme) {
     window.dispatchEvent(new CustomEvent('mantle-theme', { detail: { theme } }));
   });
 }
+function fixedClock(t) {
+  const D = Date;
+  function F(...a) { if (!new.target) return new D(t).toString(); return a.length ? new D(...a) : new D(t); }
+  F.prototype = D.prototype;
+  F.now = () => t; F.parse = D.parse; F.UTC = D.UTC;
+  window.Date = F;
+}
 const DESKS = { light: '#dfe4ec', dark: '#141619' };
 function deskOf(shotDesk) {
   const d = process.env.BAR_DESK || shotDesk || 'dark';
@@ -417,6 +424,10 @@ if (process.env.BAR_TRAY_JSON) {
         if (REAL_TRAY && /tray/.test(s.q)) await page.addInitScript((t) => { window.__MOCK_TRAY__ = t; }, REAL_TRAY);
         page.setDefaultTimeout(8000);   // a shot that cannot find its button says so in 8 s, not 30
         if (THEME) await page.addInitScript(themeAtFirstPaint, THEME);
+        /* BAR_FIXED_TIME=<epoch ms>: the page's clock stands still at that moment (Date.now, new Date()),
+           so two passes minutes apart draw the same clock and the same song position: a before/after can
+           then be compared pixel for pixel (tools/png-same.js). Timers still run. */
+        if (process.env.BAR_FIXED_TIME) await page.addInitScript(fixedClock, Number(process.env.BAR_FIXED_TIME));
         await page.setViewportSize({ width: s.w, height: s.h });
         page.on('pageerror', e => problems.push(s.name + ' pageerror: ' + e.message));
         page.on('console', m => { if (m.type() === 'error') problems.push(s.name + ' console: ' + m.text()); });

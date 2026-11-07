@@ -27,6 +27,9 @@ const zlib = require('zlib');
 const { execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
+/* MEM_PROBE_ROOT=<dir>: measure the bar page of ANOTHER tree (its ui/, lib/ and preload.js), e.g. a base commit
+   unpacked by tools/bar-mem-ab.js, on the same runner and in the same Electron as this one */
+const ROOT = process.env.MEM_PROBE_ROOT ? path.resolve(process.env.MEM_PROBE_ROOT) : path.join(__dirname, '..');
 /* Under Electron (node node_modules/electron/cli.js tools/bar-mem-probe.js) the page runs in Mantle's own
    Chromium, in a quiet window (lib/test-quiet.js: alpha 0, click-through, never focused), with the GPU in
    the browser process as Mantle runs it, and with webFrame's image cache behind the mock's bridge. Under
@@ -227,7 +230,7 @@ const SCEN = {
 /* The image-cache primitive exactly as preload.js ships it (the text between its markers), so what is
    measured is the shipped code; a preload.js without it (an older commit) is measured without it. */
 function preloadImageCacheSource() {
-  const src = fs.readFileSync(path.join(__dirname, '..', 'preload.js'), 'utf8');
+  const src = fs.readFileSync(path.join(ROOT, 'preload.js'), 'utf8');
   const m = /\/\/ <image-cache>([\s\S]*?)\/\/ <\/image-cache>/.exec(src);
   return m ? m[1] : null;
 }
@@ -255,7 +258,7 @@ async function electronPage(query) {
     if (d.level === 'error' || d.level === 3) errors.push(String(d.message));
     if (/\[bar\] image cache/.test(String(d.message))) process.stdout.write('bar-mem: page said: ' + String(d.message).slice(0, 300) + '\n');
   });
-  await win.loadFile(path.join(__dirname, '..', 'ui', 'bar', 'index.html'), { search: query.replace(/^\?/, '') });
+  await win.loadFile(path.join(ROOT, 'ui', 'bar', 'index.html'), { search: query.replace(/^\?/, '') });
   await sleep(W.settle);
   wc.debugger.attach('1.3');
   const send = (m, x) => wc.debugger.sendCommand(m, x || {});
@@ -287,9 +290,10 @@ async function electronPage(query) {
     const cache = await js(() => (window.__mantleImageCache ? window.__mantleImageCache({}).before : null));
     const theme = await js(() => document.documentElement.getAttribute('data-theme'));
     const trim = await js(() => (window.__barImgTrim ? { runs: window.__barImgTrim.runs, cleared: window.__barImgTrim.cleared } : null));
+    const pics = await js(() => (window.MantlePic ? window.MantlePic.stats() : null));
     const row = Object.assign({ label, jsUsedMB: MB(heap.usedSize), documents: dom.documents, nodes: dom.nodes, listeners: dom.jsEventListeners, resources: perf.Resources,
       rendererPrivMB: r ? MB(r.memory.privateBytes * 1024) : null, rendererWsMB: r ? MB(r.memory.workingSetSize * 1024) : null,
-      browserPrivMB: b ? MB(b.memory.privateBytes * 1024) : null, imageCache: cache ? cache.count + ' / ' + MB(cache.bytes) + ' MB' : 'n/a', trim, theme }, extra || {});
+      browserPrivMB: b ? MB(b.memory.privateBytes * 1024) : null, imageCache: cache ? cache.count + ' / ' + MB(cache.bytes) + ' MB' : 'n/a', trim, pics, theme }, extra || {});
     process.stdout.write('bar-mem: ' + JSON.stringify(row) + '\n');
     return row;
   }
@@ -332,6 +336,7 @@ async function scenario(name, results) {
 
 (async () => {
   const results = {};
+  process.stdout.write('bar-mem: page from ' + ROOT + '\n');
   process.stdout.write('bar-mem: ' + (ELECTRON ? 'Electron ' + process.versions.electron + ', Chromium ' + process.versions.chrome : 'headless Chromium (page-harness)') +
     '; image-cache primitive in preload.js: ' + (preloadImageCacheSource() ? 'yes' : 'no') + '\n');
   for (const name of WANT) {
@@ -346,7 +351,7 @@ async function scenario(name, results) {
       w.rendererWsMB + ' -> ' + e.rendererWsMB + ' MB (' + d('rendererWsMB') + '), after pressure priv ' + p.rendererPrivMB + ' / ws ' + p.rendererWsMB + ' MB; ' +
       (ELECTRON ? 'browser process priv ' + w.browserPrivMB + ' -> ' + e.browserPrivMB + ' MB; image cache ' + w.imageCache + ' -> ' + e.imageCache + '; trims ' + JSON.stringify(e.trim) + '; ' : '') +
       'js ' + w.jsUsedMB + ' -> ' + e.jsUsedMB + ' MB; nodes ' + w.nodes + ' -> ' + e.nodes + '; listeners ' + w.listeners + ' -> ' + e.listeners +
-      '; page errors ' + rows.errors.length + (rows.errors.length ? ': ' + rows.errors.join(' | ') : '') + '\n');
+      (e.pics ? '; pictures ' + JSON.stringify(e.pics) : '') + '; page errors ' + rows.errors.length + (rows.errors.length ? ': ' + rows.errors.join(' | ') : '') + '\n');
   }
   if (ELECTRON) { try { fs.rmSync(electronPage.dir, { recursive: true, force: true }); } catch (_) { /* temp */ } require('electron').app.exit(0); }
 })().catch((e) => {
