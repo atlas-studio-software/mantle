@@ -1,14 +1,18 @@
 # native-ci: build and check the native (C# + WinUI 3) Mantle under native/.
 #
-# Runs only on a push to native/infra (the integration branch) and on pull requests that touch
+# Runs only on a push to native/main (the integration branch) and on pull requests that touch
 # native/** (the lane branches share the org's runner concurrency, so they do not each trigger it).
+# The app is built Native AOT (what ships); ci.ps1 -BuildMode sc is the self-contained fallback.
 # One run per ref at a time: a newer push cancels the run in progress. It touches nothing the
 # installer or oss-guard workflows use.
 name: native-ci
 
 on:
   push:
-    branches: [native/infra]
+    branches: [native/main]
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-ci.yml'
   pull_request:
     paths:
       - 'native/**'
