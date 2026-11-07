@@ -54,8 +54,8 @@ for (const r of rows) {
     const la = name === '--lg-r-xl' || name === '--lg-r-chip' ? b : a;   // dark-only radii: light takes the dark value
     light.push(`      <x:Double x:Key="${key}">${la}</x:Double>`, `      <CornerRadius x:Key="${key}Corner">${la}</CornerRadius>`);
     dark.push(`      <x:Double x:Key="${key}">${b}</x:Double>`, `      <CornerRadius x:Key="${key}Corner">${b}</CornerRadius>`);
-  } else if (ms(lv) || ms(dvv)) {
-    shared.push(`  <x:Double x:Key="${key}Ms">${ms(lv) || ms(dvv)}</x:Double>`);
+  } else if (ms(lv) || ms(dvv) || ms(xl)) {
+    shared.push(`  <x:Double x:Key="${key}Ms">${ms(lv) || ms(dvv) || ms(xl)}</x:Double>`);
   } else if (bez(lv)) {
     shared.push(`  <x:String x:Key="${key}Bezier">${bez(lv)}</x:String>`);
   } else if (name === '--lg-blur') {

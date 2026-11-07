@@ -4,7 +4,7 @@
   The island theme of ui/shared/glass-light.css, one key per -lg-* custom property (-lg-ink-2 = LgInk2),
   Light = :root, Dark = :root[data-theme="dark"]. rgba(r,g,b,a) is #AARRGGBB with a = round(a * 255).
   Radii are LgR* (a double) and LgR*Corner; timings are *Ms; cubic-bezier curves are *Bezier ("x1,y1,x2,y2").
-  Not mapped here (composite CSS values the surfaces draw themselves): -lg-shadow (both), -lg-shadow-up (both), -lg-lip-up (both), -lg-lip-up-0 (both), -lg-lip-dn (both), -lg-lip-dn-0 (both), -lg-drop-up (both), -lg-drop-up-0 (both), -lg-drop-dn (both), -lg-drop-dn-0 (both), -lg-focus (both), -m-spring (root-only), -elev-lip (both), -elev-raised (both), -elev-panel (both), -elev-tip (both), -elev-float (both), -shadow-ctl (both), -shadow-ctl-tight (both), -shadow-knob (both), -lg-dur (root-only).
+  Not mapped here (composite CSS values the surfaces draw themselves): -lg-shadow (both), -lg-shadow-up (both), -lg-lip-up (both), -lg-lip-up-0 (both), -lg-lip-dn (both), -lg-lip-dn-0 (both), -lg-drop-up (both), -lg-drop-up-0 (both), -lg-drop-dn (both), -lg-drop-dn-0 (both), -lg-focus (both), -m-spring (root-only), -elev-lip (both), -elev-raised (both), -elev-panel (both), -elev-tip (both), -elev-float (both), -shadow-ctl (both), -shadow-ctl-tight (both), -shadow-knob (both).
   This is the ONLY file with colour literals in Mantle.App (TokensTests lints the rest).
 -->
 <ResourceDictionary
@@ -163,6 +163,7 @@
   <x:Double x:Key="LgDurUiMs">120</x:Double>
   <x:Double x:Key="LgDurUiSlowMs">200</x:Double>
   <x:String x:Key="LgEaseUiBezier">0.2,0,0,1</x:String>
+  <x:Double x:Key="LgDurMs">560</x:Double>
   <x:Double x:Key="LgDurOutMs">260</x:Double>
   <x:String x:Key="LgEaseBezier">0.22,0.68,0.3,1</x:String>
   <FontFamily x:Key="LgFont">Segoe UI Variable Text, Segoe UI Variable, Segoe UI</FontFamily>

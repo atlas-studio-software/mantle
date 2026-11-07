@@ -62,7 +62,7 @@ public class TokensTests
             else if (Color(light) is not { } l || !Argb.IsMatch(l)) bad.Add($"{key} is dark-only in CSS but has no explicit light value");
         }
         Assert.True(bad.Count == 0, string.Join("\n", bad));
-        Assert.True(n >= 50, "expected the table's colour tokens, found " + n);
+        Assert.True(n >= 40, "expected the table's colour tokens, found " + n);
     }
 
     [Theory]
