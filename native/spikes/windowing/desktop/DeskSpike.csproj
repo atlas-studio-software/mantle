@@ -1,0 +1,11 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Primitive 4: the desktop layer (a WinUI 3 window under the icons, above the wallpaper).
+       Settings: ../Directory.Build.props. probe/ is the check's own helper (Add-Type), not the app. -->
+  <PropertyGroup>
+    <RootNamespace>DeskSpike</RootNamespace>
+    <AssemblyName>DeskSpike</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="probe\**" />
+  </ItemGroup>
+</Project>
