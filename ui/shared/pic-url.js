@@ -13,16 +13,15 @@
  * decoder, same pixels; only the address changes. Two ways in:
  *
  *   MantlePic.set(img, src)    for pictures that come back (artwork, list covers): one blob: URL per
- *       distinct picture, kept in a small cache with one decoded holder each, so a list that is drawn
- *       again with the same covers gets them from memory at once (no empty frame), and the cache's
- *       oldest are let go (URL revoked, holder dropped) past CACHE_MAX pictures or CACHE_BYTES.
+ *       distinct picture, kept in a small LRU cache, so a list that is drawn again with the same covers
+ *       asks for the same URL; the cache's oldest are let go (URL revoked) past CACHE_MAX pictures or
+ *       CACHE_BYTES.
  *   MantlePic.once(src)        for one-off pictures (the backdrop strip, a pop-up's picture): a fresh
  *       blob: URL; the caller lets it go with MantlePic.release(url) once its element has loaded it.
  *       Never before: an element given a URL that was already revoked never loads (measured, Electron 44).
  *
  * Timing is unchanged: a data: picture is not on screen the moment its src is set either; both land on
- * the next frame (tools/img-mem-probe.js's sync line). A cached picture whose holder has decoded it is
- * complete at once, so a list drawn again never shows a frame without its covers.
+ * the next frame (tools/img-mem-probe.js's sync line).
  * Anything that is not a data: URL is passed straight through.
  * A data: URL that cannot be read as bytes (bad base64) is passed through too, so the <img> fails the
  * way it always did and its own onerror fallback runs; never a silent blank.
@@ -31,7 +30,7 @@
 (function (root) {
   'use strict';
   var CACHE_MAX = 160;                 // distinct pictures (Up next 32 + Library 40 + search + the card, with room)
-  var CACHE_BYTES = 6 * 1048576;       // decoded bytes the cache may hold (a 64 px cover is 16 KB, a 640 px one 1.6 MB)
+  var CACHE_BYTES = 3 * 1048576;       // encoded bytes behind the cached URLs (a 64 px cover is ~5-15 KB, a 640 px one ~100 KB)
 
   function isData(src) { return typeof src === 'string' && src.slice(0, 5).toLowerCase() === 'data:'; }
 
@@ -64,12 +63,12 @@
   }
 
   /* ---------------------------------------------------------------- the cache (pictures that come back) */
-  var cache = new Map();   // data: string -> { url, holder, bytes }; Map order = least recently used first
-  var held = 0;
-  function sizeOf(e) {
-    var h = e.holder;
-    return h && h.naturalWidth > 0 ? h.naturalWidth * h.naturalHeight * 4 : 0;
-  }
+  /* data: string -> { url, bytes }; Map order = least recently used first. Nothing else is held: no
+     decoded holder per picture: with one, 60 songs took the page from 1,012 to 12,433 nodes and 352 to
+     4,312 listeners (about two per evicted holder) and +51 MB (tools/bar-mem-ab.js). A list drawn again with the same
+     covers asks for the same URL, which is still registered, so it loads as a data: picture did. */
+  var cache = new Map();
+  var held = 0;            // bytes of the pictures behind the cached URLs (the Blobs; the keys are ~4/3 of it again)
   function trim() {
     var it = cache.keys();
     while (cache.size > CACHE_MAX || (held > CACHE_BYTES && cache.size > 1)) {
@@ -79,7 +78,6 @@
       held -= e.bytes;
       // an <img> that already has the picture keeps showing it; only a NEW element would need the URL
       release(e.url);
-      try { e.holder.removeAttribute('src'); } catch (_) { /* nothing to drop */ }
       stats.evicted++;
     }
   }
@@ -89,16 +87,8 @@
     var blob = blobOf(src);
     if (!blob) return null;
     stats.misses++;
-    e = { url: make(blob), holder: new Image(), bytes: 0 };
-    e.holder.onload = function () {
-      if (cache.get(src) !== e) return;
-      e.bytes = sizeOf(e); held += e.bytes; trim();
-    };
-    e.holder.onerror = function () {   // the same failure the <img> gets: let the entry go, nothing to hold
-      if (cache.get(src) !== e) return;
-      cache.delete(src); release(e.url);
-    };
-    e.holder.src = e.url;
+    e = { url: make(blob), bytes: blob.size };
+    held += e.bytes;
     cache.set(src, e);
     trim();
     return e;

@@ -2,7 +2,7 @@
  *
  * The pure half of ui/shared/pic-url.js in node: the data: -> Blob reading (base64 and percent-encoded,
  * parameters, broken input passed through), the cache (one URL per distinct picture, LRU order, the
- * picture and byte limits, URLs revoked as they go, a failed picture dropped), and one-off pictures
+ * picture and byte limits, URLs revoked as they go), and one-off pictures
  * (once / release). Image is a stand-in that "decodes" on
  * a timer; ui/bar/pics.page.test.js covers the same code in Chromium against the real bar.
  */
@@ -84,8 +84,7 @@ const b64 = (s) => 'data:image/png;base64,' + Buffer.from(s).toString('base64');
     const s1 = P.stats();
     assert.strictEqual(s1.made - s0.made, 2);
     assert.strictEqual(s1.hits - s0.hits, 1);
-    await tick(); await tick();
-    assert.ok(P.stats().heldBytes >= 2 * 64 * 64 * 4, 'held bytes counted on load: ' + P.stats().heldBytes);
+    assert.ok(P.stats().heldBytes >= 'one'.length + 'two'.length, 'held bytes counted: ' + P.stats().heldBytes);
   });
   await t('cache: past its picture limit the OLDEST go, their URLs revoked', async () => {
     const first = new FakeImage();
@@ -107,25 +106,14 @@ const b64 = (s) => 'data:image/png;base64,' + Buffer.from(s).toString('base64');
     assert.ok(revoked.length > 0 && revoked.every((u) => /^blob:/.test(u)));
   });
   await t('cache: past its byte limit the oldest go', async () => {
-    SIDE = 1024;   // 4 MB each decoded: two do not fit in 6 MB
+    const big = (c) => b64(c.repeat(2 * 1048576));   // 2 MB each: two do not fit in 3 MB
     const a = new FakeImage(), b = new FakeImage();
-    P.set(a, b64('big-a')); await tick(); await tick();
-    P.set(b, b64('big-b')); await tick(); await tick();
-    SIDE = 64;
+    P.set(a, big('a'));
+    P.set(b, big('b'));
     const s = P.stats();
     assert.ok(s.heldBytes <= P.LIMITS.bytes, 'held ' + s.heldBytes);
     assert.ok(revoked.includes(a.src), 'the older big one was let go');
     assert.ok(!revoked.includes(b.src), 'the newest is kept');
-  });
-  await t('cache: a picture that fails to load is dropped and its URL revoked', async () => {
-    const im = new FakeImage();
-    const s0 = P.stats().cached;
-    // mark the URL the cache will make as bad: make it, then flag it before the tick
-    P.set(im, b64('will-fail'));
-    BAD.add(im.src);
-    await tick(); await tick();
-    assert.ok(revoked.includes(im.src));
-    assert.strictEqual(P.stats().cached, s0, 'not kept');
   });
   await t('once: a fresh URL each call; release revokes it; a non-data: src comes back as it is', () => {
     const u1 = P.once(b64('x')), u2 = P.once(b64('x'));

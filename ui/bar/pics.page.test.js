@@ -107,7 +107,7 @@ async function run() {
     for (let i = 0; i < 3; i++) {
       await pg.click('#mchip', { wait: 500 });
       const st = await pg.eval(() => ({ open: !document.getElementById('pop').hidden, bd: document.getElementById('pop').classList.contains('bd'), url: document.getElementById('pop').style.getPropertyValue('--pop-bd').slice(0, 20), glass: window.__barGlass && window.__barGlass.pop }));
-      t.check(`dark pop-up ${i + 1}: opens with its baked glass`, st.open && st.bd && /url\(/.test(st.url), st);
+      t.check(`dark pop-up ${i + 1}: opens with its baked glass, through a blob: URL`, st.open && st.bd && /^url\("blob:/.test(st.url), st);
       await pg.click('#mchip', { wait: 350 });
     }
     t.check('dark pop-ups: no blob: URL is left held by their pictures', (await live(pg)).length === before, { before, now: (await live(pg)).length });
@@ -119,8 +119,7 @@ async function run() {
     const covers = await pg.eval(() => Array.from(document.querySelectorAll('#pop .spq-art img')).map((i) => ({ src: String(i.getAttribute('src') || '').slice(0, 5), ok: i.complete && i.naturalWidth > 0 })));
     t.check('Up next covers: shown, every one through a blob: URL', covers.length > 0 && covers.every((c) => c.src === 'blob:'), covers.slice(0, 4));
     t.check('Up next covers: every one decoded', covers.length > 0 && covers.every((c) => c.ok), covers.filter((c) => !c.ok).length + ' not decoded');
-    // the card closed and opened again: the list is drawn anew with the same covers, which come from the
-    // cache at once (no new URL, each <img> complete the moment it is made)
+    // the card closed and opened again: the list is drawn anew with the same covers, from the cache (no new URL)
     const s0 = await pg.eval(() => window.MantlePic.stats());
     await pg.click('#mchip', { wait: 350 });
     await pg.click('#mchip', { wait: 500 });
@@ -128,16 +127,7 @@ async function run() {
     const covers2 = await pg.eval(() => Array.from(document.querySelectorAll('#pop .spq-art img')).map((i) => i.complete && i.naturalWidth > 0));
     t.check('Up next drawn again: its covers come from the cache (hits, no new URL)', covers2.length > 0 && s1.made === s0.made && s1.hits > s0.hits, { s0, s1, n: covers2.length });
     t.check('Up next drawn again: every cover decoded', covers2.length > 0 && covers2.every(Boolean));
-    const sync = await pg.eval(() => {
-      var src = document.querySelector('#pop .spq-art img');
-      var im = document.createElement('img'); im.alt = '';
-      var u = src && src.getAttribute('src');
-      if (!u) return null;
-      im.src = u; document.body.appendChild(im);
-      var r = { complete: im.complete, w: im.naturalWidth }; im.remove(); return r;
-    });
-    t.check('a cached cover is complete the moment an <img> is given it (no frame without it)', sync && sync.complete && sync.w > 0, sync);
-    t.check('the cache stays within its limits', s1.cached <= 160 && s1.heldBytes <= 6 * 1048576, s1);
+    t.check('the cache stays within its limits', s1.cached <= 160 && s1.heldBytes <= 3 * 1048576, s1);
     hd = await held();
     t.check('every blob: URL still held is one the cache holds (none leaked by a one-off picture)', hd.live === hd.cached, hd);
     await pg.click('#mchip', { wait: 350 });

@@ -488,7 +488,7 @@
      picture sits in the window, as fractions of the window it was taken from (`win`); it is pinned to
      the bar's own edge (the page is anchored there), so a window that grows away keeps it aligned. */
   var POP_BD_WAIT_MS = 250;
-  var popBd = null, popBdWait = 0;
+  var popBd = null, popBdWait = 0, popBdCss = null;   // popBdCss: the blob: URL the pop-up's --pop-bd holds
   function popBdHold(on) {
     if (popBdWait) { clearTimeout(popBdWait); popBdWait = 0; }
     if (!on) { el.pop.classList.remove('bdwait'); return; }
@@ -513,6 +513,7 @@
       return;
     }
     clearFail('popbackdrop');
+    if (popBd && popBd.url && popBd.url !== popBdCss && window.MantlePic) window.MantlePic.release(popBd.url);   // baked, never shown
     var mine = popBd = { key: p.key, at: p.at || { x: 0, y: 0, w: 1, h: 1 }, win: p.win || null, img: null, pic: null, url: null, ms: p.ms };
     /* through a blob: URL, let go on load (../shared/pic-url.js): an Image that has decoded a data: picture
        keeps ~its decoded size in the renderer for good, and this is a new one on every open */
@@ -588,7 +589,9 @@
       if (!popBd.pic) {
         var px = G.pixelsOf(popBd.img);
         popBd.pic = px ? G.glassPicture(px, T, sx) : null;
-        popBd.url = popBd.pic ? bakePopBd(popBd.img, sx) : null;
+        var baked = popBd.pic ? bakePopBd(popBd.img, sx) : null;
+        // the baked glass as a blob: URL too: as a data: url() it kept ~0.5 MB a pop-up for good (tools/bar-mem-ab.js)
+        popBd.url = baked && window.MantlePic ? window.MantlePic.once(baked) : baked;
       }
       // the same rule, code and thresholds as the strip and the top bar: --lg-ink-2 at 4.5:1
       if (popBd.pic) res = G.guardRect(popBd.pic, T, { x: (r.left - ax) * sx, y: (r.top - ay) * sy, w: r.width * sx, h: r.height * sy });
@@ -600,6 +603,9 @@
       return;
     }
     s.setProperty('--pop-bd', 'url("' + popBd.url + '")');
+    // the URL on the pop-up stays registered while it is there (a style recalc may ask for it again); the one it replaces goes
+    if (popBdCss && popBdCss !== popBd.url && window.MantlePic) window.MantlePic.release(popBdCss);
+    popBdCss = popBd.url;
     s.setProperty('--pop-bd-size', aw + 'px ' + ah + 'px');
     s.setProperty('--pop-bd-x', (ax - r.left) + 'px');
     s.setProperty('--pop-bd-y', (ay - r.top) + 'px');
@@ -612,10 +618,13 @@
     if (el.pop.classList.contains('bdwait')) popBdHold(false);
   }
   function clearPopBd() {
+    if (popBd && popBd.url && popBd.url !== popBdCss && window.MantlePic) window.MantlePic.release(popBd.url);   // baked, never shown
     popBd = null;
     popBdHold(false);
     el.pop.classList.remove('bd');
     ['--pop-bd', '--pop-bd-size', '--pop-bd-x', '--pop-bd-y', '--pop-bd-pos', '--pop-tint'].forEach(function (n) { el.pop.style.removeProperty(n); });
+    if (popBdCss && window.MantlePic) window.MantlePic.release(popBdCss);
+    popBdCss = null;
   }
 
   /* The clear has to wait for the pill to be GONE. Clearing it the moment 'bar.hide' arrives

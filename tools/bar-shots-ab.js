@@ -12,7 +12,8 @@
  *   env: BAR_AB_ONLY=<comma list of shot-name parts> (default: the shots with the backdrop strip, the
  *        dark pop-up glass, the artwork, the Spotify covers and the toast pictures)
  * Prints shoot.js's lines, png-same's lines, and:
- *   bar-shots-ab TOTAL: light 20/20 same, dark 20/20 same
+ *   bar-shots-ab TOTAL: light 13/13 same, dark 13/13 same, control light 13/13 same, control dark 13/13 same
+ * (control = base against a second base pass: the browser's own run-to-run noise)
  * Exit 1 when any shot differs or is missing. Headless Chromium: run it on a cloud runner (cloudtest).
  */
 const path = require('path');
@@ -40,6 +41,8 @@ const passes = [];
 for (const theme of ['light', 'dark']) {
   passes.push({ out: path.join(OUT, 'base-' + theme), page: basePage, theme, only: ONLY });
   passes.push({ out: path.join(OUT, 'head-' + theme), page: headPage, theme, only: ONLY });
+  // the control: base shot twice; what differs base against base is the browser's own noise, not the change
+  passes.push({ out: path.join(OUT, 'base2-' + theme), page: basePage, theme, only: ONLY });
 }
 fs.mkdirSync(OUT, { recursive: true });
 const passFile = path.join(OUT, 'passes.json');
@@ -51,13 +54,13 @@ try { fs.rmSync(dir, { recursive: true, force: true }); } catch (_) { /* temp */
 
 const sum = [];
 let bad = r.status !== 0;
-for (const theme of ['light', 'dark']) {
-  const c = spawnSync(process.execPath, [path.join(__dirname, 'png-same.js'), path.join(OUT, 'base-' + theme), path.join(OUT, 'head-' + theme)], { encoding: 'utf8' });
+for (const [theme, other, tag] of [['light', 'head', ''], ['dark', 'head', ''], ['light', 'base2', 'control '], ['dark', 'base2', 'control ']]) {
+  const c = spawnSync(process.execPath, [path.join(__dirname, 'png-same.js'), path.join(OUT, 'base-' + theme), path.join(OUT, other + '-' + theme)], { encoding: 'utf8' });
   const text = (c.stdout || '') + (c.stderr || '');
-  process.stdout.write(text.split(/\r?\n/).map((l) => (l ? theme + '| ' + l : l)).join('\n') + '\n');
+  process.stdout.write(text.split(/\r?\n/).map((l) => (l ? tag + theme + '| ' + l : l)).join('\n') + '\n');
   const m = /png-same TOTAL: (\d+) files: (\d+) same, (\d+) differ, (\d+) missing/.exec(text);
-  sum.push(theme + ' ' + (m ? m[2] + '/' + m[1] + ' same' + (Number(m[3]) ? ', ' + m[3] + ' differ' : '') + (Number(m[4]) ? ', ' + m[4] + ' missing' : '') : 'no reading'));
-  if (c.status !== 0) bad = true;
+  sum.push(tag + theme + ' ' + (m ? m[2] + '/' + m[1] + ' same' + (Number(m[3]) ? ', ' + m[3] + ' differ' : '') + (Number(m[4]) ? ', ' + m[4] + ' missing' : '') : 'no reading'));
+  if (c.status !== 0 && !tag) bad = true;
 }
 process.stdout.write('bar-shots-ab TOTAL: ' + sum.join(', ') + '\n');
 process.exit(bad ? 1 : 0);
