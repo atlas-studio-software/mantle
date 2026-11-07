@@ -17,7 +17,11 @@ public sealed record OpenRequest(bool Ok, string Value, string? Target, string? 
     static readonly Regex Absolute = new(@"^([a-zA-Z]:[\\/]|\\\\)", RegexOptions.CultureInvariant);
 
     /// The last --open wins, as in lib/args.js; null when there is none.
-    public static OpenRequest? From(IEnumerable<string> argv)
+    public static OpenRequest? From(IEnumerable<string> argv) => From(argv, null);
+
+    /// <summary>The same, plus <paramref name="testTargets"/> (the build's test stand-in surfaces, "test-..."),
+    /// which are allowed only when the arguments carry --test: a live or scratch start keeps Electron's allow-list.</summary>
+    public static OpenRequest? From(IEnumerable<string> argv, IReadOnlyCollection<string>? testTargets)
     {
         var list = argv.ToList();
         string? value = null;
@@ -27,6 +31,8 @@ public sealed record OpenRequest(bool Ok, string Value, string? Target, string? 
         }
         if (value == null) return null;
         string target = value.Trim().ToLowerInvariant();
+        if (testTargets != null && list.Any(a => a == "--test" || (a != null && a.StartsWith("--test=", StringComparison.Ordinal))) && target.StartsWith("test-", StringComparison.Ordinal) && testTargets.Contains(target))
+            return new OpenRequest(true, value, target, target, Array.Empty<string>(), $"mantle: opened {target} for a second start (--open={target}, a test stand-in)");
         if (Labels.TryGetValue(target, out var label)) {
             var files = target == "player" ? PlayFiles(list) : Array.Empty<string>();
             return new OpenRequest(true, value, target, label, files,

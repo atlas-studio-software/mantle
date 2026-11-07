@@ -91,4 +91,7 @@ public static class Catalogs
 
     /// Register theme.get / theme.set / look.get / look.sync / look.glass / look.accent (generated from LookShell's marks).
     public static IDisposable Register(ICommandBus bus, Mantle.Core.Look.LookShell look) => Mantle.Generated.CommandCatalog.RegisterCommands(bus, look);
+
+    /// Register surface.show / surface.hide / surface.toggle / surface.list (generated from SurfaceCommands' marks).
+    public static IDisposable Register(ICommandBus bus, SurfaceCommands surfaces) => Mantle.Generated.CommandCatalog.RegisterCommands(bus, surfaces);
 }

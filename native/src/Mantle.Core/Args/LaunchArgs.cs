@@ -51,6 +51,7 @@ public sealed class LaunchArgs
         "test-tbhide", "test-live-bar", "test-trace", "test-desktop-hold", "test-apps-icons", "test-click",
         "test-memory", "test-report", "test-tray", "test-crash", "test-unload", "test-chord", "test-key",
         "test-popwatch", "test-popwatch-away",   // lib/popwatch.js: a --test run watches nothing real unless asked
+        "test-surface",   // native: a second start's surface.show/hide/toggle (<verb>:<name>) for the surface host's UI tests
     };
 
     public string? Theme { get; private set; }

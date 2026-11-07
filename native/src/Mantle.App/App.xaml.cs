@@ -13,6 +13,7 @@ using Mantle.Core.Look;
 using Mantle.Core.Platform;
 using Mantle.Core.Safety;
 using Mantle.Core.State;
+using Mantle.App.Shell.Hosting;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
@@ -78,6 +79,8 @@ public partial class MantleApp : Application
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
         _queue = DispatcherQueue.GetForCurrentThread();
+        // the surface host (Shell/Host): every [Surface] of the catalog; made once the host's pieces exist (HostStart)
+        _surfaces = new SurfaceHost(_queue, Host.Args.Test, SurfaceSet.TestSurfacesWanted(Host.Args.Test, Host.Env), Host.Log);
         Host.Log.Line($"launched; theme {ThemeSettings.Word(StartMode())}{(Host.Args.Theme != null ? " (pinned by --theme)" : " (from " + Host.Data.Theme.Name + ")")}; app theme {RequestedTheme}");
         _window = new BarWindow();
         Host.Marks.Add("window");
@@ -107,6 +110,9 @@ public partial class MantleApp : Application
     StateBroadcast? _broadcast;
     Stores? _stores;
     LookShell? _look;
+    SurfaceHost? _surfaces;
+    SurfaceControl? _surfaceControl;
+    StateFeed? _feed;
     SessionEnd? _sessionEnd;
     readonly Shutdown _shutdown = new(l => Host.Log.Line(l), Host.RecoveryCommand);
     readonly List<IDisposable> _offs = new();
@@ -141,6 +147,9 @@ public partial class MantleApp : Application
         _bus = new CommandBus(new CallLog(log));
         _events = new EventHub(log);
         _broadcast = new StateBroadcast(_hub, _events, log, () => _tray?.Request());
+        // the surfaces' road from the host thread (surface.show/hide/toggle/list, Alt+Space, --open): posted to the UI thread
+        _surfaceControl = new SurfaceControl(() => _surfaces?.Set, work => _surfaces?.PostUi(work) ?? false);
+        _offs.Add(Catalogs.Register(_bus, new SurfaceCommands(_surfaceControl)));
         _platform = new ProcessPlatform(opts, new ProcessSidecarLauncher(loop), loop);
         _platform.OnStatus(s => {
             Host.Log.Line($"sidecar {s.State.ToString().ToLowerInvariant()}: {s.Reason}");
@@ -183,7 +192,7 @@ public partial class MantleApp : Application
         // the tray and the shell shortcuts (feature-host-2)
         _hotkeys = Mantle.App.Shell.Tray.ShellTray.MakeHotkeys(test, loop.Post, log);
         Mantle.App.Shell.Tray.ShellTray.RegisterShortcuts(_hub, test, _hotkeys, why => _supervisor?.StandDown(why), RestoreAsync, why => Quit(why, 0),
-            () => log("mantle: Alt+Space: the launcher is not built yet"), log);   // TODO(round 3): toggleLauncher("Alt+Space")
+            () => _ = SurfaceControl.ToggleFromKey(_surfaceControl!, "launcher", ShellShortcutsKey, log), log);   // main.js toggleLauncher('Alt+Space')
         _tray = new TrayController(new TrayOptions {
             Icon = Mantle.App.Shell.Tray.ShellTray.MakeIcon(test, loop.Post, log), Clock = clock, Commands = _bus, Test = test, State = _hub,
             Features = _features, Log = log,
@@ -211,6 +220,10 @@ public partial class MantleApp : Application
         _look.FollowWindows(themeKey);   // Match Windows follows a change at once (RegNotifyChangeKeyValue), not by polling
         log($"theme: Mantle is {_look.Now}; the host's theme reaches {ThemeShown?.GetInvocationList().Length ?? 0} surface(s) directly" +
             (ThemeShown == null ? " (the bar still follows theme.json itself)" : ""));
+        // main.js replayAnswer('theme'): a surface that subscribes gets the theme now, so its first frame is right
+        var look = _look;
+        _offs.Add(_events.Replay("theme", () => look.Payload()));
+        StartSurfaces(log);
         // TODO(feature-host-2): RestCoordinator with the surfaces' IRestParts, rest.TrimSoon("60 s after start")
 
         // SAFE-020..024: crash recovery with the native record (MantleNative.exe, never Electron)
@@ -235,6 +248,45 @@ public partial class MantleApp : Application
         // CORE-023/SAFE-002: every ready asks the protocol age first (with retries), then takes the shell (live only)
         _platform.OnReady(() => _ = OnReadyAsync());
         _platform.Start();
+    }
+
+    /// Alt+Space (ShellShortcuts.Launcher): it toggles the "launcher" surface.
+    const string ShellShortcutsKey = Mantle.Core.Keys.ShellShortcuts.Launcher;
+
+    /// The surface host's start (host thread): the UI thread's copy of ShellState (coalesced), then the AtStart
+    /// surfaces made on the UI thread, once the bus, the events, the state and the look exist.
+    void StartSurfaces(Action<string> log)
+    {
+        var hub = _hub!; var loop = _hostLoop!; var surfaces = _surfaces;
+        if (surfaces == null) { log("surfaces: the surface host was never made, so no surface is made"); return; }
+        var feed = _feed = new StateFeed(hub.Current, surfaces.PostUi, log);
+        _offs.Add(hub.OnChange(feed.Push));
+        var wires = new SurfaceWires { PostUi = surfaces.PostUi, PostHost = loop.Post, Bus = _bus!, Events = _events!, Feed = feed, Log = Host.Log };
+        if (!surfaces.PostUi(() => surfaces.Start(wires, "start"))) log("surfaces: the UI thread is gone, so no surface was made");
+    }
+
+    /// --open=&lt;target&gt; from a second start (main.js 'second-instance'): the allow-list again, then the surface of
+    /// that name is shown (made on first use). A --test run also opens the build's test stand-ins.
+    async Task OpenAsync(string[] argv)
+    {
+        var req = OpenRequest.From(argv, Host.Args.Test ? SurfaceHost.TestTargets() : null);
+        if (req == null) return;
+        if (!req.Ok) { Host.Log.Line(req.Line); return; }
+        if (_surfaceControl == null) { Host.Log.Line($"mantle: a second start asked for {req.Label} (--open={req.Target}), but it did not open: the surfaces are not set up"); return; }
+        var a = await _surfaceControl.RunAsync("show", req.Target!, $"a second start (--open={req.Target})").ConfigureAwait(true);
+        Host.Log.Line(a.Ok ? req.Line : $"mantle: a second start asked for {req.Label} (--open={req.Target}), but it did not open: {a.Said}");
+    }
+
+    /// --test-surface=&lt;show|hide|toggle&gt;:&lt;name&gt; from a second start (test only): through the surface.* commands.
+    async Task SurfaceFromSecondAsync(string spec)
+    {
+        int c = spec.IndexOf(':');
+        string verb = c > 0 ? spec[..c] : "?", name = c > 0 ? spec[(c + 1)..] : spec;
+        if (_bus == null) { Host.Log.Line($"mantle: test-surface {spec}: the command bus is not up"); return; }
+        const string who = "a second instance (test)";
+        var r = await _bus.CallAsync("surface." + verb, new System.Text.Json.Nodes.JsonObject { ["name"] = name, ["why"] = who }, who).ConfigureAwait(true);
+        string said = r.Ok && r.Result.ValueKind == System.Text.Json.JsonValueKind.Object && r.Result.TryGetProperty("said", out var w) ? w.GetString() ?? "" : r.Error ?? "";
+        Host.Log.Line($"mantle: test-surface {verb}:{name}: {(r.Ok ? "ok" : "NOT ok")}: {said}");
     }
 
     async Task OnReadyAsync()
@@ -289,7 +341,8 @@ public partial class MantleApp : Application
         var (ask, value) = SecondLaunch.Route(argv, Host.Args.Test);
         switch (ask) {
             case SecondAsk.Quit: Quit("Mantle was asked to quit (--quit)", 0); break;
-            case SecondAsk.Open: Host.Log.Line($"mantle: --open={value}: that window is not built in native Mantle yet"); break;
+            case SecondAsk.Open: _ = OpenAsync(argv); break;
+            case SecondAsk.Surface: _ = SurfaceFromSecondAsync(value ?? ""); break;
             case SecondAsk.Tray: Host.Log.Line("mantle: test-tray: " + (_tray?.TestTrayLine() ?? "the tray was never built")); break;
             case SecondAsk.Report:
                 if (_tray != null) _ = _tray.CopyReportAsync("a second instance (test)").ContinueWith(t => { if (t.IsFaulted) Host.Log.Line("mantle: test-report failed: " + t.Exception?.GetBaseException().Message); }, TaskScheduler.Default);
@@ -347,6 +400,11 @@ public partial class MantleApp : Application
             var steps = new List<Shutdown.Step>();
             if (!crash) steps.Add(new("stand the supervisor down", TimeSpan.FromSeconds(1), _ => { _supervisor?.StandDown(why); return Task.CompletedTask; }));
             steps.Add(new("unregister the global shortcuts", TimeSpan.FromSeconds(1), _ => { _hotkeys?.UnregisterAll(); return Task.CompletedTask; }));
+            steps.Add(new("destroy the surfaces", TimeSpan.FromSeconds(2), async _ => {
+                if (_surfaces == null) return;
+                string said = await _surfaces.OnUiAsync(s => { var g = s.Close(why); return g.Count == 0 ? "none was made, so none was destroyed" : "destroyed " + string.Join(", ", g); }).ConfigureAwait(true);
+                Host.Log.Line("surfaces: " + said);
+            }));
             steps.Add(new("put Windows back", TimeSpan.FromSeconds(10), _ => RestoreAsync(why)));
             steps.Add(new("stop the sidecar", TimeSpan.FromSeconds(4), async _ => { if (_platform != null) await _platform.StopAsync(why).ConfigureAwait(true); }));
             steps.Add(new("destroy the tray", TimeSpan.FromSeconds(1), _ => { _tray?.Dispose(); (_hotkeys as IDisposable)?.Dispose(); _broadcast?.Dispose(); _look?.Dispose(); foreach (var o in _offs) o.Dispose(); _stores?.Dispose(); return Task.CompletedTask; }));
