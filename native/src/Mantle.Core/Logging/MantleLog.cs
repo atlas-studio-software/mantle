@@ -32,6 +32,8 @@ public sealed class LogOptions
     public LogScrubber? Scrub;
     /// The bench's copy (--bench-out\native-log.txt), in the spike's format: "HH:mm:ss.fff text".
     public string? MirrorFile;
+    /// LOG-001: with --log=, every line also goes to the terminal (stdout), as Electron's tee does.
+    public Action<string>? Echo;
 }
 
 /// <summary>
@@ -163,6 +165,7 @@ public sealed class MantleLog : ILogSink, IDisposable
 
     void Mirror(string line)
     {
+        if (_o.Echo != null) { try { _o.Echo(line); } catch (Exception) { /* a closed terminal never stops the log */ } }
         if (_o.MirrorFile == null || _mirrorFailed) return;
         try {
             string text = _o.Scrub != null ? _o.Scrub.Scrub(line) : line;
