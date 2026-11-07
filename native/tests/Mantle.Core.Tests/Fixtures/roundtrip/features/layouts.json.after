@@ -1,0 +1,62 @@
+{
+  "layouts": [
+    {
+      "name": "Work",
+      "savedAt": 1762300000000,
+      "entries": [
+        {
+          "exe": "code.exe",
+          "rect": [
+            0,
+            0,
+            1280,
+            720
+          ]
+        }
+      ]
+    }
+  ],
+  "unknownFromTheFuture": {
+    "0": "index key",
+    "text": "quote \" backslash \\ tab \t newline \n bell \u0007 esc \u001b del  é ü 中文 😀  ",
+    "nums": [
+      0,
+      1,
+      -1,
+      0.1,
+      0.5,
+      1.25,
+      12.5,
+      1e+21,
+      1.5e-7,
+      123456789012,
+      9007199254740991,
+      -2.5e-300,
+      4.35
+    ],
+    "nested": {
+      "2": "two",
+      "10": "ten",
+      "empty": {},
+      "list": [],
+      "deep": [
+        [
+          {
+            "a": null
+          }
+        ]
+      ],
+      "b": true
+    },
+    "z-last": false
+  },
+  "nativeProbe": {
+    "added": "by native",
+    "n": 0.1,
+    "list": [
+      1,
+      2.5,
+      "é😀"
+    ]
+  }
+}
