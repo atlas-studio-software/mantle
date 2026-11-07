@@ -167,7 +167,7 @@ public sealed class LauncherIndexer
 
 internal static class TaskSchedulerExt
 {
-    public static TaskSchedulerExt.FromCurrentSynchronizationContextOrDefault() =>
+    public static TaskScheduler FromCurrentSynchronizationContextOrDefault() =>
         SynchronizationContext.Current != null ? TaskScheduler.FromCurrentSynchronizationContext() : TaskScheduler.Default;
 }
 
