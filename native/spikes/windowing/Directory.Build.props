@@ -1,0 +1,37 @@
+<Project>
+  <!--
+    Shared settings for every windowing spike app under native/spikes/windowing/. Each app's csproj
+    only names itself (RootNamespace, AssemblyName). The same build as native-spike/MantleBar:
+    plain .NET SDK, WinUI 3, unpackaged, .NET and the Windows App SDK carried in the output folder
+    (self-contained), so nothing has to be installed on the runner. SpikeTfm lets the harness pick
+    the newest SDK the runner has (harness/Common.ps1 Build-Spike).
+
+    This file stops MSBuild's walk up the tree, so nothing above native/spikes/windowing/ (a later
+    native/Directory.Build.props, say) changes these spikes.
+  -->
+  <PropertyGroup>
+    <SpikeTfm Condition="'$(SpikeTfm)' == ''">net10.0</SpikeTfm>
+    <TargetFramework>$(SpikeTfm)-windows10.0.22621.0</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <OutputType>WinExe</OutputType>
+    <ApplicationManifest>$(MSBuildThisFileDirectory)harness\app.manifest</ApplicationManifest>
+    <Platforms>x64</Platforms>
+    <Platform>x64</Platform>
+    <RuntimeIdentifier>win-x64</RuntimeIdentifier>
+    <UseWinUI>true</UseWinUI>
+    <EnableMsixTooling>true</EnableMsixTooling>
+    <WindowsPackageType>None</WindowsPackageType>
+    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
+    <SelfContained>true</SelfContained>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <LangVersion>latest</LangVersion>
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.*" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
+  </ItemGroup>
+</Project>

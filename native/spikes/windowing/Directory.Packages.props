@@ -1,0 +1,7 @@
+<Project>
+  <!-- Stops MSBuild's walk up the tree for central package versions: the spikes pin their own
+       packages in Directory.Build.props, whatever native/ decides later. -->
+  <PropertyGroup>
+    <ManagePackageVersionsCentrally>false</ManagePackageVersionsCentrally>
+  </PropertyGroup>
+</Project>

@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Primitives 3 (bar placement + reveal) and 6 (multi-monitor + DPI): one WinUI 3 bar window with
+       modes hover / dock / restore and reveal animations comp / swp / swpflush (see App.xaml.cs). Settings: ../Directory.Build.props.
+       probe/ is the check scripts' own Win32 helper (Add-Type), not part of the app. -->
+  <PropertyGroup>
+    <RootNamespace>BarSpike</RootNamespace>
+    <AssemblyName>Bar</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="probe\**" />
+  </ItemGroup>
+</Project>

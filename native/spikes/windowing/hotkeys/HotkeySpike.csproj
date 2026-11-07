@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Primitive 8: global shortcuts in the WinUI process (a low-level keyboard hook on its own
+       thread, handlers on the UI thread). Settings: ../Directory.Build.props. probe/ is the
+       check's own helper (Add-Type), not the app. -->
+  <PropertyGroup>
+    <RootNamespace>HotkeySpike</RootNamespace>
+    <AssemblyName>HotkeySpike</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Remove="probe\**" />
+  </ItemGroup>
+</Project>
