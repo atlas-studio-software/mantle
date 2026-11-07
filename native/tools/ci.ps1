@@ -14,7 +14,7 @@
     ui       if tests/Mantle.UiTests/*.csproj exists: dotnet test it (MANTLE_NATIVE_EXE, MANTLE_TEST_VISIBLE=1)
     bench    if bench/run-bench.ps1 exists: -Mode smoke -Out <Out>/bench
     parity   if tools/parity/run-parity.ps1 exists: -Out <Out>/parity
-    sidecar  if src/Mantle.Sidecar/*.csproj exists: dotnet build it
+    sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
   A stage whose project or script does not exist is skipped, not failed.
 
   Prints "STAGE <name>: ok|FAILED|skipped (<reason>)" per stage and ends with exactly one line,
@@ -336,6 +336,15 @@ function Stage-script([string]$name, [string]$script, [string[]]$argv) {
 function Stage-sidecar {
   $proj = @(Get-ChildItem -Path (Join-Path $native 'src\Mantle.Sidecar') -Filter *.csproj -ErrorAction SilentlyContinue)
   if ($proj.Count -eq 0) { return 'skipped (no src/Mantle.Sidecar/*.csproj)' }
+  # The sidecar lane's own check: the 3 build variants of the linked sidecar + its in-process tests,
+  # ending with one SIDECAR-LINK line (output in <Out>/sidecar). Plain build if the script is gone.
+  $check = Join-Path $native 'src\Mantle.Sidecar\check.ps1'
+  if (Test-Path $check) {
+    $code = Run 'sidecar' 'pwsh' @('-NoProfile', '-File', $check)
+    $last = Get-Content (Join-Path $logs 'sidecar.log') -Tail 1
+    if ($code -ne 0) { return "FAILED (exit $code; $(Short $last))" }
+    return "ok ($(Short $last))"
+  }
   $code = Run 'sidecar' 'dotnet' @('build', $proj[0].FullName, '-c', 'Release', '-nologo', '-clp:Summary;ErrorsOnly')
   if ($code -ne 0) { return "FAILED (dotnet build of $($proj[0].Name), exit $code)" }
   return "ok ($($proj[0].Name) built)"

@@ -31,9 +31,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: native/tools/ci.ps1 (all stages)
+      # Every stage but parity: parity runs Electron Mantle next to the native app, which needs the npm
+      # deps, the csc-built sidecar and a 1920x1080 desktop. The cloudtest recipe mantle-native-public
+      # sets those up and runs all stages (see native/README.md).
+      - name: native/tools/ci.ps1 (build, unit, smoke, ui, bench, sidecar)
         shell: pwsh
-        run: ./native/tools/ci.ps1 -Out native/out
+        run: ./native/tools/ci.ps1 -Stages build,unit,smoke,ui,bench,sidecar -Out native/out
 
       - name: Upload native/out (without the published app)
         if: always()
