@@ -325,7 +325,7 @@ function queriesFor(items) {
   lines.push('// (SETTINGS, MANTLE_SETTINGS) and the pages ui/settings/sections/*.js claim. Do not edit: re-run the script.');
   lines.push('namespace Mantle.Core.Features.LauncherIndex;');
   lines.push('');
-  lines.push('internal static partial class SettingsTable');
+  lines.push('public static partial class SettingsTable');
   lines.push('{');
   lines.push('    /// [name, ms-settings uri, keywords], in Electron\'s order (lib/launcher-index.js#SETTINGS).');
   lines.push('    public static readonly string[][] Pages =');

@@ -2,7 +2,7 @@
 // (SETTINGS, MANTLE_SETTINGS) and the pages ui/settings/sections/*.js claim. Do not edit: re-run the script.
 namespace Mantle.Core.Features.LauncherIndex;
 
-internal static partial class SettingsTable
+public static partial class SettingsTable
 {
     /// [name, ms-settings uri, keywords], in Electron's order (lib/launcher-index.js#SETTINGS).
     public static readonly string[][] Pages =
