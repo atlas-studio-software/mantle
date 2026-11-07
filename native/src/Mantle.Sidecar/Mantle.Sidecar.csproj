@@ -22,12 +22,15 @@
                        stdio sidecar itself under .NET, for the side-by-side test with the csc exe.
                        Default: a class library (Main is then just a method nobody calls).
       SidecarTfm       net10.0 (default) or net9.0 / net8.0.
-      SidecarWinSdk    the Windows SDK projection version, default 10.0.22621.0 (the same as
-                       Mantle.App, so the app can reference this library).
+      SidecarWinSdk    the Windows SDK projection version, default 10.0.26100.0: Recorder.cs uses
+                       GraphicsCaptureSession.IncludeSecondaryWindows and MinUpdateInterval, which
+                       the 22621 projection does not have (CS1061). A project that references this
+                       library needs a windows10.0.26100.0 (or later) target framework too.
+                       TargetPlatformMinVersion stays 19041: the API version, not the OS floor.
   -->
   <PropertyGroup>
     <SidecarTfm Condition="'$(SidecarTfm)' == ''">net10.0</SidecarTfm>
-    <SidecarWinSdk Condition="'$(SidecarWinSdk)' == ''">10.0.22621.0</SidecarWinSdk>
+    <SidecarWinSdk Condition="'$(SidecarWinSdk)' == ''">10.0.26100.0</SidecarWinSdk>
     <SidecarVariant Condition="'$(SidecarVariant)' == ''">winmd</SidecarVariant>
     <TargetFramework>$(SidecarTfm)-windows$(SidecarWinSdk)</TargetFramework>
     <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>

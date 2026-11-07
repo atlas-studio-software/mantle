@@ -43,7 +43,8 @@ Say ("sdks: " + ((dotnet --list-sdks | ForEach-Object { ($_ -split ' ')[0] }) -j
 #   ...\Microsoft.NET.Sdk.targets(10,5): error NETSDK1004: text [proj]
 #   error NU1101: text [proj]
 function Parse-Diag([string]$line, [string]$kind) {
-  $m = [regex]::Match($line, '^\s*(?<file>.+?)\((?<ln>\d+),(?<col>\d+)(?:,\d+,\d+)?\): ' + $kind + ' (?<code>[A-Za-z]+\d+): (?<msg>.*?)(?: \[(?<proj>[^\]]+)\])?\s*$')
+  $line = $line -replace '^\s*\d+(:\d+)?>', ''   # the "1:7>" node prefix of a multi-node build
+  $m =[regex]::Match($line, '^\s*(?<file>.+?)\((?<ln>\d+),(?<col>\d+)(?:,\d+,\d+)?\): ' + $kind + ' (?<code>[A-Za-z]+\d+): (?<msg>.*?)(?: \[(?<proj>[^\]]+)\])?\s*$')
   if ($m.Success) {
     return [pscustomobject]@{ File = (Rel $m.Groups['file'].Value); Line = [int]$m.Groups['ln'].Value; Col = [int]$m.Groups['col'].Value; Code = $m.Groups['code'].Value; Msg = $m.Groups['msg'].Value }
   }

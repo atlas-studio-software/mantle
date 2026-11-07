@@ -1,0 +1,34 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Behaviour proof for native/src/Mantle.Sidecar (sidecar/*.cs linked under .NET):
+      InProcess.cs  calls the linked code directly (Json, Program.Run for read-only commands).
+      Stdio.cs      runs Mantle.Sidecar.exe from BOTH builds (csc / .NET Framework, and the .NET exe
+                    of Mantle.Sidecar.csproj with SidecarExe=true) in passive mode over stdio and
+                    compares the JSON shape of the same commands. Needs MANTLE_SIDECAR_CSC_EXE and
+                    MANTLE_SIDECAR_NET_EXE (native/src/Mantle.Sidecar/check.ps1 -Compare sets both);
+                    without them those tests are Inconclusive, never a silent pass.
+  -->
+  <PropertyGroup>
+    <SidecarTfm Condition="'$(SidecarTfm)' == ''">net10.0</SidecarTfm>
+    <SidecarWinSdk Condition="'$(SidecarWinSdk)' == ''">10.0.26100.0</SidecarWinSdk>
+    <TargetFramework>$(SidecarTfm)-windows$(SidecarWinSdk)</TargetFramework>
+    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+    <Nullable>disable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <LangVersion>latest</LangVersion>
+    <UseWindowsForms>true</UseWindowsForms>
+    <UseWPF>true</UseWPF>
+    <TreatWarningsAsErrors>false</TreatWarningsAsErrors>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.12.0" />
+    <PackageReference Include="MSTest.TestAdapter" Version="3.6.4" />
+    <PackageReference Include="MSTest.TestFramework" Version="3.6.4" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Mantle.Sidecar\Mantle.Sidecar.csproj" />
+  </ItemGroup>
+</Project>
