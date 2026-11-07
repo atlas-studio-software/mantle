@@ -162,7 +162,7 @@ public class BarTests
         using var app = BarApp.Launch("uitest-apps");
         string tag = Guid.NewGuid().ToString("N")[..6];
         using var a = new Host.Fixture($"UiFixture A {tag}", 60, 60);
-        using var b = new Host.Fixture($"UiFixture B {tag}", 520, 60);
+        using var b = new Host.Fixture($"UiFixture B {tag}", 520, 60, "pwsh.exe");   // another exe: the bar groups by app
         AutomationElement? Btn(Host.Fixture f) => Host.AppButtons(app.Window).FirstOrDefault(x => (x.Name ?? "").Contains(f.Title));
         var btnA = Host.Until(() => Btn(a), 10000);
         var btnB = Host.Until(() => Btn(b), 10000);

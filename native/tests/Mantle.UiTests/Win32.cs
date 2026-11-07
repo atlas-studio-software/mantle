@@ -30,6 +30,35 @@ internal static class Win32
 
     public const uint WM_CLOSE = 0x0010;
 
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int w, int h);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr dc, IntPtr o);
+    [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr d, int x, int y, int w, int h, IntPtr s, int sx, int sy, uint rop);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr dc);
+    [StructLayout(LayoutKind.Sequential)]
+    struct BITMAPINFOHEADER { public int biSize, biWidth, biHeight; public short biPlanes, biBitCount; public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant; }
+    [DllImport("gdi32.dll")] static extern int GetDIBits(IntPtr dc, IntPtr bmp, uint start, uint lines, byte[] bits, ref BITMAPINFOHEADER bi, uint usage);
+
+    /// <summary>BGRA bytes of a screen rectangle as DWM shows it (SRCCOPY | CAPTUREBLT: layered windows included).</summary>
+    public static byte[] Grab(int x, int y, int w, int h)
+    {
+        IntPtr s = GetDC(IntPtr.Zero), m = CreateCompatibleDC(s), b = CreateCompatibleBitmap(s, w, h);
+        IntPtr old = SelectObject(m, b);
+        try
+        {
+            BitBlt(m, 0, 0, w, h, s, x, y, 0x00CC0020 | 0x40000000);
+            SelectObject(m, old);
+            var bi = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+            var bits = new byte[w * h * 4];
+            GetDIBits(m, b, 0, (uint)h, bits, ref bi, 0);
+            return bits;
+        }
+        finally { DeleteObject(b); DeleteDC(m); ReleaseDC(IntPtr.Zero, s); }
+    }
+
     public static void DpiAware() => SetProcessDpiAwarenessContext(new IntPtr(-4));   // per-monitor v2: physical px
 
     public static string Title(IntPtr h)

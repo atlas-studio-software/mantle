@@ -84,13 +84,15 @@ internal static class Host
         public Process Proc { get; }
         public IntPtr Hwnd { get; }
         public string Title { get; }
-        public Fixture(string title, int x, int y)
+        /// <param name="exe">powershell.exe or pwsh.exe: the bar groups windows by app, so two fixtures that
+        /// must get two buttons need two different exes.</param>
+        public Fixture(string title, int x, int y, string exe = "powershell.exe")
         {
             Title = title;
             string ps = "Add-Type -AssemblyName System.Windows.Forms; $f = New-Object System.Windows.Forms.Form; " +
                         $"$f.Text = '{title}'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point({x}, {y}); " +
                         "$f.Size = New-Object System.Drawing.Size(420, 280); [System.Windows.Forms.Application]::Run($f)";
-            var psi = new ProcessStartInfo("powershell.exe") { UseShellExecute = false };
+            var psi = new ProcessStartInfo(exe) { UseShellExecute = false };
             psi.ArgumentList.Add("-NoProfile");
             psi.ArgumentList.Add("-EncodedCommand");
             psi.ArgumentList.Add(Convert.ToBase64String(System.Text.Encoding.Unicode.GetBytes(ps)));
@@ -102,15 +104,13 @@ internal static class Host
         public void Dispose() => Kill(Proc);
     }
 
-    /// <summary>Mean luminance (0-255) of a screen rectangle, from the real composited pixels.</summary>
+    /// <summary>Mean luminance (0-255) of a screen rectangle, from the real composited pixels
+    /// (GDI BitBlt with CAPTUREBLT: System.Drawing's CopyFromScreen rejects that flag).</summary>
     public static double Luminance(Rectangle r)
     {
-        using var bmp = new Bitmap(r.Width, r.Height);
-        using (var g = Graphics.FromImage(bmp))
-            g.CopyFromScreen(r.X, r.Y, 0, 0, r.Size, CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt);
+        var px = Win32.Grab(r.X, r.Y, r.Width, r.Height);
         double s = 0;
-        for (int y = 0; y < r.Height; y++)
-            for (int x = 0; x < r.Width; x++) { var c = bmp.GetPixel(x, y); s += 0.299 * c.R + 0.587 * c.G + 0.114 * c.B; }
+        for (int i = 0; i < px.Length; i += 4) s += 0.114 * px[i] + 0.587 * px[i + 1] + 0.299 * px[i + 2];
         return s / (r.Width * r.Height);
     }
 
