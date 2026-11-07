@@ -1,0 +1,9 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Harness smoke test: proves Directory.Build.props + harness/Common.ps1 build and run a WinUI 3
+       window on the runner, and measures the spike's see-through window AS IS (its 1 px frame line)
+       as the baseline for the popup lane. Settings: ../Directory.Build.props. -->
+  <PropertyGroup>
+    <RootNamespace>Smoke</RootNamespace>
+    <AssemblyName>Smoke</AssemblyName>
+  </PropertyGroup>
+</Project>
