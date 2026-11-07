@@ -138,7 +138,7 @@ public sealed class LauncherIndexer
                 var merged = Js.StableSort(appItems.Concat(late), (a, b) => Js.LocaleCompare(a.Name, b.Name));
                 string baseReason = lnk.Status == "ok" ? lnk.Reason : "";
                 LateMerged?.Invoke(Assemble(merged, "ok", baseReason, iconsPart, commands, settings, power, true));
-            }, CancellationToken.None, TaskContinuationOptions.None, TaskScheduler.FromCurrentSynchronizationContextOrDefault());
+            }, CancellationToken.None, TaskContinuationOptions.None, TaskSchedulerExt.FromCurrentSynchronizationContextOrDefault());
         }
         return snap;
     }
@@ -167,7 +167,7 @@ public sealed class LauncherIndexer
 
 internal static class TaskSchedulerExt
 {
-    public static TaskScheduler FromCurrentSynchronizationContextOrDefault() =>
+    public static TaskSchedulerExt.FromCurrentSynchronizationContextOrDefault() =>
         SynchronizationContext.Current != null ? TaskScheduler.FromCurrentSynchronizationContext() : TaskScheduler.Default;
 }
 
