@@ -221,19 +221,38 @@ function Fix-Since([int]$n) {
 $fixShown = @(Fix-Lines) -match '^shown'
 Check 'fixture window of another process up' ([bool]$fixShown) "$(if ($fixShown) { $fixShown[0] } else { 'no shown line in 30 s' }); pwsh pid $(if ($fixP) { $fixP.Id }), check pid $PID"
 Save-Screen 'hit-screen.png' | Out-Null
-
-# Each technique in a FRESH app process, between a hit=none control before and after it (run 3: a
-# plain window passed clicks after the other techniques had run in the same process). Then the
-# same-thread test in that process.
-$hitTechs = @('ncregion', 'nchittest', 'region', 'layered')
+# Each technique in its OWN process, its window the first one there (runs 4-5: a window opened after
+# another process took the foreground comes up NOT topmost, SetWindowPos(HWND_TOPMOST) reports
+# success and changes nothing, so the fixture sat over it). hit=none (the control) is a process too.
+# Then the same-thread test in that process.
+$hitTechs = @('none', 'ncregion', 'nchittest', 'region', 'layered')   # each technique window is the FIRST in its process
 foreach ($tech in $hitTechs) {
 $p = Start-Popup "hit-$tech"
-foreach ($mode in @('none', $tech, 'none-after')) {
+foreach ($mode in @($tech)) {
   if (-not $p) { break }
   $id++
   [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
   [void][PopupProbe]::RaiseByTitle('popup-fixture')
   Start-Sleep -Milliseconds 300
+  if ($mode -eq 'region') {
+    # an opaque shape under a region, FIRST in this process (before any fixture click: run 5 found a
+    # window opened after another process took the foreground cannot become topmost)
+    $bS = Grab $HA
+    $o2 = Cmd "open id=$id frame=$FrameWinner theme=light fill=solid hit=region x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
+    Start-Sleep -Milliseconds 700
+    $after2 = Grab $HA
+    Save-Shot 'hit-region-solid.png' $HA | Out-Null
+    if ($o2) {
+      $s = $o2.shape
+      Save-Shot 'corner-region.png' @{ x = $s.x - 6; y = $s.y - 6; w = 48; h = 48 } | Out-Null
+      $aa = [PopupProbe]::CornerAA($bS, $after2, $HA.w, $s.x - $HA.x, $s.y - $HA.y, $s.w, $s.h, $s.r, 255, 0, 255)
+      $st3 = Stray $bS $after2 $HA $s
+      Check 'region: corners still anti-aliased, nothing outside' ($o2.topmost -and $aa[1] -ge 8 -and $aa[2] -eq 0 -and $aa[4] -eq 0 -and $st3.changed -eq 0) "topmost $($o2.topmost); arc band $($aa[0]) px, $($aa[1]) partly covered; inside not full $($aa[2]); painted outside the arc $($aa[4]); stray $($st3.changed)"
+      Cmd "close id=$id" | Out-Null
+    } else { Check 'region: corners still anti-aliased, nothing outside' $false 'no reply' }
+    $id++
+    Start-Sleep -Milliseconds 300
+  }
   $before = Grab $HA
   $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$($mode -replace '-after$', '') x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
   if (-not $o) { continue }
@@ -306,19 +325,6 @@ foreach ($mode in @('none', $tech, 'none-after')) {
     Save-Shot 'hit-region-resized.png' $HA | Out-Null
     $g2 = if ($rz) { Test-Glass $rz $before $big $HA } else { @{ ok = $false } }
     Check 'region: still drawn after a resize' ([bool]$rz -and $g2.ok) "$(if ($rz) { GlassText $g2 } else { 'no reply' })"
-    Cmd "close id=$id" | Out-Null
-    $id++
-    $o2 = Cmd "open id=$id frame=$FrameWinner theme=light fill=solid hit=region x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
-    Start-Sleep -Milliseconds 700
-    $after2 = Grab $HA
-    Save-Shot 'hit-region-solid.png' $HA | Out-Null
-    if ($o2) {
-      $s = $o2.shape
-      Save-Shot 'corner-region.png' @{ x = $s.x - 6; y = $s.y - 6; w = 48; h = 48 } | Out-Null
-      $aa = [PopupProbe]::CornerAA($before, $after2, $HA.w, $s.x - $HA.x, $s.y - $HA.y, $s.w, $s.h, $s.r, 255, 0, 255)
-      $st3 = Stray $before $after2 $HA $s
-      Check 'region: corners still anti-aliased, nothing outside' ($aa[1] -ge 8 -and $aa[2] -eq 0 -and $aa[4] -eq 0 -and $st3.changed -eq 0) "arc band $($aa[0]) px, $($aa[1]) partly covered; inside not full $($aa[2]); painted outside the arc $($aa[4]); stray $($st3.changed)"
-    } else { Check 'region: corners still anti-aliased, nothing outside' $false 'no reply' }
   }
   if ($mode -eq $tech -or ($mode -eq 'none' -and $tech -eq $hitTechs[0])) {
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 300
