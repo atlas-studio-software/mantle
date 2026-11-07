@@ -25,8 +25,10 @@ public class LookGoldenTests
     static double D(JsonNode? n) => n!.GetValue<double>();
     static JsonValue? Str(string? s) => s == null ? null : JsonValue.Create(s);
     static JsonValue? Num(double? d) => d == null ? null : JsonValue.Create(d.Value);
-    static string Norm(string? s, string dir) => s == null ? "\u0000null" : Regex.Replace(s.Replace(dir, "<dir>"), @"not valid JSON \([^)]*\)", "not valid JSON (...)");
-    static string NormG(JsonNode? s) => S(s) is string t ? t : "\u0000null";
+    static string Norm(string? s, string dir) => s == null ? "\u0000null" : Bad(s.Replace(dir, "<dir>"));
+    // V8's JSON error words cannot be matched (and may hold parentheses of their own): both sides say "not valid JSON (...)"
+    static string Bad(string s) => Regex.Replace(s, @"not valid JSON \(.*\)", "not valid JSON (...)");
+    static string NormG(JsonNode? s) => S(s) is string t ? Bad(t) : "\u0000null";
     static readonly DateTimeOffset Now = DateTimeOffset.Parse("2026-11-07T12:00:00.000Z");
     const string LocalJson = "{\"theme\":\"light\",\"accent\":{\"hue\":30},\"glass\":{\"dark\":{\"blurPx\":8,\"dim\":0.6,\"panel\":-0.1},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}";
 
