@@ -25,7 +25,10 @@ const cp = require('child_process');
 
 const REPO = path.resolve(__dirname, '..', '..', '..', '..');
 const CHECK = process.argv.includes('--check');
-const SCRATCH = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-launcher-golden-'));
+/* --fixture=<dir>: only write the fixture (Start Menu, profile, powercfg.txt, store.txt) into <dir> and stop; the
+   launcher parity script points both apps at it (native: MANTLE_TEST_LAUNCHER_DIR; Electron: ProgramData/APPDATA/USERPROFILE) */
+const FIXTURE = (process.argv.find((a) => a.startsWith('--fixture=')) || '').slice('--fixture='.length);
+const SCRATCH = FIXTURE ? path.resolve(FIXTURE) : fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-launcher-golden-'));
 const HOME = path.join(SCRATCH, 'home');
 const PD = path.join(SCRATCH, 'pd', 'Microsoft', 'Windows', 'Start Menu', 'Programs');
 const AD = path.join(HOME, 'AppData', 'Roaming', 'Microsoft', 'Windows', 'Start Menu', 'Programs');
@@ -208,6 +211,12 @@ for (const f of files) {
 const profileFile = path.join(HOME, 'Documents', 'PowerShell', 'Microsoft.PowerShell_profile.ps1');
 fs.mkdirSync(path.dirname(profileFile), { recursive: true });
 fs.writeFileSync(profileFile, PROFILE);
+if (FIXTURE) {
+  fs.writeFileSync(path.join(SCRATCH, 'powercfg.txt'), POWERCFG);
+  fs.writeFileSync(path.join(SCRATCH, 'store.txt'), STORE.map(([n, a]) => n + '\t' + a).join('\r\n'));
+  process.stdout.write(`make-golden: fixture written to ${SCRATCH} (${files.length} Start Menu files)\n`);
+  process.exit(0);
+}
 
 process.env.USERPROFILE = HOME;
 process.env.HOME = HOME;
@@ -355,7 +364,10 @@ function queriesFor(items) {
   for (const [file, text] of outs) {
     if (CHECK) {
       const was = fs.existsSync(file) ? fs.readFileSync(file, 'utf8').replace(/\r\n/g, '\n') : '';
-      if (was !== text) { bad++; console.log('GOLDEN DRIFT: ' + path.relative(REPO, file) + ' differs from what Electron gives now'); }
+      // A row's id hashes its full path, and the fixture lives in a fresh temp folder every run (and a different
+      // one on every machine), so ids are compared by where they first appear, not by their hash.
+      const canon = (t) => { const m = new Map(); return t.replace(/\b([a-z-]+):([0-9a-f]{12})\b/g, (id) => { if (!m.has(id)) m.set(id, '#' + m.size); return m.get(id); }); };
+      if (canon(was) !== canon(text)) { bad++; console.log('GOLDEN DRIFT: ' + path.relative(REPO, file) + ' differs from what Electron gives now'); }
     } else {
       fs.mkdirSync(path.dirname(file), { recursive: true });
       fs.writeFileSync(file, text);

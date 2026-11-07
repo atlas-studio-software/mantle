@@ -39,6 +39,49 @@ public sealed class IndexInputs
             ReadStore = WindowsReaders.ReadStartApps,
         };
     }
+
+    /// The env var a --test run's index reads: a scratch fixture folder in make-golden.cjs's layout.
+    public const string TestDirEnv = "MANTLE_TEST_LAUNCHER_DIR";
+
+    /// <summary>
+    /// A --test run's inputs: never the machine's Start Menu, profile, Store list or powercfg. With
+    /// <paramref name="dir"/> (MANTLE_TEST_LAUNCHER_DIR) it indexes that scratch fixture, laid out as make-golden.cjs
+    /// writes it: <c>pd\Microsoft\Windows\Start Menu\Programs</c> (all users), <c>home\AppData\Roaming\Microsoft\Windows\
+    /// Start Menu\Programs</c> (you), the profiles under <c>home</c>, <c>powercfg.txt</c> (a fake <c>powercfg /a</c>) and
+    /// <c>store.txt</c> (a fake <c>Get-StartApps</c> list, "Name&lt;TAB&gt;AUMID" per line). Without it, only the built-in rows.
+    /// <paramref name="why"/> says which, for the log.
+    /// </summary>
+    public static IndexInputs ForTestRun(string? dir, out string why)
+    {
+        if (string.IsNullOrWhiteSpace(dir) || !Directory.Exists(dir))
+        {
+            why = "a test run reads no Start Menu, profile, Store list or powercfg" +
+                (string.IsNullOrWhiteSpace(dir) ? " (" + TestDirEnv + " is not set)" : " (" + TestDirEnv + "=" + dir + " does not exist)") +
+                ": only the Settings, Mantle and power rows are listed";
+            return new IndexInputs
+            {
+                Roots = [], ProfileFiles = [],
+                ReadSleep = _ => Task.FromResult(new SleepStates(false, "a test run does not read powercfg")),
+                ReadStore = _ => Task.FromResult(new StoreRead(true, [], "")),
+            };
+        }
+        string home = Path.Combine(dir, "home");
+        string sleepFile = Path.Combine(dir, "powercfg.txt"), storeFile = Path.Combine(dir, "store.txt");
+        why = "a test run indexes only the fixture in " + dir + " (" + TestDirEnv + ")";
+        return new IndexInputs
+        {
+            Roots = [
+                new(Path.Combine(dir, "pd", "Microsoft", "Windows", "Start Menu", "Programs"), "all users"),
+                new(Path.Combine(home, "AppData", "Roaming", "Microsoft", "Windows", "Start Menu", "Programs"), "you"),
+            ],
+            ProfileFiles = ProfileCommands.Candidates(home, null),
+            ReadSleep = _ => Task.FromResult(File.Exists(sleepFile) ? PowerRows.ParseSleepStates(File.ReadAllText(sleepFile))
+                : new SleepStates(false, "the fixture has no powercfg.txt")),
+            ReadStore = _ => Task.FromResult(new StoreRead(true, File.Exists(storeFile)
+                ? File.ReadAllLines(storeFile).Select(l => l.Split('\t')).Where(p => p.Length == 2 && p[0].Length > 0).Select(p => new StoreApp(p[0], p[1])).ToList()
+                : [], "")),
+        };
+    }
 }
 
 /// <summary>

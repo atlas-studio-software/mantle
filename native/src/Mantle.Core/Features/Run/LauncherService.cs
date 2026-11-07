@@ -109,7 +109,7 @@ public sealed class LauncherService
     public static JsonArray SourcesJson(IEnumerable<IndexSource> sources)
     {
         var a = new JsonArray();
-        foreach (var s in sources) a.Add(new JsonObject { ["name"] = s.Name, ["count"] = s.Count, ["status"] = s.Status, ["reason"] = s.Reason });
+        foreach (var s in sources) a.Add((JsonNode)new JsonObject { ["name"] = s.Name, ["count"] = s.Count, ["status"] = s.Status, ["reason"] = s.Reason });
         return a;
     }
 
@@ -145,7 +145,7 @@ public sealed class LauncherCommands
         if (_svc.Current.Items.Count == 0) await _svc.IndexAsync().ConfigureAwait(true);
         var hits = _svc.Search(Str(call.Args, "q"));
         var rows = new JsonArray();
-        foreach (var h in hits) rows.Add(LauncherService.ItemJson(h.Item, h.Score));
+        foreach (var h in hits) rows.Add((JsonNode)LauncherService.ItemJson(h.Item, h.Score));   // the JsonNode overload: Add<T> is not AOT-safe
         return CommandResult.Success(LauncherService.El(new JsonObject { ["items"] = rows, ["sources"] = LauncherService.SourcesJson(_svc.Current.Sources) }));
     }
 
