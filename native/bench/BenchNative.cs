@@ -95,6 +95,22 @@ public static class BenchNative
 
     public static bool AnyIconic(uint pid) { foreach (var h in WindowsOf(pid)) if (IsIconic(h)) return true; return false; }
 
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    /// left, top, right, bottom of a window (screen pixels).
+    public static int[] RectOf(IntPtr h) { GetWindowRect(h, out RECT r); return new[] { r.l, r.t, r.r, r.b }; }
+
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int x, y; }
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(POINT p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    /// The process whose top-level window is on screen at a point (what a click there would hit).
+    public static uint PidAt(int x, int y)
+    {
+        IntPtr h = GetAncestor(WindowFromPoint(new POINT { x = x, y = y }), 2 /* GA_ROOT */);
+        GetWindowThreadProcessId(h, out uint p); return p;
+    }
+    /// Top of the z-order without activating it (activation is left to a real click).
+    public static bool Raise(IntPtr h) => SetWindowPos(h, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, 0x1 | 0x2 | 0x10 /* NOSIZE | NOMOVE | NOACTIVATE */);
+
     [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
     [DllImport("user32.dll")] static extern bool IsZoomed(IntPtr h);
     [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
@@ -128,6 +144,9 @@ public static class BenchNative
     // ---- desktop setup
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SystemParametersInfoW(uint a, uint b, string c, uint d);
     public static bool SetWallpaper(string path) => SystemParametersInfoW(0x0014, 0, path, 0x3);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfoW(uint a, uint b, out int c, uint d);
+    /// SPI_GETACTIVEWINDOWTRACKING: does hovering a window activate it ("X-mouse")?
+    public static bool ActiveWindowTracking() => SystemParametersInfoW(0x1000, 0, out int on, 0) && on != 0;
 
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int l, t, r, b; }
     [StructLayout(LayoutKind.Sequential)] struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint cb; public uint edge; public RECT rc; public IntPtr lParam; }
@@ -148,7 +167,18 @@ public static class BenchNative
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct PROCESSENTRY32 { public uint dwSize, cntUsage, th32ProcessID; public IntPtr th32DefaultHeapID; public uint th32ModuleID, cntThreads, th32ParentProcessID; public int pcPriClassBase; public uint dwFlags; [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 260)] public string szExeFile; }
 
-    /// The root and every process below it.
+    [DllImport("kernel32.dll")] static extern IntPtr OpenProcess(uint access, bool inherit, uint pid);
+    [DllImport("kernel32.dll")] static extern bool GetProcessTimes(IntPtr h, out long create, out long exit, out long kernel, out long user);
+    /// Creation time (FILETIME ticks) of a live process, or 0 when it cannot be opened.
+    public static long Created(uint pid)
+    {
+        IntPtr h = OpenProcess(0x1000 /* PROCESS_QUERY_LIMITED_INFORMATION */, false, pid);
+        if (h == IntPtr.Zero) return 0;
+        try { return GetProcessTimes(h, out long c, out _, out _, out _) ? c : 0; } finally { CloseHandle(h); }
+    }
+
+    /// The root and every process below it. A child counts only when it was created after its parent:
+    /// a parent id can be a dead process's, reused by the root (never walk into a stranger's tree).
     public static int[] Tree(int root)
     {
         var kids = new Dictionary<uint, List<uint>>();
@@ -164,8 +194,36 @@ public static class BenchNative
         var seen = new HashSet<uint>();
         while (q.Count > 0) {
             uint p = q.Dequeue(); if (!seen.Add(p)) continue; all.Add((int)p);
-            if (kids.TryGetValue(p, out var l)) foreach (var k in l) q.Enqueue(k);
+            if (!kids.TryGetValue(p, out var l)) continue;
+            long pc = Created(p);
+            foreach (var k in l) { long kc = Created(k); if (pc == 0 || kc == 0 || kc >= pc) q.Enqueue(k); }
         }
         return all.ToArray();
+    }
+
+    // ---- screen size (the runner desktop starts at 1024x768)
+    [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
+    struct DEVMODE {
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmDeviceName;
+        public short dmSpecVersion, dmDriverVersion, dmSize, dmDriverExtra; public int dmFields;
+        public int dmPositionX, dmPositionY, dmDisplayOrientation, dmDisplayFixedOutput;
+        public short dmColor, dmDuplex, dmYResolution, dmTTOption, dmCollate;
+        [MarshalAs(UnmanagedType.ByValTStr, SizeConst = 32)] public string dmFormName;
+        public short dmLogPixels; public int dmBitsPerPel, dmPelsWidth, dmPelsHeight, dmDisplayFlags, dmDisplayFrequency,
+          dmICMMethod, dmICMIntent, dmMediaType, dmDitherType, dmReserved1, dmReserved2, dmPanningWidth, dmPanningHeight;
+    }
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool EnumDisplaySettingsW(string dev, int mode, ref DEVMODE dm);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int ChangeDisplaySettingsW(ref DEVMODE dm, int flags);
+    /// The primary screen's size now (WinForms' Screen caches it across a mode change). GetSystemMetrics is declared above (Click).
+    public static int[] ScreenSize() => new[] { GetSystemMetrics(0), GetSystemMetrics(1) };
+
+    /// Set the primary screen's size for this session. 0 = done (DISP_CHANGE_SUCCESSFUL).
+    public static int SetRes(int w, int h)
+    {
+        var dm = new DEVMODE(); dm.dmSize = (short)Marshal.SizeOf<DEVMODE>();
+        if (!EnumDisplaySettingsW(null, -1, ref dm)) return -100;
+        if (dm.dmPelsWidth == w && dm.dmPelsHeight == h) return 0;
+        dm.dmPelsWidth = w; dm.dmPelsHeight = h; dm.dmFields = 0x80000 | 0x100000;
+        return ChangeDisplaySettingsW(ref dm, 0);
     }
 }
