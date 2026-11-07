@@ -97,11 +97,25 @@ public class StripTests
     static DateTime _lastClick = DateTime.MinValue;
 
     /// A click at the cell's centre; never within 700 ms of the last one, so two clicks on one cell are never a double-click.
-    static void Click(Cell c, MouseButton button = MouseButton.Left)
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+
+    /// The process whose top-level window is under a screen point (the runner's own taskbar can come up over the bar
+    /// when the window in front goes away; a click there opens Windows' search instead of reaching the bar).
+    static uint PidAt(Point p) { GetWindowThreadProcessId(GetAncestor(WindowFromPoint(p), 2), out uint pid); return pid; }
+
+    static void Click(Cell c, MouseButton button = MouseButton.Left, BarApp? app = null)
     {
         var wait = TimeSpan.FromMilliseconds(700) - (DateTime.UtcNow - _lastClick);
         if (wait > TimeSpan.Zero) Thread.Sleep(wait);
-        Mouse.Click(new Point(c.Rect.X + c.Rect.Width / 2, c.Rect.Y + c.Rect.Height / 2), button);
+        var at = new Point(c.Rect.X + c.Rect.Width / 2, c.Rect.Y + c.Rect.Height / 2);
+        if (app != null && !Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100)) {
+            Win32.TaskbarAutoHide(true);
+            if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100))
+                Assert.Fail($"the cell at {at} is covered by another window ({Win32.Title(GetAncestor(WindowFromPoint(at), 2))}): the click would not reach the bar");
+        }
+        Mouse.Click(at, button);
         _lastClick = DateTime.UtcNow;
         Thread.Sleep(400);
     }
@@ -201,6 +215,7 @@ public class StripTests
         string tag = Guid.NewGuid().ToString("N")[..6];
         var pins = PinFolder("click-" + tag, ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
         using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
+        using var other = new Host.Fixture($"Strip other {tag}", 520, 60, "pwsh.exe");   // takes the front when A minimises
         using var a = new Host.Fixture($"Strip click {tag}", 60, 60);
         var cs = new List<Cell>();
         Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, a.Title) is { Open: true } && Named(cs, "Beta Map") != null; }, 20000, 250),
@@ -231,7 +246,7 @@ public class StripTests
                 $"click {k}: the bar's active mark never agreed with Windows: {Why()}");
             Thread.Sleep(300);
             bool wasActive = Alpha().Active, wasIconic = Win32.IsIconic(a.Hwnd);
-            Click(Alpha());
+            Click(Alpha(), app: app);
             if (wasActive) {
                 Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"click {k} on the pin of the window in front did not minimise it: {Why()}");
                 Assert.IsTrue(Host.Until(() => !Alpha().Active && Alpha().Open, 4000), $"click {k}: the minimised window kept the active line or lost its running line: {Why()}");
@@ -247,7 +262,7 @@ public class StripTests
         // middle-click: another copy, from the pin's shortcut, never the window already open (BAR-200)
         at = LogLength(profile);
         bool iconicBefore = Win32.IsIconic(a.Hwnd);
-        Click(Alpha(), MouseButton.Middle);
+        Click(Alpha(), MouseButton.Middle, app);
         Assert.IsTrue(Host.Until(() => { log = LogSince(profile, at); return log.Contains("launch dry run", StringComparison.Ordinal); }, 6000, 200),
             $"no dry-run line after a middle-click on a running pin; the log since: {Tail(log)}");
         StringAssert.Contains(log, "would another copy of open", $"a middle-click did not ask for another copy: {Tail(log)}");
