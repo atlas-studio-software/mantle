@@ -50,7 +50,12 @@ Note 'baseline' ([ordered]@{ taskbarState = $tb0; workArea = $wa0; monitors = (J
 $mx = [BarProbe]::Fixture('Maximised fixture', 120, 120, 130, 100, 100, 800, 600, $false, 'max')
 Start-Sleep -Milliseconds 600
 Check 'fixture: maximised window in front' ([BarProbe]::ForceForeground($mx)) "hwnd $mx frame $([BarProbe]::FrameRect($mx)) foreground $([BarProbe]::Foreground())"
+# the reference picture under the bar: with the taskbar on auto-hide (as the app will put it), then
+# the taskbar goes back to its original state so the app does that itself
+[BarProbe]::SetTaskbarState($tb0 -bor 1); Start-Sleep -Milliseconds 900
 $shotBefore = Grab $area
+[BarProbe]::SetTaskbarState($tb0); Start-Sleep -Milliseconds 900
+[BarProbe]::ForceForeground($mx) | Out-Null
 
 $perf = [ordered]@{}
 foreach ($a in 'comp', 'swp', 'swpflush') {
@@ -69,8 +74,8 @@ foreach ($a in 'comp', 'swp', 'swpflush') {
     Check 'taskbar: OS auto-hide only (ABM_SETSTATE), never hidden' ((($st -band 1) -eq 1) -and [BarProbe]::Visible([BarProbe]::Tray())) `
       "state $tb0 -> $st; Shell_TrayWnd visible $([BarProbe]::Visible([BarProbe]::Tray())); app: $($r.taskbar.how)"
   }
-  # ---- hidden at rest
-  Start-Sleep -Milliseconds 500
+  # ---- hidden at rest (2.5 s after ready: start-up work done)
+  Start-Sleep -Milliseconds 2500
   $d = [WinHarness]::Diff($shotBefore, (Grab $area))
   Check "$a hidden at rest" ((-not [BarProbe]::Visible($hwnd)) -and $d -lt 1.5) "window visible $([BarProbe]::Visible($hwnd)); screen under the bar changed by $([Math]::Round($d, 2)) /255 mean"
   $rest = Get-Cpu $b.p.Id 8
@@ -83,12 +88,15 @@ foreach ($a in 'comp', 'swp', 'swpflush') {
   $rv = Wait-Ev $a 'revealDone' $t0 3
   $box = J ([BarProbe]::FillBox($area.x, $area.y, $area.w, $area.h, $r.fill[0], $r.fill[1], $r.fill[2], 6))
   Save-Shot "$a-revealed.png" $area | Out-Null
-  $ok = $tr.frames -gt 0 -and $box.found -and [Math]::Abs($box.w - $pill.w) -le 4 -and [Math]::Abs($box.y - $pill.y) -le 2
-  Check "$a reveal" $ok ("cursor at the edge -> first pixel change $($tr.firstMs) ms, motion $($tr.motionMs) ms (target 560), $($tr.frames) frames seen (~$($tr.expectedFrames) refreshes), " +
-    "dropped $($tr.droppedFrames), gaps median $($tr.medianGapMs) / p95 $($tr.p95GapMs) / max $($tr.maxGapMs) ms; sampler $($tr.samples) grabs, mean $($tr.sampleMeanMs) ms; " +
+  $ok = $tr.frames -gt 0 -and $null -ne $rv -and $tr.firstMs -le 300 -and $box.found -and [Math]::Abs($box.w - $pill.w) -le 4 -and [Math]::Abs($box.y - $pill.y) -le 2
+  Check "$a reveal" $ok ("cursor at the edge -> first pixel change $($tr.firstMs) ms, last change $($tr.lastMs) ms (motion $($tr.motionMs), target 560), $($tr.frames) changes seen by a sampler that only manages " +
+    "one grab per $($tr.sampleMeanMs) ms (so it cannot count 64 Hz frames; app-side numbers below); " +
     "pill fill on screen $($box | ConvertTo-Json -Compress); app: revealDone $($rv.ms) ms, swp $($rv.swp | ConvertTo-Json -Compress), xaml $($rv.xaml | ConvertTo-Json -Compress), dwm $($rv.dwm | ConvertTo-Json -Compress)")
   $perf["${a}_reveal"] = [ordered]@{ trace = ($tr | Select-Object * -ExcludeProperty changes); app = $rv }
   $perf["${a}_reveal_changes"] = $tr.changes
+  if ($a -eq 'comp') {
+    Check 'comp pacing (XAML frames during the reveal)' ($null -ne $rv.xaml -and $rv.xaml.frames -ge 25 -and $rv.xaml.medianMs -le 20) "frames $($rv.xaml.frames) over $($rv.xaml.spanMs) ms, median $($rv.xaml.medianMs) / p95 $($rv.xaml.p95Ms) / max $($rv.xaml.maxMs) ms, $($rv.xaml.over25ms) gaps > 25 ms (display $($rv.dwm.hz) Hz)"
+  } else { Note "${a}_pacing" $rv.swp }
   if ($a -eq 'comp') {
     $after = Grab $area
     $sx = $pill.x - $area.x; $sy = $pill.y - $area.y
@@ -128,8 +136,8 @@ foreach ($a in 'comp', 'swp', 'swpflush') {
   $th = J ([BarProbe]::Trace($band.x, $y0, $h, $away.x, $away.y, 1200, 40, 16.667))
   $hd = Wait-Ev $a 'hidden' $t1 3
   $hs = Wait-Ev $a 'hide' $t1 1
-  Check "$a hide after the grace" ($null -ne $hd -and $tr.frames -gt 0 -and $th.firstMs -ge 170 -and $th.firstMs -le 420 -and -not [BarProbe]::Visible($hwnd)) `
-    ("cursor away -> first pixel change $($th.firstMs) ms (grace 180 + poll <= 60), motion $($th.motionMs) ms (comp 260 / swp 320), $($th.frames) frames, dropped $($th.droppedFrames), max gap $($th.maxGapMs) ms; " +
+  Check "$a hide after the grace" ($null -ne $hd -and $th.frames -gt 0 -and $th.firstMs -ge 170 -and $th.firstMs -le 420 -and -not [BarProbe]::Visible($hwnd)) `
+    ("cursor away -> first pixel change $($th.firstMs) ms (grace 180 + poll <= 60), motion $($th.motionMs) ms (comp 260 / swp 320), $($th.frames) changes seen; " +
      "app: hide '$($hs.why)', hidden after $(if ($hd) { $hd.t - $t1 } else { '?' }) ms, window visible $([BarProbe]::Visible($hwnd))")
   $perf["${a}_hide"] = [ordered]@{ trace = ($th | Select-Object * -ExcludeProperty changes); app = (Wait-Ev $a 'hideDone' $t1 1) }
 

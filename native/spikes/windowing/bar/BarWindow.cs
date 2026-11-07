@@ -122,6 +122,8 @@ sealed class BarWindow
         int noTrans = 1; W.DwmSetWindowAttribute(_hwnd, 3 /* DWMWA_TRANSITIONS_FORCEDISABLED */, ref noTrans, 4);   // no DWM show/hide animation of its own
         SetEx(0x80 /* WS_EX_TOOLWINDOW */);
         Log.Line("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
+        _sub = SubProc;
+        SetWindowSubclass(_hwnd, _sub, new UIntPtr(2), IntPtr.Zero);   // first: WM_STYLECHANGING / WM_NCCALCSIZE below keep the frame off
         long st = W.GetWindowLongPtrW(_hwnd, -16).ToInt64();
         _styleBefore = Hex(st);
         // WS_CAPTION (BORDER|DLGFRAME), THICKFRAME, SYSMENU, MIN/MAXIMIZEBOX off; WS_POPUP on: the presenter
@@ -131,8 +133,6 @@ sealed class BarWindow
         W.SetWindowLongPtrW(_hwnd, -16, new IntPtr(st));
         W.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, W.SWP_NOMOVE | W.SWP_NOSIZE | W.SWP_NOZORDER | W.SWP_NOACTIVATE | W.SWP_FRAMECHANGED);
         _styleAfter = Hex(W.GetWindowLongPtrW(_hwnd, -16).ToInt64());
-        _sub = SubProc;
-        SetWindowSubclass(_hwnd, _sub, new UIntPtr(2), IntPtr.Zero);
 
         // ---- the compositor's handle on the pill: Translation + Scale (about the bottom centre) + Opacity
         _vis = ElementCompositionPreview.GetElementVisual(_pill);
@@ -285,6 +285,15 @@ sealed class BarWindow
     IntPtr SubProc(IntPtr h, uint msg, IntPtr wp, IntPtr lp, UIntPtr id, IntPtr data)
     {
         switch (msg) {
+            case 0x007C:   // WM_STYLECHANGING: the presenter puts WS_DLGFRAME|WS_SYSMENU back (run 2: 0x84480000); keep them off
+                if ((int)wp.ToInt64() == -16 /* GWL_STYLE */) {
+                    uint sn = (uint)Marshal.ReadInt32(lp, 4);   // STYLESTRUCT { styleOld; styleNew }
+                    Marshal.WriteInt32(lp, 4, unchecked((int)((sn & ~0x00CF0000u) | 0x80000000u)));
+                }
+                break;
+            case 0x0083:   // WM_NCCALCSIZE: no non-client area at all, the client is the whole window (no frame ring, no inset)
+                if (wp != IntPtr.Zero) return IntPtr.Zero;
+                break;
             case 0x0010:   // WM_CLOSE: the clean quit
                 _dq.TryEnqueue(() => Quit("WM_CLOSE"));
                 return IntPtr.Zero;

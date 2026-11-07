@@ -123,7 +123,7 @@ try {
     }
   }
   function Run-Inst([string[]]$a) {
-    $o = Join-Path $dl ("inst-" + ($a -join '-') -replace '[^\w-]', '') + '.txt'
+    $o = Join-Path $dl (((('inst-' + $a[0] + '-' + $a[-1]) -replace '[^\w-]', '')) + '.txt')
     $pr = Start-Process $inst.FullName -ArgumentList $a -WorkingDirectory $inst.DirectoryName -PassThru -RedirectStandardOutput $o -NoNewWindow
     if (-not $pr.WaitForExit(90000)) { $pr.Kill(); return "timed out after 90 s" }
     return "exit $($pr.ExitCode): " + ((Get-Content $o -ErrorAction SilentlyContinue) -join ' / ')
