@@ -125,12 +125,9 @@ Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw
 # Measured on the runner at 1920x1080, 100 % (run 42355091758, native/infra 0f4532b), relative to the pill's right
 # end. -KnownGaps $false scores the whole crop as before.
 $pillR = $pillX + $pw
-$gapList = @(
-  [ordered]@{ id = 'right-cluster'; owner = 'the bar lane'; rect = @(($pillR - 340), $pillY, 152, $pillH)
-    what = 'the native right cluster (divider, downloads, volume, network) sits ~18 px further right than Electron''s' }
-  [ordered]@{ id = 'more-dot'; owner = 'the bar lane'; rect = @(($pillR - 28), ($pillY + 6), 20, 20)
-    what = 'Electron shows an orange dot on "more"; the native bar has none' }
-)
+# right-cluster (the 14 px battery slot) and more-dot (the pip on "more") were closed by native-windows (R2-3):
+# both printed "NOT seen any more" / were removed so the gate covers that area again.
+$gapList = @()
 if (-not $KnownGaps) { $gapList = @() }
 
 # The runner's taskbar must not cover the bar when a capture is scored: a covered capture is a problem, not a score.

@@ -36,7 +36,7 @@ internal static class TopmostProbe
         _dir = dir; _bar = barHwnd;
         Directory.CreateDirectory(dir);
         // made now, while the process is starting (the launching process may hand it the foreground)
-        _parked = Make("parked", aot: true, Colors.Teal);
+        _parked = Make("parked", true);
         _parked.AppWindow.MoveAndResize(new RectInt32(-32000, -32000, 60, 60));
         _parked.AppWindow.Show(false);
         WindowKinds.Cloak(Hwnd(_parked), true);
@@ -49,9 +49,9 @@ internal static class TopmostProbe
 
     static IntPtr Hwnd(Window w) => WinRT.Interop.WindowNative.GetWindowHandle(w);
 
-    static Window Make(string name, bool aot, global::Windows.UI.Color c)
+    static Window Make(string name, bool aot)
     {
-        var w = new Window { Title = "Mantle probe " + name, Content = new Grid { Background = new SolidColorBrush(c) } };
+        var w = new Window { Title = "Mantle probe " + name, Content = new Grid() };   // the default window fill: any visible pixels do
         var p = OverlappedPresenter.Create();
         p.IsResizable = false; p.IsMaximizable = false; p.IsMinimizable = false; p.IsAlwaysOnTop = aot;
         p.SetBorderAndTitleBar(false, false);
@@ -70,11 +70,11 @@ internal static class TopmostProbe
         int x0 = int.Parse(parts[0]), y0 = int.Parse(parts[1]);
         var sb = new StringBuilder("{\"fgAtGo\":" + Win32.GetForegroundWindow() + ",\"windows\":[");
         int i = 0;
-        void One(string name, Action<Window, IntPtr, RectInt32> open, bool aot, global::Windows.UI.Color c, Window? existing = null)
+        void One(string name, Action<Window, IntPtr, RectInt32> open, bool aot, Window? existing = null)
         {
             var r = new RectInt32(x0 + 10 + (i % 6) * 65, y0 + 40 + (i / 6) * 65, 60, 60);
             i++;
-            var w = existing ?? Make(name, aot, c);
+            var w = existing ?? Make(name, aot);
             IntPtr h = Hwnd(w), fg0 = Win32.GetForegroundWindow();
             string err = "";
             try { open(w, h, r); } catch (Exception e) { err = e.GetType().Name + ": " + e.Message; }
@@ -85,27 +85,27 @@ internal static class TopmostProbe
         }
         void Place(Window w, RectInt32 r) => w.AppWindow.MoveAndResize(r);
         // B: presenter always-on-top, shown without activation
-        One("show", (w, h, r) => { Place(w, r); w.AppWindow.Show(false); }, true, Colors.Orange);
+        One("show", (w, h, r) => { Place(w, r); w.AppWindow.Show(false); }, true);
         // C: no presenter always-on-top, shown without activation
-        One("show-noaot", (w, h, r) => { Place(w, r); w.AppWindow.Show(false); }, false, Colors.Gold);
+        One("show-noaot", (w, h, r) => { Place(w, r); w.AppWindow.Show(false); }, false);
         // D: topmost set while still hidden, then SW_SHOWNA
-        One("pre-topmost", (w, h, r) => { Place(w, r); Win32.SetWindowPos(h, Win32.HWND_TOPMOST, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE); Win32.ShowWindow(h, 8 /* SW_SHOWNA */); }, false, Colors.YellowGreen);
+        One("pre-topmost", (w, h, r) => { Place(w, r); Win32.SetWindowPos(h, Win32.HWND_TOPMOST, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE); Win32.ShowWindow(h, 8 /* SW_SHOWNA */); }, false);
         // E: owned by the (topmost) bar, SW_SHOWNA
-        One("owned", (w, h, r) => { Place(w, r); WindowKinds.SetOwner(h, _bar); Win32.ShowWindow(h, 8); }, false, Colors.Green);
+        One("owned", (w, h, r) => { Place(w, r); WindowKinds.SetOwner(h, _bar); Win32.ShowWindow(h, 8); }, false);
         // F: owned by the bar, presenter always-on-top, AppWindow.Show(false)
-        One("owned-aot", (w, h, r) => { Place(w, r); WindowKinds.SetOwner(h, _bar); w.AppWindow.Show(false); }, true, Colors.Cyan);
+        One("owned-aot", (w, h, r) => { Place(w, r); WindowKinds.SetOwner(h, _bar); w.AppWindow.Show(false); }, true);
         // G: SetWindowPos(TOPMOST, SWP_SHOWWINDOW) as the show itself
-        One("swp-show", (w, h, r) => Win32.SetWindowPos(h, Win32.HWND_TOPMOST, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0040 /* SWP_SHOWWINDOW */), false, Colors.Blue);
+        One("swp-show", (w, h, r) => Win32.SetWindowPos(h, Win32.HWND_TOPMOST, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0040 /* SWP_SHOWWINDOW */), false);
         // H: parked at start (cloaked off screen), moved in and uncloaked
-        One("parked", (w, h, r) => { Win32.SetWindowPos(h, IntPtr.Zero, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */); WindowKinds.Cloak(h, false); }, true, Colors.Teal, _parked);
+        One("parked", (w, h, r) => { Win32.SetWindowPos(h, IntPtr.Zero, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */); WindowKinds.Cloak(h, false); }, true, _parked);
         // I: hidden window re-created by the bar's thread with WS_EX_TOPMOST in the style before the first show
-        One("exstyle", (w, h, r) => { Place(w, r); Win32.SetWindowLongPtr(h, Win32.GWL_EXSTYLE, new IntPtr(Win32.GetWindowLongPtr(h, Win32.GWL_EXSTYLE).ToInt64() | 0x8)); Win32.ShowWindow(h, 8); }, false, Colors.Purple);
+        One("exstyle", (w, h, r) => { Place(w, r); Win32.SetWindowLongPtr(h, Win32.GWL_EXSTYLE, new IntPtr(Win32.GetWindowLongPtr(h, Win32.GWL_EXSTYLE).ToInt64() | 0x8)); Win32.ShowWindow(h, 8); }, false);
         // LAST: the spike's way (presenter always-on-top, Activate); Activate may take the foreground, so it
         // runs after every no-activate technique has been read
-        One("activate", (w, h, r) => { Place(w, r); w.Activate(); }, true, Colors.Red);
+        One("activate", (w, h, r) => { Place(w, r); w.Activate(); }, true);
         // WindowKinds.Raise (WIN-011): shown, raised, checked 60 ms later against the app in front
         IntPtr fgAtGo = Win32.GetForegroundWindow();
-        var rw = Make("raise", aot: true, Colors.HotPink); IntPtr rh = Hwnd(rw);
+        var rw = Make("raise", true); IntPtr rh = Hwnd(rw);
         rw.AppWindow.MoveAndResize(new RectInt32(x0 + 10 + (i % 6) * 65, y0 + 40 + (i / 6) * 65, 60, 60));
         rw.AppWindow.Show(false);
         WindowKinds.Raise(rh, rw.DispatcherQueue, "probe raise", fgAtGo, (ok, why) =>
