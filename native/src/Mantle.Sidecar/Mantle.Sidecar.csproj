@@ -68,14 +68,14 @@
     <DefineConstants>$(DefineConstants);MANTLE_UIA</DefineConstants>
   </PropertyGroup>
 
-  <ItemGroup>
-    <!-- Files of sidecar/ that cannot compile here even with a shim (each one says why in
-         README.md). Empty means every sidecar file compiles. -->
-    <SidecarExclude Include="" />
-  </ItemGroup>
+  <PropertyGroup>
+    <!-- Files of sidecar/ that cannot compile here even with a shim, as ..\..\..\sidecar\Name.cs
+         separated by ';' (each one says why in README.md). Empty means every sidecar file compiles. -->
+    <SidecarExcludeFiles></SidecarExcludeFiles>
+  </PropertyGroup>
 
   <ItemGroup>
-    <Compile Include="..\..\..\sidecar\*.cs" Exclude="@(SidecarExclude)" Link="sidecar\%(Filename)%(Extension)" />
+    <Compile Include="..\..\..\sidecar\*.cs" Exclude="$(SidecarExcludeFiles)" Link="sidecar\%(Filename)%(Extension)" />
     <Compile Include="Shims\**\*.cs" />
   </ItemGroup>
 
