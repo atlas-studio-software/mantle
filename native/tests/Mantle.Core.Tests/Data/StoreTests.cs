@@ -86,7 +86,7 @@ public class StoreTests
     }
 
     [Fact]
-    public void An_unusable_file_is_left_alone_on_open_and_moved_aside_before_the_first_write_never_overwritten()
+    public void An_unusable_file_is_moved_aside_when_read_as_Electron_does_and_never_overwritten()
     {
         using var d = new TestDir("aside");
         d.Write("features.json", "{\"clipboard\":");
@@ -95,14 +95,25 @@ public class StoreTests
         var s = stores.Open("features.json");
         Assert.Equal(ReadState.Corrupt, s.State);
         Assert.Contains("not valid JSON", s.Reason);
+        Assert.Contains("kept as features.json.unreadable", s.Reason);
         Assert.Equal("{}", s.Snapshot().GetRawText());
-        Assert.Equal("{\"clipboard\":", File.ReadAllText(d.File("features.json")));   // opening changes nothing
+        Assert.Equal("{\"clipboard\":", File.ReadAllText(d.File("features.json.unreadable")));
+        Assert.False(File.Exists(d.File("features.json")));
         Assert.DoesNotContain(log.Lines, l => l.Contains(d.Path, StringComparison.OrdinalIgnoreCase));   // name only, never the path
 
         Assert.True(s.SetAsync("clipboard", JsonValue.Create(true)).Result.Ok);
+        Assert.Equal("{
+  \"clipboard\": true
+}", File.ReadAllText(d.File("features.json")));
         Assert.Equal("{\"clipboard\":", File.ReadAllText(d.File("features.json.unreadable")));
-        Assert.Equal("{\n  \"clipboard\": true\n}", File.ReadAllText(d.File("features.json")));
-        Assert.Contains("kept as features.json.unreadable", s.Reason);
+
+        // with writes refused the bad file stays exactly where it is
+        using var d3 = new TestDir("aside3");
+        d3.Write("features.json", "nope");
+        using var st3 = new Stores(d3.Path, new SafeFile(WriteGate.Never("closed")), new ListLog());
+        Assert.Contains("left in place", st3.Open("features.json").Reason);
+        Assert.Equal("nope", File.ReadAllText(d3.File("features.json")));
+        Assert.False(File.Exists(d3.File("features.json.unreadable")));
 
         // a second bad file never replaces the first aside copy
         using var d2 = new TestDir("aside2");
@@ -112,6 +123,7 @@ public class StoreTests
         var t = st2.Open(@"features\timer.json");
         Assert.Equal(ReadState.Corrupt, t.State);
         Assert.Contains("not a JSON object", t.Reason);
+        Assert.Contains("kept as timer.json.unreadable-", t.Reason);
         Assert.True(t.SetAsync("clock", JsonValue.Create(true)).Result.Ok);
         Assert.Equal("older", File.ReadAllText(d2.File(@"features\timer.json.unreadable")));
         var extra = Directory.GetFiles(d2.File("features"), "timer.json.unreadable-*");

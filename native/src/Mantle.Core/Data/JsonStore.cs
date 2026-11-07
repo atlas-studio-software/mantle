@@ -59,6 +59,8 @@ public sealed class JsonStore : IStore
             _stamp = stamp;
             _needsAside = false;
             _noWrite = null;
+            _problem = null;
+            _keptAs = null;
             Reason = null;
             JsonObject doc = new();
             string? why = null;
@@ -98,14 +100,65 @@ public sealed class JsonStore : IStore
             }
             State = state;
             _doc = doc;
-            if (why != null) {
-                _needsAside = true;
-                Reason = $"{Name} {why}; it will be kept as {Path.GetFileName(_path)}.unreadable before anything is saved, starting from defaults";
-                _log.Line($"{Name}: the saved settings were not used: {Name} {why}");   // the name only, never the path
-            }
+            if (why != null) Unusable(why);
             return moved;
         }
     }
+
+    /// <summary>
+    /// The file's content is unusable for its owner (for example theme.json with a mode that is not a mode):
+    /// start from <c>{}</c> and move the file aside now when writes are allowed, else before the first write.
+    /// Answers the aside name, or null when it stays in place for now.
+    /// </summary>
+    public string? MoveAsideNow(string why)
+    {
+        lock (_lock) {
+            _doc = new JsonObject();
+            State = ReadState.Corrupt;
+            Unusable(why);
+            return _keptAs;
+        }
+    }
+
+    string? _keptAs;
+
+    /// Why the file on disk was not used ("is not valid JSON"), or null when it was.
+    public string? Problem { get { lock (_lock) return _problem; } }
+    string? _problem;
+
+    void Unusable(string why)
+    {
+        _problem = why;
+        _needsAside = true;
+        _keptAs = null;
+        _log.Line($"{Name}: the saved settings were not used: {Name} {why}");   // the name only, never the path
+        Reason = $"the saved settings were not used: {Name} {why}; starting from defaults";
+        if (_files.Gate.Refusal(_path) == null) AsideNow(why);
+        else Reason = $"the saved settings were not used: {Name} {why}; it is left in place, starting from defaults";
+    }
+
+    /// The .unreadable rule: rename, never over an existing aside copy. False (and nothing saved over it) when the move fails.
+    bool AsideNow(string? why = null)
+    {
+        if (!File.Exists(_path) && !Directory.Exists(_path)) { _needsAside = false; return true; }
+        string aside = File.Exists(_path + ".unreadable") || Directory.Exists(_path + ".unreadable")
+            ? _path + ".unreadable-" + _nowMs() : _path + ".unreadable";
+        string? err = _files.MoveAside(_path, aside);
+        if (err != null) {
+            _noWrite = $"{Name} could not be used and could not be moved aside ({err}), so nothing is saved over it";
+            Reason = _noWrite;
+            _log.Line($"{Name}: {_noWrite}");
+            return false;
+        }
+        _needsAside = false;
+        _keptAs = Path.GetFileName(aside);
+        _stamp = ReadOnlyFile.StampOf(_path);
+        Reason = $"the saved settings were not used: {Name} {why ?? "could not be used"}; kept as {_keptAs}, starting from defaults";
+        return true;
+    }
+
+    /// The aside copy made for the last unusable file, if any (theme's note names it).
+    public string? KeptAs { get { lock (_lock) return _keptAs; } }
 
     internal string DiskStamp => ReadOnlyFile.StampOf(_path);
     internal string LoadedStamp { get { lock (_lock) return _stamp; } }
@@ -171,19 +224,7 @@ public sealed class JsonStore : IStore
         if (_noWrite != null) return StoreWrite.Failed(_noWrite);
         string? refused = _files.Gate.Refusal(_path);
         if (refused != null) return StoreWrite.Failed(refused);
-        if (_needsAside) {
-            string aside = File.Exists(_path + ".unreadable") || Directory.Exists(_path + ".unreadable")
-                ? _path + ".unreadable-" + _nowMs() : _path + ".unreadable";
-            string? err = (File.Exists(_path) || Directory.Exists(_path)) ? _files.MoveAside(_path, aside) : null;
-            if (err != null) {
-                _noWrite = $"{Name} could not be used and could not be moved aside ({err}), so nothing is saved over it";
-                Reason = _noWrite;
-                _log.Line($"{Name}: {_noWrite}");
-                return StoreWrite.Failed(_noWrite);
-            }
-            _needsAside = false;
-            Reason = $"the saved settings were not used: {Name} could not be read; kept as {Path.GetFileName(aside)}, starting from defaults";
-        }
+        if (_needsAside && !AsideNow()) return StoreWrite.Failed(_noWrite ?? Reason ?? (Name + " could not be moved aside"));
         string tmp = _spec.PidTmp ? $"{_path}.{Environment.ProcessId}.tmp" : _path + ".tmp";
         string? fail = _files.WriteAtomic(_path, JsJson.ToFileBytes(_doc, _spec.Indent, _spec.TrailingNewline), tmp);
         if (fail != null) return StoreWrite.Failed($"{Name} could not be saved ({fail})");
