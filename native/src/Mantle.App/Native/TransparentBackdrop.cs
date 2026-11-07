@@ -49,6 +49,10 @@ internal sealed class TransparentBackdrop : SystemBackdrop
         var m = new MARGINS { l = -1, r = -1, t = -1, b = -1 };
         int hr = DwmExtendFrameIntoClientArea(hwnd, ref m);
         s_subclass ??= (h, msg, wp, lp, id, data) => {
+            // No non-client area at all: the client is the whole window. The presenter keeps putting
+            // WS_DLGFRAME back (CI runs 1-2), which left a 3 px frame: the pill sat 3 px right and low
+            // in UIA and the window edge drew a line. Answering WM_NCCALCSIZE with 0 removes it.
+            if (msg == 0x0083 /* WM_NCCALCSIZE */ && wp != IntPtr.Zero) return IntPtr.Zero;
             if (msg == 0x0014 /* WM_ERASEBKGND */) {
                 if (GetClientRect(h, out var rc)) FillRect(wp, ref rc, GetStockObject(4 /* BLACK_BRUSH */));
                 return new IntPtr(1);
