@@ -84,6 +84,10 @@ public partial class MantleApp : Application
         Host.Log.Line($"launched; theme {ThemeSettings.Word(StartMode())}{(Host.Args.Theme != null ? " (pinned by --theme)" : " (from " + Host.Data.Theme.Name + ")")}; app theme {RequestedTheme}");
         _window = new BarWindow();
         _window.FollowHostTheme();   // the bar takes the host's theme (ThemeShown) and keeps its own theme.json path
+        // ---- OsdWiring (lane native-osd-toasts): the osd surface is a window made at start (hidden), so the bar's window
+        // closing (WM_CLOSE) is no longer the app's last window; it runs the ONE shutdown instead of leaving a hidden window alive.
+        _window.Closed += (_, _) => { if (!_shutdown.Started) Quit("the bar window was closed", 0); };
+        // ---- end OsdWiring
         Host.Marks.Add("window");
         _window.ShowBar();
 
