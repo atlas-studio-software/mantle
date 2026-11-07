@@ -191,18 +191,24 @@ internal sealed class OsdSurface : ISurface
     static Viewbox WarnGlyph()
     {
         var c = new Canvas { Width = 16, Height = 16 };
-        c.Children.Add(PathOf(Warn, false, 1.3));
+        c.Children.Add(PathOf(Warn, false, 1.3, "LgWarn"));
         return new Viewbox { Width = 12, Height = 12, Margin = new Thickness(0, 2, 0, 0), VerticalAlignment = VerticalAlignment.Top, Child = c, Tag = "warn" };
     }
 
-    static Microsoft.UI.Xaml.Shapes.Path PathOf(string d, bool fill, double stroke)
+    /// One SVG path as XAML (BarWindow.PathEl's road): the data re-spaced (WinUI's path parser refuses SVG's compact
+    /// forms such as "1.8z" or ".01"), the ink a {ThemeResource} so it follows the theme; only cast to UIElement.
+    static UIElement PathOf(string d, bool fill, double stroke, string brush)
     {
-        var p = (Microsoft.UI.Xaml.Shapes.Path)XamlReader.Load($"<Path {Ns} Data='{d}'/>");
-        p.StrokeThickness = fill ? 0 : stroke;
-        p.StrokeStartLineCap = p.StrokeEndLineCap = PenLineCap.Round;
-        p.StrokeLineJoin = PenLineJoin.Round;
-        p.Tag = fill ? "fill" : "stroke";
-        return p;
+        string line = FormattableString.Invariant($"Stroke='{{ThemeResource {brush}}}' StrokeThickness='{stroke}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'");
+        string paint = fill ? $"Fill='{{ThemeResource {brush}}}'" + (stroke > 0 ? " " + line : "") : line;   // the sun's disc: filled AND stroked
+        return (UIElement)XamlReader.Load($"<Path {Ns} Data='{Norm(d)}' {paint}/>");
+    }
+    static readonly System.Text.RegularExpressions.Regex Tok_ = new(@"[A-Za-z]|[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?");
+    static string Norm(string d)
+    {
+        var sb = new System.Text.StringBuilder();
+        foreach (System.Text.RegularExpressions.Match m in Tok_.Matches(d)) sb.Append(m.Value).Append(' ');
+        return sb.ToString().Trim();
     }
 
     // ------------------------------------------------------------------ theme and brushes
@@ -270,10 +276,9 @@ internal sealed class OsdSurface : ISurface
 
         // glyph
         bool on = vol && muted && !d.Dead;
-        _glyphBox.Child = GlyphCanvas(vol ? OsdModel.VolumeGlyph(d.Dead ? null : d.Fill, muted) : OsdModel.SunGlyph(d.Dead ? null : d.Fill));
-        Brush ink = _dark ? (on || _glyphHover ? B("LgInk") : B("LgInk2")) : on ? B("LgAccOn") : B("LgInk");
-        if (!vol && _dark) ink = B("LgInk2");
-        Colour(_glyphBox, ink);
+        string ink = _dark ? (on || _glyphHover ? "LgInk" : "LgInk2") : on ? "LgAccOn" : "LgInk";
+        if (!vol && _dark) ink = "LgInk2";
+        _glyphBox.Child = GlyphCanvas(vol ? OsdModel.VolumeGlyph(d.Dead ? null : d.Fill, muted) : OsdModel.SunGlyph(d.Dead ? null : d.Fill), ink);
         _glyph.Background = on ? (_dark ? B("LgPress") : B("LgAcc")) : _glyphHover && vol && !d.Dead ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
         _glyph.BorderBrush = on && _dark ? B("LgEdgeOut") : null;
         _glyph.BorderThickness = new Thickness(on && _dark ? 1 : 0);
@@ -286,9 +291,8 @@ internal sealed class OsdSurface : ISurface
         _pill.ColumnDefinitions[3].Width = new GridLength(vol ? 26 : 0);
         _pill.ColumnSpacing = 8;
         var cc = new Canvas { Width = 16, Height = 16 };
-        cc.Children.Add(PathOf("M4.5 9.8L8 6.3l3.5 3.5", false, 1.4));
+        cc.Children.Add(PathOf("M4.5 9.8L8 6.3l3.5 3.5", false, 1.4, _dark && _moreHover ? "LgInk" : "LgInk2"));
         _chev.Child = cc;
-        Colour(_chev, _dark && _moreHover ? B("LgInk") : B("LgInk2"));
         ((RotateTransform)_chev.RenderTransform).Angle = _open ^ _below ? 180 : 0;
         _more.Background = _moreHover ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
         AutomationProperties.SetName(_more, _open ? "Hide the apps" : "Show every app’s volume");
@@ -311,7 +315,6 @@ internal sealed class OsdSurface : ISurface
         _whyText.Text = line;
         _why.Visibility = line.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
         _whyText.Foreground = B("LgWarn");
-        Colour(_why, B("LgWarn"));
         _dev.Foreground = B("LgInk2");
         foreach (var t in Texts()) if (t.Tag as string == "ink") t.Foreground = B("LgInk");
         PaintApps();
@@ -334,22 +337,11 @@ internal sealed class OsdSurface : ISurface
         ((TranslateTransform)_knob.RenderTransform).X = (w - 14) * p;   // a range thumb travels inside the track
     }
 
-    static Canvas GlyphCanvas(IReadOnlyList<GlyphPart> parts)
+    static Canvas GlyphCanvas(IReadOnlyList<GlyphPart> parts, string ink)
     {
         var c = new Canvas { Width = 16, Height = 16 };
-        foreach (var g in parts) c.Children.Add(PathOf(g.Data, g.Fill, g.Stroke));
+        foreach (var g in parts) c.Children.Add(PathOf(g.Data, g.Fill, g.Stroke, ink));
         return c;
-    }
-
-    static void Colour(FrameworkElement root, Brush ink)
-    {
-        if (root is Viewbox vb && vb.Child is Canvas c) foreach (var x in c.Children) Ink(x, ink);
-        else if (root is Panel p) foreach (var x in p.Children) if (x is Viewbox v) Colour(v, ink);
-    }
-    static void Ink(UIElement x, Brush ink)
-    {
-        if (x is not Microsoft.UI.Xaml.Shapes.Path p) return;
-        if (p.Tag as string == "fill") { p.Fill = ink; p.Stroke = null; } else { p.Stroke = ink; p.Fill = null; }
     }
 
     static string Sentence(string s) => s.Length == 0 || ".!?…".IndexOf(s[^1]) >= 0 ? s : s + ".";
@@ -386,7 +378,6 @@ internal sealed class OsdSurface : ISurface
         var head = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 0, 0, 2) };
         head.Children.Add(WarnGlyph());
         head.Children.Add(new TextBlock { Text = "The apps can’t be read", FontWeight = Microsoft.UI.Text.FontWeights.SemiBold, Foreground = B("LgWarn"), FontSize = _dark ? 13 : 12.5 });
-        Colour(head, B("LgWarn"));
         block.Children.Add(head);
         block.Children.Add(new TextBlock { Text = Sentence(OsdModel.Plain(_appsWhy ?? "they are being read")), TextWrapping = TextWrapping.Wrap, Foreground = B("LgInk2"), FontSize = _dark ? 13 : 12.5, LineHeight = 18 });
         var again = new Border { CornerRadius = new CornerRadius(6), Height = 28, Padding = new Thickness(10, 0, 10, 0), Margin = new Thickness(0, 8, 0, 0), HorizontalAlignment = HorizontalAlignment.Left,
@@ -699,10 +690,10 @@ internal sealed class OsdSurface : ISurface
         StopFade();
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
-        _fader.Reset();
+        _fader?.Reset();
         _shown = false;
-        try { _win.Close(); } catch (Exception e) when (e is InvalidOperationException or COMException) { }
-        _ctx.Log.Line("destroyed (" + why + ")");
+        try { _win?.Close(); } catch (Exception e) when (e is InvalidOperationException or COMException) { }
+        _ctx?.Log.Line("destroyed (" + why + ")");
     }
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);

@@ -25,7 +25,8 @@ app.whenReady().then(async () => {
       const eq = spec.indexOf('=');
       const name = spec.slice(0, eq), q = spec.slice(eq + 1);
       const win = new BrowserWindow({ show: false, width: 440, height: 560, useContentSize: true, webPreferences: { offscreen: true } });
-      await win.loadFile(PAGE, { search: q });
+      const url = require('url').pathToFileURL(PAGE).href + '?' + q;
+      try { await win.loadURL(url); } catch (e) { await new Promise((r) => setTimeout(r, 300)); await win.loadURL(url); }
       await win.webContents.executeJavaScript(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); document.documentElement.style.background = ${JSON.stringify(bg)}; true`);
       for (let i = 0; i < 50; i++) { if (await win.webContents.executeJavaScript(`!document.getElementById('osd').hidden`)) break; await new Promise((r) => setTimeout(r, 100)); }
       await new Promise((r) => setTimeout(r, 400));
