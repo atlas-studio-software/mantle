@@ -1,0 +1,12 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- Popup lane: borderless see-through popups (no frame line), click-through, and the cost of
+       opening one (cold, warm new window, parked). Settings: ../Directory.Build.props. -->
+  <PropertyGroup>
+    <RootNamespace>PopupSpike</RootNamespace>
+    <AssemblyName>Popup</AssemblyName>
+  </PropertyGroup>
+  <ItemGroup>
+    <!-- check-side files: compiled by PowerShell (Add-Type), not part of the app -->
+    <Compile Remove="CheckNative.cs" />
+  </ItemGroup>
+</Project>
