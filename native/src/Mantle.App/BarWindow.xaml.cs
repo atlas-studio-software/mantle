@@ -26,54 +26,14 @@ using Windows.Graphics;
 
 namespace Mantle.App;
 
-/// One dock cell (ui/bar/bar.js .cell): an app's icon or letter tile, and its running line.
-/// UI Automation: AutomationId bar.app.&lt;Index&gt; (0-based, display order), Name = the window
-/// title, HelpText = the exe's file name (AUTOMATION.md).
-public sealed partial class CellVm : INotifyPropertyChanged
-{
-    internal AppEntry App;
-    internal CellVm(AppEntry app, ImageSource? icon)
-    {
-        App = app; Name = app.Name; Icon = icon;
-        Letter = app.Name.Length > 0 ? app.Name.Substring(0, 1).ToUpperInvariant() : "?";
-        ExeName = Path.GetFileName(app.Exe);
-        _title = app.Title;
-        _active = app.Active;
-    }
-    public string Name { get; }
-    public string Letter { get; }
-    public string ExeName { get; }
-    public ImageSource? Icon { get; }
-    public Visibility IconVisibility => Icon != null ? Visibility.Visible : Visibility.Collapsed;
-    public Visibility TileVisibility => Icon == null ? Visibility.Visible : Visibility.Collapsed;
-    bool _active;
-    public bool Active {
-        get => _active;
-        set { if (_active == value) return; _active = value; Changed(nameof(RunVisibility)); Changed(nameof(ActVisibility)); }
-    }
-    string _title;
-    public string Title {
-        get => _title;
-        set { if (_title == value) return; _title = value; Changed(nameof(Title)); }
-    }
-    int _index = -1;
-    public int Index {
-        get => _index;
-        set { if (_index == value) return; _index = value; Changed(nameof(AutomationId)); }
-    }
-    public string AutomationId => "bar.app." + _index.ToString(CultureInfo.InvariantCulture);
-    public Visibility RunVisibility => _active ? Visibility.Collapsed : Visibility.Visible;
-    public Visibility ActVisibility => _active ? Visibility.Visible : Visibility.Collapsed;
-    public event PropertyChangedEventHandler? PropertyChanged;
-    void Changed(string p) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
-}
+// One dock cell: CellVm lives in Surfaces/Bar/Tasks/BarWindow.Tasks.cs (native-bar-tasks).
 
 // ready.json / cells.json (the bench), source-generated: no reflection, trim and AOT safe
 internal sealed record RectJson(int x, int y, int w, int h);
 internal sealed record MarkJson(string name, double sinceStartMs);
 internal sealed record ReadyJson(long processStartUnixMs, long mainUnixMs, long firstFrameUnixMs, double scale, string theme, string backdrop,
     RectJson window, RectJson pill, bool quiet, string frame, string title, MarkJson[] marks);
-internal sealed record CellJson(string name, string title, string automationId, string exe, uint pid, bool active, bool hasIcon, int x, int y, int w, int h);
+internal sealed record CellJson(string name, string title, string automationId, string exe, uint pid, bool active, bool hasIcon, int x, int y, int w, int h, string status);
 internal sealed record CellsJson(long at, int rebuilds, CellJson[] cells);
 
 [JsonSourceGenerationOptions(WriteIndented = true)]
@@ -97,7 +57,6 @@ public sealed partial class BarWindow : Window
     readonly string? _benchOut = Host.Args.BenchOut;
     bool _dark;
     readonly ObservableCollection<CellVm> _cells = new();
-    readonly WindowList _list;
     readonly DispatcherQueueTimer _clock;
     long _firstFrameMs;
     string _backdropState = "not captured";
@@ -125,15 +84,14 @@ public sealed partial class BarWindow : Window
         PoseDown();
 
         Dock.ItemsSource = _cells;
-        _list = new WindowList(DispatcherQueue);
-        _list.Changed += SyncCells;
+        StartTasks();   // the strip: pins + running apps from the platform (Surfaces/Bar/Tasks)
 
         _clock = DispatcherQueue.CreateTimer();
         _clock.IsRepeating = false;
         _clock.Tick += (_, _) => Tick();
 
         CompositionTarget.Rendering += OnFirstRender;
-        Closed += (_, _) => _list.Dispose();
+        Closed += (_, _) => StopTasks();
     }
 
     void ConfigureWindow()
@@ -191,7 +149,6 @@ public sealed partial class BarWindow : Window
         long got = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_STYLE).ToInt64();
         _frameState += $"; after show 0x{st:X8} -> 0x{got:X8}" + ((got & frameBits) == 0 ? " (no frame bits)" : " (frame bits still set)");
         Host.Log.Line("frame: after show: " + _frameState);
-        _list.Start();
         Shell.Windowing.TopmostProbe.Start(_hwnd, DispatcherQueue);   // CI only (MANTLE_TEST_TOPMOST_PROBE)
         System.Threading.Tasks.Task.Run(() =>
         {
@@ -422,31 +379,7 @@ public sealed partial class BarWindow : Window
         _clock.Start();
     }
 
-    // ------------------------------------------------------------------ the dock
-    void SyncCells()
-    {
-        var apps = _list.Apps;
-        var want = new Dictionary<string, AppEntry>(StringComparer.OrdinalIgnoreCase);
-        foreach (var a in apps) want[a.Key] = a;
-        for (int i = _cells.Count - 1; i >= 0; i--) if (!want.ContainsKey(_cells[i].App.Key)) _cells.RemoveAt(i);
-        var have = new Dictionary<string, CellVm>(StringComparer.OrdinalIgnoreCase);
-        foreach (var c in _cells) have[c.App.Key] = c;
-        int iconPx = (int)Math.Round(24 * _scale);
-        foreach (var a in apps) {
-            if (have.TryGetValue(a.Key, out var vm)) { vm.App = a; vm.Active = a.Active; vm.Title = a.Title; }
-            else _cells.Add(new CellVm(a, Icons.ForApp(a, iconPx)));
-        }
-        for (int i = 0; i < _cells.Count; i++) _cells[i].Index = i;   // bar.app.<n>, in display order
-        if (_benchOut != null) DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, WriteCells);
-    }
-
-    void Cell_Click(object sender, RoutedEventArgs e)
-    {
-        if (sender is not Button b || b.Tag is not CellVm vm) return;
-        string r = Focus.Toggle(vm.App);
-        Host.Log.Line("click " + vm.Name + ": " + r);
-        _list.Rebuild(false);
-    }
+    // the dock: Surfaces/Bar/Tasks/BarWindow.Tasks.cs (SyncCells, clicks, cells.json)
 
     // ------------------------------------------------------------------ first frame, bench output
     void OnFirstRender(object? sender, object e)
@@ -463,20 +396,6 @@ public sealed partial class BarWindow : Window
             new RectJson(_pillPx.Left, _pillPx.Top, _pillPx.Right - _pillPx.Left, _pillPx.Bottom - _pillPx.Top),
             Host.Quiet, _frameState, Title, marks.ToArray());
         Write("ready.json", JsonSerializer.Serialize(ready, BenchJson.Default.ReadyJson));
-    }
-
-    void WriteCells()
-    {
-        var list = new List<CellJson>();
-        for (int i = 0; i < _cells.Count; i++) {
-            if (Dock.ContainerFromIndex(i) is not FrameworkElement fe) continue;
-            var p = fe.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
-            int x = _winPx.X + (int)Math.Round(p.X * _scale), y = _winPx.Y + (int)Math.Round(p.Y * _scale);
-            var c = _cells[i];
-            list.Add(new CellJson(c.Name, c.Title, c.AutomationId, c.App.Exe, c.App.Pid, c.Active, c.Icon != null,
-                x, y, (int)Math.Round(fe.ActualWidth * _scale), (int)Math.Round(fe.ActualHeight * _scale)));
-        }
-        Write("cells.json", JsonSerializer.Serialize(new CellsJson(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _list.Rebuilds, list.ToArray()), BenchJson.Default.CellsJson));
     }
 
     void Write(string name, string json)
