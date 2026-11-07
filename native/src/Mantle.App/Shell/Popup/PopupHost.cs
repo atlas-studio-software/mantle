@@ -169,9 +169,16 @@ internal sealed class PopupHost
     public void BarPressed(DependencyObject? source, FrameworkElement? anchorOfOpen)
     {
         if (_st == St.Hidden) return;
-        for (var d = source; d != null; d = VisualTreeHelper.GetParent(d)) if (d == anchorOfOpen) return;   // the anchor toggles itself
+        // BAR-392: no anchor counts as outside, not only the open one's: each toggles itself, and another
+        // pop-up's anchor opens its pop-up in place of this one (BAR-375: replaced, no exit)
+        for (var d = source; d != null; d = VisualTreeHelper.GetParent(d))
+            if (d == anchorOfOpen || (d is FrameworkElement f && _anchors.Contains(f))) return;
         Close("a press on the bar outside the pop-up");
     }
+
+    readonly HashSet<FrameworkElement> _anchors = new();
+    /// A bar element that opens a pop-up (BAR-392's anchor list: volume, network, battery, clock, bell, ...).
+    public void Anchor(FrameworkElement el) => _anchors.Add(el);
 
     void OnClick(string what, Win32.POINT pt)
     {

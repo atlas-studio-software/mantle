@@ -31,6 +31,7 @@ public sealed partial class BarWindow
         var cal = new PopupKind("cal", "Calendar", 268, 300, Focusable: true, Instant: false, Away: true, () => Stand("cal", "Calendar"));
         MoreBtn.Click += (_, _) => { _popAnchor = MoreBtn; Popups.Toggle(more, MoreBtn); };
         ClockBtn.Click += (_, _) => { _popAnchor = ClockBtn; Popups.Toggle(cal, ClockBtn); };
+        Popups.Anchor(MoreBtn); Popups.Anchor(ClockBtn);
         Host.Log.Line("pop-ups: MANTLE_TEST_POPUPS=1: More opens the stand-in \"more\" (instant, parked), the clock \"cal\" (on demand, focusable)");
     }
 
