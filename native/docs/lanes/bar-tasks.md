@@ -85,7 +85,24 @@ deliberate deviation for safety.
 
 ### The click flake
 
-FLAKE_NOTES
+- What the failing log shows: the click came about 2 s after the app started. The log after it held one line:
+  `data: look-sync\look.json: ok: rev 1 ...` (the 2 s data poll). Each time that poll fires, the UI thread logs
+  `data changed: look-sync\look.json: ok` (App.xaml.cs, a queued UI job) within 0-2 ms (every passing log, and the
+  bench log of that same run). In the failing run that line never came in the 6 s the test waited, and neither did a
+  click line. So the bar's UI thread ran no queued work for at least 6 s, starting right after the test's last UI
+  Automation read (which the UI thread answered). The click was not lost by a moved cell, and it was not the first-moments
+  gap (no `bar: input:` line; strip cells ARE plain Buttons, so EarlyClicks would have passed such a click on).
+- Not the cause: a strip rebuild under the pointer (the pinned cells do not move; the passing logs show the press and
+  the click on the same cell 1 ms apart), the look.json publish (its UI handler only re-renders when the blur
+  changes, and its line never ran), z-order moves (pins never move).
+- Not found: what held the UI thread. The stall did not happen again in 16 runs of the click test with the test-only
+  UI-thread ping on (cloud runs 42386880533: StripTests x6; 42387408410: whole UI suite x4; 42388736092: the CI ui
+  stage plus the whole UI suite x5): 16 of 16 passed, 0 late-UI lines. No app fix was made for it, because none is
+  proven. The next time it happens, the failure message and the kept app log say where the click landed and how long
+  the UI thread was held (`the UI thread has not run queued work for <n> ms`).
+- Side finding: in a repeat run made after the parity stage, `Theme_set_switches_the_bar_within_1_s...` fails every
+  time ("never went dark ... luminance 25.2 -> 25.2"): the bar is already dark then, so parity leaves the desk in a
+  state that test does not reset. It passes inside ci.ps1 (ui runs before parity). Not this lane's test.
 
 ## Part 2 starts here
 
