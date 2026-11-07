@@ -132,7 +132,8 @@ public sealed class PopupTests
             Assert.Fail($"More did not open. Clicked at {clickAt} on bar.more {r0} (now {app.Find("bar.more").BoundingRectangle}); bar window ({wr.Left},{wr.Top})-({wr.Right},{wr.Bottom}); " +
                 $"under the click now {Under(r0.Left + r0.Width / 2, r0.Top + r0.Height / 2)}. Log:\n" + Keep(dir, "popmotion"));
         }
-        Keep(dir, "popmotion-ok-click" + clickAt.Replace(":", "").Replace(".", ""));   // DIAGNOSTIC: the timeline of a first click that worked
+        Console.WriteLine(FrameProbe.Log(dir).Contains("bar: input: a click on bar.more came before", StringComparison.Ordinal)
+            ? $"the first click ({clickAt}) came before the bar's island took the pointer; the bar passed it to More (EarlyClicks)" : $"the first click ({clickAt}) reached XAML itself");
         IntPtr m = More();
 
         // its own button: closed in state at once, on screen until the exit has played
