@@ -31,7 +31,7 @@ const AT = Date.UTC(2026, 10, 6, 17, 41, 0);   // any fixed moment: the same in 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-shots-ab-'));
 const tar = path.join(dir, 'base.tar');
 execFileSync('git', ['-C', REPO, 'archive', '--format=tar', '-o', tar, BASE, 'ui', 'lib'], { stdio: 'inherit' });
-execFileSync('tar', ['-xf', tar, '-C', dir], { stdio: 'inherit' });
+execFileSync('tar', ['-xf', 'base.tar'], { cwd: dir, stdio: 'inherit' });   // relative: GNU tar reads 'C:' as a host
 fs.rmSync(tar, { force: true });
 
 const basePage = pathToFileURL(path.join(dir, 'ui', 'bar', 'index.html')).href;

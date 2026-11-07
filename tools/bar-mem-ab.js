@@ -37,7 +37,7 @@ function unpack(ref) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-bar-ab-'));
   const tar = path.join(dir, 'base.tar');
   execFileSync('git', ['-C', REPO, 'archive', '--format=tar', '-o', tar, ref, 'ui', 'lib', 'preload.js'], { stdio: 'inherit' });
-  execFileSync('tar', ['-xf', tar, '-C', dir], { stdio: 'inherit' });
+  execFileSync('tar', ['-xf', 'base.tar'], { cwd: dir, stdio: 'inherit' });   // relative: GNU tar reads 'C:' as a host
   fs.rmSync(tar, { force: true });
   return dir;
 }
