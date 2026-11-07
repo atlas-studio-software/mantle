@@ -401,10 +401,14 @@ public static class BarProbe
         if (!found) return "no attached display named " + device;
         int ox = target.dmPositionX, oy = target.dmPositionY;
         var sb = new StringBuilder();
+        // run 1: the old primary first and position-only fields gave -1 for the new primary, and the apply
+        // reset the old primary to its registry mode (1024x768). The new primary goes first now, and every
+        // display's current size is written along with its position.
+        all.Sort((a, b) => (string.Equals(b.Key, device, StringComparison.OrdinalIgnoreCase) ? 1 : 0) - (string.Equals(a.Key, device, StringComparison.OrdinalIgnoreCase) ? 1 : 0));
         foreach (var kv in all) {
             var dm = kv.Value;
             bool isNew = string.Equals(kv.Key, device, StringComparison.OrdinalIgnoreCase);
-            dm.dmPositionX -= ox; dm.dmPositionY -= oy; dm.dmFields = 0x20 /* DM_POSITION */;
+            dm.dmPositionX -= ox; dm.dmPositionY -= oy; dm.dmFields = 0x20 /* DM_POSITION */ | 0x80000 /* DM_PELSWIDTH */ | 0x100000 /* DM_PELSHEIGHT */;
             uint f = 0x1 /* UPDATEREGISTRY */ | 0x10000000 /* NORESET */ | (isNew ? 0x10u /* SET_PRIMARY */ : 0u);
             sb.Append(kv.Key).Append(" -> ").Append(dm.dmPositionX).Append(",").Append(dm.dmPositionY).Append(": ").Append(ChangeDisplaySettingsExW(kv.Key, ref dm, IntPtr.Zero, f, IntPtr.Zero)).Append("; ");
         }

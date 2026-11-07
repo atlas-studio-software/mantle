@@ -25,7 +25,10 @@ function Want($m, [double]$s) {   # main.js barGeometry in physical px for monit
   @{ x = $m.x + [int][Math]::Floor(($m.w - $pw) / 2); y = $m.y + $m.h - $lift - $ph; w = $pw; h = $ph; lift = $lift }
 }
 function Same($p, $w) { $p.x -eq $w.x -and $p.y -eq $w.y -and $p.w -eq $w.w -and $p.h -eq $w.h }
-function Fill($b, $p) { J ([BarProbe]::FillBox($p.x - 10, $p.y - 10, $p.w + 20, $p.h + 30, $b.r.fill[0], $b.r.fill[1], $b.r.fill[2], 6)) }
+# ready.json's fill/ink are byte[], which System.Text.Json writes as base64 ("ICMo" = 32,35,40):
+# indexing that string hands the probe the character codes instead (run 1: 73,67,77)
+function Rgb3($v) { if ($v -is [string]) { [int[]][Convert]::FromBase64String($v) } else { [int[]]@($v) } }
+function Fill($b, $p) { $f = Rgb3 $b.r.fill; J ([BarProbe]::FillBox($p.x - 10, $p.y - 10, $p.w + 20, $p.h + 30, $f[0], $f[1], $f[2], 6)) }
 function Set-Scale([int]$pct, [string]$dev = '') {
   $r = [BarProbe]::DpiSetPercent($dev, $pct); Say "scale -> ${pct}%: $r"; Start-Sleep -Milliseconds 1500; return $r
 }
@@ -61,7 +64,8 @@ foreach ($pct in $scales) {
     "want $($want.w)x$($want.h); window $($wr | ConvertTo-Json -Compress); work area bottom $($wa.y + $wa.h) (want $($mon.rect.y + $mon.rect.h - $want.h)); XAML scale $xs")
   if ($pl) {
     $p = $pl.pill; $n = [int][Math]::Round(20 * $s)
-    $mk = J ([BarProbe]::Marker($p.x, $p.y, [int](70 * $s), $p.h, $d.r.ink[0], $d.r.ink[1], $d.r.ink[2], $d.r.fill[0], $d.r.fill[1], $d.r.fill[2], 24))
+    $ink = Rgb3 $d.r.ink; $fil = Rgb3 $d.r.fill; $in = [int][Math]::Round(6 * $s)   # inset: the pill's border and corners are neither ink nor fill
+    $mk = J ([BarProbe]::Marker($p.x + $in, $p.y + $in, [int](60 * $s), $p.h - 2 * $in, $ink[0], $ink[1], $ink[2], $fil[0], $fil[1], $fil[2], 24))
     Check "dpi ${pct}%: marker crisp" ($mk.found -and [Math]::Abs($mk.w - $n) -le 1 -and [Math]::Abs($mk.h - $n) -le 1 -and $mk.softRow -le 2 -and $mk.softCol -le 2) "20 DIP square measured $($mk.w)x$($mk.h) px (want $n), soft edge pixels row $($mk.softRow) col $($mk.softCol)"
     Save-Shot "dpi-$pct.png" @{ x = $p.x - 10; y = $p.y - 10; w = [Math]::Min($p.w + 20, $mon.rect.w); h = $p.h + 20 } | Out-Null
   }
@@ -152,19 +156,25 @@ try {
     [BarProbe]::Cursor($np.rect.x + [int]($np.rect.w * 0.4), $np.rect.y + $np.rect.h - 1) | Out-Null
     $rv = Wait-Ev 'mm' 'revealDone' $t 4; Start-Sleep -Milliseconds 200
     $fb = Fill $b $want
-    Check 'primary switched: the bar moves to the new primary' ($null -ne $pl -and (Same $pl.pill $want) -and $null -ne $rv -and $fb.found) "set primary: $($mm.setPrimary); new primary $($np.device) $($np.rect | ConvertTo-Json -Compress); app place '$($pl.why)' pill $($pl.pill | ConvertTo-Json -Compress); revealed there: fill $($fb | ConvertTo-Json -Compress)"
+    Check 'primary switched: the bar moves to the new primary' ($np.device -eq $virt.device -and $null -ne $pl -and (Same $pl.pill $want) -and $null -ne $rv -and $fb.found -and [Math]::Abs($fb.w - $want.w) -le 4 -and [Math]::Abs($fb.h - $want.h) -le 3) "set primary: $($mm.setPrimary); new primary $($np.device) $($np.rect | ConvertTo-Json -Compress); app place '$($pl.why)' pill $($pl.pill | ConvertTo-Json -Compress); revealed there: fill $($fb | ConvertTo-Json -Compress)"
     Save-Shot 'mm-primary-virtual.png' @{ x = $want.x - 10; y = $want.y - 30; w = $want.w + 20; h = $want.h + 60 } | Out-Null
     [BarProbe]::Cursor($np.rect.x + 100, $np.rect.y + 100) | Out-Null; Wait-Ev 'mm' 'hidden' $t 3 | Out-Null
-    # mixed DPI: the virtual monitor (primary) at 150 %, the runner's own display at 100 %
+    # mixed DPI: the primary at 150 % (or 125 %), the other display at 100 %
     $t = NowMs
-    $mm.mixedDpi = Set-Scale 150 $virt.device
+    # the scale goes on whichever display is primary (the bar's), so this does not depend on the switch
+    # above; run 1: the 1024x768 virtual display allows 100..125 % only, so 150 falls back to 125
+    $mixDev = (Prim).device
+    $mixPct = 150; $mm.mixedDpi = Set-Scale 150 $mixDev
+    if ($mm.mixedDpi -notlike 'ok*') { $mixPct = 125; $mm.mixedDpi = "150: $($mm.mixedDpi); 125: " + (Set-Scale 125 $mixDev) }
     $np = Prim; $want = Want $np.rect ($np.dpi / 96.0)
+    $other = @(J ([BarProbe]::Monitors())) | Where-Object { -not $_.primary } | Select-Object -First 1
     [BarProbe]::Cursor($np.rect.x + [int]($np.rect.w * 0.4), $np.rect.y + $np.rect.h - 1) | Out-Null
     $rr = Wait-Ev 'mm' 'reveal' $t 4; Start-Sleep -Milliseconds 800
     $fb = Fill $b $want
-    Check 'mixed DPI: the bar on a 150 % primary beside a 100 % display' ($np.dpi -eq 144 -and $null -ne $rr -and (Same $rr.pill $want) -and $fb.found -and [Math]::Abs($fb.h - $want.h) -le 3) "set: $($mm.mixedDpi); primary dpi $($np.dpi); app reveal pill $($rr.pill | ConvertTo-Json -Compress) (want $($want | ConvertTo-Json -Compress)); fill $($fb | ConvertTo-Json -Compress); others: $((J ([BarProbe]::Monitors())) | ConvertTo-Json -Compress)"
-    Save-Shot 'mm-mixed-150.png' @{ x = $want.x - 10; y = $want.y - 30; w = $want.w + 20; h = $want.h + 60 } | Out-Null
+    Check "mixed DPI: the bar on a $mixPct % primary beside a 100 % display" ($np.dpi -eq [int](96 * $mixPct / 100) -and $null -ne $other -and $other.dpi -eq 96 -and $null -ne $rr -and (Same $rr.pill $want) -and $fb.found -and [Math]::Abs($fb.h - $want.h) -le 3) "set: $($mm.mixedDpi); primary dpi $($np.dpi); app reveal pill $($rr.pill | ConvertTo-Json -Compress) (want $($want | ConvertTo-Json -Compress)); fill $($fb | ConvertTo-Json -Compress); others: $((J ([BarProbe]::Monitors())) | ConvertTo-Json -Compress)"
+    Save-Shot "mm-mixed-$mixPct.png" @{ x = $want.x - 10; y = $want.y - 30; w = $want.w + 20; h = $want.h + 60 } | Out-Null
     [BarProbe]::Cursor($np.rect.x + 100, $np.rect.y + 100) | Out-Null; Wait-Ev 'mm' 'hidden' $t 3 | Out-Null
+    $mm.mixedBack = Set-Scale 100 $mixDev
     # back, then unplug
     $orig = (J ([BarProbe]::Devices())) | Where-Object { $_.name -ne $virt.device -and ($_.flags -band 1) } | Select-Object -First 1
     $mm.backPrimary = [BarProbe]::SetPrimary($orig.name); Start-Sleep -Milliseconds 1500
