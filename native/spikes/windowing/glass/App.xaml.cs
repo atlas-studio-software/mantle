@@ -10,7 +10,7 @@
 // On top, in every mode, the island's layers from ui/shared/glass-light.css + ui/bar/bar.css: the tint
 // (border-box), the 1 px lip (inset 0 1px 0), the 1 px hairline, and in light the drop shadow (--lg-drop-up).
 //
-//   Glass.exe --out=<dir> --mode=cpu|gpu|acrylic --theme=light|dark [--sigma=N] [--fps=4]
+//   Glass.exe --out=<dir> --mode=cpu|gpu|acrylic --theme=light|dark [--sigma=N] [--fps=4] [--stretch]
 // Writes <out>/ready.json once the first frame has been on screen for 700 ms, and <out>/log.txt.
 // While <out>/pause exists the cpu mode takes no new picture (the check's screenshots then never
 // land inside a capture-exclusion window).
@@ -39,7 +39,7 @@ public partial class App : Application
 {
     string _out = ".", _mode = "cpu", _theme = "light";
     double _sigmaArg = -1, _fps = 4;
-    bool _dark;
+    bool _dark, _stretch;
     // the bar's geometry (main.js barGeometry): min(1120, screen - 28) wide, 48 tall, 14 above the bottom
     const double BarH = 48, Lift = 14, ShadowTop = 56, ShadowSide = 28;
     double _scale = 1, _pillW;
@@ -66,6 +66,7 @@ public partial class App : Application
             else if (a.StartsWith("--mode=")) _mode = a[7..];
             else if (a.StartsWith("--theme=")) _theme = a[8..];
             else if (a.StartsWith("--sigma=")) _sigmaArg = double.Parse(a[8..], System.Globalization.CultureInfo.InvariantCulture);
+            else if (a == "--stretch") _stretch = true;
             else if (a.StartsWith("--fps=")) _fps = double.Parse(a[6..], System.Globalization.CultureInfo.InvariantCulture);
         }
         _dark = _theme == "dark";
@@ -132,7 +133,9 @@ public partial class App : Application
         if (_mode == "gpu") {
             int on = 1; int hr = DwmSetWindowAttribute(_hwnd, 17 /* DWMWA_USE_HOSTBACKDROPBRUSH */, ref on, 4);
             Log($"DWMWA_USE_HOSTBACKDROPBRUSH: hr 0x{hr:X8}");
-            _host = new HostBlurBackdrop((float)(Sigma * _scale), (float)Sat, wPx, hPx, sideP, topP, pwPx, phPx, (float)(Radius * _scale));
+            // --stretch (light): Electron's picture of the pill is shown over the pill + 14 px each side
+            float kx = _stretch ? (pwPx + 28f * (float)_scale) / pwPx : 1f, ky = _stretch ? (phPx + 28f * (float)_scale) / phPx : 1f;
+            _host = new HostBlurBackdrop((float)(Sigma * _scale), (float)Sat, wPx, hPx, sideP, topP, pwPx, phPx, (float)(Radius * _scale), kx, ky);
             _win.SystemBackdrop = _host;
             Log("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
         } else if (_mode == "acrylic") {

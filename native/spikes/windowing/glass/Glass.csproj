@@ -1,6 +1,6 @@
 <Project Sdk="Microsoft.NET.Sdk">
-  <!-- Primitive 2, the island's glass: one WinUI 3 window per run, drawn three ways (--mode=cpu|gpu|acrylic)
-       in either theme (--theme=light|dark). Shared settings: ../Directory.Build.props. Win2D is here only
+  <!-- Primitive 2, the island's glass: one WinUI 3 window per run, drawn three ways (mode cpu, gpu or acrylic)
+       in either theme (light or dark). Shared settings: ../Directory.Build.props. Win2D is here only
        for its effect descriptions (GaussianBlurEffect, ColorMatrixEffect) that the gpu mode hands to the
        system compositor. tools/ is the check's own helper (Add-Type from check.ps1), not part of the app. -->
   <PropertyGroup>

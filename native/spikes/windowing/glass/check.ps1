@@ -156,7 +156,7 @@ Note 'baseline' $base
 
 # ------------------------------------------------------------------ the runs
 $runs = @(
-  @{ theme = 'light'; mode = 'cpu' }, @{ theme = 'light'; mode = 'gpu' }, @{ theme = 'light'; mode = 'acrylic' },
+  @{ theme = 'light'; mode = 'cpu' }, @{ theme = 'light'; mode = 'gpu' }, @{ theme = 'light'; mode = 'gpu'; extra = '--stretch'; tag = 'gpu-stretch' }, @{ theme = 'light'; mode = 'acrylic' },
   @{ theme = 'dark'; mode = 'cpu' }, @{ theme = 'dark'; mode = 'gpu' }, @{ theme = 'dark'; mode = 'gpu'; sigma = '6.9'; tag = 'gpu-s6.9' }, @{ theme = 'dark'; mode = 'acrylic' }
 )
 $Results.runs = [ordered]@{}
@@ -168,6 +168,7 @@ foreach ($run in $runs) {
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $argv = @("--out=`"$dir`"", "--mode=$($run.mode)", "--theme=$t")
   if ($run.sigma) { $argv += "--sigma=$($run.sigma)" }
+  if ($run.extra) { $argv += $run.extra }
   Say "start $name"
   $t0 = NowMs
   $p = Start-Process -FilePath $exe -ArgumentList $argv -PassThru
