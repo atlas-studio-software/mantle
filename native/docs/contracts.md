@@ -174,3 +174,23 @@ these shared or unowned files, each with a proposed fix:
 - In `Mantle.App`: a catalog of `SurfaceDescriptor`s, one per `[Surface]` class.
 - No reflection at run time (Native AOT is the likely build mode). A malformed attribute (a bad name,
   a duplicate, a wrong handler signature) is a build error with plain words.
+
+## Coordinator decisions for round 2 (2026-11-07)
+
+The six shared-file questions above, settled as proposed:
+
+1. `Mantle.App/Shell/ISurface.cs` is frozen for round 2. A lane that needs a change asks the coordinator.
+2. native-windows owns the `Mantle.App` root files (`BarWindow*`, `Uia.cs`, `Native/*` except `TransparentBackdrop.cs`,
+   `AUTOMATION.md`). native-core builds surfaces from the descriptor list; the coordinator makes the one-line switch
+   to the `bar` surface at merge.
+3. The source generator: after native-ci-aot merges, native-core alone makes the `.sln` entry and the analyzer
+   references in both csproj files. Until then lanes register by hand.
+4. `Mantle.Core` root files: native-core takes `LaunchArgs`, `SingleInstance`, `TestQuiet` and their tests;
+   native-data-look takes `DataPaths`, the reader tests and `Fixtures/`; `TestDir.cs` stays frozen.
+5. `tests/Mantle.UiTests`: `BarTests.cs` goes to native-windows; `Host.cs` and `Win32.cs` are frozen.
+6. A new `ShellState` field is asked of native-core, which adds it with a default.
+
+The read-only guard (`ReadOnlyTests`): until switch-over, native must never write the user's real Electron data.
+native-data-look implements writes behind one gate: writes go only to a test or scratch profile directory unless the
+app runs `--live` as the only shell. The guard test changes from "no writes anywhere" to "no write path that skips
+the gate", and keeps failing on any direct file write outside the store.
