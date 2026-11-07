@@ -251,10 +251,10 @@ function Get-Cpu([int]$rootPid, [bool]$electron, [int]$seconds) {
 # A real click on its caption, then the cursor where the measurement wants it. Returns the foreground process.
 # On a small screen the tiled windows overlap: raise charmap first, and click a caption point that is
 # charmap's on screen (a click that lands on notepad would make the click checks start from notepad).
-# -Park leaves the cursor on the bottom edge (Electron's bar up); otherwise it rests inside charmap, away
+# -BarUp leaves the cursor on the bottom edge (Electron's bar up); otherwise it rests inside charmap, away
 # from the bar and over the window that should stay in front (also right if the runner has hover-to-activate).
 function PName([uint32]$id) { try { (Get-Process -Id $id -ErrorAction Stop).ProcessName } catch { "pid $id" } }
-function Focus-Steady([switch]$Park) {
+function Focus-Steady([switch]$BarUp) {
   $note = @()
   $h = @([BenchNative]::WindowsOf([uint32]$charmapPid)) | Select-Object -First 1
   $rest = $away
@@ -268,7 +268,7 @@ function Focus-Steady([switch]$Park) {
     if ($null -ne $x) { [BenchNative]::Click([int]$x, $y) | Out-Null; Start-Sleep -Milliseconds 400; $note += "clicked $x,$y -> $(PName ([BenchNative]::ForegroundPid()))" }
     else { $note += 'no caption point is charmap''s: not clicked' }
   } else { $note += 'charmap has no window' }
-  $to = if ($Park) { $park } else { $rest }
+  $to = if ($BarUp) { $script:park } else { $rest }
   [BenchNative]::SetCursorPos($to.x, $to.y) | Out-Null
   Start-Sleep -Seconds 2
   $fg = PName ([BenchNative]::ForegroundPid())
@@ -331,7 +331,7 @@ function Run-Electron([string]$theme) {
   for ($i = 0; $i -lt 20 -and -not (Test-Path $mp); $i++) { Start-Sleep -Milliseconds 250 }
   if (Test-Path $mp) { $mUp = Get-Content $mp -Raw | ConvertFrom-Json }
   $mem = Get-Mem (Get-AppPids $proc.Id $true) $(if ($mUp) { $mUp.pages } else { $null })
-  $fs = Focus-Steady -Park
+  $fs = Focus-Steady -BarUp
   $cpuUp = Get-Cpu $proc.Id $true 60; $cpuUp.foreground = $fs.foreground; $cpuUp.focusNote = $fs.note
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Seconds 6
