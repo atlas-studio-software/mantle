@@ -8,8 +8,8 @@ Add-Type -Path (Join-Path $PSScriptRoot 'CheckNative.cs')
 
 # The technique each primitive's Checks hold to the bar; the others are measured as Notes.
 $FrameWinner = 'nc'
-$HitWorks = @('nchittest', 'layered', 'region', 'ncregion')   # pass clicks to ANOTHER process (runs 1-2)
-$SameThreadWorks = @('layered', 'region')         # also to a window of the popup's own thread; nchittest does NOT (runs 1-2)
+$HitWorks = @('region', 'layered')                  # pass clicks to another process AND the popup's own thread (run 6, z-order proven)
+$HitNot = @('nchittest', 'ncregion')                # pass nothing, to either (run 6)
 $ParkWinner = 'apphide'
 $Tol = 8
 
@@ -330,6 +330,9 @@ foreach ($mode in @($tech)) {
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 300
     Note "hit_${mode}_cpu" (Get-Cpu $p.Id 10)
   }
+  if ($HitNot -contains $mode) {
+    Check "hit=$mode does NOT pass to another process (the popup keeps the click)" ($r.popupAboveFixture -and $popPass -ge 1 -and $fixDown -eq 0 -and $mv -eq 0) "corner: popup $popPass press(es), fixture $fixDown down(s) and $mv move(s); popup above the fixture $($r.popupAboveFixture)"
+  }
   if ($HitWorks -contains $mode) {
     Check "click-through to another process: hit=$mode" ($r.passesToOtherProcess -and $r.shapeTakesClicks -and $g.ok -and $ctl -ge 1) "transparent corner: fixture got $fixDown down(s) and $mv move(s), popup $popPass press(es); shape: popup $popShape, fixture $fixShape (no rest first: popup $popNoRest); control click on the fixture $ctl; $(GlassText $g); ex $($r.exStyle)"
     Check "shape still clean with hit=${mode}" ($st.changed -eq 0) "stray $($st.changed) (maxDelta $($st.maxDelta)) in $(Rect $HA)"
@@ -353,7 +356,7 @@ foreach ($mode in @($tech)) {
   Start-Sleep -Milliseconds 300
 }
 # A window of the popup's OWN thread under the transparent corner (Mantle's case: a popup over its
-# own bar). Documented: HTTRANSPARENT passes only to those. Measured here (runs 1-2): the opposite.
+# own bar). Documented: HTTRANSPARENT passes to those. Measured on WinUI 3 (run 6): it does not.
 if ($p) {
   foreach ($mode in @($tech)) {
     $id++
@@ -370,10 +373,10 @@ if ($p) {
     $same = [ordered]@{ popupAboveFixture = $aboveS; fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
     Note "hit_${mode}_sameThread" $same
     $sd = "popup above it: $aboveS; same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
-    if ($SameThreadWorks -contains $mode) {
+    if ($HitWorks -contains $mode) {
       Check "click-through to a window of the popup's own thread: hit=$mode" ($aboveS -and $same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) $sd
-    } elseif ($mode -eq 'nchittest') {
-      Check "HTTRANSPARENT does NOT reach a window of the popup's own thread (the popup keeps the click)" ($aboveS -and $same.fixtureSameThreadPressed -eq 0 -and $same.popupPressed -ge 1) $sd
+    } elseif ($HitNot -contains $mode) {
+      Check "hit=$mode does NOT reach a window of the popup's own thread (the popup keeps the click)" ($aboveS -and $same.fixtureSameThreadPressed -eq 0 -and $same.popupPressed -ge 1) $sd
     }
     Cmd "close id=$id" | Out-Null
     Cmd 'unfixture' | Out-Null
