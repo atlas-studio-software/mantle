@@ -160,6 +160,10 @@ $fixtures += Start-Process charmap.exe -PassThru
 $fixtures += Start-Process cmd.exe -ArgumentList '/k', 'title Console' -PassThru
 Start-Process explorer.exe -ArgumentList 'C:\Windows' | Out-Null
 Start-Sleep -Seconds 4
+# The folder window opens while another process holds the foreground, so Windows lights its taskbar button
+# instead (HSHELL_FLASH, seen by ci.ps1's desk watcher), and the auto-hide taskbar comes up and STAYS up over
+# the bar until that is cleared: stop the attention request now (Prepare-Screen checks again before each run).
+if ('Desk' -as [type]) { $fl = [Desk]::StopFlashing(); $tbw = Clear-Taskbar; Say ("fixtures: stopped $fl attention request(s); taskbar " + $(if ($tbw) { $tbw } else { 'clear' })) }
 Say ("fixtures: " + (($fixtures | ForEach-Object { "$($_.ProcessName) $($_.Id)" }) -join ', ') + ', explorer folder window')
 $notepadPid = ($fixtures | Where-Object ProcessName -eq 'notepad').Id
 $charmapPid = ($fixtures | Where-Object ProcessName -eq 'charmap').Id

@@ -24,6 +24,7 @@ processes and about 700 MB.
 | `tools/ci.ps1` | the one CI entry point (stages below) |
 | `tools/publish.ps1` | publish the app: `-Mode sc` (self-contained, ReadyToRun), `fd` (framework-dependent), `aot` |
 | `tools/parity/` | screenshot parity: the same surface from Electron and native, diff image + score |
+| `tools/desk/` | the runner desktop between GUI stages: `desk.ps1 -Reset` (taskbar out of the way, leftovers closed, windows minimized), `-Watch` (taskbar attention log), and `Desk.cs` helpers (`IsAbove` z-order, `MinimizeOthers`) |
 
 Plans and the parity checklist (`PLAN.md`, `PARITY.md`, `docs/`) and the window-primitive spikes
 (`spikes/windowing/`) come from their own branches.
@@ -34,7 +35,7 @@ The dev machine has no .NET SDK and must not lag, so every build and test runs o
 runner. The repo is public, so standard runners are free. Each tool ends with one summary line; judge a
 run by that line.
 
-`tools/ci.ps1 [-Stages build,unit,smoke,ui,bench,parity,sidecar] [-Out native/out]` runs the stages in that
+`tools/ci.ps1 [-Stages build,unit,smoke,ui,bench,parity,sidecar] [-Out native/out] [-BuildMode aot|sc]` runs the stages in that
 order. Each one prints `STAGE <name>: ok|FAILED|skipped (<why>)`, and the run ends with `NATIVE-CI: ok (...)`
 or `NATIVE-CI: FAILED (...)`.
 
@@ -42,8 +43,9 @@ or `NATIVE-CI: FAILED (...)`.
 `cloudtest --recipe mantle-native-public` (all stages; npm + the csc sidecar are set up for the Electron side of parity/bench)
 or `cloudtest --committed --os windows --no-install --timeout 30 --artifacts "native/out/test/**" -- "pwsh -NoProfile -File native/tools/ci.ps1 -Stages build,unit"` (fast).
 
-The stages are `build` (publish `MantleNative.exe` self-contained + build the solution), `unit`
-(Mantle.Core.Tests), `smoke` (launch the exe: first frame, log, ids, live theme change, single instance,
+The stages are `build` (publish `MantleNative.exe` Native AOT, or self-contained with `-BuildMode sc`, the
+fallback; + build the solution), `unit` (Mantle.Core.Tests), `smoke` (launch the exe: first frame, log, the
+five data files from the synthetic fixture profile, ids, z-order, live theme change, single instance,
 `--quit`, quiet `--test`), `ui` (Mantle.UiTests), `bench` (`bench/run-bench.ps1 -Mode smoke`), `parity`
 (`tools/parity/run-parity.ps1`, needs the Electron setup) and `sidecar` (`src/Mantle.Sidecar/check.ps1`: the
 three linked build variants + the sidecar tests).
@@ -51,7 +53,13 @@ three linked build variants + the sidecar tests).
 - A stage subset with the recipe: `cloudtest --recipe mantle-native-public -- "pwsh -NoProfile -File native/tools/ci.ps1 -Stages build,ui,parity"`.
 - Never `--artifacts "native/out/**"`: that downloads the published app (~220 MB). The recipe's list leaves
   `native/out/bin` out.
-- The workflow `.github/workflows/native-ci.yml` runs the same `ci.ps1` on pushes to `native/infra` and on
+- Before each GUI stage (smoke, ui, bench, parity) `tools/desk/desk.ps1 -Reset` puts the runner desktop back and
+  prints `DESK <stage> before / reset / after`; a watcher logs every taskbar attention request and move, summed up
+  per stage as `DESK <stage> during: ...` (full log `native/out/desk-watch.log`). A window that asks for attention
+  lights its taskbar button, and the runner's auto-hide taskbar then stays up over the bar until it is cleared.
+- Parity masks two KNOWN GAPS of the native bar (the right cluster ~18 px right, the orange dot on "more"); each
+  prints its own `PARITY known-gap` line per theme, and the gate (0.98 SSIM / 0.5 %) holds for everything else.
+- The workflow `.github/workflows/native-ci.yml` runs the same `ci.ps1` on pushes to `native/main` and on
   pull requests that touch `native/`, with every stage except `parity` (a bare runner has no Electron
   setup), and uploads `native/out` without `bin/`.
 - Each tool also runs alone. The exact commands are in `bench/README.md`, `tools/parity/README.md`,
