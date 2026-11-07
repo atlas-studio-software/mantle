@@ -222,7 +222,7 @@ public class FeatureHostTests
         Assert.Contains("Mantle has not taken the shell yet", r.Hub.Piece("aaa").KeysReason);
         await r.Host.ApplyLiveAsync();
         Assert.Equal(1, r.HotkeyCalls);
-        Assert.Equal("{\"chords\":[\"Win+V\"],\"observe\":[\"VolumeUp\"]}", r.LastHotkey.ArgsJson);
+        Assert.Equal("{\"chords\":[\"Win+V\"],\"observe\":[\"VolumeUp\"]}", r.LastHotkeyJson);
         Assert.Equal(TimeSpan.FromSeconds(4), r.LastHotkey.Timeout);
         var a = r.Hub.Piece("aaa");
         Assert.True(a.Keys);
@@ -251,10 +251,10 @@ public class FeatureHostTests
         Assert.Equal(before, r.HotkeyCalls);
         r.Time.AdvanceMs(2);
         Assert.Equal(before + 1, r.HotkeyCalls);
-        Assert.Equal("{\"chords\":[],\"observe\":[]}", r.LastHotkey.ArgsJson);
+        Assert.Equal("{\"chords\":[],\"observe\":[]}", r.LastHotkeyJson);
         a.Health(true);
         r.Time.AdvanceMs(31);
-        Assert.Equal("{\"chords\":[\"Win+V\"],\"observe\":[]}", r.LastHotkey.ArgsJson);
+        Assert.Equal("{\"chords\":[\"Win+V\"],\"observe\":[]}", r.LastHotkeyJson);
         Assert.True(r.Hub.Piece("aaa").Keys);
         Assert.Equal("working", r.Hub.Piece("aaa").Reason);
     }, test: false);
@@ -634,7 +634,7 @@ public class FeatureHostTests
         Assert.True(r.Last("clip").Stops.Single().Rest);
         Assert.Equal(new[] { new RestSignal(true, "VALORANT runs") }, told);
         r.Time.AdvanceMs(31);
-        Assert.Equal("{\"chords\":[\"Win+E\"],\"observe\":[]}", r.LastHotkey.ArgsJson);
+        Assert.Equal("{\"chords\":[\"Win+E\"],\"observe\":[]}", r.LastHotkeyJson);
         var p = r.Hub.Piece("clip");
         Assert.True(p.Ok && p.Resting && !p.Stopped);
         Assert.Equal("resting while VALORANT runs", p.Reason);

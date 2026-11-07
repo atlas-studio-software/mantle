@@ -315,6 +315,8 @@ public sealed class Rig
 
     public int HotkeyCalls => Platform.Calls.Count(c => c.Verb == "hotkey");
     public FakePlatform.Call LastHotkey => Platform.Calls.Last(c => c.Verb == "hotkey");
+    /// The last hotkey call's arguments with JSON's escapes undone (the encoder writes "+" as an escape).
+    public string LastHotkeyJson => System.Text.RegularExpressions.Regex.Unescape(LastHotkey.ArgsJson);
 }
 
 sealed class Off : IDisposable
