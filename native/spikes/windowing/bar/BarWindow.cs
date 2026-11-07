@@ -65,12 +65,15 @@ sealed class BarWindow
     Geo _g;
     string _appbarHow = "";
     long _appbarAt;
-    DispatcherQueueTimer? _poll, _burst;
+    DispatcherQueueTimer? _burst;
+    volatile bool _stopPoll;
+    int _tickPending;
     bool _burstPending; string _burstWhy = "";
-    bool _revealed, _hiding, _gaveUp;
+    volatile bool _revealed;
+    bool _hiding, _gaveUp;
     long _leftAt = -1, _outAt = -1, _revealT0, _hideT0;
     int _animSeq, _morphSeq, _reveals;
-    string? _lastBlock;
+    volatile string? _lastBlock;
     (int hr, W.DWM_TIMING_INFO t) _dwm0, _dwmH0;
     List<double>? _xf;
     readonly List<long> _raiseTimes = new();
@@ -240,10 +243,7 @@ sealed class BarWindow
             // Hidden at rest: a hidden window draws nothing, takes no clicks and costs nothing. (Our OWN
             // window. Windows' taskbar is never hidden, only put on auto-hide.)
             W.ShowWindow(_hwnd, 0 /* SW_HIDE */);
-            _poll = _dq.CreateTimer();
-            _poll.IsRepeating = false;
-            _poll.Tick += (_, _) => Tick();
-            Schedule();
+            StartPoll();
         } else {
             // main.js: Explorer answers QUERYPOS against the bars it knows at that instant, so ask again
             // once things settle and re-place unconditionally.
@@ -269,7 +269,7 @@ sealed class BarWindow
 
     void Quit(string why)
     {
-        _poll?.Stop();
+        _stopPoll = true;
         DisarmWatch();
         string ab = "no app bar was registered";
         if (AppBar.Registered) { var wa = W.WorkArea(); AppBar.Remove(_hwnd); ab = $"ABM_REMOVE: work area {wa} -> {W.WorkArea()}"; }
@@ -337,29 +337,33 @@ sealed class BarWindow
     void Replace(string why) { if (_dock) ReserveAndPlace(why); else PlaceHover(why); }
 
     // ================================================================== the hover poll
-    void Schedule()
+    /// The poll is a plain background thread: one GetCursorPos per 80 ms (60 ms shown). The UI thread
+    /// is woken only when the cursor is in the band or the bar is up, so a hidden bar costs one cursor
+    /// read per tick and nothing else (run 3: a DispatcherQueueTimer at 80 ms cost 0.59 % of a core).
+    void StartPoll()
     {
-        if (_poll == null) return;
-        _poll.Interval = TimeSpan.FromMilliseconds(_revealed ? PollShownMs : PollHiddenMs);
-        _poll.Start();
+        new Thread(() => {
+            while (!_stopPoll) {
+                Thread.Sleep(_revealed ? PollShownMs : PollHiddenMs);
+                W.GetCursorPos(out var pt);
+                var g = _g;
+                bool inBand = pt.X >= g.Mon.L && pt.X < g.Mon.R && pt.Y >= g.BandTop && pt.Y < g.Mon.B;
+                if (!_revealed && !inBand) { _lastBlock = null; continue; }
+                if (Interlocked.Exchange(ref _tickPending, 1) == 1) continue;   // one tick queued at a time
+                _dq.TryEnqueue(() => { Volatile.Write(ref _tickPending, 0); Tick(pt, inBand); });
+            }
+        }) { IsBackground = true, Name = "hover-poll" }.Start();
     }
 
-    /// One cursor read per tick (80 ms hidden, 60 ms shown); nothing else while hidden unless the
-    /// cursor is in the band.
-    void Tick()
+    void Tick(W.POINT pt, bool inBand)
     {
-        W.GetCursorPos(out var pt);
-        var g = _g;
-        bool inBand = pt.X >= g.Mon.L && pt.X < g.Mon.R && pt.Y >= g.BandTop && pt.Y < g.Mon.B;
         long now = Log.Now();
         if (!_revealed) {
-            if (inBand) {
-                string? block = Foreground.Blocks(now);
-                if (block != null) { if (block != _lastBlock) Log.Ev("blocked", new { reason = block, cursor = new { x = pt.X, y = pt.Y } }); }
-                else Reveal("the cursor reached the bottom edge", pt);
-                _lastBlock = block;
-            } else _lastBlock = null;
-            Schedule();
+            if (!inBand) return;
+            string? block = Foreground.Blocks(now);
+            if (block != null) { if (block != _lastBlock) Log.Ev("blocked", new { reason = block, cursor = new { x = pt.X, y = pt.Y } }); }
+            else Reveal("the cursor reached the bottom edge", pt);
+            _lastBlock = block;
             return;
         }
         string zone = Zone(pt, inBand);
@@ -376,7 +380,6 @@ sealed class BarWindow
             if (hide) BeginHide(_outAt >= 0 ? $"the cursor has been away from the bar for {HideGraceMs} ms" : $"the cursor rested in the overshoot band for {OvershootMs} ms");
             else CheckOnTop("poll");
         }
-        Schedule();
     }
 
     /// lib/bar-intent.js zone, physical px: 'in' = the band, the window, or the pill's rest rect grown
