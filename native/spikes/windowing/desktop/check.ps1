@@ -72,7 +72,7 @@ function Measure-Layer([string]$shot) {
   $px = Grab @{ x = 0; y = 0; w = $SW; h = $SH }
   if ($shot) { Save-Screen $shot | Out-Null }
   $ex = Exclude-Icons $p.all
-  $btnEx = @($Btn.x - 4, $Btn.y - 4, $Btn.w + 8, $Btn.h + 8)
+  $btnEx = @(($Btn.x - 4), ($Btn.y - 4), ($Btn.w + 8), ($Btn.h + 8))
   # the field: the screen above the taskbar, minus the icons, the button and the title text
   $field = [DeskProbe]::Near($px, $SW, 0, 0, $SW, $SH - 60, $Magenta[0], $Magenta[1], $Magenta[2], 6, ($ex + $btnEx + @(1290, 130, 630, 70)), 7)
   $btn = [DeskProbe]::Near($px, $SW, $BtnBand.x, $BtnBand.y, $BtnBand.w, $BtnBand.h, $Cyan[0], $Cyan[1], $Cyan[2], 6, @(), 2)
@@ -85,7 +85,7 @@ function Measure-Layer([string]$shot) {
     $in = [DeskProbe]::Near($px, $SW, $i.X, $i.Y, $i.W, $i.H, $Magenta[0], $Magenta[1], $Magenta[2], 6, @(), 1)
     # a ring 6..14 px outside it (other icons excluded): the layer itself
     $others = Exclude-Icons @($p.all | Where-Object { $_.Index -ne $i.Index }) 2
-    $ringEx = $others + @($i.X - 6, $i.Y - 6, $i.W + 12, $i.H + 12)
+    $ringEx = $others + @(($i.X - 6), ($i.Y - 6), ($i.W + 12), ($i.H + 12))
     $ring = [DeskProbe]::Near($px, $SW, $i.X - 14, $i.Y - 14, $i.W + 28, $i.H + 28, $Magenta[0], $Magenta[1], $Magenta[2], 6, $ringEx, 1)
     $r.icon = "$($i.Name) @ $($i.X),$($i.Y) $($i.W)x$($i.H)"
     $r.iconNotMagenta = [Math]::Round(1 - (Frac $in), 4)
