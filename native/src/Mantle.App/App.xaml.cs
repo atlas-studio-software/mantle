@@ -1,58 +1,70 @@
 using System;
-using System.IO;
+using System.Linq;
+using Mantle.Core;
+using Mantle.Core.Data;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 
-namespace MantleBar;
+namespace Mantle.App;
 
-/// Command line: MantleBar.exe [--theme=light|dark|system] [--bench-out=<dir>] [--no-backdrop]
-///   --theme       the island's appearance (default: follow Windows, like Mantle's "Match Windows")
-///   --bench-out   write ready.json (first frame, geometry) and cells.json (dock cell rects) there,
-///                 for native-spike/bench/run-bench.ps1. Also the log.
-///   --no-backdrop skip the captured, blurred backdrop: the tint carries the island alone (its fallback fill)
-internal sealed class BarOptions
+/// <summary>
+/// Command line (Mantle.Core.LaunchArgs has the full list):
+///   MantleNative.exe [--theme=light|dark|system] [--bench-out=&lt;dir&gt;] [--no-backdrop]
+///                    [--test --profile-name=&lt;x&gt;] [--user-data=&lt;dir&gt;] [--quit]
+///   --theme       pins the island's appearance for this run; without it the bar follows
+///                 Mantle's theme.json (Electron's Settings > Personalization > Colors)
+///   --bench-out   write ready.json (first frame, geometry), cells.json (dock cell rects) and
+///                 native-log.txt there, for the bench
+///   --no-backdrop skip the captured, blurred backdrop: the tint carries the island alone
+/// </summary>
+public partial class MantleApp : Application
 {
-    public string Theme = "system";
-    public string? BenchOut;
-    public bool NoBackdrop;
-    public readonly long LaunchedUnixMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-
-    public static BarOptions Parse(string[] argv)
-    {
-        var o = new BarOptions();
-        foreach (var a in argv) {
-            if (a.StartsWith("--theme=", StringComparison.Ordinal)) o.Theme = a[8..].ToLowerInvariant();
-            else if (a.StartsWith("--bench-out=", StringComparison.Ordinal)) o.BenchOut = a[12..].Trim('"');
-            else if (a == "--no-backdrop") o.NoBackdrop = true;
-        }
-        if (o.BenchOut != null) Directory.CreateDirectory(o.BenchOut);
-        return o;
-    }
-
-    public void Log(string line)
-    {
-        if (BenchOut == null) return;
-        try { File.AppendAllText(Path.Combine(BenchOut, "native-log.txt"), DateTime.Now.ToString("HH:mm:ss.fff ") + line + Environment.NewLine); } catch (Exception) { }
-    }
-}
-
-public partial class App : Application
-{
-    internal static readonly BarOptions Opt = BarOptions.Parse(Environment.GetCommandLineArgs());
     BarWindow? _window;
+    DispatcherQueue? _queue;
 
-    public App()
+    /// The theme the bar shows at start: --theme, else theme.json's mode (system = follow Windows).
+    internal static ThemeMode StartMode()
+        => Host.Args.Theme switch {
+            "dark" => ThemeMode.Dark,
+            "light" => ThemeMode.Light,
+            "system" => ThemeMode.System,
+            _ => Host.Data.Theme.Value.Mode,
+        };
+
+    public MantleApp()
     {
         // The app-wide theme is fixed before the resources load, so XAML and code see the same tokens.
-        if (Opt.Theme == "dark") RequestedTheme = ApplicationTheme.Dark;
-        else if (Opt.Theme == "light") RequestedTheme = ApplicationTheme.Light;
+        // System leaves it to Windows' app mode, like Mantle's "Match Windows".
+        var mode = StartMode();
+        if (mode == ThemeMode.Dark) RequestedTheme = ApplicationTheme.Dark;
+        else if (mode == ThemeMode.Light) RequestedTheme = ApplicationTheme.Light;
         InitializeComponent();
-        UnhandledException += (_, e) => Opt.Log("UNHANDLED: " + e.Exception);
+        UnhandledException += (_, e) => Host.Log.Line("UNHANDLED: " + e.Exception);
+        Host.Marks.Add("app");
     }
 
     protected override void OnLaunched(LaunchActivatedEventArgs args)
     {
-        Opt.Log("launched; theme " + Opt.Theme + " (app " + RequestedTheme + ")");
-        _window = new BarWindow(Opt);
+        _queue = DispatcherQueue.GetForCurrentThread();
+        Host.Log.Line($"launched; theme {ThemeSettings.Word(StartMode())}{(Host.Args.Theme != null ? " (pinned by --theme)" : " (from " + Host.Data.Theme.Name + ")")}; app theme {RequestedTheme}");
+        _window = new BarWindow();
+        Host.Marks.Add("window");
         _window.ShowBar();
+
+        Host.Data.Changed += c => _queue.TryEnqueue(() => _window?.OnDataChanged(c));
+        Host.Data.StartWatching();
+        Host.Instance.Listen(
+            argv => _queue.TryEnqueue(() => OnSecondLaunch(argv)),
+            err => Host.Log.Line("single instance: " + err));
+    }
+
+    void OnSecondLaunch(string[] argv)
+    {
+        Host.Log.Line("single instance: a second launch handed off: " + (argv.Length == 0 ? "(no arguments)" : string.Join(' ', argv)));
+        if (argv.Any(a => LaunchArgs.NameOf(a) == "quit")) {
+            Host.Log.Line("--quit from a second launch: closing");
+            _window?.Close();
+            Exit();
+        }
     }
 }

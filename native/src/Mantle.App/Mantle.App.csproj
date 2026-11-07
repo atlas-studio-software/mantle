@@ -1,20 +1,24 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
-    Mantle bar, native spike (C# + WinUI 3). A prototype for one decision: should the bar move off
-    Electron? It draws only what the real bar shows at rest (ui/bar): the inset pill, the running
-    apps with their real icons (click = focus), the right-hand glyphs and the clock. No flyouts.
+    Mantle, native (C# + WinUI 3). The first surface is the bar, from the spike (spike/winui-bar,
+    native-spike/README.md): the inset pill, the running apps with their real icons (click = focus),
+    the right-hand glyphs and the clock. No flyouts yet.
 
-    Built with the plain .NET SDK (dotnet publish), unpackaged, with the Windows App SDK runtime
-    carried inside the output folder (self-contained), so nothing has to be installed to run it.
-    SpikeTfm lets the bench pick the newest SDK the machine has.
+    The exe is MantleNative.exe, never electron.exe or Mantle.exe, so nothing confuses it with the
+    Electron shell's processes. Built with the plain .NET SDK, unpackaged, with the Windows App SDK
+    runtime carried inside the output folder (self-contained), so nothing has to be installed to run
+    it. native/tools/publish.ps1 builds the three publish modes (sc, fd, aot).
+
+    The XAML-generated Main is off (DISABLE_XAML_GENERATED_MAIN): Program.cs parses the arguments,
+    opens the log and takes the single-instance claim BEFORE any XAML loads, so a second launch
+    hands off and exits without creating a window.
   -->
   <PropertyGroup>
-    <SpikeTfm Condition="'$(SpikeTfm)' == ''">net10.0</SpikeTfm>
-    <TargetFramework>$(SpikeTfm)-windows10.0.22621.0</TargetFramework>
-    <TargetPlatformMinVersion>10.0.19041.0</TargetPlatformMinVersion>
+    <TargetFramework>$(MantleWindowsTfm)</TargetFramework>
+    <TargetPlatformMinVersion>$(MantleWindowsMinVersion)</TargetPlatformMinVersion>
     <OutputType>WinExe</OutputType>
-    <RootNamespace>MantleBar</RootNamespace>
-    <AssemblyName>MantleBar</AssemblyName>
+    <RootNamespace>Mantle.App</RootNamespace>
+    <AssemblyName>MantleNative</AssemblyName>
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <Platforms>x64</Platforms>
     <Platform>x64</Platform>
@@ -22,16 +26,24 @@
     <UseWinUI>true</UseWinUI>
     <EnableMsixTooling>true</EnableMsixTooling>
     <WindowsPackageType>None</WindowsPackageType>
-    <WindowsAppSDKSelfContained>true</WindowsAppSDKSelfContained>
-    <SelfContained>true</SelfContained>
+    <WindowsAppSDKSelfContained Condition="'$(WindowsAppSDKSelfContained)' == ''">true</WindowsAppSDKSelfContained>
+    <SelfContained Condition="'$(SelfContained)' == ''">true</SelfContained>
     <Nullable>enable</Nullable>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
-    <LangVersion>latest</LangVersion>
     <InvariantGlobalization>false</InvariantGlobalization>
-    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+    <DefineConstants>$(DefineConstants);DISABLE_XAML_GENERATED_MAIN</DefineConstants>
+    <!-- trim/AOT analysis warnings show in every build, so a reflection-heavy pattern is seen early -->
+    <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
+    <EnableAotAnalyzer>true</EnableAotAnalyzer>
   </PropertyGroup>
   <ItemGroup>
-    <PackageReference Include="Microsoft.WindowsAppSDK" Version="1.7.*" />
-    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="10.0.26100.*" />
+    <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MantleWinAppSdkVersion)" />
+    <PackageReference Include="Microsoft.Windows.SDK.BuildTools" Version="$(MantleWindowsSdkBuildToolsVersion)" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\Mantle.Core\Mantle.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="AUTOMATION.md" />
   </ItemGroup>
 </Project>

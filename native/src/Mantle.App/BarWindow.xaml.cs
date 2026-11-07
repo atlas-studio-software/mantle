@@ -7,8 +7,10 @@ using System.IO;
 using System.Numerics;
 using System.Text;
 using System.Text.Json;
+using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
-using MantleBar.Native;
+using Mantle.App.Native;
+using Mantle.Core.Data;
 using Microsoft.UI;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
@@ -21,20 +23,25 @@ using Microsoft.UI.Xaml.Media;
 using Microsoft.UI.Xaml.Media.Imaging;
 using Windows.Graphics;
 
-namespace MantleBar;
+namespace Mantle.App;
 
 /// One dock cell (ui/bar/bar.js .cell): an app's icon or letter tile, and its running line.
-public sealed class CellVm : INotifyPropertyChanged
+/// UI Automation: AutomationId bar.app.&lt;Index&gt; (0-based, display order), Name = the window
+/// title, HelpText = the exe's file name (AUTOMATION.md).
+public sealed partial class CellVm : INotifyPropertyChanged
 {
     internal AppEntry App;
     internal CellVm(AppEntry app, ImageSource? icon)
     {
         App = app; Name = app.Name; Icon = icon;
         Letter = app.Name.Length > 0 ? app.Name.Substring(0, 1).ToUpperInvariant() : "?";
+        ExeName = Path.GetFileName(app.Exe);
+        _title = app.Title;
         _active = app.Active;
     }
     public string Name { get; }
     public string Letter { get; }
+    public string ExeName { get; }
     public ImageSource? Icon { get; }
     public Visibility IconVisibility => Icon != null ? Visibility.Visible : Visibility.Collapsed;
     public Visibility TileVisibility => Icon == null ? Visibility.Visible : Visibility.Collapsed;
@@ -43,11 +50,35 @@ public sealed class CellVm : INotifyPropertyChanged
         get => _active;
         set { if (_active == value) return; _active = value; Changed(nameof(RunVisibility)); Changed(nameof(ActVisibility)); }
     }
+    string _title;
+    public string Title {
+        get => _title;
+        set { if (_title == value) return; _title = value; Changed(nameof(Title)); }
+    }
+    int _index = -1;
+    public int Index {
+        get => _index;
+        set { if (_index == value) return; _index = value; Changed(nameof(AutomationId)); }
+    }
+    public string AutomationId => "bar.app." + _index.ToString(CultureInfo.InvariantCulture);
     public Visibility RunVisibility => _active ? Visibility.Collapsed : Visibility.Visible;
     public Visibility ActVisibility => _active ? Visibility.Visible : Visibility.Collapsed;
     public event PropertyChangedEventHandler? PropertyChanged;
     void Changed(string p) => PropertyChanged?.Invoke(this, new PropertyChangedEventArgs(p));
 }
+
+// ready.json / cells.json (the bench), source-generated: no reflection, trim and AOT safe
+internal sealed record RectJson(int x, int y, int w, int h);
+internal sealed record MarkJson(string name, double sinceStartMs);
+internal sealed record ReadyJson(long processStartUnixMs, long mainUnixMs, long firstFrameUnixMs, double scale, string theme, string backdrop,
+    RectJson window, RectJson pill, bool quiet, string frame, string title, MarkJson[] marks);
+internal sealed record CellJson(string name, string title, string automationId, string exe, uint pid, bool active, bool hasIcon, int x, int y, int w, int h);
+internal sealed record CellsJson(long at, int rebuilds, CellJson[] cells);
+
+[JsonSourceGenerationOptions(WriteIndented = true)]
+[JsonSerializable(typeof(ReadyJson))]
+[JsonSerializable(typeof(CellsJson))]
+internal sealed partial class BenchJson : JsonSerializerContext { }
 
 public sealed partial class BarWindow : Window
 {
@@ -55,23 +86,25 @@ public sealed partial class BarWindow : Window
     const double BarH = 48, Lift = 14, SideGapTotal = 28, MaxW = 1120;
     const double ShadowTop = 56, ShadowSide = 28;   // room in the window for the light drop shadow
 
-    readonly BarOptions _o;
     readonly IntPtr _hwnd;
     readonly double _scale;
     readonly Win32.RECT _monitor;
     readonly double _pillW;
     readonly RectInt32 _winPx;
     readonly Win32.RECT _pillPx;
-    readonly bool _dark;
+    readonly string? _benchOut = Host.Args.BenchOut;
+    bool _dark;
     readonly ObservableCollection<CellVm> _cells = new();
     readonly WindowList _list;
     readonly DispatcherQueueTimer _clock;
     long _firstFrameMs;
     string _backdropState = "not captured";
+    string _frameState = "not set";
+    Backdrop.Shot? _shot;
+    double _blurNow = -1;
 
-    internal BarWindow(BarOptions o)
+    internal BarWindow()
     {
-        _o = o;
         InitializeComponent();
         _dark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
@@ -96,6 +129,7 @@ public sealed partial class BarWindow : Window
 
         Root.Width = _pillW + 2 * ShadowSide;
         Root.Height = ShadowTop + BarH + Lift;
+        Root.RequestedTheme = _dark ? ElementTheme.Dark : ElementTheme.Light;
         Pill.Width = _pillW;
         Pill.Margin = new Thickness(ShadowSide, ShadowTop, 0, 0);
 
@@ -126,15 +160,34 @@ public sealed partial class BarWindow : Window
         AppWindow.IsShownInSwitchers = false;
         int pref = Win32.DWMWCP_DONOTROUND; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, 4);
         int none = Win32.DWMWA_COLOR_NONE; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_BORDER_COLOR, ref none, 4);
+
+        // The 1 px frame line the spike showed around the window: a plain WS_POPUP with no caption,
+        // thick frame or border bits, and SWP_FRAMECHANGED so Windows recomputes the frame now.
+        long st = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_STYLE).ToInt64();
+        long frameBits = Win32.WS_CAPTION | Win32.WS_THICKFRAME | Win32.WS_SYSMENU | Win32.WS_MINIMIZEBOX | Win32.WS_MAXIMIZEBOX | Win32.WS_BORDER | Win32.WS_DLGFRAME;
+        long want = (st & ~frameBits) | Win32.WS_POPUP;
+        Win32.SetWindowLongPtr(_hwnd, Win32.GWL_STYLE, new IntPtr(want));
+        Win32.SetWindowPos(_hwnd, IntPtr.Zero, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOZORDER | Win32.SWP_NOACTIVATE | Win32.SWP_FRAMECHANGED);
+        long got = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_STYLE).ToInt64();
+        _frameState = $"style 0x{st:X8} -> 0x{got:X8}" + ((got & frameBits) == 0 && (got & Win32.WS_POPUP) != 0 ? " (WS_POPUP, no frame bits)" : " (frame bits still set)");
+        Host.Log.Line("frame: " + _frameState);
+
         long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE).ToInt64() | Win32.WS_EX_TOOLWINDOW;
+        if (Host.Quiet) ex |= Win32.WS_EX_LAYERED | Win32.WS_EX_TRANSPARENT | Win32.WS_EX_NOACTIVATE;
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
-        _o.Log("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
+        if (Host.Quiet) {
+            bool ok = Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
+            Host.Log.Line(ok ? "quiet: layered alpha 0, click-through, not activatable, tool window"
+                             : "quiet: SetLayeredWindowAttributes FAILED (error " + System.Runtime.InteropServices.Marshal.GetLastWin32Error() + "); the window may be visible");
+        }
+        Host.Log.Line("see-through: " + TransparentBackdrop.MakeSeeThrough(_hwnd));
         AppWindow.MoveAndResize(_winPx);
     }
 
     internal void ShowBar()
     {
-        Activate();
+        if (Host.Quiet) AppWindow.Show(false);   // never activated: a test window never takes the keyboard
+        else Activate();
         // after the first show: a click on the bar must never take the focus from the app in front
         long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE).ToInt64() | Win32.WS_EX_NOACTIVATE;
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
@@ -144,21 +197,93 @@ public sealed partial class BarWindow : Window
     }
 
     // ------------------------------------------------------------------ the glass
+    static double Saturation(bool dark) => dark ? 1.0 : 1.5;   // glass-light.css: light saturate(150%), dark none
+
     void PaintBackdrop()
     {
-        WriteableBitmap? pic = null;
-        if (!_o.NoBackdrop) {
+        var glass = Host.Data.EffectiveGlass;
+        if (!Host.Args.NoBackdrop) {
             try {
-                pic = Backdrop.Capture(_pillPx, _monitor, (_dark ? 5 : 12) * _scale, _dark ? 1.0 : 1.5);
-                _backdropState = pic != null ? "captured" : "the screen could not be read";
+                // one capture, before the window shows, wide enough for either theme's blur
+                _shot = Backdrop.Grab(_pillPx, _monitor, Math.Max(glass.Dark.BlurPx, glass.Light.BlurPx) * _scale);
+                _backdropState = _shot != null ? "captured" : "the screen could not be read";
             } catch (Exception e) { _backdropState = "capture failed: " + e.Message; }
         } else _backdropState = "off (--no-backdrop)";
-        if (pic != null) GlassImage.ImageSource = pic;
-        else {
-            Glass.Background = null;
-            Tint.Background = (Brush)Application.Current.Resources["LgPaneFillFallback"];
+        RenderGlass();
+    }
+
+    void RenderGlass()
+    {
+        double blur = Host.Data.EffectiveGlass.For(_dark).BlurPx;
+        WriteableBitmap? pic = null;
+        if (_shot != null) {
+            try { pic = Backdrop.Render(_shot, _pillPx, blur * _scale, Saturation(_dark)); }
+            catch (Exception e) { _backdropState = "render failed: " + e.Message; }
         }
-        _o.Log("backdrop: " + _backdropState);
+        if (pic != null) {
+            GlassImage.ImageSource = pic;
+            Tint.ClearValue(Border.BackgroundProperty);
+            Tint.Background = (Brush)ThemeToken("LgPaneFill");
+        } else {
+            Glass.Background = null;
+            Tint.Background = (Brush)ThemeToken("LgPaneFillFallback");
+        }
+        _blurNow = blur;
+        Host.Log.Line($"backdrop: {_backdropState}; {( _dark ? "dark" : "light")} blur {blur.ToString(CultureInfo.InvariantCulture)} px");
+    }
+
+    /// A token from Tokens.xaml for the theme the bar shows now (code cannot use {ThemeResource}).
+    object ThemeToken(string key)
+    {
+        string theme = _dark ? "Dark" : "Light";
+        foreach (var md in Application.Current.Resources.MergedDictionaries)
+            if (md.ThemeDictionaries.TryGetValue(theme, out object? td) && td is ResourceDictionary rd && rd.TryGetValue(key, out object? v))
+                return v;
+        throw new InvalidOperationException("Tokens.xaml has no " + theme + " " + key);
+    }
+
+    // ------------------------------------------------------------------ Electron's settings, live
+    internal void OnDataChanged(DataChange c)
+    {
+        Host.Log.Line("data changed: " + c.Description);
+        switch (c.File) {
+            case DataFile.Theme:
+                if (Host.Args.Theme != null) { Host.Log.Line($"look: theme.json changed, but this run is pinned by --theme={Host.Args.Theme}"); return; }
+                SetTheme(Resolve(Host.Data.Theme.Value.Mode));
+                break;
+            case DataFile.LocalLook:
+            case DataFile.SharedLook:
+                if (Math.Abs(Host.Data.EffectiveGlass.For(_dark).BlurPx - _blurNow) > 0.001) RenderGlass();
+                break;
+            default:
+                Host.Log.Line("look: " + c.File + " is read, but the bar does not use it yet");
+                break;
+        }
+    }
+
+    /// light/dark from a mode; System follows Windows' app mode (AppsUseLightTheme), light when unknown.
+    static bool Resolve(ThemeMode mode)
+    {
+        if (mode == ThemeMode.Dark) return true;
+        if (mode == ThemeMode.Light) return false;
+        try {
+            using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
+            return k?.GetValue("AppsUseLightTheme") is int v && v == 0;
+        } catch (Exception e) {
+            Host.Log.Line("look: Windows' app mode could not be read (" + e.Message + "); Match Windows shows light");
+            return false;
+        }
+    }
+
+    void SetTheme(bool dark)
+    {
+        if (dark == _dark) { Host.Log.Line($"look: the bar already shows {(dark ? "dark" : "light")}"); return; }
+        _dark = dark;
+        Root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
+        if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
+        else AddShadow();
+        RenderGlass();
+        Host.Log.Line($"look: theme.json says {ThemeSettings.Word(Host.Data.Theme.Value.Mode)}; the bar now shows {(dark ? "dark" : "light")}");
     }
 
     // The light island's drop shadow, from glass-light.css -lg-drop-up:
@@ -238,6 +363,7 @@ public sealed partial class BarWindow : Window
         foreach (var cx in new[] { 3.5, 8, 12.5 }) MoreHost.Children.Add(PathEl(Circle(cx, 8, 1.3), true));
     }
 
+
     // ------------------------------------------------------------------ the clock (bar.js tick)
     void Tick()
     {
@@ -263,52 +389,55 @@ public sealed partial class BarWindow : Window
         foreach (var c in _cells) have[c.App.Key] = c;
         int iconPx = (int)Math.Round(24 * _scale);
         foreach (var a in apps) {
-            if (have.TryGetValue(a.Key, out var vm)) { vm.App = a; vm.Active = a.Active; }
+            if (have.TryGetValue(a.Key, out var vm)) { vm.App = a; vm.Active = a.Active; vm.Title = a.Title; }
             else _cells.Add(new CellVm(a, Icons.ForApp(a, iconPx)));
         }
-        if (_o.BenchOut != null) DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, WriteCells);
+        for (int i = 0; i < _cells.Count; i++) _cells[i].Index = i;   // bar.app.<n>, in display order
+        if (_benchOut != null) DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, WriteCells);
     }
 
     void Cell_Click(object sender, RoutedEventArgs e)
     {
         if (sender is not Button b || b.Tag is not CellVm vm) return;
         string r = Focus.Toggle(vm.App);
-        _o.Log("click " + vm.Name + ": " + r);
+        Host.Log.Line("click " + vm.Name + ": " + r);
         _list.Rebuild(false);
     }
 
-    // ------------------------------------------------------------------ bench output
+    // ------------------------------------------------------------------ first frame, bench output
     void OnFirstRender(object? sender, object e)
     {
         CompositionTarget.Rendering -= OnFirstRender;
         _firstFrameMs = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
-        _o.Log("first frame " + (_firstFrameMs - _o.LaunchedUnixMs) + " ms after Main");
-        if (_o.BenchOut == null) return;
-        var startedAt = new DateTimeOffset(System.Diagnostics.Process.GetCurrentProcess().StartTime.ToUniversalTime()).ToUnixTimeMilliseconds();
-        Write("ready.json", new {
-            processStartUnixMs = startedAt, mainUnixMs = _o.LaunchedUnixMs, firstFrameUnixMs = _firstFrameMs,
-            scale = _scale, theme = _dark ? "dark" : "light", backdrop = _backdropState,
-            window = new { x = _winPx.X, y = _winPx.Y, w = _winPx.Width, h = _winPx.Height },
-            pill = new { x = _pillPx.Left, y = _pillPx.Top, w = _pillPx.Right - _pillPx.Left, h = _pillPx.Bottom - _pillPx.Top },
-        });
+        Host.Log.Line("first frame " + (_firstFrameMs - Host.Marks.MainUnixMs) + " ms after Main");
+        Host.Marks.Add("first-frame");
+        if (_benchOut == null) return;
+        var marks = new List<MarkJson>();
+        foreach (var m in Host.Marks.All) marks.Add(new MarkJson(m.Name, Math.Round(m.SinceStartMs, 1)));
+        var ready = new ReadyJson(Host.Marks.ProcessStartUnixMs, Host.Marks.MainUnixMs, _firstFrameMs, _scale, _dark ? "dark" : "light", _backdropState,
+            new RectJson(_winPx.X, _winPx.Y, _winPx.Width, _winPx.Height),
+            new RectJson(_pillPx.Left, _pillPx.Top, _pillPx.Right - _pillPx.Left, _pillPx.Bottom - _pillPx.Top),
+            Host.Quiet, _frameState, Title, marks.ToArray());
+        Write("ready.json", JsonSerializer.Serialize(ready, BenchJson.Default.ReadyJson));
     }
 
     void WriteCells()
     {
-        var list = new List<object>();
+        var list = new List<CellJson>();
         for (int i = 0; i < _cells.Count; i++) {
             if (Dock.ContainerFromIndex(i) is not FrameworkElement fe) continue;
             var p = fe.TransformToVisual(Root).TransformPoint(new Windows.Foundation.Point(0, 0));
             int x = _winPx.X + (int)Math.Round(p.X * _scale), y = _winPx.Y + (int)Math.Round(p.Y * _scale);
-            list.Add(new { name = _cells[i].Name, exe = _cells[i].App.Exe, pid = _cells[i].App.Pid, active = _cells[i].Active,
-                           hasIcon = _cells[i].Icon != null, x, y, w = (int)Math.Round(fe.ActualWidth * _scale), h = (int)Math.Round(fe.ActualHeight * _scale) });
+            var c = _cells[i];
+            list.Add(new CellJson(c.Name, c.Title, c.AutomationId, c.App.Exe, c.App.Pid, c.Active, c.Icon != null,
+                x, y, (int)Math.Round(fe.ActualWidth * _scale), (int)Math.Round(fe.ActualHeight * _scale)));
         }
-        Write("cells.json", new { at = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), rebuilds = _list.Rebuilds, cells = list });
+        Write("cells.json", JsonSerializer.Serialize(new CellsJson(DateTimeOffset.UtcNow.ToUnixTimeMilliseconds(), _list.Rebuilds, list.ToArray()), BenchJson.Default.CellsJson));
     }
 
-    void Write(string name, object o)
+    void Write(string name, string json)
     {
-        try { File.WriteAllText(Path.Combine(_o.BenchOut!, name), JsonSerializer.Serialize(o, new JsonSerializerOptions { WriteIndented = true })); }
-        catch (Exception e) { _o.Log("write " + name + " failed: " + e.Message); }
+        try { File.WriteAllText(Path.Combine(_benchOut!, name), json); }
+        catch (Exception e) { Host.Log.Line("write " + name + " failed: " + e.Message); }
     }
 }

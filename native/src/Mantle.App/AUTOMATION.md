@@ -1,0 +1,32 @@
+# UI Automation contract of the native bar
+
+UI tests (native/tests/Mantle.UiTests, FlaUI) find the bar by these ids. Keep them exactly; a
+change here is a change to the tests.
+
+| AutomationId | element | control type | Name | notes |
+|---|---|---|---|---|
+| (top-level window) | the bar's HWND | Window | `Mantle bar` (the window title) | process `MantleNative.exe` |
+| `bar.window` | the XAML root (the whole window's content) | Group | `Mantle bar` | a Grid subclass with its own peer (`UiaGrid`) |
+| `bar.pill` | the island | Group | `Mantle bar` | `UiaGrid` |
+| `bar.start` | the Mantle mark | Button | `Start` | |
+| `bar.apps` | the running-app row | Group | `Running apps` | an ItemsControl subclass with a Group peer (`UiaItemsControl`); the app buttons are its children |
+| `bar.app.<n>` | one running app | Button | the app's window title (its window in front, else its first) | `<n>` is 0-based, in display order, renumbered on every change; HelpText = the exe's file name (`notepad.exe`); BoundingRectangle = its real on-screen bounds, so a click at its centre with real input hits it |
+| `bar.downloads` | Downloads | Button | `Downloads` | |
+| `bar.volume` | Volume | Button | `Volume` | |
+| `bar.network` | Network | Button | `Network` | |
+| `bar.clock` | the clock | Button | `Clock` | |
+| `bar.clock.time` | the time line | Text | the time, `h:mm:ss AM` | |
+| `bar.clock.date` | the date line | Text | the date (the current culture's short date) | |
+| `bar.notifications` | Notifications | Button | `Notifications` | |
+| `bar.more` | More | Button | `More` | |
+
+WinUI 3 panels (Grid, Canvas, StackPanel, Border) make no automation peer, so an AutomationId on a
+plain one never reaches the tree; `Uia.cs` gives the three containers a Group peer.
+
+## Running it for a UI test
+
+`MantleNative.exe --test --profile-name=<x> [--user-data=<dir>] [--theme=light|dark]`, with
+`MANTLE_TEST_VISIBLE=1` in the environment. Without that variable a `--test` window is drawn at
+layered alpha 0, click-through and never activated (it is still in the UIA tree, but real mouse
+input passes through it). A second launch with the same profile hands its arguments to the running
+one and exits; `--quit` with the same profile asks it to close.
