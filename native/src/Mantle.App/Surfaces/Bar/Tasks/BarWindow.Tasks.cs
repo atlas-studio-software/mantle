@@ -46,11 +46,13 @@ public sealed partial class CellVm : INotifyPropertyChanged
     internal bool Divider { set { if (_div == value) return; _div = value; Changed(nameof(DividerVisibility)); SetStatus(true); } }
     /// UI Automation ItemStatus (the UI tests read it): the kind ("pinned" / "running"), then "open" while it has
     /// windows, "active" while one is the active window (the accent line), "after divider" on the first running-only
-    /// app. The same fields drive the running line and the hairline, so the status says what the cell draws.
+    /// app, "N windows" with two or more (a click then opens the window list). The same fields drive the running line
+    /// and the hairline, so the status says what the cell draws.
     public string Status { get; private set; } = "";
     void SetStatus(bool notify)
     {
-        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "");
+        int n = Item.Windows.Count;
+        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "") + (n >= 2 ? "; " + n + " windows" : "");
         if (s == Status) return;
         Status = s;
         if (notify) Changed(nameof(Status));
@@ -94,11 +96,15 @@ public sealed partial class CellVm : INotifyPropertyChanged
 public sealed partial class BarWindow
 {
     BarTasksHost? _tasks;
+    string? _testOrder;
     int _syncs;
     bool _cellsDirty;
     readonly Dictionary<string, ImageSource?> _iconBitmaps = new(StringComparer.Ordinal);
 
-    /// Made in the constructor; attached to the host once OnLaunched has returned (TasksWiring.cs).
+    /// The strip's host side; App.xaml.cs HostStart attaches it to the platform on the host thread.
+    internal BarTasksHost? Tasks => _tasks;
+
+    /// Made in the constructor (before StartHost runs, so HostStart finds it).
     void StartTasks()
     {
         _tasks = new BarTasksHost(DispatcherQueue, Host.Log.Line);
@@ -106,10 +112,42 @@ public sealed partial class BarWindow
         // cells.json once the strip is laid out: a cell inserted or moved has no container until the next layout
         // pass, and an icon lands after its sync (it decodes asynchronously)
         Dock.LayoutUpdated += (_, _) => { if (_cellsDirty && _benchOut != null) WriteCells(); };
-        DispatcherQueue.TryEnqueue(() => MantleApp.AttachBarTasks(_tasks));
+        if (Host.Args.Test) StartUiBeat();
     }
 
-    void StopTasks() => _tasks?.Dispose();
+    void StopTasks() { _beat?.Dispose(); _tasks?.Dispose(); }
+
+    // ------------------------------------------------------------------ TEST RUNS ONLY: what the strip's clicks met
+    // A queued ping every 250 ms: a UI thread that runs it late is said with how late (a stalled thread drops no click,
+    // it holds it). With the press and click lines below, a click a test made that "never reached the app" can be told
+    // apart: no press line = it landed elsewhere; a press but no click = the cell changed under it; late pings = stall.
+    System.Threading.Timer? _beat;
+    long _beatQueued;
+    bool _beatSaid;
+
+    void StartUiBeat()
+    {
+        var q = DispatcherQueue;
+        _beat = new System.Threading.Timer(_ => {
+            long now = Environment.TickCount64, was = System.Threading.Interlocked.Read(ref _beatQueued);
+            if (was != 0) {
+                if (now - was >= 2000 && !_beatSaid) { _beatSaid = true; Host.Log.Line($"bar tasks: test: the UI thread has not run queued work for {now - was} ms"); }
+                return;
+            }
+            System.Threading.Interlocked.Exchange(ref _beatQueued, now);
+            q.TryEnqueue(() => {
+                long late = Environment.TickCount64 - System.Threading.Interlocked.Exchange(ref _beatQueued, 0);
+                _beatSaid = false;
+                if (late >= 500) Host.Log.Line($"bar tasks: test: the UI thread ran queued work {late} ms late");
+            });
+        }, null, 250, 250);
+    }
+
+    void TestLine(string what, object sender)
+    {
+        if (!Host.Args.Test || sender is not Button b || b.Tag is not CellVm vm) return;
+        Host.Log.Line($"bar tasks: test: {what} on {vm.AutomationId} ({vm.Title})");
+    }
 
     // ------------------------------------------------------------------ the strip (bar.js renderDock)
     void SyncCells()
@@ -139,6 +177,10 @@ public sealed partial class BarWindow
             SetIcon(vm, it.Icon);
         }
         for (int i = 0; i < _cells.Count; i++) _cells[i].Index = i;   // bar.app.<n>, in display order
+        if (Host.Args.Test) {
+            string order = string.Join(" | ", _cells.Select(c => c.Title));
+            if (order != _testOrder) { _testOrder = order; Host.Log.Line($"bar tasks: test: strip now [{order}]"); }
+        }
         _syncs++;
         _cellsDirty = true;
         if (_benchOut != null) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, WriteCells);
@@ -182,8 +224,9 @@ public sealed partial class BarWindow
 
     void Cell_Click(object sender, RoutedEventArgs e)
     {
+        TestLine("click", sender);
         if (sender is not Button b || b.Tag is not CellVm vm) return;
-        OpenCell(vm, fresh: false);
+        OpenCell(vm, fresh: false, b);
     }
 
     PointerEventHandler? _cellMiddle;
@@ -197,7 +240,14 @@ public sealed partial class BarWindow
         _cellMiddle ??= new PointerEventHandler(Cell_PointerReleased);
         b.RemoveHandler(UIElement.PointerReleasedEvent, _cellMiddle);
         b.AddHandler(UIElement.PointerReleasedEvent, _cellMiddle, true);
+        if (Host.Args.Test) {
+            _cellPress ??= new PointerEventHandler((o, _) => TestLine("press", o));
+            b.RemoveHandler(UIElement.PointerPressedEvent, _cellPress);
+            b.AddHandler(UIElement.PointerPressedEvent, _cellPress, true);
+        }
     }
+
+    PointerEventHandler? _cellPress;
 
     /// Middle-click: a new window or instance (bar.open {fresh:true}, BAR-200, BAR-206).
     void Cell_PointerReleased(object sender, PointerRoutedEventArgs e)
@@ -209,7 +259,7 @@ public sealed partial class BarWindow
         OpenCell(vm, fresh: true);
     }
 
-    void OpenCell(CellVm vm, bool fresh)
+    void OpenCell(CellVm vm, bool fresh, FrameworkElement? anchor = null)
     {
         if (_tasks == null) return;
         string id = vm.Item.Id;
@@ -218,7 +268,8 @@ public sealed partial class BarWindow
             // a failed open is a warn chip until the next success (bar.js act, ACT_LABEL; BAR-195)
             bool changed = r.Ok ? _chips.Clear("open") : _chips.Fail("open", "App did not open", r.Reason ?? "Mantle did not say why", "warn");
             if (changed) RenderPip(force: true);
-            // TODO(native-bar-tasks part 2): action "list" opens the window previews over the icon (BAR-199, BAR-221..234)
+            // two or more windows: none touched, the bar's own window list over the icon (BAR-199; previews: part 2)
+            if (r.Ok && r.Action == "list" && anchor != null) OpenWindowList(vm, anchor);
         });
     }
 

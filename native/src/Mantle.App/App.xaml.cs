@@ -159,6 +159,10 @@ public partial class MantleApp : Application
         _surfaceControl = new SurfaceControl(() => _surfaces?.Set, work => _surfaces?.PostUi(work) ?? false);
         _offs.Add(Catalogs.Register(_bus, new SurfaceCommands(_surfaceControl)));
         _platform = new ProcessPlatform(opts, new ProcessSidecarLauncher(loop), loop);
+        // --- lane native-bar-tasks: the bar's task strip (pins + running apps) reads through the platform's sidecar.
+        // The bar was made in OnLaunched before StartHost, so its strip host already exists; this is the host thread.
+        _window?.Tasks?.AttachOnHost(_platform, loop);
+        // --- end native-bar-tasks
         // the bar's dock (--dock only; hover is the live default) reserves its app bar through the platform. A test or
         // scratch run's sidecar is passive, so it refuses and nothing is reserved in Windows (the dock line says so).
         var platform = _platform;

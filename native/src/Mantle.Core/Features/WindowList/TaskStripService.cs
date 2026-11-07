@@ -48,7 +48,6 @@ public sealed class TaskStripService : IDisposable
     readonly SidecarCall _call;
     readonly IconResolver _icons;
     readonly RunningOrder _runOrder = new();
-    readonly FirstSeenOrder _firstSeen = new();
     readonly List<IDisposable> _subs = new();
     List<WinEntry>? _lastWindows;
     PinnedResult? _pinsCache;
@@ -152,7 +151,7 @@ public sealed class TaskStripService : IDisposable
 
     async Task<TaskList> BuildAsync()
     {
-        var input = new TaskStripBuilder.Input { Icons = _icons, RunningOrder = _runOrder, FirstSeen = _firstSeen, PinsNote = _o.PinsNote };
+        var input = new TaskStripBuilder.Input { Icons = _icons, RunningOrder = _runOrder, PinsNote = _o.PinsNote };
         // 1. the running apps; nothing pushed yet = ask once
         var running = _lastWindows;
         if (running == null) {

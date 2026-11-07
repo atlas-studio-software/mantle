@@ -27,7 +27,8 @@ Strip, `Mantle.App/Surfaces/Bar/Tasks/`:
 - `BarWindow.Tasks.cs`: `CellVm` and the strip (icon from the sidecar's PNG data URL or the letter tile, the 6x3 /
   16x3 accent running line, the 1x22 hairline before the first running-only app, tooltip, middle-click = fresh,
   chips "Some apps still loading" / "Apps not shown" / "Open windows not updating" / "App did not open"), cells.json.
-- `TasksWiring.cs`: STAND-IN for the requested App.xaml.cs line (see the file).
+- Wiring: App.xaml.cs HostStart calls `_window?.Tasks?.AttachOnHost(_platform, loop)` right after the platform is made
+  (one commented block; the bar is made in OnLaunched before StartHost). The stand-in `TasksWiring.cs` is gone.
 
 Test runs never read the user's pins: `MANTLE_TEST_PINS_DIR` (a scratch TaskBar folder) and
 `MANTLE_TEST_TASKBAND_KEY` (a scratch key under HKCU holding a `Favorites` REG_BINARY). Without them a test or
@@ -43,10 +44,11 @@ deliberate deviation for safety.
 - Active marks: every `windows` push re-marks the active window at once (bar.js renderWindows: `TaskStripBuilder
   .MarkActive`, option `Marks`), between the once-a-second rebuilds; a click decides focus or minimise from the same
   marks. Native also takes each window's minimised flag from the push (Electron keeps the old one until the rebuild).
-- DEVIATION, running-only order: `FirstSeenOrder` keeps each running-only app where it first appeared this session
-  (Windows' taskbar does; the native strip did before). Electron lists them in the sidecar's EnumWindows order, i.e.
-  z-order (BAR-289), so an app jumps when focused or minimised and a second click on the same spot lands on another
-  app; the bench's focus/minimise/restore clicks failed on it. A dragged order still wins.
+- Running-only order (BAR-289), as Electron: the sidecar's EnumWindows order, i.e. the z-order, so an app moves to the
+  front of the running-only apps when focused and to the back when minimised; a dragged order (`RunningOrder`) wins.
+  Part 1 kept first-seen order instead (a deviation); native-r3-tasks-3 removed it (`FirstSeenOrder` is gone). A
+  click on the same spot twice can land on another app, as in Electron; the bench re-reads `cells.json` (settled: 1.5 s
+  after its last click, two reads 400 ms apart agree) before each click instead of keeping the first positions.
 - Cells: UI Automation `ItemStatus` = kind ("pinned" / "running") + "; open" + "; active" + "; after divider", the
   same fields that draw the running line and the hairline (AUTOMATION.md row requested). Middle-click is heard with
   handledEventsToo (`Cell_Loaded`). cells.json (bench) is written after layout and after an icon lands.
@@ -59,9 +61,53 @@ deliberate deviation for safety.
   Gamma Reg), the runner's Taskband Favorites value off for the run, run-parity.ps1 with `-MaskApps $false`, then
   the 440 DIP apps slot cropped out of both captures: `native/out/parity/bar-tasks/<theme>/strip-pair.png`.
 
+## Round 3, part 3 (native-r3-tasks-3)
+
+- Running-only order follows the z-order (above). `BarTests.Running_app_button_focuses_minimizes_and_restores_its_window`
+  failed 4 of 4 full UI rounds on it (its third click hit the spot A had before it was minimised and moved): it now
+  finds the button again, once settled, before each click.
+- Wiring swapped (above): no `MantleApp.AttachBarTasks`, no `TasksWiring.cs`.
+- Window list (`Tasks/BarWindow.WindowList.cs`; bar.js#flyList): a click on an app with two or more windows (bar.open
+  action `list`) opens the pop-up `winlist:<id>` ("Mantle pop-up: <app> windows") over the icon through the bar's
+  PopupHost: heading, a note, one row per window (active: accent ink and the 3x14 bar; minimised: quiet ink;
+  tooltip "(minimized)"), each with its X. A row: list closes, bar.window toggle/focus. The X: list closes,
+  bar.window close (a test run refuses it, "Window did not switch" chip as bar.js ACT_LABEL.window). The same icon
+  again closes it. DEVIATION until the previews exist: Electron opens the preview cards here and keeps the list for
+  too many windows; the native note says "live previews are not in the native bar yet, so this is the list".
+  ItemStatus gains "; N windows" (two or more). `BarTasksHost.Window` is the bar.window bridge.
+- The click flake (main run 42384431813, `Clicks_launch_...` "no dry-run line"): see "The click flake" below.
+- Test-only diagnostics (run with `--test` only): `bar tasks: test: press|click on bar.app.<n> (<title>)`,
+  `bar tasks: test: strip now [...]` on every order change, and a UI-thread ping every 250 ms that logs
+  `the UI thread ran queued work <n> ms late` (>= 500 ms) or `has not run queued work for <n> ms` (>= 2 s). A failed
+  strip test keeps the app's whole log in `native/out/ui/strip-<profile>-<time>-native-log.txt` and its "no dry-run"
+  message says where the click landed. `tools/parity/bar-tasks/repeat-ui.ps1` repeats a test filter N times and keeps
+  the strip tests' app logs per round.
+
+### The click flake
+
+- What the failing log shows: the click came about 2 s after the app started. The log after it held one line:
+  `data: look-sync\look.json: ok: rev 1 ...` (the 2 s data poll). Each time that poll fires, the UI thread logs
+  `data changed: look-sync\look.json: ok` (App.xaml.cs, a queued UI job) within 0-2 ms (every passing log, and the
+  bench log of that same run). In the failing run that line never came in the 6 s the test waited, and neither did a
+  click line. So the bar's UI thread ran no queued work for at least 6 s, starting right after the test's last UI
+  Automation read (which the UI thread answered). The click was not lost by a moved cell, and it was not the first-moments
+  gap (no `bar: input:` line; strip cells ARE plain Buttons, so EarlyClicks would have passed such a click on).
+- Not the cause: a strip rebuild under the pointer (the pinned cells do not move; the passing logs show the press and
+  the click on the same cell 1 ms apart), the look.json publish (its UI handler only re-renders when the blur
+  changes, and its line never ran), z-order moves (pins never move).
+- Not found: what held the UI thread. The stall did not happen again in 16 runs of the click test with the test-only
+  UI-thread ping on (cloud runs 42386880533: StripTests x6; 42387408410: whole UI suite x4; 42388736092: the CI ui
+  stage plus the whole UI suite x5): 16 of 16 passed, 0 late-UI lines. No app fix was made for it, because none is
+  proven. The next time it happens, the failure message and the kept app log say where the click landed and how long
+  the UI thread was held (`the UI thread has not run queued work for <n> ms`).
+- Side finding: in a repeat run made after the parity stage, `Theme_set_switches_the_bar_within_1_s...` fails every
+  time ("never went dark ... luminance 25.2 -> 25.2"): the bar is already dark then, so parity leaves the desk in a
+  state that test does not reset. It passes inside ci.ps1 (ui runs before parity). Not this lane's test.
+
 ## Part 2 starts here
 
-Window previews (DWM thumbnails, BAR-221..234, 308..314), the window list for action `list`, drag to reorder
+Window previews (DWM thumbnails onto the bar's HWND, BAR-221..233, 308..314; the window list above is their
+fallback and today's stand-in), drag to reorder
 (BAR-239..254) with the overlay writes, the jump list / app menu (BAR-207..220, 315..332), overflow "+N"
 (BAR-235..238), badges (Helm count BAR-255..257, keep on top BAR-258, 333..347), Mantle apps standing in for
 Windows' (BAR-291..296), the top bar hide rows (348..351), the parity strip screenshots

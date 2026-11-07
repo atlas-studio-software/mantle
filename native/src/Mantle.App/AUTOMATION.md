@@ -10,7 +10,10 @@ change here is a change to the tests.
 | `bar.pill` | the island | Group | `Mantle bar` | `UiaGrid` |
 | `bar.start` | the Mantle mark | Button | `Start` | |
 | `bar.apps` | the running-app row | Group | `Running apps` | an ItemsControl subclass with a Group peer (`UiaItemsControl`); the app buttons are its children |
-| `bar.app.<n>` | one running app | Button | the app's window title (its window in front, else its first) | `<n>` is 0-based, in display order, renumbered on every change; HelpText = the exe's file name (`notepad.exe`); BoundingRectangle = its real on-screen bounds, so a click at its centre with real input hits it |
+| `bar.app.<n>` | one running app | Button | the app's window title (its window in front, else its first) | `<n>` is 0-based, in display order, renumbered on every change; HelpText = the exe's file name (`notepad.exe`); ItemStatus = `pinned` or `running` (a pin, or an app only running), then `; open` (it has a window: the running line), `; active` (its window is in front: the accent line), `; after divider` (the hairline before the first running-only app), `; <N> windows` (two or more: a click opens the window list), e.g. `pinned; open; active`; BoundingRectangle = its real on-screen bounds, so a click at its centre with real input hits it. Running-only apps follow the z-order (BAR-289): one moves when it is focused or minimised, so read the cells again before each click |
+| `bar.winlist` | the window list pop-up (a click on an app with two or more windows; in the pop-up window `Mantle pop-up: <app> windows`) | Pane | `<app> windows` | heading, a note, one row per window |
+| `bar.winlist.<n>` | one window's row | Button | the window's title (`(untitled window)` if none) | ItemStatus `active` (its window is in front: accent) or `minimized`; a click closes the list and focuses the window, or minimises the active one |
+| `bar.winlist.<n>.close` | the row's X | Button | `Close this window` | closes the list and asks the window to close (a test run refuses and says so) |
 | `bar.downloads` | Downloads | Button | `Downloads` | |
 | `bar.volume` | Volume | Button | `Volume` | |
 | `bar.network` | Network | Button | `Network` | |

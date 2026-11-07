@@ -175,16 +175,30 @@ public class BarTests
         Assert.AreEqual("powershell.exe", (btnA!.Properties.HelpText.ValueOrDefault ?? "").ToLowerInvariant(), "HelpText = the exe file name");
 
         void Click(AutomationElement e) { Mouse.Click(Centre(Rect(e))); Thread.Sleep(400); }
+        // Running-only apps follow the z-order, as in Electron (BAR-289): a focused app moves to the front of them and a
+        // minimised one to the back, at the strip's next rebuild (at most once a second). So each click finds the
+        // button again once it has stopped moving (two reads 1.2 s apart agree), never at the place it had before.
+        AutomationElement Settled(Host.Fixture f)
+        {
+            AutomationElement? e = null;
+            Host.Until(() => {
+                var r1 = Btn(f) is { } x1 ? Rect(x1) : default;
+                Thread.Sleep(1200);
+                e = Btn(f);
+                return e != null && Rect(e) == r1;
+            }, 8000, 0);
+            return e ?? throw new AssertFailedException($"{f.Title}'s button is gone");
+        }
         bool Fg(IntPtr h) => Win32.GetForegroundWindow() == h;
 
         // Make sure A is not the window in front before the first click (a click on the front app minimizes it).
-        if (Fg(a.Hwnd)) { Click(btnB!); Assert.IsTrue(Host.Until(() => Fg(b.Hwnd), 4000), "clicking B's button did not bring B forward"); }
+        if (Fg(a.Hwnd)) { Click(Settled(b)); Assert.IsTrue(Host.Until(() => Fg(b.Hwnd), 4000), "clicking B's button did not bring B forward"); }
 
-        Click(btnA);
+        Click(Settled(a));
         Assert.IsTrue(Host.Until(() => Fg(a.Hwnd) && !Win32.IsIconic(a.Hwnd), 4000), $"click 1: A not in front (foreground {Win32.Title(Win32.GetForegroundWindow())})");
-        Click(btnA);
+        Click(Settled(a));
         Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "click 2 on the app in front: A was not minimized");
-        Click(btnA);
+        Click(Settled(a));
         Assert.IsTrue(Host.Until(() => !Win32.IsIconic(a.Hwnd) && Fg(a.Hwnd), 4000), "click 3: A was not restored to the front");
 
         a.Dispose();
