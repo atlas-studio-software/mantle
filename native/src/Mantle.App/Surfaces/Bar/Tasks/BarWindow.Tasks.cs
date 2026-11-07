@@ -46,11 +46,13 @@ public sealed partial class CellVm : INotifyPropertyChanged
     internal bool Divider { set { if (_div == value) return; _div = value; Changed(nameof(DividerVisibility)); SetStatus(true); } }
     /// UI Automation ItemStatus (the UI tests read it): the kind ("pinned" / "running"), then "open" while it has
     /// windows, "active" while one is the active window (the accent line), "after divider" on the first running-only
-    /// app. The same fields drive the running line and the hairline, so the status says what the cell draws.
+    /// app, "N windows" with two or more (a click then opens the window list). The same fields drive the running line
+    /// and the hairline, so the status says what the cell draws.
     public string Status { get; private set; } = "";
     void SetStatus(bool notify)
     {
-        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "");
+        int n = Item.Windows.Count;
+        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "") + (n >= 2 ? "; " + n + " windows" : "");
         if (s == Status) return;
         Status = s;
         if (notify) Changed(nameof(Status));
@@ -224,7 +226,7 @@ public sealed partial class BarWindow
     {
         TestLine("click", sender);
         if (sender is not Button b || b.Tag is not CellVm vm) return;
-        OpenCell(vm, fresh: false);
+        OpenCell(vm, fresh: false, b);
     }
 
     PointerEventHandler? _cellMiddle;
@@ -257,7 +259,7 @@ public sealed partial class BarWindow
         OpenCell(vm, fresh: true);
     }
 
-    void OpenCell(CellVm vm, bool fresh)
+    void OpenCell(CellVm vm, bool fresh, FrameworkElement? anchor = null)
     {
         if (_tasks == null) return;
         string id = vm.Item.Id;
@@ -266,7 +268,8 @@ public sealed partial class BarWindow
             // a failed open is a warn chip until the next success (bar.js act, ACT_LABEL; BAR-195)
             bool changed = r.Ok ? _chips.Clear("open") : _chips.Fail("open", "App did not open", r.Reason ?? "Mantle did not say why", "warn");
             if (changed) RenderPip(force: true);
-            // TODO(native-bar-tasks part 2): action "list" opens the window previews over the icon (BAR-199, BAR-221..234)
+            // two or more windows: none touched, the bar's own window list over the icon (BAR-199; previews: part 2)
+            if (r.Ok && r.Action == "list" && anchor != null) OpenWindowList(vm, anchor);
         });
     }
 

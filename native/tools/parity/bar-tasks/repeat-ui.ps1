@@ -49,7 +49,16 @@ for ($i = 1; $i -le $Times; $i++) {
     if ([int]$c.failed -eq 0 -and $code -eq 0 -and [int]$c.total -gt 0) { $clean++ }
     "round ${i}: $($c.passed) of $($c.total) passed$(if ($failed.Count) { '; FAILED ' + ($failed -join ', ') })"
   } else { "round ${i}: no results (dotnet test exit $code)" }
-  $row += " [$([int]((Get-Date) - $t0).TotalSeconds)s]"
+  # the strip tests' app logs (passing or not), and their test-only lines about late UI work
+  $late = 0
+  foreach ($p in @(Get-ChildItem -Path ([IO.Path]::GetTempPath()) -Directory -Filter 'mantle-native-uitest-uitest-strip-*' -ErrorAction SilentlyContinue)) {
+    $lg = Join-Path $p.FullName 'mantle-native.log'
+    if (Test-Path $lg) {
+      Copy-Item $lg (Join-Path $dir "$($p.Name)-native-log.txt") -Force
+      $late += @(Select-String -Path $lg -Pattern 'the UI thread (ran queued work|has not run queued work)').Count
+    }
+  }
+  $row += " [$([int]((Get-Date) - $t0).TotalSeconds)s; strip logs: $late late-UI line(s)]"
   Write-Host "REPEAT $row"
   if (-not (Test-Path $trx) -or $code -ne 0) { Get-Content (Join-Path $dir 'test.log') | Select-String -Pattern 'Failed |Error Message|Assert\.' | Select-Object -First 8 | ForEach-Object { Write-Host ('    ' + $_.Line.Trim()) } }
   $rows += $row

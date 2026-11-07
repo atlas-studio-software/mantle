@@ -87,6 +87,19 @@ internal sealed partial class BarTasksHost : IDisposable
         });
     }
 
+    /// One window (bar.window {hwnd, action}: focus, minimize, close, toggle): the answer comes back on the UI thread.
+    public void Window(string hwnd, string action, Action<TaskOpenResult> done)
+    {
+        if (_svc == null || _host == null) { done(new TaskOpenResult(false, "the bar is not connected to Mantle's host yet")); return; }
+        var svc = _svc;
+        _host.Post(async () => {
+            TaskOpenResult r;
+            try { r = await svc.WindowAsync(hwnd, action).ConfigureAwait(true); }
+            catch (Exception e) { r = new TaskOpenResult(false, "the window action failed: " + e.Message); }
+            _ui.TryEnqueue(() => done(r));
+        });
+    }
+
     public void Dispose()
     {
         var s = _svc; _svc = null;

@@ -27,7 +27,8 @@ Strip, `Mantle.App/Surfaces/Bar/Tasks/`:
 - `BarWindow.Tasks.cs`: `CellVm` and the strip (icon from the sidecar's PNG data URL or the letter tile, the 6x3 /
   16x3 accent running line, the 1x22 hairline before the first running-only app, tooltip, middle-click = fresh,
   chips "Some apps still loading" / "Apps not shown" / "Open windows not updating" / "App did not open"), cells.json.
-- `TasksWiring.cs`: STAND-IN for the requested App.xaml.cs line (see the file).
+- Wiring: App.xaml.cs HostStart calls `_window?.Tasks?.AttachOnHost(_platform, loop)` right after the platform is made
+  (one commented block; the bar is made in OnLaunched before StartHost). The stand-in `TasksWiring.cs` is gone.
 
 Test runs never read the user's pins: `MANTLE_TEST_PINS_DIR` (a scratch TaskBar folder) and
 `MANTLE_TEST_TASKBAND_KEY` (a scratch key under HKCU holding a `Favorites` REG_BINARY). Without them a test or
@@ -43,10 +44,11 @@ deliberate deviation for safety.
 - Active marks: every `windows` push re-marks the active window at once (bar.js renderWindows: `TaskStripBuilder
   .MarkActive`, option `Marks`), between the once-a-second rebuilds; a click decides focus or minimise from the same
   marks. Native also takes each window's minimised flag from the push (Electron keeps the old one until the rebuild).
-- DEVIATION, running-only order: `FirstSeenOrder` keeps each running-only app where it first appeared this session
-  (Windows' taskbar does; the native strip did before). Electron lists them in the sidecar's EnumWindows order, i.e.
-  z-order (BAR-289), so an app jumps when focused or minimised and a second click on the same spot lands on another
-  app; the bench's focus/minimise/restore clicks failed on it. A dragged order still wins.
+- Running-only order (BAR-289), as Electron: the sidecar's EnumWindows order, i.e. the z-order, so an app moves to the
+  front of the running-only apps when focused and to the back when minimised; a dragged order (`RunningOrder`) wins.
+  Part 1 kept first-seen order instead (a deviation); native-r3-tasks-3 removed it (`FirstSeenOrder` is gone). A
+  click on the same spot twice can land on another app, as in Electron; the bench re-reads `cells.json` (settled: 1.5 s
+  after its last click, two reads 400 ms apart agree) before each click instead of keeping the first positions.
 - Cells: UI Automation `ItemStatus` = kind ("pinned" / "running") + "; open" + "; active" + "; after divider", the
   same fields that draw the running line and the hairline (AUTOMATION.md row requested). Middle-click is heard with
   handledEventsToo (`Cell_Loaded`). cells.json (bench) is written after layout and after an icon lands.
