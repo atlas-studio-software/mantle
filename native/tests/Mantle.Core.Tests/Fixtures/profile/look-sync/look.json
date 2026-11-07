@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "rev": 7,
+  "writer": { "app": "helm", "instance": "synthetic-instance", "pid": 4242, "at": "2026-01-02T03:04:05.000Z" },
+  "look": {
+    "theme": { "v": "light", "rev": 7, "by": "helm" },
+    "accent": { "v": { "hue": null }, "rev": 3, "by": "mantle" },
+    "glass": { "v": { "dark": { "blurPx": 5, "dim": 0.5, "panel": 0 }, "light": { "blurPx": 20, "dim": 0.45, "panel": 0 }, "render": "picture" }, "rev": 5, "by": "quartz" }
+  },
+  "desktop": { "rev": 2, "ok": true, "id": "preset-1", "type": "picture", "title": "Synthetic", "file": null, "still": null, "reason": null }
+}

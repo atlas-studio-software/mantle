@@ -15,26 +15,40 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal static class Backdrop
 {
-    /// The pill's rectangle on screen, in physical pixels. Returns null when the screen cannot be read.
-    public static WriteableBitmap? Capture(Win32.RECT pill, Win32.RECT screen, double sigmaPx, double saturate)
+    /// What was behind the pill before the window showed: the raw pixels around the pill, with a
+    /// margin for the widest blur, kept so a theme change can re-blur it without capturing the bar.
+    internal sealed class Shot
     {
-        int margin = (int)Math.Ceiling(sigmaPx * 3);
+        public byte[] Px = Array.Empty<byte>();
+        public int X0, Y0, W, H;
+    }
+
+    /// The pill's rectangle on screen, in physical pixels. Returns null when the screen cannot be read.
+    public static Shot? Grab(Win32.RECT pill, Win32.RECT screen, double maxSigmaPx)
+    {
+        int margin = (int)Math.Ceiling(maxSigmaPx * 3);
         int x0 = Math.Max(screen.Left, pill.Left - margin), y0 = Math.Max(screen.Top, pill.Top - margin);
         int x1 = Math.Min(screen.Right, pill.Right + margin), y1 = Math.Min(screen.Bottom, pill.Bottom + margin);
         int w = x1 - x0, h = y1 - y0;
         if (w <= 0 || h <= 0) return null;
+        byte[]? raw = Grab(x0, y0, w, h);
+        return raw == null ? null : new Shot { Px = raw, X0 = x0, Y0 = y0, W = w, H = h };
+    }
 
-        byte[]? px = Grab(x0, y0, w, h);
-        if (px == null) return null;
+    /// Blur (and saturate) a copy of the shot, cropped to the pill.
+    public static WriteableBitmap Render(Shot shot, Win32.RECT pill, double sigmaPx, double saturate)
+    {
+        byte[] px = (byte[])shot.Px.Clone();
+        int w = shot.W, h = shot.H;
         if (sigmaPx > 0.5) Blur(px, w, h, sigmaPx);
         if (Math.Abs(saturate - 1) > 0.001) Saturate(px, saturate);
 
         int cw = pill.Right - pill.Left, ch = pill.Bottom - pill.Top;
-        int ox = pill.Left - x0, oy = pill.Top - y0;
+        int ox = pill.Left - shot.X0, oy = pill.Top - shot.Y0;
         var crop = new byte[cw * ch * 4];
         for (int y = 0; y < ch; y++) {
             int sy = Math.Clamp(oy + y, 0, h - 1);

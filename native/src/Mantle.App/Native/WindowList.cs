@@ -12,13 +12,14 @@ using System.Collections.Generic;
 using System.IO;
 using Microsoft.UI.Dispatching;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal sealed class AppEntry
 {
     public string Key = "";          // the exe path, lower case
     public string Exe = "";
     public string Name = "";
+    public string Title = "";        // its front window's title, else its first window's (the UI Automation Name)
     public uint Pid;
     public readonly List<IntPtr> Windows = new();
     public bool Active;              // one of its windows is the foreground window
@@ -100,6 +101,7 @@ internal sealed class WindowList : IDisposable
                     byExe[exe] = app; order.Add(app);
                 }
                 app.Windows.Add(hwnd);
+                if (app.Title.Length == 0 || hwnd == fg) app.Title = title;
                 if (hwnd == fg) app.Active = true;
                 if (!Win32.IsIconic(hwnd)) app.AllMinimized = false;
             } catch (Exception) {
@@ -122,7 +124,7 @@ internal sealed class WindowList : IDisposable
         });
 
         var sig = new System.Text.StringBuilder();
-        foreach (var a in order) sig.Append(a.Key).Append('|').Append(a.Windows.Count).Append(a.Active ? "*" : "").Append(a.AllMinimized ? "_" : "").Append(';');
+        foreach (var a in order) sig.Append(a.Key).Append('|').Append(a.Title).Append('|').Append(a.Windows.Count).Append(a.Active ? "*" : "").Append(a.AllMinimized ? "_" : "").Append(';');
         _pidOf.Clear(); foreach (var kv in pidOf) _pidOf[kv.Key] = kv.Value;
         Rebuilds++;
         if (!force && sig.ToString() == _signature) return;

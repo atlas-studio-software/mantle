@@ -1,0 +1,47 @@
+# native-ci: build and check the native (C# + WinUI 3) Mantle under native/.
+#
+# Runs only on a push to native/infra (the integration branch) and on pull requests that touch
+# native/** (the lane branches share the org's runner concurrency, so they do not each trigger it).
+# One run per ref at a time: a newer push cancels the run in progress. It touches nothing the
+# installer or oss-guard workflows use.
+name: native-ci
+
+on:
+  push:
+    branches: [native/infra]
+  pull_request:
+    paths:
+      - 'native/**'
+      - '.github/workflows/native-ci.yml'
+
+concurrency:
+  group: native-ci-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  native:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    env:
+      DOTNET_NOLOGO: '1'
+      DOTNET_CLI_TELEMETRY_OPTOUT: '1'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: native/tools/ci.ps1 (all stages)
+        shell: pwsh
+        run: ./native/tools/ci.ps1 -Out native/out
+
+      - name: Upload native/out (without the published app)
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-out
+          path: |
+            native/out/**
+            !native/out/bin/**
+          retention-days: 5
+          if-no-files-found: warn

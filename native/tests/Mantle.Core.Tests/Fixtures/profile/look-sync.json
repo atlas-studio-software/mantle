@@ -1,0 +1,10 @@
+{
+  "lookSync": false,
+  "accent": { "hue": 210 },
+  "glass": {
+    "dark": { "blurPx": 8, "dim": 0.55, "panel": -0.05 },
+    "light": { "blurPx": 16, "dim": 0.4, "panel": 0.05 },
+    "render": "picture"
+  },
+  "aKeyFromANewerMantle": { "anything": [1, 2, 3] }
+}

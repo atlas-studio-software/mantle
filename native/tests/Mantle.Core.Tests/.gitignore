@@ -1,0 +1,3 @@
+# The repo ignores look.json everywhere (a real shared look must never be committed). This one is a
+# synthetic fixture, derived from lib/look-sync.js's schema, and the reader tests need it.
+!Fixtures/profile/look-sync/look.json

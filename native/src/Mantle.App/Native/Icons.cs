@@ -10,7 +10,7 @@ using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal static class Icons
 {

@@ -4,13 +4,19 @@ using System;
 using System.Runtime.InteropServices;
 using System.Text;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal static class Win32
 {
     public const int GWL_STYLE = -16, GWL_EXSTYLE = -20;
     public const long WS_POPUP = 0x80000000L, WS_VISIBLE = 0x10000000L;
     public const long WS_EX_TOOLWINDOW = 0x00000080L, WS_EX_NOACTIVATE = 0x08000000L, WS_EX_TOPMOST = 0x00000008L;
+    public const long WS_EX_LAYERED = 0x00080000L, WS_EX_TRANSPARENT = 0x00000020L, WS_EX_APPWINDOW = 0x00040000L;
+    public const long WS_CAPTION = 0x00C00000L, WS_THICKFRAME = 0x00040000L, WS_SYSMENU = 0x00080000L, WS_MINIMIZEBOX = 0x00020000L,
+                      WS_MAXIMIZEBOX = 0x00010000L, WS_BORDER = 0x00800000L, WS_DLGFRAME = 0x00400000L;
+    public const int SW_SHOWNOACTIVATE = 4;
+    public const uint LWA_ALPHA = 0x2;
+    [DllImport("user32.dll", SetLastError = true)] public static extern bool SetLayeredWindowAttributes(IntPtr hwnd, uint key, byte alpha, uint flags);
     public const uint GW_OWNER = 4;
     public const int SW_RESTORE = 9, SW_MINIMIZE = 6, SW_SHOW = 5;
     public const uint SWP_NOSIZE = 0x1, SWP_NOMOVE = 0x2, SWP_NOACTIVATE = 0x10, SWP_FRAMECHANGED = 0x20, SWP_NOZORDER = 0x4;
