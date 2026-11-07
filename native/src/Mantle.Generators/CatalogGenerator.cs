@@ -61,6 +61,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         public string Init = "";          // feature: the attribute rebuilt as C#
         public string? Options;           // feature: the static Options member, when present
         public string Owner = "";         // command: the owner's words (a "const string Owner" on the type, else its name)
+        public string? When;              // command: a bool member read at registration (registered only when true)
         public bool AtStart;              // surface
         public string? Error;             // plain words when the mark is malformed
         public DiagnosticDescriptor? ErrorKind;
@@ -115,8 +116,33 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         if (why == null && (m.DeclaredAccessibility == Accessibility.Private || m.DeclaredAccessibility == Accessibility.Protected))
             why = "it is private or protected, so the generated registration cannot call it; make it internal or public";
         if (why == null && !Reachable(t)) why = "its class is private, generic or nested in one, so the generated registration cannot reach it";
+        foreach (var kv in c.Attributes[0].NamedArguments) if (kv.Key == "When") f.When = kv.Value.Value as string;
+        if (why == null && f.When != null) why = WhenProblem(t, f.When, m.IsStatic);
         if (why != null) { f.ErrorKind = BadHandler; f.Error = why; }
         return f;
+    }
+
+    /// When = "X": X must be a readable bool property or field of the handler's type (or a base), static
+    /// exactly when the handler is, and not private (the generated registration reads it).
+    static string? WhenProblem(INamedTypeSymbol t, string name, bool isStatic)
+    {
+        if (name.Length == 0) return "When is empty; name a bool property or field, or leave When out";
+        for (var at = t; at != null; at = at.BaseType) {
+            foreach (var member in at.GetMembers(name)) {
+                ITypeSymbol? type = member switch {
+                    IPropertySymbol p when p.GetMethod != null && p.Parameters.Length == 0 => p.Type,
+                    IFieldSymbol fl => fl.Type,
+                    _ => null,
+                };
+                if (type == null) continue;
+                if (type.SpecialType != SpecialType.System_Boolean) return $"When = \"{name}\" is a {type.ToDisplayString()}, not a bool";
+                if (member.IsStatic != isStatic) return $"When = \"{name}\" is {(member.IsStatic ? "static" : "an instance member")} but the handler is {(isStatic ? "static" : "an instance method")}";
+                var acc = member is IPropertySymbol pp && pp.GetMethod != null ? pp.GetMethod.DeclaredAccessibility : member.DeclaredAccessibility;
+                if (acc == Accessibility.Private || acc == Accessibility.Protected) return $"When = \"{name}\" is private or protected, so the generated registration cannot read it";
+                return null;
+            }
+        }
+        return $"When = \"{name}\" names no bool property or field on {t.Name}";
     }
 
     static bool Reachable(INamedTypeSymbol? t)
@@ -233,6 +259,9 @@ public sealed class CatalogGenerator : IIncrementalGenerator
             ? $"c => new global::System.Threading.Tasks.ValueTask<{Result}>({target}.{f.Method}(c))"
             : $"c => {target}.{f.Method}(c)";
 
+    /// A command with When = "X" registers only when target.X reads true.
+    static string If(Found f, string target) => f.When == null ? "" : $"if ({target}.{f.When}) ";
+
     static string Commands(SourceProductionContext spc, ImmutableArray<Found> found)
     {
         var good = Checked(spc, found, "[Command]");
@@ -249,7 +278,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         s.Append($"        public static global::System.IDisposable RegisterStatic({Bus} bus)\n        {{\n");
         s.Append("            var made = new Batch();\n            try {\n");
         foreach (var f in good.Where(x => x.Static))
-            s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, f.TypeName)})));\n");
+            s.Append($"                {If(f, f.TypeName)}made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, f.TypeName)})));\n");
         s.Append("            } catch { made.Dispose(); throw; }\n            return made;\n        }\n");
         foreach (var g in good.Where(x => !x.Static).GroupBy(x => x.TypeName).OrderBy(x => x.Key, StringComparer.Ordinal)) {
             string shortName = g.First().TypeShort;
@@ -257,7 +286,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
             s.Append($"        public static global::System.IDisposable RegisterCommands(this {Bus} bus, {g.Key} owner)\n        {{\n");
             s.Append("            if (owner == null) throw new global::System.ArgumentNullException(nameof(owner));\n");
             s.Append("            var made = new Batch();\n            try {\n");
-            foreach (var f in g) s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, "owner")})));\n");
+            foreach (var f in g) s.Append($"                {If(f, "owner")}made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, "owner")})));\n");
             s.Append("            } catch { made.Dispose(); throw; }\n            return made;\n        }\n");
         }
         s.Append("\n        sealed partial class Batch : global::System.IDisposable\n        {\n");

@@ -19,6 +19,9 @@ namespace Mantle.Core.Tests.Look;
 /// </summary>
 public class LookSyncContractTests
 {
+    readonly Xunit.Abstractions.ITestOutputHelper? _out;
+    public LookSyncContractTests(Xunit.Abstractions.ITestOutputHelper output) { _out = output; }
+
     const string LocalJson = "{\"theme\":\"light\",\"accent\":{\"hue\":30},\"glass\":{\"dark\":{\"blurPx\":8,\"dim\":0.6,\"panel\":-0.1},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}";
 
     // FAST: debounceMs 30, corruptRetryMs 60, rewatchDelays [100, 200, 400], retryDelays [5, 10, 20]
@@ -365,25 +368,34 @@ public class LookSyncContractTests
                 await Task.Delay(2);
             }
         });
-        async Task<(int Ok, int Fail, List<string> Codes)> Race(string app)
+        async Task<(string App, int Ok, int Fail, List<string> Codes, List<string> Where)> Race(string app)
         {
             using var s = new LookSync(new LookSyncOptions { App = app, Dir = d, Files = new SafeFile(WriteGate.Scratch(d)) });
-            int ok = 0, fail = 0; var codes = new List<string>();
+            int ok = 0, fail = 0; var codes = new List<string>(); var where = new List<string>();
             for (int i = 0; i < 40; i++) {
                 var r = await s.PublishAsync("accent", V("{\"hue\":" + i + "}"));
-                if (r.Ok) ok++; else { fail++; codes.Add(r.Code ?? r.Reason ?? "?"); }
+                if (r.Ok) ok++;
+                else {
+                    fail++; codes.Add(r.Code ?? r.Reason ?? "?");
+                    where.Add(((r.Reason ?? "").StartsWith("Can't read", StringComparison.Ordinal) ? "read " : "write ") + (r.Code ?? r.Reason ?? "?"));
+                }
             }
-            return (ok, fail, codes);
+            return (app, ok, fail, codes, where);
         }
         var outs = await Task.WhenAll(Task.Run(() => Race("helm")), Task.Run(() => Race("quartz")));
         Volatile.Write(ref done, true); await reader;
+        // the JS test's "# race:" line: each writer's landed / failed writes and where each failure came from
+        string said = string.Join("; ", outs.Select(o => $"{o.App} ok {o.Ok} fail {o.Fail}" +
+            (o.Where.Count == 0 ? "" : " (" + string.Join(", ", o.Where.GroupBy(x => x).OrderBy(g => g.Key, StringComparer.Ordinal).Select(g => g.Key + " x" + g.Count())) + ")")))
+            + $"; reader ok {reads} torn {torn}";
+        _out?.WriteLine("# race: " + said);
         foreach (var o in outs) {
             Assert.Equal(40, o.Ok + o.Fail);
             foreach (var c in o.Codes) Assert.Matches("^E[A-Z]+$", c);   // reported with its code, never thrown, never torn
         }
         int total = outs.Sum(o => o.Ok);
-        Assert.True(total >= 70, "writes landed: " + total + "/80");
-        Assert.Equal(0, torn);
+        Assert.True(total >= 70, "writes landed: " + total + "/80 (" + said + ")");
+        Assert.True(torn == 0, "a reader saw a torn file (" + said + ")");
         var final = LookSyncCore.Read(d);
         Assert.Equal("ok", final.State);
         Assert.True(final.Doc!["rev"]!.GetValue<double>() >= 2);

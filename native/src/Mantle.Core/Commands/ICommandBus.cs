@@ -37,6 +37,12 @@ public sealed class CommandAttribute : Attribute
 
     /// The Electron name, unchanged: <c>area.verb</c> (a feature's commands are <c>&lt;feature&gt;.&lt;verb&gt;</c>).
     public string Name { get; }
+
+    /// Optional: the name of a <c>bool</c> property or field on the same type (static for a static handler,
+    /// instance for an instance one). The generated registration registers the command only when it reads
+    /// true at that moment, the way main.js adds a command inside <c>if (flags.test) { ... }</c>
+    /// (<c>features.fire</c>). A name that is missing or not a bool is a build error (MANTLE003).
+    public string? When { get; set; }
 }
 
 /// <summary>One call as its handler sees it.</summary>

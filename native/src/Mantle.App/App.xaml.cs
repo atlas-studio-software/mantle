@@ -157,9 +157,8 @@ public partial class MantleApp : Application
             Flags = new FeatureFlags(test, live), Platform = _platform, Commands = _bus, Events = _events, Stores = _stores,
             State = _hub, Log = log, Clock = clock,
         });
-        // TODO(feature-host): FeatureCommands.ListJson calls JsonArray.Add<JsonObject> (IL2026/IL3050 under Native AOT);
-        // once it adds a (JsonNode) cast, wire it here as Catalogs.Register(_bus, new FeatureCommands(_features)) (generated),
-        // never FeatureCommands.Register as well, or the bus refuses the duplicate.
+        // features.list always; features.fire only in a --test run (its [Command] When = TestRun), both generated
+        _offs.Add(Catalogs.Register(_bus, new FeatureCommands(_features)));
         _offs.Add(Catalogs.Register(_bus, new HostCommands(_hub, RestoreAsync, why => Quit(why, 0), () => { _platform.Retry(); return "asked the sidecar to start again"; })));
         _offs.Add(Catalogs.RegisterStatic(_bus));
         FeatureSeam.Start(_hub, () => _features.Load(Catalogs.Features), log);

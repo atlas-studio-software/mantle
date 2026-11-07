@@ -14,7 +14,7 @@ namespace Mantle.Core.Features;
 /// The host's own <c>features.*</c> commands (main.js startFeatures): <c>features.list</c> for Mantle Settings,
 /// and in a --test run only <c>features.fire {chord} | {key}</c>, which drives a feature's chord or observed key
 /// as if the hook had seen it (a test run registers no real keys). The answers are written by hand (no
-/// reflection: Native AOT).
+/// reflection: Native AOT). Registered only through the generated catalog: <c>Catalogs.Register(bus, commands)</c>.
 /// </summary>
 public sealed class FeatureCommands
 {
@@ -25,7 +25,11 @@ public sealed class FeatureCommands
     [Command("features.list")]
     public ValueTask<CommandResult> List(CommandCall call) => new(CommandResult.Success(ListJson(_host.List())));
 
-    [Command("features.fire")]
+    /// True in a --test run: <c>features.fire</c> is registered only then (main.js adds it inside
+    /// <c>if (flags.test)</c>), and it refuses in words if a live run ever calls it anyway.
+    public bool TestRun => _host.Flags.Test;
+
+    [Command("features.fire", When = nameof(TestRun))]
     public ValueTask<CommandResult> Fire(CommandCall call)
     {
         if (!_host.Flags.Test) return new(CommandResult.Fail("features.fire works only in a test run (a live run uses the real keys)"));
@@ -37,27 +41,11 @@ public sealed class FeatureCommands
         return new(CommandResult.Success(DeliveryJson(d)));
     }
 
-    /// <summary>Register by hand (until Mantle.Generators emits the registration from the [Command] marks; then
-    /// this goes, or the generated one is refused as a duplicate, named). features.fire only in a test run.</summary>
-    public IDisposable Register(ICommandBus bus)
-    {
-        var offs = new List<IDisposable> { bus.Register(new CommandRegistration("features.list", Owner, List)) };
-        if (_host.Flags.Test) offs.Add(bus.Register(new CommandRegistration("features.fire", Owner, Fire)));
-        return new Offs(offs);
-    }
-
-    sealed class Offs : IDisposable
-    {
-        List<IDisposable>? _l;
-        public Offs(List<IDisposable> l) { _l = l; }
-        public void Dispose() { var l = _l; _l = null; if (l != null) foreach (var x in l) x.Dispose(); }
-    }
-
     /// <summary>features.list's answer, the shape lib/features.js list() returns (Mantle Settings reads it).</summary>
     public static JsonElement ListJson(IReadOnlyList<FeatureInfo> list)
     {
         var arr = new JsonArray();
-        foreach (var f in list) arr.Add(InfoNode(f));
+        foreach (var f in list) arr.Add((JsonNode)InfoNode(f));   // Add(JsonNode), not Add<T>: Add<T> needs reflection (IL2026/IL3050)
         return JsonDocument.Parse(arr.ToJsonString()).RootElement.Clone();
     }
 
