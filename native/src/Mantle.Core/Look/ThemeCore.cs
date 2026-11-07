@@ -163,12 +163,23 @@ public sealed class ThemeCore
         public void Dispose() { _a?.Invoke(); _a = null; }
     }
 
+    /// The key Windows keeps the app mode in (under HKCU), and the value nativeTheme follows.
+    public const string PersonalizeKey = @"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize";
+    public const string AppsUseLightTheme = "AppsUseLightTheme";
+
     /// <summary>Windows' app mode from HKCU\...\Themes\Personalize AppsUseLightTheme (what nativeTheme follows).</summary>
     [SupportedOSPlatform("windows")]
-    public static WindowsMode ReadWindowsMode()
+    public static WindowsMode ReadWindowsMode() => ReadWindowsMode(() => {
+        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(PersonalizeKey);
+        return k?.GetValue(AppsUseLightTheme);
+    });
+
+    /// <summary>The app mode from the registry value <paramref name="readValue"/> answers (tests fake it): a DWORD 0 is dark,
+    /// any other DWORD light; no value (or not a DWORD) is Windows' default, light apps. A read that throws is the caller's
+    /// to report (ThemeCore says "Windows' mode could not be read (...)").</summary>
+    public static WindowsMode ReadWindowsMode(Func<object?> readValue)
     {
-        using var k = Microsoft.Win32.Registry.CurrentUser.OpenSubKey(@"Software\Microsoft\Windows\CurrentVersion\Themes\Personalize");
-        object? v = k?.GetValue("AppsUseLightTheme");
+        object? v = readValue();
         if (v is int i) return new WindowsMode(i == 0 ? "dark" : "light", null);
         return new WindowsMode("light", null);   // no value = Windows' default, light apps
     }

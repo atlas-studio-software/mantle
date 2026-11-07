@@ -18,7 +18,8 @@ public sealed class SafeFile
 
     public SafeFile(WriteGate gate) => Gate = gate ?? throw new ArgumentNullException(nameof(gate));
 
-    static string Code(Exception e) => e switch {
+    /// Node's error code for an exception (ENOENT, EPERM, EBUSY, ...), for messages that must read like Electron's.
+    internal static string Code(Exception e) => e switch {
         FileNotFoundException => "ENOENT",
         DirectoryNotFoundException => "ENOENT",
         UnauthorizedAccessException => "EPERM",
@@ -73,6 +74,17 @@ public sealed class SafeFile
         string? no = Gate.Refusal(path) ?? Gate.Refusal(aside);
         if (no != null) return no;
         try { File.Move(path, aside, overwrite: false); return null; }
+        catch (Exception e) { return Code(e); }
+    }
+
+    /// <summary>Make a folder (and its parents) when it is missing: the look-sync folder before it is watched
+    /// (look-sync.js <c>mkdirSync(dir, {recursive: true})</c>). An existing folder is success and asks nothing.</summary>
+    public string? EnsureFolder(string dir)
+    {
+        if (Directory.Exists(dir)) return null;
+        string? no = Gate.Refusal(dir);
+        if (no != null) return no;
+        try { Directory.CreateDirectory(dir); return null; }
         catch (Exception e) { return Code(e); }
     }
 

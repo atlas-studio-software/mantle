@@ -1,5 +1,7 @@
 using System;
 using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using Mantle.Core.State;
 
 namespace Mantle.Core.Keys;
@@ -42,6 +44,33 @@ public static class ShellShortcuts
         return new ShortcutsPiece(kill, launcher, problems.Count > 0
             ? string.Join("; ", problems)
             : $"{KillSwitch} puts Windows back, {Launcher} opens the launcher");
+    }
+
+    /// <summary>
+    /// main.js's kill switch handler, as one action: stand the supervisor down FIRST (a crash during the
+    /// restore must not bring Mantle back), run the verified restore, then quit whatever the restore did.
+    /// A second press while the road runs does nothing new. Every step that fails is logged and the next
+    /// one still runs: the kill switch is the way out, so it never stops half way.
+    /// </summary>
+    public static Action KillSwitchRoad(Action<string> standDown, Func<string, Task> restore, Action<string> shutdown, Action<string>? log = null)
+    {
+        const string Why = "the kill switch";
+        var running = 0;
+        return () =>
+        {
+            if (Interlocked.Exchange(ref running, 1) == 1) { log?.Invoke($"{KillSwitch}: already putting Windows back"); return; }
+            log?.Invoke($"{KillSwitch}: standing the supervisor down, putting Windows back, then quitting");
+            try { standDown(Why); } catch (Exception e) { log?.Invoke($"{KillSwitch}: the supervisor did not stand down ({e.Message}); putting Windows back anyway"); }
+            Task t;
+            try { t = restore(Why) ?? Task.CompletedTask; }
+            catch (Exception e) { t = Task.FromException(e); }
+            t.ContinueWith(r =>
+            {
+                if (r.IsFaulted) log?.Invoke($"{KillSwitch}: the restore failed ({r.Exception?.GetBaseException().Message}); quitting anyway");
+                try { shutdown(Why); } catch (Exception e) { log?.Invoke($"{KillSwitch}: the quit threw ({e.Message})"); }
+            }, CancellationToken.None, TaskContinuationOptions.None,
+               SynchronizationContext.Current != null ? TaskScheduler.FromCurrentSynchronizationContext() : TaskScheduler.Default);
+        };
     }
 
     /// The tray icon could not be made: the shortcuts' reason says so too (the keyboard is the other way out).
