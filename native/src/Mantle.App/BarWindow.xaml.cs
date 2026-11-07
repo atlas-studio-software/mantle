@@ -16,6 +16,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Markup;
@@ -102,6 +103,7 @@ public sealed partial class BarWindow : Window
     string _frameState = "not set";
     Backdrop.Shot? _shot;
     double _blurNow = -1;
+    readonly Surfaces.Bar.Frame.Chips _chips = new();
 
     internal BarWindow()
     {
@@ -202,6 +204,11 @@ public sealed partial class BarWindow : Window
         Host.Log.Line("frame: after show: " + _frameState);
         _list.Start();
         Shell.Windowing.TopmostProbe.Start(_hwnd, DispatcherQueue);   // CI only (MANTLE_TEST_TOPMOST_PROBE)
+        System.Threading.Tasks.Task.Run(() =>
+        {
+            var n = Surfaces.Bar.Frame.Chips.NotificationAccess();   // a WinRT call: off the UI thread
+            DispatcherQueue.TryEnqueue(() => { if (n != null) _chips.Fail(n.Key, n.Label, n.Reason, n.Tone); RenderPip(); });
+        });
         Tick();
     }
 
@@ -239,6 +246,30 @@ public sealed partial class BarWindow : Window
         }
         _blurNow = blur;
         Host.Log.Line($"backdrop: {_backdropState}; {( _dark ? "dark" : "light")} blur {blur.ToString(CultureInfo.InvariantCulture)} px");
+    }
+
+    // ------------------------------------------------------------------ the pip on "more" (bar.js renderChips)
+    void RenderPip(bool force = false)
+    {
+        var p = _chips.Pip(null);   // the shell state reaches the bar when it becomes a surface (native-core)
+        if (p == null && !force) return;
+        var (shown, warn, tip) = p ?? _pipNow;
+        _pipNow = (shown, warn, tip);
+        MorePip.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
+        MorePipDot.Fill = (Brush)(warn ? TokenOr("LgWarn", "LgInk2") : ThemeToken("LgInk2"));
+        MorePipRing.Fill = (Brush)TokenOr("LgFillStrong", "LgPaneFill");
+        ToolTipService.SetToolTip(MoreBtn, shown ? tip : "More");
+        AutomationProperties.SetHelpText(MorePip, shown ? (warn ? "warn: " : "") + tip : "");
+        Host.Log.Line(shown ? $"more pip: {(warn ? "warn" : "plain")} ({tip.Replace('
+', ';')})" : "more pip: none");
+    }
+    (bool, bool, string) _pipNow = (false, false, "");
+
+    /// A token that may not be in Tokens.xaml yet: the stand-in is said in the log, never silent.
+    object TokenOr(string key, string standIn)
+    {
+        try { return ThemeToken(key); }
+        catch (InvalidOperationException) { Host.Log.Line($"look: Tokens.xaml has no {key} yet; the bar uses {standIn} for it"); return ThemeToken(standIn); }
     }
 
     /// A token from Tokens.xaml for the theme the bar shows now (code cannot use {ThemeResource}).
@@ -304,6 +335,7 @@ public sealed partial class BarWindow : Window
         if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
         else AddShadow();
         RenderGlass();
+        RenderPip(force: true);
         Host.Log.Line($"look: theme.json says {ThemeSettings.Word(Host.Data.Theme.Value.Mode)}; the bar now shows {(dark ? "dark" : "light")}");
     }
 

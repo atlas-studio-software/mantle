@@ -24,6 +24,19 @@ internal static class ZOrder
         return false;
     }
 
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+
+    /// A real click (injected input) at a screen point: the user working in another app, as the spike's
+    /// popup check did before a popup came up NOT topmost (runs 4-5).
+    public static void Click(int x, int y)
+    {
+        SetCursorPos(x, y);
+        var inp = new INPUT[2];
+        inp[0].type = 0; inp[0].u.mi = new MOUSEINPUT { flags = 0x0002 /* LEFTDOWN */ };
+        inp[1].type = 0; inp[1].u.mi = new MOUSEINPUT { flags = 0x0004 /* LEFTUP */ };
+        SendInput(2, inp, Marshal.SizeOf<INPUT>());
+    }
+
     public static bool IsTopmost(IntPtr h) => (GetWindowLongPtr(h, -20).ToInt64() & 0x8) != 0;
 
     /// Give `h` the foreground from the test process: an injected Alt tap makes this process the last
@@ -63,6 +76,10 @@ public sealed class TopmostTests
         string ready = File.ReadAllText(Path.Combine(dir, "ready.txt"));
         using var fx = new Host.Fixture("Mantle topmost fixture", 600, 300);
         Assert.IsTrue(ZOrder.Foreground(fx.Hwnd), "the fixture could not take the foreground, so the probe would prove nothing");
+        // then the user clicks in it and types (the case of a timer or notification pop-up in Mantle)
+        ZOrder.Click(600 + 210, 300 + 160);
+        Thread.Sleep(300);
+        Assert.AreEqual(fx.Hwnd, Win32.GetForegroundWindow(), "the click did not leave the fixture in front");
         bool barTop = ZOrder.IsTopmost(app.Hwnd), barAbove = ZOrder.IsAbove(app.Hwnd, fx.Hwnd);
         File.WriteAllText(Path.Combine(dir, "go.txt"), "600,300");
         Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "result.json")), 15000), "the probe never wrote result.json");
