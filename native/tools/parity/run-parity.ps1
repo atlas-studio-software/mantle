@@ -13,7 +13,8 @@
 # same, red = different, blue = masked), *-full.png (whole screen), electron.json / native ready.json,
 # score.json; and <Out>/parity.json for all. The crop is the pill's spec rect (min(1120, screen - 28) DIP
 # wide, 48 tall, 14 above the bottom edge, centred) plus -Margin px on each side, so a misplaced pill
-# shows up as a difference instead of being cropped away. Masked: each app's clock (its seconds tick).
+# shows up as a difference instead of being cropped away. Masked: the clock slot (its seconds tick) and,
+# by default, the running-apps slot (see the masks below).
 # Last line: PARITY: ok (...) or PARITY: FAILED (...). The thresholds are provisional (see README.md).
 param(
   [ValidateSet('light', 'dark', 'both')] [string]$Theme = 'both',
@@ -23,6 +24,7 @@ param(
   [double]$MaxDiffPct = 25,
   [int]$PixelThreshold = 24,
   [int]$Margin = 24,
+  [bool]$MaskApps = $true,
   [string]$Exe
 )
 $ErrorActionPreference = 'Stop'
@@ -105,6 +107,12 @@ $pillX = [int](($W - $pw) / 2); $pillY = [int]($H - (14 + 48) * $scale); $pillH 
 $cx = [Math]::Max(0, $pillX - $Margin); $cy = [Math]::Max(0, $pillY - $Margin)
 $cr = [Math]::Min($W, $pillX + $pw + $Margin); $cb = [Math]::Min($H, $pillY + $pillH + $Margin)
 $crop = @{ x = $cx; y = $cy; w = $cr - $cx; h = $cb - $cy }
+# Masks in screen px. The clock slot sits 175..85 px left of the pill's right end in both apps (measured on
+# the runner, 2026-11-07); its seconds always differ between two captures. The apps slot is the centre of
+# the pill: Electron's --test bar listed NO running apps on the runner while the native bar listed them, so
+# that area is masked (-MaskApps $false compares it) until the Electron side shows the same set.
+$clockSlot = @(($pillX + $pw - 175), $pillY, 90, $pillH)
+$appsSlot = @(($pillX + [int]($pw / 2) - 220), $pillY, 440, $pillH)
 Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw, $pillH, $crop.x, $crop.y, $crop.w, $crop.h)
 
 function Wait-Still([string]$tag) {
@@ -146,7 +154,8 @@ $themes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
 foreach ($t in $themes) {
   $dir = Join-Path $Out $t; New-Item -ItemType Directory -Force -Path $dir | Out-Null
   Set-WinTheme $t; Start-Sleep -Seconds 2
-  $r = [ordered]@{ theme = $t; crop = $crop; masks = @() }
+  $r = [ordered]@{ theme = $t; crop = $crop; masks = @(, $clockSlot) }
+  if ($MaskApps) { $r.masks += , $appsSlot }
   $ePx = $null; $nPx = $null
 
   # Electron Mantle (--test instance, made visible)
@@ -162,7 +171,6 @@ foreach ($t in $themes) {
     $r.electronMotion = Wait-Still "electron $t"
     $ePx = Shoot $dir 'electron'
     $r.electron = $e
-    if ($e.clockDip) { $d = [double]$e.dpr; $r.masks += , @([int]($e.clockDip[0] * $d), [int]($e.clockDip[1] * $d), [int]($e.clockDip[2] * $d), [int]($e.clockDip[3] * $d)) }
     Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
     $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
     [void]$q.WaitForExit(20000)
@@ -187,7 +195,7 @@ foreach ($t in $themes) {
     $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
     $nc = Native-ClockRect $np.Id
     if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
-    else { Say "native ${t}: no bar.clock through UI Automation; masking the Electron clock rect, widened" ; if ($r.masks.Count) { $m0 = $r.masks[0]; $r.masks += , @(($m0[0] - 16), ($m0[1] - 4), ($m0[2] + 32), ($m0[3] + 8)) } }
+    else { Say "native ${t}: no bar.clock through UI Automation; the clock slot mask alone covers it" }
   } else {
     Problem ("native {0}: no ready.json in 45 s (exited: {1})" -f $t, $np.HasExited)
   }
