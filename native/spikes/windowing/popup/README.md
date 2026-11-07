@@ -111,8 +111,8 @@ about 1 frame).
 
 | path | first pixels median / p95 | app's own view | user rule |
 |---|---|---|---|
-| cold: new process -> popup | 316 / 333 ms | process start -> OnLaunched ~145 ms, -> first Rendering ~250 ms (run 2-5) | <= 1 s: **meets** |
-| warm process, NEW Window | 79 / 110 ms (the process's first window 203 ms) | command -> Rendering ~34 ms; `new Window` ~17 ms | <= 100 ms p95: **misses** (runs 2-6: p95 108-126 ms; median meets) |
+| cold: new process -> popup | 316 / 333 ms (runs 2-7: p95 333-412 ms) | process start -> OnLaunched ~145 ms, -> first Rendering ~250 ms (run 2-5) | <= 1 s: **meets** |
+| warm process, NEW Window | 79 / 110 ms (the process's first window 203 ms) | command -> Rendering ~34 ms; `new Window` ~17 ms | <= 100 ms p95: **borderline** (p95 95-126 ms over runs 2-7, met only in run 7; median ~80 ms meets) |
 | parked, AppWindow.Hide / Show(false) | 47 / 63 ms | | meets |
 | parked, ShowWindow SW_HIDE / SW_SHOWNOACTIVATE | 47 / 63 ms | | meets |
 | parked, moved to -32000 and back | 47 / 63 ms | | meets |
@@ -128,7 +128,7 @@ of a core); idle with no window: 0 ms in 10 s; each park mode: 0 ms in 10 s. Hid
 
 **Decision:** no keep-ready process work is needed beyond the process being alive (cold is ~0.33 s,
 inside 1 s, and the bar keeps the process alive anyway). A new window per open is ~80 ms median but
-110-126 ms p95, so it misses the 100 ms p95 rule. For a popup that must feel instant (the launcher,
+95-126 ms p95 over six runs (only one under 100), so it does not reliably meet the 100 ms p95 rule. For a popup that must feel instant (the launcher,
 the bar's menus) keep ONE parked window per kind: 58-63 ms p95, ~1 MB each, 0 CPU. Everything else
 opens a new window on demand (RAM first). Park with `DWMWA_CLOAK` (fastest, keeps place and size)
 or `AppWindow.Hide`. A parked window created while the process had the foreground keeps its topmost
