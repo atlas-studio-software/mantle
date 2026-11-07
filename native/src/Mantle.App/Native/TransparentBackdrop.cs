@@ -11,7 +11,7 @@ using Microsoft.UI.Xaml.Media;
 
 namespace Mantle.App.Native;
 
-internal sealed class TransparentBackdrop : SystemBackdrop
+internal sealed partial class TransparentBackdrop : SystemBackdrop
 {
     static Windows.UI.Composition.Compositor? s_compositor;
     static IntPtr s_dqController;   // kept for the life of the process
