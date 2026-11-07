@@ -94,9 +94,15 @@ public class StripTests
         return lum.Count(v => Math.Abs(v - median) > 30);
     }
 
+    static DateTime _lastClick = DateTime.MinValue;
+
+    /// A click at the cell's centre; never within 700 ms of the last one, so two clicks on one cell are never a double-click.
     static void Click(Cell c, MouseButton button = MouseButton.Left)
     {
+        var wait = TimeSpan.FromMilliseconds(700) - (DateTime.UtcNow - _lastClick);
+        if (wait > TimeSpan.Zero) Thread.Sleep(wait);
         Mouse.Click(new Point(c.Rect.X + c.Rect.Width / 2, c.Rect.Y + c.Rect.Height / 2), button);
+        _lastClick = DateTime.UtcNow;
         Thread.Sleep(400);
     }
 
@@ -165,13 +171,17 @@ public class StripTests
         Assert.IsTrue(onAlpha >= 8, $"no running line drawn under the open pin ({onAlpha} px off the band's median; Beta Map {onBeta}); cells: {Describe(cs)}");
         Assert.IsTrue(onBeta <= 3, $"a line is drawn under a pin that is not running ({onBeta} px; the open pin {onAlpha})");
 
-        // the active line follows the window in front: click the running-only app, then the pin
+        // the active line follows the window in front. B opened last, so it may be in front, and a click on the app in
+        // front minimises it: bring A forward first, then B, then A again
+        void Front(Host.Fixture f, Host.Fixture other, string what) => Assert.IsTrue(Host.Until(() => {
+            cs = Cells(app);
+            return Win32.GetForegroundWindow() == f.Hwnd && Named(cs, f.Title) is { Active: true } && Named(cs, other.Title) is { Active: false };
+        }, 6000, 200), $"{what}: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
+        if (Win32.GetForegroundWindow() != a.Hwnd) { Click(Named(cs, a.Title)!); Front(a, b, "after a click on the pin its window is not the active one"); }
         Click(Named(cs, b.Title)!);
-        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, b.Title) is { Active: true } && Named(cs, a.Title) is { Active: false }; }, 6000, 200),
-            $"after a click on the running-only app it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
+        Front(b, a, "after a click on the running-only app its window is not the active one");
         Click(Named(cs, a.Title)!);
-        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, a.Title) is { Active: true } && Named(cs, b.Title) is { Active: false }; }, 6000, 200),
-            $"after a click on the pin it is not the active one: {Describe(cs)} (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
+        Front(a, b, "after a click on the pin its window is not the active one");
         Thread.Sleep(600);
         cs = Cells(app);
         int active = LinePixels(Named(cs, a.Title)!);
@@ -214,16 +224,16 @@ public class StripTests
         Cell Alpha() { cs = Cells(app); return Named(cs, a.Title) ?? throw new AssertFailedException($"Alpha Shell's cell is gone: {Describe(cs)}"); }
         if (Fg()) {
             Click(Alpha());
-            Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "a click on the pin of the window in front did not minimise it");
+            Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"a click on the pin of the window in front did not minimise it; the app's click lines: {ClickLines(profile)}");
         }
         Click(Alpha());
         Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a click did not bring the pinned app's window to the front (foreground: {Win32.Title(Win32.GetForegroundWindow())}); the app's click lines: {ClickLines(profile)}");
         Assert.IsTrue(Host.Until(() => Alpha().Active, 4000), $"the focused pin is not the active one: {Describe(cs)}");
         Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "a second click on the pin of the window in front did not minimise it");
+        Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), $"a second click on the pin of the window in front did not minimise it; the app's click lines: {ClickLines(profile)}");
         Assert.IsTrue(Host.Until(() => !Alpha().Active && Alpha().Open, 4000), $"a minimised window still shows the active line, or lost its running line: {Describe(cs)}");
         Click(Alpha());
-        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), "a third click did not restore the minimised window to the front");
+        Assert.IsTrue(Host.Until(() => Fg() && !Win32.IsIconic(a.Hwnd), 4000), $"a third click did not restore the minimised window to the front; the app's click lines: {ClickLines(profile)}");
 
         // middle-click: another copy, from the pin's shortcut, never the window already open (BAR-200)
         at = LogLength(profile);

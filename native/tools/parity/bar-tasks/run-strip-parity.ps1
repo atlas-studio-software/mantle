@@ -72,6 +72,10 @@ $env:APPDATA = $appData
 $env:MANTLE_TEST_PINS_DIR = $pinsDir
 $code = 1
 try {
+  # the desktop as ci.ps1 leaves it before a GUI stage: the runner's own console windows minimised, so the strip's
+  # running-only apps (and which window is in front) are the same for both captures
+  $desk = Join-Path $root 'native\tools\desk\desk.ps1'
+  if (Test-Path $desk) { & $desk -Reset -Tag strip-parity }
   & (Join-Path $root 'native\tools\parity\run-parity.ps1') -Theme $Theme -Scales $Scales -Out $Out -MaskApps $false
   $code = $LASTEXITCODE
 } finally {
