@@ -56,6 +56,9 @@ async function run() {
       w: 1280, h: 560, settle: 900, init: COUNT + DARK });
     t.check('the page has MantlePic (ui/shared/pic-url.js loaded under the CSP)', await pg.eval(() => !!window.MantlePic));
 
+    // up, as main would have it, and past the mock's own six strips after a reveal (250 ms apart)
+    await pg.eval(() => window.__mockMain.reveal('pics test: up'));
+    await settle(pg, 2600);
     // ---- the backdrop strip: a new picture each reveal
     const strips = [];
     for (let i = 0; i < 4; i++) {
@@ -130,7 +133,8 @@ async function run() {
     t.check('Up next drawn again: every cover decoded', covers2.length > 0 && covers2.every(Boolean));
     t.check('the cache stays within its limits', s1.cached <= 160 && s1.heldBytes <= 3 * 1048576, s1);
     hd = await held();
-    t.check('every blob: URL still held is one the cache holds (none leaked by a one-off picture)', hd.live === hd.cached, hd);
+    hd.glass = await pg.eval(() => (document.getElementById('pop').classList.contains('bd') ? 1 : 0));   // the open pop-up's baked glass is held while it shows
+    t.check('every blob: URL still held is the cache or the open pop-up glass (none leaked by a one-off picture)', hd.live === hd.cached + hd.glass, hd);
     await pg.click('#mchip', { wait: 350 });
 
     // the chip's artwork: a new song is a new picture through the cache; the same song again is a hit
