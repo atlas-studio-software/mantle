@@ -39,7 +39,7 @@ internal sealed class PopupHost
     PopupKind? _kind;
     St _st = St.Hidden;
     int _seq;
-    string? _outsideKey; long _outsideAt;
+    string? _outsideKey; long _outsideAt; Win32.POINT _outsidePt;
     IntPtr _fgAtOpen, _fgHook;
     Win32.WinEventProc? _fgProc;
 
@@ -58,7 +58,7 @@ internal sealed class PopupHost
     public void Toggle(PopupKind kind, FrameworkElement anchor)
     {
         if (_st != St.Hidden && _kind?.Key == kind.Key) { Close("its button was clicked again"); return; }
-        if (_st == St.Hidden && _outsideKey == kind.Key && Environment.TickCount64 - _outsideAt < SameClickMs) {
+        if (_st == St.Hidden && _outsideKey == kind.Key && Environment.TickCount64 - _outsideAt < SameClickMs && OnAnchor(anchor, _outsidePt)) {
             Host.Log.Line($"pop-up {kind.Name}: not reopened (the click that closed it from outside was this same click)");
             _outsideKey = null;
             return;
@@ -111,6 +111,17 @@ internal sealed class PopupHost
         Host.Log.Line($"pop-up {k.Name}: shown at {FrameNative.Rect(w.Rect)}");
     }
 
+    /// The outside-click close and this toggle were one click only if that click landed on the anchor itself.
+    bool OnAnchor(FrameworkElement anchor, Win32.POINT pt)
+    {
+        try {
+            var g = _bar.Geometry; double s = g.Scale;
+            var p = anchor.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0));
+            int x = g.Window.Left + (int)Math.Round(p.X * s), y = g.Window.Top + (int)Math.Round(p.Y * s);
+            return pt.X >= x && pt.X < x + anchor.ActualWidth * s && pt.Y >= y && pt.Y < y + anchor.ActualHeight * s;
+        } catch (ArgumentException) { return false; }
+    }
+
     /// Placement (BAR-379, BAR-380): centred on its anchor, clamped 8 DIP inside the bar window, 7 DIP above the pill.
     Win32.RECT Place(PopupKind k, FrameworkElement anchor)
     {
@@ -152,7 +163,7 @@ internal sealed class PopupHost
         if (_st == St.Hidden || _win == null) return;
         if (FrameNative.Contains(_win.Rect, pt.X, pt.Y)) return;
         if (FrameNative.Contains(_bar.Geometry.Pill, pt.X, pt.Y)) return;   // the bar handles its own presses
-        _outsideKey = _kind?.Key; _outsideAt = Environment.TickCount64;
+        _outsideKey = _kind?.Key; _outsideAt = Environment.TickCount64; _outsidePt = pt;
         Close($"a {what} click outside");
     }
 
