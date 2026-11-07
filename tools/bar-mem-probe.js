@@ -42,7 +42,10 @@ const STEPS = 3;
 const WANT = (process.env.MEM_PROBE || 'cards,tracks,reveals,popups').split(',').map((s) => s.trim()).filter(Boolean);
 /* dark, as the user runs it (preload.js stamps <html data-theme>; the mock does not): the dark pop-up glass and
    the bar's backdrop strip run only in dark */
-const DARK = "(function () { var st = function () { if (document.documentElement) document.documentElement.setAttribute('data-theme', 'dark'); }; st(); document.addEventListener('readystatechange', st); })();";
+/* MEM_PROBE_THEME=light measures the light page (no backdrop guard, no pop-up glass); MEM_PROBE_CSS=<css> adds a
+   style (Electron mode), e.g. '.pop.bd{background-image:none!important}' to tell the glass's picture from the rest */
+const THEME = process.env.MEM_PROBE_THEME === 'light' ? 'light' : 'dark';
+const DARK = THEME === 'light' ? '' : "(function () { var st = function () { if (document.documentElement) document.documentElement.setAttribute('data-theme', 'dark'); }; st(); document.addEventListener('readystatechange', st); })();";
 const W = { w: 1400, h: 877, dsf: 1, settle: 900, init: 'window.__MOCK_CALLS__ = null;' + DARK };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 // before each checkpoint: longer than the bar's own wait before it trims its image cache (bar.js IMG_TRIM_*)
@@ -242,7 +245,7 @@ async function electronPage(query) {
     electronPage.dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-bar-mem-'));
     app.setPath('userData', path.join(electronPage.dir, 'profile'));
     await app.whenReady();
-    nativeTheme.themeSource = 'dark';
+    nativeTheme.themeSource = THEME;
     electronPage.ready = true;
   }
   const ic = preloadImageCacheSource();
@@ -259,6 +262,7 @@ async function electronPage(query) {
     if (/\[bar\] image cache/.test(String(d.message))) process.stdout.write('bar-mem: page said: ' + String(d.message).slice(0, 300) + '\n');
   });
   await win.loadFile(path.join(ROOT, 'ui', 'bar', 'index.html'), { search: query.replace(/^\?/, '') });
+  if (process.env.MEM_PROBE_CSS) await wc.insertCSS(process.env.MEM_PROBE_CSS);
   await sleep(W.settle);
   wc.debugger.attach('1.3');
   const send = (m, x) => wc.debugger.sendCommand(m, x || {});
