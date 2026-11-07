@@ -454,9 +454,9 @@ Rows: 1045   Scope: ui/bar/** (except corners.*), lib/{bar-follow,bar-intent,bar
 
 | ID | Area | Function | Electron source | Electron test | Native |
 |---|---|---|---|---|---|
-| BAR-414 | Bar / Clock | Time is "h:mm:ss AM/PM" (no leading zero on the hour, one space), hand-formatted, not locale; the date line below is the machine's locale numeric date | ui/bar/bar.js#clockText, #tick | none | todo |
+| BAR-414 | Bar / Clock | Time is "h:mm:ss AM/PM" (no leading zero on the hour, one space), hand-formatted, not locale; the date line below is the machine's locale numeric date | ui/bar/bar.js#clockText, #tick | none | tested:Mantle.UiTests/BarTests.cs#Clock_shows_the_system_time_and_date |
 | BAR-415 | Bar / Clock | Clock tooltip: the locale long date (weekday, month, day, year) then "Click: the calendar" | ui/bar/bar.js#tick | none | todo |
-| BAR-416 | Bar / Clock | The time box is sized for the longest string ("10:00:00 PM", min-width 80 px, tabular figures) so a tick never reflows the cluster | ui/bar/bar.css .clock .t | none | todo |
+| BAR-416 | Bar / Clock | The time box is sized for the longest string ("10:00:00 PM", min-width 80 px, tabular figures) so a tick never reflows the cluster | ui/bar/bar.css .clock .t | none | tested:Mantle.UiTests/BarFrame/ClusterTests.cs#Clock_time_box_is_sized_for_the_longest_time_and_never_moves |
 | BAR-417 | Bar / Clock | One chained timer: while the bar is up it fires on each second boundary (+20 ms); while hidden on the minute boundary (+250 ms); a reveal or hide repaints at once and re-aims the timer | ui/bar/bar.js#schedule, #clockGear | none | todo |
 | BAR-418 | Bar / Calendar | Left or right click on the clock toggles the calendar pop-up; every open starts on today's month | ui/bar/bar.js#buildCalPop | ui/bar/bar.page.test.js (cal: opens, opens on this month, reopening shows this month) | todo |
 | BAR-419 | Bar / Calendar | Header: big live time (same format as the bar, ticking each second only while open) and the long date | ui/bar/bar.js#paintClock | none | todo |
