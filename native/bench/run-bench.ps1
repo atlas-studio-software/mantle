@@ -50,6 +50,22 @@ function Median($xs) { $v = @($xs | Where-Object { $null -ne $_ } | Sort-Object)
 function Q([string]$p) { if ($p -match '\s') { return '"' + $p + '"' } else { return $p } }
 
 Add-Type -Path (Join-Path $bench 'BenchNative.cs')
+# The runner desktop helpers (taskbar out of the way, attention requests stopped): native/tools/desk/Desk.cs
+$deskCs = Join-Path $bench '..\tools\desk\Desk.cs'
+if ((Test-Path $deskCs) -and -not ('Desk' -as [type])) { Add-Type -Path $deskCs }
+# The runner's own taskbar must be off the bottom edge before a bar is measured or clicked: a lit taskbar
+# button (a window asking for attention) keeps an auto-hide taskbar up. Returns $null when clear, else why not.
+function Clear-Taskbar {
+  if (-not ('Desk' -as [type])) { return $null }
+  if (-not [Desk]::TaskbarShown()) { return $null }
+  [BenchNative]::TaskbarAutoHide($true); [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
+  if ([Desk]::WaitHidden(2000)) { return $null }
+  [void][Desk]::StopFlashing()
+  if ([Desk]::WaitHidden(2000)) { return $null }
+  [void][Desk]::HideTaskbar()
+  if ([Desk]::WaitHidden(1000)) { Say '  the runner taskbar stayed up: hidden outright'; return $null }
+  return "the runner's taskbar covers the bottom edge ($([Desk]::TaskbarShown() -join ','); $([Desk]::Snapshot()))"
+}
 Add-Type -AssemblyName System.Drawing
 
 # ------------------------------------------------------------------ the runner
@@ -398,6 +414,7 @@ function Prepare-Screen {
   # not the bottom edge: that un-hides Windows' own auto-hide taskbar, which would land in the captured backdrop
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Milliseconds 800
+  $tb = Clear-Taskbar; if ($tb) { Problem "before a run: $tb" }
 }
 function Wait-Ready([string]$dir, $proc, [int]$timeoutS) {
   $f = Join-Path $dir 'ready.json'; $end = (Get-Date).AddSeconds($timeoutS)
@@ -465,6 +482,8 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   $np = CellOf 'notepad'; $cm = CellOf 'charmap'
   $focus.icons = [bool]($np -and $cm -and $np.hasIcon -and $cm.hasIcon)
   if (-not $focus.icons) { Problem "$tag notepad/charmap cells missing or without their real icon (cells: $($focus.cells -join ', '))" }
+  $tbWhy = Clear-Taskbar
+  if ($tbWhy) { Problem "$tag focus checks not clicked: $tbWhy"; $np = $null }   # never click the runner's taskbar
   if ($np -and $cm) {
     # A click on the cell of the window in front minimizes it (as on Windows' taskbar), so start with the
     # one that is NOT in front: notepad, unless notepad already is. A = first, B = second.
@@ -694,6 +713,7 @@ $md | Set-Content -Path (Join-Path $Out 'summary.md') -Encoding utf8
 $md | ForEach-Object { Write-Host $_ }
 
 foreach ($f in $fixtures) { try { Stop-Process -Id $f.Id -Force -ErrorAction Stop } catch { } }
+if ('Desk' -as [type]) { [void][Desk]::CloseFolderWindows() }   # the explorer folder fixture (no pid of its own)
 $what = if ($results.modes) { 'modes: ' + (($results.modes | ForEach-Object { "$($_.mode) $($_.verdict)" }) -join '; ') } else { "$($results.runs.Count) runs: " + (($results.runs | ForEach-Object { "$($_.app) $($_.theme)" }) -join ', ') }
 if ($problems.Count -eq 0) { Write-Host "BENCH: ok ($what)"; exit 0 }
 Write-Host "BENCH: FAILED ($what; $($problems.Count) problems: $($problems -join '; '))"

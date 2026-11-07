@@ -3,19 +3,31 @@
   runner or cloudtest (it launches the app in the smoke, ui, bench and parity stages).
 
     pwsh -NoProfile -File native/tools/ci.ps1 [-Stages build,unit,smoke,ui,bench,parity,sidecar] [-Out native/out]
+                                              [-BuildMode aot|sc]
 
   Stages (default: all, in this order):
-    build    publish.ps1 -Mode sc to <Out>/bin/MantleNative, then dotnet build of native/Mantle.Native.sln
+    build    publish.ps1 -Mode <BuildMode> to <Out>/bin/MantleNative, then dotnet build of native/Mantle.Native.sln.
+             BuildMode aot (Native AOT, what ships; the default) or sc (self-contained + ReadyToRun: the
+             fallback if AOT breaks something; also env NATIVE_CI_BUILD_MODE=sc). Every later stage tests
+             that one exe.
     unit     dotnet test tests/Mantle.Core.Tests (trx in <Out>/test)
     smoke    the published exe on this desktop: ready.json, the log, the UI Automation ids
              (src/Mantle.App/AUTOMATION.md), a live theme.json change, the single-instance hand-off,
-             --quit, a quiet (--test without MANTLE_TEST_VISIBLE) window drawing nothing, and the
-             1 px frame-line measurement. Needs an interactive desktop.
+             --quit, a quiet (--test without MANTLE_TEST_VISIBLE) window drawing nothing, the
+             1 px frame-line measurement, the bar above an app window (z-order), and the five Electron
+             data files read from the synthetic profile tests/Mantle.Core.Tests/Fixtures/profile.
+             Needs an interactive desktop.
     ui       if tests/Mantle.UiTests/*.csproj exists: dotnet test it (MANTLE_NATIVE_EXE, MANTLE_TEST_VISIBLE=1)
     bench    if bench/run-bench.ps1 exists: -Mode smoke -Out <Out>/bench
     parity   if tools/parity/run-parity.ps1 exists: -Out <Out>/parity
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
   A stage whose project or script does not exist is skipped, not failed.
+
+  The runner desktop between the GUI stages (smoke, ui, bench, parity): tools/desk/desk.ps1 -Reset runs
+  before each one (leftover test apps closed, taskbar on auto-hide and out of the way, app windows
+  minimized, foreground on the desktop, cursor mid-screen) and prints DESK <stage> before/reset/after
+  lines; a watcher (desk.ps1 -Watch, log <Out>/desk-watch.log) logs every taskbar attention request and
+  taskbar move, summarized after each GUI stage as "DESK <stage> during: ...". Only on a runner (CI set).
 
   Prints "STAGE <name>: ok|FAILED|skipped (<reason>)" per stage and ends with exactly one line,
   "NATIVE-CI: ok (...)" or "NATIVE-CI: FAILED (...)". Exit code 0 / 1. Each stage's full output is
@@ -23,7 +35,8 @@
 #>
 param(
   [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'sidecar'),
-  [string]$Out = 'native/out'
+  [string]$Out = 'native/out',
+  [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -41,6 +54,7 @@ $Out = [System.IO.Path]::GetFullPath($Out)
 $logs = Join-Path $Out 'logs'
 New-Item -ItemType Directory -Force -Path $logs | Out-Null
 $exe = Join-Path $Out 'bin\MantleNative\MantleNative.exe'
+if (-not $BuildMode) { $BuildMode = if ($env:NATIVE_CI_BUILD_MODE -in 'aot', 'sc') { $env:NATIVE_CI_BUILD_MODE } else { 'aot' } }
 $env:DOTNET_NOLOGO = '1'; $env:DOTNET_CLI_TELEMETRY_OPTOUT = '1'; $env:DOTNET_SKIP_FIRST_TIME_EXPERIENCE = '1'
 
 $results = [ordered]@{}
@@ -71,17 +85,17 @@ function Trx([string]$path) {
 # ---------------------------------------------------------------------------------------------- build
 function Stage-build {
   $bin = Join-Path $Out 'bin\MantleNative'
-  $pub = Join-Path $logs 'publish-sc.txt'
-  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'publish.ps1') -Mode sc -Out $bin *> $pub
+  $pub = Join-Path $logs "publish-$BuildMode.txt"
+  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'publish.ps1') -Mode $BuildMode -Out $bin *> $pub
   $pubCode = $LASTEXITCODE
   $pubLine = (Get-Content $pub | Where-Object { $_ -like 'PUBLISH *' } | Select-Object -Last 1)
   Say ("  " + (Short $pubLine))
-  if (Test-Path "$bin.publish.log") { Move-Item -Force "$bin.publish.log" (Join-Path $logs 'publish-sc.log') }
+  if (Test-Path "$bin.publish.log") { Move-Item -Force "$bin.publish.log" (Join-Path $logs "publish-$BuildMode.log") }
   $code = Run 'build' 'dotnet' @('build', (Join-Path $native 'Mantle.Native.sln'), '-c', 'Release', '-p:Platform=x64', '-nologo', '-clp:Summary;ErrorsOnly')
   $warn = @(Select-String -Path (Join-Path $logs 'build.log') -Pattern 'warning [A-Z]+[0-9]+' -ErrorAction SilentlyContinue).Count
-  if ($pubCode -ne 0) { return "FAILED (publish sc: $(Short $pubLine))" }
+  if ($pubCode -ne 0) { return "FAILED (publish ${BuildMode}: $(Short $pubLine))" }
   if ($code -ne 0) { return "FAILED (dotnet build of Mantle.Native.sln, exit $code)" }
-  return "ok (published $(($pubLine -replace '^PUBLISH sc: ok \(', '' -replace '\)$', '')); solution built, $warn warning line(s))"
+  return "ok ($BuildMode`: published $(($pubLine -replace '^PUBLISH \w+: ok \(', '' -replace '\)$', '')); solution built, $warn warning line(s))"
 }
 
 # ---------------------------------------------------------------------------------------------- unit
@@ -163,6 +177,7 @@ function Wait-For([scriptblock]$cond, [int]$seconds) {
 
 function Stage-smoke {
   if (-not (Test-Path $exe)) { return 'FAILED (the published exe is missing; the build stage makes it)' }
+  if (-not ('Desk' -as [type])) { Add-Type -Path (Join-Path $PSScriptRoot 'desk\Desk.cs') }
   $dir = Join-Path $Out 'smoke'
   if (Test-Path $dir) { Remove-Item -Recurse -Force $dir }
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -175,6 +190,10 @@ function Stage-smoke {
   $started = New-Object System.Collections.Generic.List[System.Diagnostics.Process]
   $ud = Join-Path $dir 'profile'; $bench = Join-Path $dir 'bench'
   New-Item -ItemType Directory -Force -Path $ud, $bench | Out-Null
+  # Electron's data files, synthetic (the unit tests' fixtures): the published exe reads all five at start.
+  $fixtures = Join-Path $native 'tests\Mantle.Core.Tests\Fixtures\profile'
+  $dataFiles = @('theme.json', 'look-sync.json', 'look.json', 'features.json', 'features\jumplist.json')
+  if (Test-Path $fixtures) { Copy-Item -Recurse -Force (Join-Path $fixtures '*') $ud }
   Set-Content -Path (Join-Path $ud 'theme.json') -Value '{ "mode": "dark" }' -Encoding utf8NoBOM
   $nativeLog = Join-Path $ud 'mantle-native.log'
   $common = @('--test', '--profile-name=ci-smoke', "--user-data=`"$ud`"")
@@ -225,6 +244,13 @@ function Stage-smoke {
       foreach ($want in @('===== mantle-native start', 'mark main', 'mark first-frame', 'data: theme.json: ok', 'single instance: claimed')) {
         if ($txt -notlike "*$want*") { $fails.Add("the log has no '$want'") }
       }
+      if (Test-Path $fixtures) {
+        $read = @(Get-Content $nativeLog | Where-Object { $_ -match ' data: (theme\.json|look-sync\.json|look\.json|features\.json|features\jumplist\.json): ' })
+        $notes.Add('data files: ' + (($read | ForEach-Object { ($_ -replace '^.*? data: ', '') -replace '^(.{90}).+$', '$1...' }) -join ' | '))
+        foreach ($f in $dataFiles) {
+          if (-not ($read | Where-Object { $_ -like "* data: ${f}: ok*" })) { $fails.Add("data file $f was not read as ok from the fixture profile ($(@($read | Where-Object { $_ -like "* data: ${f}:*" })[0]))") }
+        }
+      } else { $fails.Add('the fixture profile tests/Mantle.Core.Tests/Fixtures/profile is missing') }
       $unstamped = @(Get-Content $nativeLog | Where-Object { $_ -ne '' -and $_ -notmatch '^(\d{4}-\d{2}-\d{2} )?\d{2}:\d{2}:\d{2}\.\d{3} ' })
       if ($unstamped.Count) { $fails.Add("$($unstamped.Count) log line(s) without the time stamp") }
     }
@@ -253,6 +279,17 @@ function Stage-smoke {
       for ($i = 0; $i -lt $apps.Count; $i++) { if (-not ($apps | Where-Object { $_.id -eq "bar.app.$i" })) { $fails.Add("UI Automation: bar.app.$i missing (the ids are not 0..n-1)") } }
     }
 
+    # z-order: the bar is above an ordinary app window (notepad, started before it)
+    $barH = [Desk]::WindowOf($p.Id, 'Mantle bar')
+    $npH = if ($np -and -not $np.HasExited) { [Desk]::WindowOf($np.Id, '') } else { [IntPtr]::Zero }
+    if ($barH -eq [IntPtr]::Zero) { $fails.Add('z-order: no visible top-level window titled Mantle bar') }
+    elseif ($npH -eq [IntPtr]::Zero) { $notes.Add('z-order: notepad has no window; not checked') }
+    else {
+      $above = [Desk]::IsAbove($barH, $npH)
+      $notes.Add("z-order: bar above notepad $above (bar topmost $([Desk]::IsTopmost($barH)))")
+      if (-not $above) { $fails.Add('z-order: the bar is below notepad') }
+    }
+
     # Electron's theme.json changes live (tmp + rename, as lib/theme.js writes it)
     $tj = Join-Path $ud 'theme.json'
     Set-Content -Path "$tj.tmp" -Value '{ "mode": "light" }' -Encoding utf8NoBOM
@@ -272,7 +309,10 @@ function Stage-smoke {
     $started.Add($quit)
     $quit.WaitForExit(15000) | Out-Null
     if (-not $p.WaitForExit(10000)) { $fails.Add('--quit did not close the running instance within 10 s') }
-    else { $notes.Add("--quit: closed (exit $($p.ExitCode))") }
+    else {
+      $qc = $p.ExitCode
+      $notes.Add("--quit: closed (exit $qc$(if ($qc -ne 0) { ' = 0x{0:X8}: the app crashed on the way out (App.OnSecondLaunch: Close then Exit), not a CI problem' -f $qc }))")
+    }
 
     # a quiet test window draws nothing (no MANTLE_TEST_VISIBLE)
     $env:MANTLE_TEST_VISIBLE = $null
@@ -304,7 +344,7 @@ function Stage-smoke {
     foreach ($f in @('profile\mantle-native.log', 'profile-quiet\mantle-native.log')) { $src = Join-Path $dir $f; if (Test-Path $src) { Copy-Item $src (Join-Path $logs ('smoke-' + ($f -replace '\\', '-'))) } }
   }
   if ($fails.Count) { $fails | ForEach-Object { Say ('    FAIL ' + $_) }; return "FAILED ($($fails.Count) check(s): $($fails[0]))" }
-  return 'ok (ready, log, UI Automation ids, live theme, hand-off, --quit, quiet window)'
+  return "ok ($BuildMode exe: ready, log, data files, UI Automation ids, z-order, live theme, hand-off, --quit, quiet window)"
 }
 
 # ---------------------------------------------------------------------------------------------- the optional stages
@@ -350,13 +390,45 @@ function Stage-sidecar {
   return "ok ($($proj[0].Name) built)"
 }
 
+# ---------------------------------------------------------------------------------------------- the runner desktop
+# Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
+# and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
+$guiStages = @('smoke', 'ui', 'bench', 'parity')
+$deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
+$onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
+$watchLog = Join-Path $Out 'desk-watch.log'
+$watcher = $null
+function Desk-Reset([string]$tag) {
+  if (-not $onRunner -or -not (Test-Path $deskPs)) { return }
+  $lines = @(& pwsh -NoProfile -File $deskPs -Reset -Tag $tag 2>&1 | ForEach-Object { "$_" })
+  $lines | ForEach-Object { Say ('  ' + (Short $_)) }
+}
+function Desk-During([string]$tag, [int]$from) {
+  if (-not $watcher -or -not (Test-Path $watchLog)) { return }
+  $new = @(Get-Content $watchLog | Select-Object -Skip $from)
+  $flash = @($new | Where-Object { $_ -match ' FLASH ' })
+  $shown = @($new | Where-Object { $_ -match ' taskbar shown ' })
+  $last = @($new | Where-Object { $_ -match ' taskbar (shown|hidden)' } | Select-Object -Last 1)
+  $who = @($flash | ForEach-Object { ($_ -replace '^\S+ FLASH ', '') -replace " \d+ '", " '" } | Group-Object | ForEach-Object { "$($_.Name) x$($_.Count)" })
+  Say ("  DESK $tag during: taskbar shown $($shown.Count)x" + $(if ($last) { ", ends $(($last[0] -split ' ')[2])" } else { '' }) +
+    "; $($flash.Count) attention request(s)" + $(if ($who.Count) { ': ' + ($who -join '; ') } else { '' }))
+  foreach ($l in @($new | Where-Object { $_ -match ' (FLASH|taskbar shown) ' } | Select-Object -First 6)) { Say ('    ' + (Short $l)) }
+}
+
 # ---------------------------------------------------------------------------------------------- run
-Say "native-ci: stages $($Stages -join ', '); out $(Short $Out)"
+Say "native-ci: stages $($Stages -join ', '); build mode $BuildMode; out $(Short $Out)"
+if ($onRunner -and (Test-Path $deskPs) -and @($Stages | Where-Object { $guiStages -contains $_ }).Count) {
+  Remove-Item -Force -ErrorAction SilentlyContinue $watchLog
+  $watcher = Start-Process pwsh -ArgumentList '-NoProfile', '-File', $deskPs, '-Watch', '-Log', $watchLog -PassThru -WindowStyle Hidden
+}
 $dotnetVer = (& dotnet --version 2>$null)
 Say "native-ci: dotnet SDK (from native/) $(Push-Location $native; & dotnet --version 2>$null; Pop-Location) ; default $dotnetVer"
 foreach ($s in $Stages) {
   $t0 = Get-Date
   Say "STAGE ${s}: running"
+  $gui = $guiStages -contains $s
+  if ($gui) { Desk-Reset $s }
+  $watchFrom = if ($watcher -and (Test-Path $watchLog)) { @(Get-Content $watchLog).Count } else { 0 }
   try {
     $r = switch ($s) {
       'build'   { Stage-build }
@@ -371,10 +443,12 @@ foreach ($s in $Stages) {
   } catch {
     $r = "FAILED (the stage threw: $(Short $_.Exception.Message))"
   }
+  if ($gui) { Desk-During $s $watchFrom }
   $secs = [math]::Round(((Get-Date) - $t0).TotalSeconds)
   $results[$s] = $r
   Say "STAGE ${s}: $r [${secs}s]"
 }
+if ($watcher -and -not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
 $failed = @($results.Keys | Where-Object { $results[$_] -like 'FAILED*' })
 $okN = @($results.Keys | Where-Object { $results[$_] -like 'ok*' }).Count
 $skipN = @($results.Keys | Where-Object { $results[$_] -like 'skipped*' }).Count

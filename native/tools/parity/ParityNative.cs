@@ -168,6 +168,22 @@ public static class ParityNative
         return s;
     }
 
+    /// <summary>The share (%) of pixels inside one rectangle (image pixels) whose largest channel delta is over
+    /// threshold: how much of a known gap is still there. [diffPxPct, meanAbs, pixels].</summary>
+    public static double[] RegionDiff(byte[] pa, byte[] pb, int w, int h, int rx, int ry, int rw, int rh, int threshold)
+    {
+        int over = 0, n = 0; double sum = 0;
+        for (int y = Math.Max(0, ry); y < Math.Min(h, ry + rh); y++)
+            for (int x = Math.Max(0, rx); x < Math.Min(w, rx + rw); x++)
+            {
+                int o = (y * w + x) * 4;
+                int db = Math.Abs(pa[o] - pb[o]), dg = Math.Abs(pa[o + 1] - pb[o + 1]), dr = Math.Abs(pa[o + 2] - pb[o + 2]);
+                sum += (db + dg + dr) / 3.0; n++;
+                if (Math.Max(dr, Math.Max(dg, db)) > threshold) over++;
+            }
+        return new[] { n == 0 ? 0 : 100.0 * over / n, n == 0 ? 0 : sum / n, n };
+    }
+
     static double Ssim(double[] a, double[] b, bool[] mask, int w, int h)
     {
         const int win = 8, step = 4;

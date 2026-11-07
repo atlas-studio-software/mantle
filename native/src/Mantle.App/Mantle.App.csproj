@@ -35,6 +35,14 @@
     <!-- trim/AOT analysis warnings show in every build, so a reflection-heavy pattern is seen early -->
     <EnableTrimAnalyzer>true</EnableTrimAnalyzer>
     <EnableAotAnalyzer>true</EnableAotAnalyzer>
+    <!--
+      Native AOT is what CI tests and what ships (native/tools/publish.ps1 -Mode aot; bench/README.md has the
+      numbers). Under AOT a trim or CsWinRT warning is a crash or a silent no-op at run time, so these are
+      build errors in every build, not only in the AOT publish: CsWinRT1028 = a class that implements a WinRT
+      interface (e.g. derives from a WinUI type) without `partial` (no AOT vtable: the app dies at start);
+      IL2xxx = reflection the trimmer cannot follow; IL3050/IL3051 = code that needs the JIT.
+    -->
+    <WarningsAsErrors>$(WarningsAsErrors);CsWinRT1028;CsWinRT1030;IL2026;IL2046;IL2050;IL2057;IL2059;IL2060;IL2062;IL2065;IL2067;IL2070;IL2072;IL2075;IL2077;IL2080;IL2087;IL2088;IL2090;IL2091;IL2092;IL2093;IL2094;IL2095;IL2104;IL2111;IL3050;IL3051;IL3053</WarningsAsErrors>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.WindowsAppSDK" Version="$(MantleWinAppSdkVersion)" />
