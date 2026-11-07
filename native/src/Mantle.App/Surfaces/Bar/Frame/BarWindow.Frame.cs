@@ -274,6 +274,9 @@ public sealed partial class BarWindow
     /// The down pose, set before the first frame (hover mode only).
     void PoseDown()
     {
+        // up and dock never move: Root's composition visual is left alone there (suspected cause of the light-only
+        // parity drop 0.9966 -> 0.7251 in run 42368866513: the drop shadow is the only light-only layer)
+        if (FrameMode != "hover") return;
         _vis = ElementCompositionPreview.GetElementVisual(Root);
         ElementCompositionPreview.SetIsTranslationEnabled(Root, true);
         _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarH), 0);
