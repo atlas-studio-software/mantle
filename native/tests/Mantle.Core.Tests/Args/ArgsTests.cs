@@ -81,7 +81,7 @@ public class ArgsTests
     {
         var a = P("--test-live-bar", "--testing", "--test=1", "--profile-name=x");
         Assert.True(a.Test);   // "--test=1" is the test flag (lib/args.js rule)
-        Assert.Equal(2, a.Unknown.Count);
+        Assert.Equal(new List<string> { "--testing" }, a.Unknown);   // --test-live-bar is one of Electron's --test-only switches (CORE-007)
         Assert.Equal("test", LaunchArgs.NameOf("--test"));
         Assert.Equal("test-live", LaunchArgs.NameOf("--test-live=1"));
         Assert.Null(LaunchArgs.NameOf("-t"));
