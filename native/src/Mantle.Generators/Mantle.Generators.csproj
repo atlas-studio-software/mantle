@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk" TreatAsLocalProperty="PublishAot;PublishTrimmed;PublishReadyToRun;PublishSingleFile;SelfContained;RuntimeIdentifier;WindowsAppSDKSelfContained">
   <!--
     Mantle.Generators: the source generator behind [Command], [Feature] and [Surface]
     (native/docs/contracts.md, "What the generator will emit"). It runs inside the compiler, so it
@@ -18,6 +18,15 @@
     <IsPackable>false</IsPackable>
     <!-- RS2008: release-tracking files are for analyzers shipped as packages; this one never leaves the repo -->
     <NoWarn>$(NoWarn);RS2008</NoWarn>
+    <!-- the app's publish flags (-p:PublishAot=true, -r win-x64, ...) arrive as global properties through the
+         restore graph; a compiler plug-in is never published, so they stop here (TreatAsLocalProperty above) -->
+    <PublishAot>false</PublishAot>
+    <PublishTrimmed>false</PublishTrimmed>
+    <PublishReadyToRun>false</PublishReadyToRun>
+    <PublishSingleFile>false</PublishSingleFile>
+    <SelfContained>false</SelfContained>
+    <RuntimeIdentifier></RuntimeIdentifier>
+    <WindowsAppSDKSelfContained>false</WindowsAppSDKSelfContained>
   </PropertyGroup>
   <ItemGroup>
     <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" PrivateAssets="all" />

@@ -10,7 +10,6 @@ using Mantle.Core.Lifecycle;
 using Mantle.Core.Platform;
 using Mantle.Core.Safety;
 using Mantle.Core.State;
-using Mantle.Core.Tests.Lifecycle;
 using Mantle.Core.Tests.Platform;
 using Xunit;
 
