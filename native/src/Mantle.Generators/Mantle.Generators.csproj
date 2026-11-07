@@ -1,0 +1,25 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    Mantle.Generators: the source generator behind [Command], [Feature] and [Surface]
+    (native/docs/contracts.md, "What the generator will emit"). It runs inside the compiler, so it
+    targets netstandard2.0 and is referenced as an analyzer (OutputItemType="Analyzer",
+    ReferenceOutputAssembly="false") by Mantle.Core and Mantle.App. What it writes is plain C#:
+    no reflection at run time, so Native AOT sees every handler and constructor.
+  -->
+  <PropertyGroup>
+    <TargetFramework>netstandard2.0</TargetFramework>
+    <RootNamespace>Mantle.Generators</RootNamespace>
+    <AssemblyName>Mantle.Generators</AssemblyName>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsRoslynComponent>true</IsRoslynComponent>
+    <EnforceExtendedAnalyzerRules>true</EnforceExtendedAnalyzerRules>
+    <IncludeBuildOutput>false</IncludeBuildOutput>
+    <IsPackable>false</IsPackable>
+    <!-- RS2008: release-tracking files are for analyzers shipped as packages; this one never leaves the repo -->
+    <NoWarn>$(NoWarn);RS2008</NoWarn>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.CodeAnalysis.CSharp" Version="4.11.0" PrivateAssets="all" />
+  </ItemGroup>
+</Project>

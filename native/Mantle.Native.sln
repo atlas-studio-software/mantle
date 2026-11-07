@@ -9,6 +9,8 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mantle.Core", "src\Mantle.C
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mantle.Core.Tests", "tests\Mantle.Core.Tests\Mantle.Core.Tests.csproj", "{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E03}"
 EndProject
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Mantle.Generators", "src\Mantle.Generators\Mantle.Generators.csproj", "{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E04}"
+EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
 		Debug|x64 = Debug|x64
@@ -27,6 +29,10 @@ Global
 		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E03}.Debug|x64.Build.0 = Debug|Any CPU
 		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E03}.Release|x64.ActiveCfg = Release|Any CPU
 		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E03}.Release|x64.Build.0 = Release|Any CPU
+		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E04}.Debug|x64.ActiveCfg = Debug|Any CPU
+		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E04}.Debug|x64.Build.0 = Debug|Any CPU
+		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E04}.Release|x64.ActiveCfg = Release|Any CPU
+		{8C2E4F2A-5B1D-4E7A-9C3F-1A2B3C4D5E04}.Release|x64.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE
