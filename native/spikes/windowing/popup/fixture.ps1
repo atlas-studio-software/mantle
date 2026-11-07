@@ -1,7 +1,8 @@
 # fixture.ps1 - the "window of ANOTHER process" for the click-through test: a plain opaque WinForms
 # form that logs every mouse message it receives (screen coordinates, unix ms) to -Log.
-#   pwsh -NoProfile -File fixture.ps1 -Log <file> -X 560 -Y 260 -W 120 -H 120
-param([Parameter(Mandatory)] [string]$Log, [int]$X = 560, [int]$Y = 260, [int]$W = 120, [int]$H = 120)
+#   pwsh -NoProfile -File fixture.ps1 -Log <file> -X 560 -Y 260 -W 120 -H 120 [-Color r,g,b] [-Title t]
+# Also the plain-colour backdrop under the frame tests (a known desktop colour for the hairline check).
+param([Parameter(Mandatory)] [string]$Log, [int]$X = 560, [int]$Y = 260, [int]$W = 120, [int]$H = 120, [string]$Color = '90,90,90', [string]$Title = 'popup-fixture')
 Add-Type -AssemblyName System.Windows.Forms, System.Drawing
 # Hide this pwsh's own console window (it would sit over the test area). Done here, not with
 # Start-Process -WindowStyle Hidden: that hint applies to the process's FIRST ShowWindow, which
@@ -17,9 +18,10 @@ $f.FormBorderStyle = 'None'
 $f.StartPosition = 'Manual'
 $f.Location = [System.Drawing.Point]::new($X, $Y)
 $f.Size = [System.Drawing.Size]::new($W, $H)
-$f.BackColor = [System.Drawing.Color]::FromArgb(90, 90, 90)
+$c = @($Color -split ',' | ForEach-Object { [int]$_ })
+$f.BackColor = [System.Drawing.Color]::FromArgb($c[0], $c[1], $c[2])
 $f.ShowInTaskbar = $false
-$f.Text = 'popup-fixture'
+$f.Text = $Title
 $script:sw = [System.IO.StreamWriter]::new($Log, $true)
 $script:sw.AutoFlush = $true
 function Write-Ev([string]$kind, $e) {

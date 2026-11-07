@@ -177,6 +177,47 @@ public static class PopupProbe
         return SendInput(3, inp, Marshal.SizeOf<INPUT>());
     }
 
+    // ---- desktop
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc cb, IntPtr l);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool IsIconic(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder sb, int n);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string? cls, string? name);
+
+    /// Minimises every visible, unowned top-level window except the shell's own (the runner's
+    /// console window otherwise sits over the test area and comes forward when focus moves).
+    public static string MinimizeOthers()
+    {
+        var skip = new System.Collections.Generic.HashSet<string> { "Progman", "WorkerW", "Shell_TrayWnd", "Shell_SecondaryTrayWnd" };
+        var done = new System.Collections.Generic.List<string>();
+        EnumProc cb = (h, l) => {
+            if (!IsWindowVisible(h) || IsIconic(h) || GetWindow(h, 4) != IntPtr.Zero) return true;
+            var c = new StringBuilder(256); GetClassNameW(h, c, 256);
+            if (skip.Contains(c.ToString())) return true;
+            var t = new StringBuilder(256); GetWindowTextW(h, t, 256);
+            GetWindowThreadProcessId(h, out uint pid);
+            ShowWindow(h, 6 /* SW_MINIMIZE */);
+            done.Add($"{c}:'{t}'({pid})");
+            return true;
+        };
+        EnumWindows(cb, IntPtr.Zero);
+        GC.KeepAlive(cb);
+        return string.Join("; ", done);
+    }
+
+    /// Top of the non-topmost band, without activating (the fixture, before each test).
+    public static bool RaiseByTitle(string title)
+    {
+        IntPtr h = FindWindowW(null, title);
+        return h != IntPtr.Zero && SetWindowPos(h, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, 0x1 | 0x2 | 0x10);
+    }
+
     // ---- theme
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
     static extern IntPtr SendMessageTimeoutW(IntPtr h, uint msg, UIntPtr wp, string lp, uint flags, uint timeout, out UIntPtr result);

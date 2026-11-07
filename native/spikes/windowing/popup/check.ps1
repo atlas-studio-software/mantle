@@ -8,13 +8,38 @@ Add-Type -Path (Join-Path $PSScriptRoot 'CheckNative.cs')
 
 # The technique each primitive's Checks hold to the bar; the others are measured as Notes.
 $FrameWinner = 'nc'
-$HitWinner = 'layered'
+$HitWorks = @('nchittest', 'layered')   # click-through techniques held to the bar (run 1: both pass to another process)
 $ParkWinner = 'apphide'
 $Tol = 8
 
 $exe = Build-Spike 'popup\Popup.csproj'
 Check 'build' ($null -ne $exe) $(if ($exe) { "$($Results.build_Popup.seconds) s, $($Results.build_Popup.folderMB) MB" } else { 'see build-Popup.log' })
 if (-not $exe) { Finish-Check }
+# The runner's console window sits over the test area and comes forward when focus moves (run 1).
+Note 'minimized' ([PopupProbe]::MinimizeOthers())
+Start-Sleep -Milliseconds 500
+
+# Lines of a file another process is still writing.
+function Read-Shared([string]$path) {
+  if (-not (Test-Path $path)) { return @() }
+  $fs = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite')
+  try { return @(([IO.StreamReader]::new($fs)).ReadToEnd() -split "`r?`n" | Where-Object { $_ }) } finally { $fs.Dispose() }
+}
+# A plain WinForms window of ANOTHER process (fixture.ps1): the click-through target, and the
+# known-colour backdrop under the frame tests. Returns the process, or $null.
+function Start-Fixture([string]$name, $r, [string]$color) {
+  $log = Join-Path $Out "$name.log"
+  Remove-Item $log -ErrorAction SilentlyContinue
+  $fp = Start-Process pwsh -PassThru -ArgumentList @('-NoProfile', '-File', "`"$(Join-Path $PSScriptRoot 'fixture.ps1')`"", '-Log', "`"$log`"",
+    '-X', $r.x, '-Y', $r.y, '-W', $r.w, '-H', $r.h, '-Color', $color, '-Title', $name)
+  $sw = [Diagnostics.Stopwatch]::StartNew()
+  while ($sw.ElapsedMilliseconds -lt 30000) {
+    if (@(Read-Shared $log) -match '^shown') { Start-Sleep -Milliseconds 300; return $fp }
+    Start-Sleep -Milliseconds 100
+  }
+  Problem "fixture $name never showed (30 s)"
+  return $null
+}
 
 # ------------------------------------------------------------------ helpers
 $script:pipeN = 0
@@ -60,6 +85,7 @@ function Stray($before, $after, $area, $shape) {
 }
 # Plain WS_POPUP: no caption, frame, border, sysmenu or min/max box.
 function StyleClean([string]$hex) { $v = [Convert]::ToInt64($hex.Substring(2), 16); return (($v -band 0x00CF0000L) -eq 0) -and (($v -band 0x80000000L) -ne 0) }
+function ClientIsWindow($o) { return [bool]$o -and $o.client.x -eq $o.window.x -and $o.client.y -eq $o.window.y -and $o.client.w -eq $o.window.w -and $o.client.h -eq $o.window.h }
 # Wait until the rect shows what it showed in $empty again.
 function Wait-Empty($empty, $r, [int]$timeoutMs = 3000) {
   $sw = [Diagnostics.Stopwatch]::StartNew()
@@ -103,8 +129,12 @@ foreach ($theme in 'light', 'dark') {
   $bc = [PopupProbe]::BroadcastTheme()
   Start-Sleep -Milliseconds 1500
   Say "theme $theme (WM_SETTINGCHANGE broadcast: $bc)"
+  # a known desktop under the test: bright for light (the ink hairline shows), deep blue-grey for dark
+  $bdColor = if ($theme -eq 'light') { '205,210,220' } else { '40,52,72' }
+  $bd = Start-Fixture "backdrop-$theme" @{ x = $FA.x - 20; y = $FA.y - 20; w = $FA.w + 40; h = $FA.h + 40 } $bdColor
   $p = Start-Popup "frame-$theme"
-  if (-not $p) { continue }
+  if (-not $p) { if ($bd) { Stop-Tree $bd.Id }; continue }
+  [void][PopupProbe]::RaiseByTitle("backdrop-$theme")
   Start-Sleep -Milliseconds 500
   $empty = Grab $FA
   foreach ($mode in $frameModes) {
@@ -121,7 +151,7 @@ foreach ($theme in 'light', 'dark') {
     Note "frame_${theme}_$mode" ([ordered]@{ stray = $st; glass = $g; style = $o.style; exStyle = $o.exStyle; window = $o.window; client = $o.client; dwmFrame = $o.dwmFrame; notes = $o.notes; renderMs = $o.renderMs })
     if ($mode -eq $FrameWinner) {
       Check "no stray pixels: frame=$mode, $theme" ($st.changed -eq 0) "changed $($st.changed) px outside the shape at tol $Tol (maxDelta $($st.maxDelta)) in $(Rect $FA) incl. $M px margin; window $(Rect $o.window), client $(Rect $o.client); style $($o.style) ex $($o.exStyle)"
-      Check "plain WS_POPUP, client = window: $theme" ((StyleClean $o.style) -and $o.client.w -eq $o.window.w -and $o.client.h -eq $o.window.h) "style $($o.style); client $(Rect $o.client) vs window $(Rect $o.window); DWM frame $(Rect $o.dwmFrame)"
+      Check "client = window (no non-client frame): $theme" ((ClientIsWindow $o)) "client $(Rect $o.client) vs window $(Rect $o.window); DWM frame $(Rect $o.dwmFrame); style $($o.style) (the presenter keeps WS_DLGFRAME|WS_SYSMENU: plain WS_POPUP $(StyleClean $o.style); WM_NCCALCSIZE takes the frame away)"
       Check "glass fill and hairline drawn: $theme" $g.ok (GlassText $g)
       # hide / show
       $h = Cmd "park id=$id park=apphide"
@@ -134,7 +164,7 @@ foreach ($theme in 'light', 'dark') {
       Save-Shot "frame-$theme-$mode-reshown.png" $FA | Out-Null
       $same = [PopupProbe]::CountChanged($after, $again, $Tol)
       $shStyle = if ($sh) { $sh.style } else { '?' }
-      Check "hidden then shown again: $theme" ($gone -eq 0 -and $same -eq 0 -and $sh -and (StyleClean $sh.style)) "hidden: $gone px differ from the empty desktop; shown again: $same px differ from the first show (maxDelta $([PopupProbe]::MaxDelta($after, $again))); style after show $shStyle"
+      Check "hidden then shown again: $theme" ($gone -eq 0 -and $same -eq 0 -and $sh -and (ClientIsWindow $sh)) "hidden: $gone px differ from the empty desktop; shown again: $same px differ from the first show (maxDelta $([PopupProbe]::MaxDelta($after, $again))); style after show $shStyle"
       # resize
       $rz = Cmd "resize id=$id w=$($RW.w) h=$($RW.h)"
       Start-Sleep -Milliseconds 700
@@ -143,7 +173,7 @@ foreach ($theme in 'light', 'dark') {
       if ($rz) {
         $st2 = Stray $before $big $FA $rz.shape
         $g2 = Test-Glass $rz $before $big $FA
-        Check "after a resize to $($RW.w)x$($RW.h): $theme" ($st2.changed -eq 0 -and $g2.ok -and $rz.window.w -eq $RW.w -and $rz.client.w -eq $RW.w -and (StyleClean $rz.style)) "window $(Rect $rz.window), client $(Rect $rz.client); stray $($st2.changed) (maxDelta $($st2.maxDelta)); $(GlassText $g2)"
+        Check "after a resize to $($RW.w)x$($RW.h): $theme" ($st2.changed -eq 0 -and $g2.ok -and $rz.window.w -eq $RW.w -and $rz.client.w -eq $RW.w -and (ClientIsWindow $rz)) "window $(Rect $rz.window), client $(Rect $rz.client); stray $($st2.changed) (maxDelta $($st2.maxDelta)); $(GlassText $g2)"
       } else { Check "after a resize to $($RW.w)x$($RW.h): $theme" $false 'no reply' }
     }
     Cmd "close id=$id" | Out-Null
@@ -166,6 +196,7 @@ foreach ($theme in 'light', 'dark') {
     Cmd "close id=$id" | Out-Null
   }
   Stop-Popup $p
+  if ($bd) { Stop-Tree $bd.Id }
 }
 Note 'dpi' 'runner is 1920x1080 at 100% (one display); 150% not tested in this lane'
 
@@ -177,32 +208,26 @@ $HW = @{ x = 600; y = 300; w = 400; h = 200 }     # shape 300x100 at 650,350
 $HA = @{ x = $HW.x - 8; y = $HW.y - 8; w = $HW.w + 16; h = $HW.h + 16 }
 $FX = @{ x = 560; y = 260; w = 120; h = 120 }     # the other process's window, under the popup's top-left transparent corner
 $ptPass = @(612, 312); $ptCtl = @(570, 270); $ptShape = @(800, 400); $ptAway = @(1500, 900)
-$fixLog = Join-Path $Out 'fixture.log'
-Remove-Item $fixLog -ErrorAction SilentlyContinue
-$fixP = Start-Process pwsh -PassThru -ArgumentList @('-NoProfile', '-File', "`"$(Join-Path $PSScriptRoot 'fixture.ps1')`"", '-Log', "`"$fixLog`"", '-X', $FX.x, '-Y', $FX.y, '-W', $FX.w, '-H', $FX.h)
-function Fix-Lines {
-  if (-not (Test-Path $fixLog)) { return @() }
-  $fs = [IO.File]::Open($fixLog, 'Open', 'Read', 'ReadWrite')
-  try { return @(([IO.StreamReader]::new($fs)).ReadToEnd() -split "`r?`n" | Where-Object { $_ }) } finally { $fs.Dispose() }
-}
+$fixLog = Join-Path $Out 'popup-fixture.log'
+$fixP = Start-Fixture 'popup-fixture' $FX '90,90,90'
+function Fix-Lines { return @(Read-Shared $fixLog) }
 function Fix-Since([int]$n) {
   $l = @(Fix-Lines)
   if ($l.Count -le $n) { return @() }
   return @($l[$n..($l.Count - 1)] | ForEach-Object { $a = $_ -split ' '; [pscustomobject]@{ kind = $a[0]; x = [int]$a[1]; y = [int]$a[2]; t = [double]$a[3] } })
 }
-$sw0 = [Diagnostics.Stopwatch]::StartNew()
-while ($sw0.ElapsedMilliseconds -lt 30000 -and -not (@(Fix-Lines) -match '^shown').Count) { Start-Sleep -Milliseconds 100 }
 $fixShown = @(Fix-Lines) -match '^shown'
-Check 'fixture window of another process up' ([bool]$fixShown) "$(if ($fixShown) { $fixShown[0] } else { 'no shown line in 30 s' }); pwsh pid $($fixP.Id), check pid $PID"
-Start-Sleep -Milliseconds 500
+Check 'fixture window of another process up' ([bool]$fixShown) "$(if ($fixShown) { $fixShown[0] } else { 'no shown line in 30 s' }); pwsh pid $(if ($fixP) { $fixP.Id }), check pid $PID"
 Save-Screen 'hit-screen.png' | Out-Null
 
 $p = Start-Popup 'hit'
-$hitModes = @('none', 'nchittest', 'layered', 'region', 'ncregion')
+# layered last: in run 1 everything after it ran with the runner's console in front (since fixed)
+$hitModes = @('none', 'nchittest', 'region', 'ncregion', 'layered')
 foreach ($mode in $hitModes) {
   if (-not $p) { break }
   $id++
   [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
+  [void][PopupProbe]::RaiseByTitle('popup-fixture')
   Start-Sleep -Milliseconds 300
   $before = Grab $HA
   $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$mode x=$($HW.x) y=$($HW.y) w=$($HW.w) h=$($HW.h)"
@@ -257,13 +282,15 @@ foreach ($mode in $hitModes) {
   $r.passesToOtherProcess = ($fixDown -ge 1 -and $popPass -eq 0 -and $mv -ge 1)
   $r.shapeTakesClicks = ($popShape -ge 1 -and $fixShape -eq 0)
   Note "hit_$mode" $r
-  if ($mode -eq 'none' -or $mode -eq $HitWinner) {
+  if ($mode -eq 'none' -or $HitWorks -contains $mode) {
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 300
     Note "hit_${mode}_cpu" (Get-Cpu $p.Id 10)
   }
-  if ($mode -eq $HitWinner) {
-    Check "click-through to another process: hit=$mode" ($r.passesToOtherProcess -and $r.shapeTakesClicks -and $g.ok -and $ctl -ge 1) "transparent corner: fixture got $fixDown down(s) and $mv move(s), popup $popPass press(es); shape: popup $popShape, fixture $fixShape; control click on the fixture $ctl; $(GlassText $g); ex $($r.exStyle)"
+  if ($HitWorks -contains $mode) {
+    Check "click-through to another process: hit=$mode" ($r.passesToOtherProcess -and $r.shapeTakesClicks -and $g.ok -and $ctl -ge 1) "transparent corner: fixture got $fixDown down(s) and $mv move(s), popup $popPass press(es); shape: popup $popShape, fixture $fixShape (no rest first: popup $popNoRest); control click on the fixture $ctl; $(GlassText $g); ex $($r.exStyle)"
     Check "shape still clean with hit=${mode}" ($st.changed -eq 0) "stray $($st.changed) (maxDelta $($st.maxDelta)) in $(Rect $HA)"
+  }
+  if ($mode -eq 'layered') {
     $lat = @()
     for ($k = 0; $k -lt 12; $k++) {
       [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 120
@@ -276,28 +303,34 @@ foreach ($mode in $hitModes) {
     }
     $ls = Stats $lat
     Note "hit_${mode}_toggleLatency" $ls
-    Check "poll makes the shape clickable within 50 ms" ($ls.n -ge 10 -and $ls.p95 -le 50) "cursor enters the shape -> WS_EX_TRANSPARENT cleared: $(S $ls)"
+    Check "layered: the poll makes the shape clickable within 50 ms" ($ls.n -ge 10 -and $ls.p95 -le 50) "cursor enters the shape -> WS_EX_TRANSPARENT cleared: $(S $ls)"
   }
   Cmd "close id=$id" | Out-Null
   Start-Sleep -Milliseconds 300
 }
-# HTTRANSPARENT and a window of the popup's OWN thread (documented: it passes only to those)
+# A window of the popup's OWN thread under the transparent corner (Mantle's case: a popup over its
+# own bar). HTTRANSPARENT is documented to pass only to those; layered passes to anything.
 if ($p) {
-  $id++
-  $fx2 = Cmd 'fixture x=560 y=560 w=120 h=120'
-  $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=nchittest x=600 y=600 w=400 h=200"
-  Start-Sleep -Milliseconds 800
-  Cmd 'events' | Out-Null
-  [void][PopupProbe]::Click(612, 612); Start-Sleep -Milliseconds 300
-  $ev = Cmd 'events'
-  $same = [ordered]@{ fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
-  Note 'hit_nchittest_sameThread' $same
-  Save-Shot 'hit-samethread.png' @{ x = 552; y = 552; w = 456; h = 256 } | Out-Null
-  Cmd "close id=$id" | Out-Null
-  Cmd 'unfixture' | Out-Null
+  foreach ($mode in $HitWorks) {
+    $id++
+    [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
+    Cmd 'fixture x=560 y=560 w=120 h=120' | Out-Null
+    $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$mode x=600 y=600 w=400 h=200"
+    Start-Sleep -Milliseconds 800
+    Save-Shot "hit-samethread-$mode.png" @{ x = 552; y = 552; w = 456; h = 256 } | Out-Null
+    Cmd 'events' | Out-Null
+    [void][PopupProbe]::Click(612, 612); Start-Sleep -Milliseconds 300
+    $ev = Cmd 'events'
+    $same = [ordered]@{ fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
+    Note "hit_${mode}_sameThread" $same
+    Check "click-through to a window of the popup's own thread: hit=$mode" ($same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) "same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
+    Cmd "close id=$id" | Out-Null
+    Cmd 'unfixture' | Out-Null
+    Start-Sleep -Milliseconds 300
+  }
 }
 Stop-Popup $p
-Stop-Tree $fixP.Id
+if ($fixP) { Stop-Tree $fixP.Id }
 
 # ================================================================== 7. instant-open cost
 $OW = @{ x = 300; y = 300; w = 400; h = 200 }
