@@ -37,7 +37,7 @@ public sealed class PopupTests
     /// A failure's whole app log, kept with the UI artifacts (native/out/ui) as well as in the message's tail.
     static string Keep(string dir, string name)
     {
-        try { File.WriteAllText(Path.Combine(Host.OutDir, name + "-native-log.txt"), FrameProbe.Log(dir)); } catch (IOException) { }
+        try { File.WriteAllText(Path.Combine(Host.OutDir, $"{name}-{DateTime.Now:HHmmss}-native-log.txt"), FrameProbe.Log(dir)); } catch (IOException) { }
         return Tail(dir);
     }
 
@@ -122,13 +122,16 @@ public sealed class PopupTests
         int pid = app.Proc.Id;
         IntPtr More() => FrameProbe.Find(pid, "Mantle pop-up: More");
         IntPtr Cal() => FrameProbe.Find(pid, "Mantle pop-up: Calendar");
+        // the click as the user's hand makes it, right after the start: nothing read before it (that would shift its time)
         var r0 = app.Find("bar.more").BoundingRectangle;
-        int cx = r0.Left + r0.Width / 2, cy = r0.Top + r0.Height / 2;
-        FrameProbe.GetWindowRect(app.Hwnd, out var wr);
-        string before = $"bar.more {r0}; bar window ({wr.Left},{wr.Top})-({wr.Right},{wr.Bottom}); under the click {Under(cx, cy)}; app log lines before the click {FrameProbe.Log(dir).Split('\n').Length}";
-        ClickEl(app, "bar.more");
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000),
-            $"More did not open. Before the click: {before}. Now: bar.more {app.Find("bar.more").BoundingRectangle}; under it {Under(cx, cy)}. Log:\n" + Keep(dir, "popmotion"));
+        string clickAt = DateTime.Now.ToString("HH:mm:ss.fff");
+        ZOrder.Click(r0.Left + r0.Width / 2, r0.Top + r0.Height / 2);
+        Thread.Sleep(450);
+        if (!(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000))) {
+            FrameProbe.GetWindowRect(app.Hwnd, out var wr);
+            Assert.Fail($"More did not open. Clicked at {clickAt} on bar.more {r0} (now {app.Find("bar.more").BoundingRectangle}); bar window ({wr.Left},{wr.Top})-({wr.Right},{wr.Bottom}); " +
+                $"under the click now {Under(r0.Left + r0.Width / 2, r0.Top + r0.Height / 2)}. Log:\n" + Keep(dir, "popmotion"));
+        }
         IntPtr m = More();
 
         // its own button: closed in state at once, on screen until the exit has played
