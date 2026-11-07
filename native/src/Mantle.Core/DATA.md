@@ -1,10 +1,42 @@
 # Electron Mantle's data, and what native reads
 
-Native Mantle reads Electron Mantle's files and **never writes them**. The rule is in the API
-(`Mantle.Core.Data` has no method that writes, moves or deletes) and in the tests
-(`ReadOnlyTests`: no writing method, no writing call in the source, a damaged profile is
-byte-for-byte unchanged after every reader and the watcher ran). Electron owns these files: it
-writes them whole (tmp + rename) and moves a damaged one aside itself.
+Native Mantle reads Electron Mantle's files, and writes them **only through one gate**. Until the
+switch-over it must never change the user's real Electron data, so every write in `Mantle.Core.Data`
+and `Mantle.Core.Look` goes through `Data/SafeFile.cs`, and SafeFile asks `Data/WriteGate.cs` first:
+
+- a test or scratch profile (`--test`, or `--user-data=` that is not the user's own folder): written;
+- the user's own profile (`%APPDATA%\mantle`) or shared look folder (`%APPDATA%\look-sync`): written
+  ONLY when the run is `--live` AND native is the only shell (Electron Mantle is not running). The gate
+  fails closed: when nothing has said Electron is gone, it assumes it is running;
+- any path outside those two folders: always refused.
+
+A refused write changes nothing on disk and answers in plain words ("this run is not --live, so the
+user's own look.json is left exactly as Electron Mantle wrote it"); the change lives in memory for this
+run only, and the caller says so (a store write answers `{ok: false, reason}`, look sync shows an
+`error` status with the words). `WriteGate.Describe()` is the start-up log line.
+
+SafeFile has exactly four writing methods, each gated: `WriteAtomic` (tmp + rename, the rename retried
+when busy), `MoveAside` (the `.unreadable` rule, look.json's `.bad-<time>` copies), `Remove` (a tmp or
+still this code made) and `EnsureFolder` (the look-sync folder before it is watched).
+`ReadOnlyTests` proves the path: no writing call (`File.Write*`, `File.Move`, `Directory.Create*`,
+`FileMode.Create`, streams for writing, ...) appears in any other file of `Data/` or `Look/`; every SafeFile
+method does nothing when the gate says no; a scratch gate refuses anything outside its folder; the
+user's own profile is written only by a live run that is the only shell.
+
+Who writes what, all through SafeFile:
+
+| file | native writer | format (byte-for-byte Electron's) |
+|---|---|---|
+| any `Data/DataFileSpecs.cs` file (`theme.json`, `features.json`, `features\<name>.json`, `keep-ready.json`, ...) | `JsonStore` (`Stores.Open`), unknown keys kept | the spec's indent, trailing newline and tmp name |
+| `<root>\look-sync.json` | `Look/LookHost.cs` (lib/look-host.js save), through its store | `{lookSync, accent, glass}`, 2-space indent, no newline |
+| `<look folder>\look.json` | `Look/LookSync.cs` (lib/look-sync.js), Mantle publishes it for Helm and Quartz | `JSON.stringify(doc, null, 2) + "
+"`, tmp `look.json.<app>.<pid>.<hex>.tmp`, rename retried after 50/100/200 ms |
+| `<look folder>\look.json.bad-<ISO time>` | LookSync, a damaged file moved aside | the old bytes, unchanged |
+
+The look.json bytes are proved against the JavaScript module itself: `tests/Mantle.Core.Tests/Look/gen-look-golden.js`
+runs lib/look-sync.js, lib/look-host.js, lib/look-guard.js and ui/shared/glass-adapt.js and writes
+`Fixtures/look/golden.json`; `LookGoldenTests` replays every case (twelve sync scenarios, each step's file
+bytes, events and status) and compares. Re-run the generator after any change to those modules.
 
 ## Where
 
@@ -14,8 +46,9 @@ writes them whole (tmp + rename) and moves a damaged one aside itself.
 | `--test --profile-name=<x>` | `%TEMP%\mantle-test-<x>` (main.js) | `<root>\look-sync` (or `LOOK_SYNC_DIR`) |
 | `--user-data=<dir>` (native, tests and fixtures) | `<dir>` | `<dir>\look-sync` (or `LOOK_SYNC_DIR`) |
 
-The only file native writes under the root is its own log, `mantle-native.log` (Electron's is
-`mantle.log`, written when the logon task passes `--log=`), plus `.1` / `.2` when it rotates.
+Besides the gated writes above, native writes its own log under the root, `mantle-native.log` (Electron's is
+`mantle.log`, written when the logon task passes `--log=`), plus `.1` / `.2` when it rotates. The log is native's
+own file, never Electron's, so it is not behind the gate.
 
 ## What native reads (typed readers in `Data/Readers.cs`)
 
@@ -30,7 +63,7 @@ The only file native writes under the root is its own log, `mantle-native.log` (
 The bar uses `theme.json` (its theme) and the effective glass (`MantleData.EffectiveGlass`: the shared
 look's glass when `lookSync` is on and look.json has a usable one, else look-sync.json's) for the
 backdrop blur. The rest is read and logged now so the next surfaces can use it. `EffectiveGlass` is
-a reader's approximation of lib/look-host.js, which also adopts and seeds; native never publishes.
+a reader's approximation of lib/look-host.js; the full port (adopt, seed, publish) is `Look/LookHost.cs` + `Look/LookSync.cs`.
 
 Every read is logged as `data: <file>: <state> (<reason>)[; using the defaults]: <value>` with
 `state` = ok, missing, corrupt, unreadable, toolarge or newer; fields that were present but not used

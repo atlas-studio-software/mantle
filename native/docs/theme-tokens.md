@@ -644,6 +644,36 @@ no Mantle token takes it. Light tokens are computable (hue 212 -> `#4d6784`) but
 
 ---
 
+## 6b. The guard rules (PEND-005), as data
+
+The readability guard thickens a surface's tint (never dims the picture) to the thinnest alpha at which the
+quietest ink still reads. One model serves every surface (ui/shared/glass-adapt.js); the top bar's shared
+darkening (lib/look-guard.js, published in look.json's `desktop.guard`) uses the same model with these rules.
+Native: `Mantle.Core/Look/LookGuard.cs` (`GlassAdapt`, `LookGuard`), proved number for number against the
+JavaScript by `LookGoldenTests` (glassPixels, glassTint, guardRect, glassSettle, bandGeometry, fromPixels, use, keys).
+
+| rule | ink | need | tint | floor | ceiling | step | picture as drawn |
+|---|---|---|---|---|---|---|---|
+| surfaces (glass-adapt GUARD) | `--lg-ink-2` | 4.7:1 (4.5 + .2: the model blurs a downscale; drawn pixels peak brighter) | `--lg-fill` (bars: `--lg-fill-bar`) | the tint's own alpha | `--lg-fill-pop`'s alpha | .02 | `--lg-blur` (blur, saturate, brightness) |
+| top bar, dark (look-guard RULE) | #a9aaa7 | 4.2:1 (`--lg-guard-bar`) | rgb(9,10,11) | glass.dark.dim | .88 | .02 | blur glass.dark.blurPx |
+| top bar, light (look-guard RULE_LIGHT) | #333A4E | 4.7:1 | white | glass.light.dim | .88 | .02 | blur glass.light.blurPx, saturate 150% |
+
+- Contrast is WCAG: relative luminance with the sRGB curve (`c <= .04045 ? c/12.92 : ((c+.055)/1.055)^2.4`,
+  weights .2126/.7152/.0722), ratio `(hi + .05) / (lo + .05)`.
+- The blur is a gaussian of sigma = blur x picture px per CSS px, radius ceil(3 sigma), mirrored edges, skipped at
+  sigma <= .3, worked in single precision; then the Filter Effects saturate matrix, then brightness, each clamped 0..255.
+  A transparent pixel counts as white.
+- Only the 48 worst pixels are tried: the brightest in dark (light ink), the darkest in light (dark ink).
+- Alphas are tried from the floor up in .02 steps (rounded to .001 each step); the first that holds wins; none holding
+  answers the ceiling with `short: true`. The ratio is reported to .01.
+- The band: the top 100 DIP of the primary monitor (not 144: the band's height moves the answer, and the user's
+  mountain photo was promised .50), the still scaled to cover the monitor, centred; a blur over 8 px is worked out on a
+  picture scaled so sigma stays 8 px; the rows below the band that the blur reaches are included.
+- Hysteresis (glassSettle): thicker at once; thinner only by >= .10 at once, or by >= .04 held for 4 pictures.
+- A shared record is used by the top bar only in dark with sync on, and only when it was worked out for the glass shown
+  now (dim and blur equal to .01); else the bar works out its own, and says why. A soft failure (no record yet, or out
+  of date before the publisher reacted) is held as "being worked out" for 4 s first.
+
 ## 7. XAML mapping notes
 
 | CSS construct | Where | Why WinUI 3 has no direct equivalent | What to build instead |

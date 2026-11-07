@@ -94,7 +94,7 @@ public class ReadOnlyTests
         // a new public method on SafeFile must be added here, so it is proved gated
         var methods = typeof(SafeFile).GetMethods(BindingFlags.Public | BindingFlags.Instance | BindingFlags.DeclaredOnly)
             .Where(m => !m.IsSpecialName).Select(m => m.Name).OrderBy(n => n, StringComparer.Ordinal).ToArray();
-        Assert.Equal(new[] { "MoveAside", "Remove", "WriteAtomic" }, methods);
+        Assert.Equal(new[] { "EnsureFolder", "MoveAside", "Remove", "WriteAtomic" }, methods);
 
         using var d = new TestDir("gate");
         d.Write("theme.json", "{\"mode\":\"dark\"}");
@@ -104,6 +104,8 @@ public class ReadOnlyTests
         Assert.Equal("closed for the test", f.WriteAtomic(d.File(Path.Combine("new", "x.json")), new byte[] { 1 }, d.File(Path.Combine("new", "x.json.tmp"))));
         Assert.Equal("closed for the test", f.MoveAside(d.File("theme.json"), d.File("theme.json.unreadable")));
         Assert.Equal("closed for the test", f.Remove(d.File("theme.json")));
+        Assert.Equal("closed for the test", f.EnsureFolder(d.File("look-sync")));
+        Assert.Null(f.EnsureFolder(d.Path));   // an existing folder asks nothing and changes nothing
         var after = Snapshot(d.Path);
         Assert.Equal(before.Keys.OrderBy(k => k), after.Keys.OrderBy(k => k));
         foreach (var k in before.Keys) Assert.True(before[k] == after[k], "changed: " + k);
@@ -113,6 +115,8 @@ public class ReadOnlyTests
         var scratch = new SafeFile(WriteGate.Scratch(d.Path));
         Assert.NotNull(scratch.WriteAtomic(other.File("x.json"), new byte[] { 1 }, other.File("x.json.tmp")));
         Assert.False(File.Exists(other.File("x.json")));
+        Assert.NotNull(scratch.EnsureFolder(other.File("made")));
+        Assert.False(Directory.Exists(other.File("made")));
         Assert.Null(scratch.WriteAtomic(d.File("ok.json"), new byte[] { 1 }, d.File("ok.json.tmp")));
     }
 
