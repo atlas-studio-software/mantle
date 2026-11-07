@@ -399,6 +399,20 @@
 
   // the picture is drawn with the frame that first shows it: the glass never shows bare for a frame (barpolish)
   el.backdrop.decoding = 'sync';
+  /* THE STRIP'S MEMORY (lane mantle-bar-leak, 2026-11-06). Each strip is a NEW data: picture, and an <img>
+     that has shown a data: picture keeps about its decoded size in the renderer for good (~0.5 MB a
+     reveal, measured: ../shared/pic-url.js). So the strip goes on through its own blob: URL (the same
+     bytes, decoder and pixels; a data: picture was not on screen any sooner: both land the next frame),
+     and the URL is let go once the <img> has the picture, or when a newer strip or a clear replaces it.
+     A strip that does not decode says so; before, it was a silent hole. */
+  var bdUrl = null;
+  function releaseBd() { if (bdUrl) { window.MantlePic.release(bdUrl); bdUrl = null; } }
+  el.backdrop.addEventListener('load', function () { if (bdUrl && el.backdrop.src === bdUrl) releaseBd(); });
+  el.backdrop.addEventListener('error', function () {
+    if (!el.backdrop.getAttribute('src')) return;
+    releaseBd();
+    fail('backdrop', 'Glass not blurred', 'The picture of the screen behind the bar did not decode, so the bar is showing a thicker tint instead');
+  });
   function setBackdrop(p) {
     if (!p || typeof p.png !== 'string' || p.png.slice(0, 5) !== 'data:') {
       fail('backdrop', 'Glass not blurred', 'Mantle did not get a picture of the screen behind the bar, so it cannot' +
@@ -409,7 +423,10 @@
     clearFail('backdrop');
     bdAt = p.at && p.at.w > 0 && p.at.h > 0 ? { at: p.at, win: p.win || null } : null;
     placeBdrop();
-    el.backdrop.src = p.png;                 // the ONLY per-frame work: a src swap
+    releaseBd();
+    var src = window.MantlePic ? window.MantlePic.once(p.png) : p.png;
+    if (src !== p.png) bdUrl = src;
+    el.backdrop.src = src;                   // the ONLY per-frame work: a src swap
     if (!haveBackdrop) {
       haveBackdrop = true;
       el.body.classList.remove('no-backdrop');
@@ -471,7 +488,7 @@
      picture sits in the window, as fractions of the window it was taken from (`win`); it is pinned to
      the bar's own edge (the page is anchored there), so a window that grows away keeps it aligned. */
   var POP_BD_WAIT_MS = 250;
-  var popBd = null, popBdWait = 0;
+  var popBd = null, popBdWait = 0, popBdCss = null;   // popBdCss: the blob: URL the pop-up's --pop-bd holds
   function popBdHold(on) {
     if (popBdWait) { clearTimeout(popBdWait); popBdWait = 0; }
     if (!on) { el.pop.classList.remove('bdwait'); return; }
@@ -496,15 +513,21 @@
       return;
     }
     clearFail('popbackdrop');
+    if (popBd && popBd.url && popBd.url !== popBdCss && window.MantlePic) window.MantlePic.release(popBd.url);   // baked, never shown
     var mine = popBd = { key: p.key, at: p.at || { x: 0, y: 0, w: 1, h: 1 }, win: p.win || null, img: null, pic: null, url: null, ms: p.ms };
-    var im = new Image();
-    im.onload = function () { if (popBd === mine) { mine.img = im; placePopBd(); } };
+    /* through a blob: URL, let go on load (../shared/pic-url.js): an Image that has decoded a data: picture
+       keeps ~its decoded size in the renderer for good, and this is a new one on every open */
+    var im = new Image(), blobUrl = null;
+    im.onload = function () { if (blobUrl) { window.MantlePic.release(blobUrl); blobUrl = null; } if (popBd === mine) { mine.img = im; placePopBd(); } };
     im.onerror = function () {
+      if (blobUrl) { window.MantlePic.release(blobUrl); blobUrl = null; }
       if (popBd !== mine) return;
       popBdHold(false);
       fail('popbackdrop', 'Pop-up not blurred', 'The picture of what is behind this pop-up did not decode, so it is showing its thicker fill');
     };
-    im.src = p.png;
+    var src = window.MantlePic ? window.MantlePic.once(p.png) : p.png;
+    if (src !== p.png) blobUrl = src;
+    im.src = src;
   }
   /* The picture as the glass shows it: the token's filter with its blur rescaled from CSS px to
      picture px, and NOTHING else. The edges are clamped out into a margin first (the outermost row
@@ -566,7 +589,9 @@
       if (!popBd.pic) {
         var px = G.pixelsOf(popBd.img);
         popBd.pic = px ? G.glassPicture(px, T, sx) : null;
-        popBd.url = popBd.pic ? bakePopBd(popBd.img, sx) : null;
+        var baked = popBd.pic ? bakePopBd(popBd.img, sx) : null;
+        // the baked glass as a blob: URL too: as a data: url() it kept ~0.5 MB a pop-up for good (tools/bar-mem-ab.js)
+        popBd.url = baked && window.MantlePic ? window.MantlePic.once(baked) : baked;
       }
       // the same rule, code and thresholds as the strip and the top bar: --lg-ink-2 at 4.5:1
       if (popBd.pic) res = G.guardRect(popBd.pic, T, { x: (r.left - ax) * sx, y: (r.top - ay) * sy, w: r.width * sx, h: r.height * sy });
@@ -578,6 +603,9 @@
       return;
     }
     s.setProperty('--pop-bd', 'url("' + popBd.url + '")');
+    // the URL on the pop-up stays registered while it is there (a style recalc may ask for it again); the one it replaces goes
+    if (popBdCss && popBdCss !== popBd.url && window.MantlePic) window.MantlePic.release(popBdCss);
+    popBdCss = popBd.url;
     s.setProperty('--pop-bd-size', aw + 'px ' + ah + 'px');
     s.setProperty('--pop-bd-x', (ax - r.left) + 'px');
     s.setProperty('--pop-bd-y', (ay - r.top) + 'px');
@@ -590,10 +618,13 @@
     if (el.pop.classList.contains('bdwait')) popBdHold(false);
   }
   function clearPopBd() {
+    if (popBd && popBd.url && popBd.url !== popBdCss && window.MantlePic) window.MantlePic.release(popBd.url);   // baked, never shown
     popBd = null;
     popBdHold(false);
     el.pop.classList.remove('bd');
     ['--pop-bd', '--pop-bd-size', '--pop-bd-x', '--pop-bd-y', '--pop-bd-pos', '--pop-tint'].forEach(function (n) { el.pop.style.removeProperty(n); });
+    if (popBdCss && window.MantlePic) window.MantlePic.release(popBdCss);
+    popBdCss = null;
   }
 
   /* The clear has to wait for the pill to be GONE. Clearing it the moment 'bar.hide' arrives
@@ -620,6 +651,7 @@
 
   function clearBackdrop() {
     haveBackdrop = false;
+    releaseBd();
     el.bdrop.classList.remove('on');
     /* removeAttribute, never src='': an empty src re-requests the PAGE in some engines. With no
        src at all the <img> draws nothing, which is what a hidden bar should hold. */
@@ -3398,7 +3430,8 @@
     if (src) {
       var img = document.createElement('img'); img.alt = '';
       img.onerror = function () { box.dataset.kind = 'none'; box.innerHTML = svg(MEDIA_SVG.note, 12); };
-      img.src = src;
+      // through MantlePic's cache (../shared/pic-url.js): a data: <img> keeps its picture in the renderer for good
+      if (window.MantlePic) window.MantlePic.set(img, src); else img.src = src;
       box.appendChild(img);
     } else {
       box.innerHTML = svg(MEDIA_SVG.note, 12);

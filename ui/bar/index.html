@@ -6,7 +6,7 @@
 <!-- file:// documents are opaque origins, so 'self' would match nothing here; scheme
      sources are what Electron accepts without logging its insecure-CSP warning. -->
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src file: 'unsafe-inline'; script-src file:; img-src file: data:">
+      content="default-src 'none'; style-src file: 'unsafe-inline'; script-src file:; img-src file: data: blob:">
 <title>Mantle bar</title>
 <!-- tokens.css FIRST: Mantle's dark instrument palette, which the launcher and the desktop layer
      still resolve through. glass-light.css comes after it and carries the reference nav pill's LIGHT
@@ -121,6 +121,8 @@
 <!-- mock FIRST so that, outside Electron, window.mantle exists before bar.js looks for it.
      Inside Electron the preload has already installed the real bridge and the mock stands down. -->
 <script src="mock-mantle.js"></script>
+<!-- window.MantlePic: data: pictures shown through blob: URLs, so the renderer does not keep every one (img-src blob:) -->
+<script src="../shared/pic-url.js"></script>
 <!-- the notification centre defines window.MantleNotifs; bar.js hands it the popover helpers -->
 <script src="notifications.js"></script>
 <!-- quick settings one level down (Wi-Fi list, Bluetooth devices, output picker, mixer) defines window.MantleQsMore -->

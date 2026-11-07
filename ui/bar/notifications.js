@@ -174,11 +174,14 @@
     return t.toLocaleDateString(undefined, { month: 'short', day: 'numeric' }) + ', ' + time;
   }
 
+  /* a toast's pictures through MantlePic's cache (../shared/pic-url.js): a data: <img> keeps its picture in
+     the renderer for good, and every message brings new ones */
+  function picSrc(img, src) { if (window.MantlePic) window.MantlePic.set(img, src); else img.src = src; }
   function appIcon(t, cls) {
     if (t.icon) {
       var img = mk('img', cls);
       img.alt = '';
-      img.src = t.icon;
+      picSrc(img, t.icon);
       return img;
     }
     var l = mk('span', cls + ' ntf-letter', (t.app || '?').trim().charAt(0).toUpperCase() || '?');
@@ -241,7 +244,7 @@
     if (t.logo) {
       var logo = mk('img', 'ntf-logo' + (t.logoCircle ? ' circle' : ''));
       logo.alt = '';
-      logo.src = t.logo;
+      picSrc(logo, t.logo);
       row.appendChild(logo);
     }
     var text = mk('div', 'ntf-text');
@@ -259,7 +262,7 @@
     if (pic) {
       var hero = mk('img', 'ntf-hero');
       hero.alt = '';
-      hero.src = pic;
+      picSrc(hero, pic);
       c.appendChild(hero);
     }
     /* A picture the toast brought but Mantle could not show is named, quietly, on the card. */

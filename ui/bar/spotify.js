@@ -598,7 +598,12 @@
     // secreview-sp lane: only the data: art main fetched from Spotify's image server. Never an address:
     // a file://host/share one would be an SMB fetch (the bar's CSP allows file: images).
     if (item.liked) { art.innerHTML = svg(G.heart, 14); art.classList.add('liked'); }
-    else if (typeof item.image === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(item.image)) { var im = document.createElement('img'); im.alt = ''; im.src = item.image; art.appendChild(im); }
+    else if (typeof item.image === 'string' && /^data:image\/[a-z0-9.+-]+;base64,/i.test(item.image)) {
+      var im = document.createElement('img'); im.alt = '';
+      // through MantlePic's cache (../shared/pic-url.js): a data: <img> keeps its picture in the renderer for good
+      if (window.MantlePic) window.MantlePic.set(im, item.image); else im.src = item.image;
+      art.appendChild(im);
+    }
     else { art.innerHTML = svg(G.note, 14); if (item.imageReason) art.title = 'No picture: ' + plain(item.imageReason); }
   }
 
