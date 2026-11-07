@@ -25,11 +25,11 @@ public class LookSyncContractTests
     const string LocalJson = "{\"theme\":\"light\",\"accent\":{\"hue\":30},\"glass\":{\"dark\":{\"blurPx\":8,\"dim\":0.6,\"panel\":-0.1},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}";
 
     // FAST: debounceMs 30, corruptRetryMs 60, rewatchDelays [100, 200, 400], retryDelays [5, 10, 20]
-    static LookSync Mk(string dir, string app = "helm", bool enabled = true, int debounce = 30, int corruptRetry = 60, int[]? rewatch = null, string? gateRoot = null)
+    static LookSync Mk(string dir, string app = "helm", bool enabled = true, int debounce = 30, int corruptRetry = 60, int[]? rewatch = null, string? gateRoot = null, Action<string>? trace = null)
         => new(new LookSyncOptions {
             App = app, Dir = dir, Files = new SafeFile(WriteGate.Scratch(gateRoot ?? dir)), Enabled = enabled,
             Local = () => (JsonObject)JsJson.Parse(LocalJson)!, DebounceMs = debounce, CorruptRetryMs = corruptRetry,
-            RewatchDelays = rewatch ?? new[] { 100, 200, 400 }, RetryDelays = new[] { 5, 10, 20 },
+            RewatchDelays = rewatch ?? new[] { 100, 200, 400 }, RetryDelays = new[] { 5, 10, 20 }, Trace = trace,
         });
 
     static string FileIn(string d) => Path.Combine(d, "look.json");
@@ -117,12 +117,18 @@ public class LookSyncContractTests
     {
         using var t = new TestDir("ls"); var d = t.Path;
         File.WriteAllText(FileIn(d), "{\"schema\":1,\"rev\":3,\"lo");
-        using var s = Mk(d, corruptRetry: 300);
+        // The file heals right after the FIRST torn read (the instance's own trace line, said before it waits 300 ms to
+        // read again), never after a test-side delay: a Task.Delay(80) on a pool starved by the parallel suite resumed
+        // after the re-read had come and gone (the file moved aside as damage, or read mid-write).
+        int healed = 0;
+        using var s = Mk(d, corruptRetry: 300, trace: line => {
+            if (line.StartsWith("check read corrupt", StringComparison.Ordinal) && Interlocked.Exchange(ref healed, 1) == 0)
+                File.WriteAllText(FileIn(d), "{\"schema\":1,\"rev\":4,\"writer\":{\"app\":\"quartz\",\"instance\":\"q\"},\"look\":{\"theme\":{\"v\":\"system\",\"rev\":4,\"by\":\"quartz\"}}}");
+        });
         var applied = Applied(s);
         s.Start();
-        await Task.Delay(80);
-        File.WriteAllText(FileIn(d), "{\"schema\":1,\"rev\":4,\"writer\":{\"app\":\"quartz\",\"instance\":\"q\"},\"look\":{\"theme\":{\"v\":\"system\",\"rev\":4,\"by\":\"quartz\"}}}");
         var a = await applied;
+        Assert.Equal(1, healed);
         Assert.Equal("system", a.Changes["theme"]!.GetValue<string>());
         Assert.Empty(Directory.GetFiles(d, "*.bad-*"));
     }
@@ -248,11 +254,39 @@ public class LookSyncContractTests
             Assert.Matches(@"Can't write .*E(BUSY|PERM|ACCES) \(after 4 tries\)", (await err).Reason);
         }
         Assert.Empty(Directory.GetFiles(d, "*.tmp"));
-        // released before the retries run out: it lands
+        // released before the retries run out: it lands. The release follows the writer, not the clock: a thread of its
+        // own (never the pool, which the writer's retry sleeps and a busy test run can starve: a Task.Delay(8)
+        // continuation once came after all four tries) waits until the writer has closed its tmp copy, the step right
+        // before the first rename, which the holder refuses. It lets go 20 ms later, inside the first 50 ms retry delay.
         var holder = new FileStream(FileIn(d), FileMode.Open, FileAccess.Read, FileShare.Read);
-        _ = Task.Delay(8).ContinueWith(_ => holder.Dispose());
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long closedAt = -1, releasedAt = -1;
+        var releaser = new Thread(() => {
+            try {
+                while (clock.ElapsedMilliseconds < 10000) {
+                    foreach (var tmp in Directory.GetFiles(d, "look.json.helm.*.tmp")) {
+                        try { using (new FileStream(tmp, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete)) { } }
+                        catch (Exception) { continue; }   // still open for writing (FileShare.None), or gone
+                        closedAt = clock.ElapsedMilliseconds;
+                        Thread.Sleep(20);
+                        return;
+                    }
+                    Thread.Sleep(1);
+                }
+            } finally {
+                holder.Dispose();
+                releasedAt = clock.ElapsedMilliseconds;
+            }
+        }) { IsBackground = true, Name = "look test: the reader that lets go" };
+        releaser.Start();
         using var slow = new LookSync(new LookSyncOptions { App = "helm", Dir = d, Files = new SafeFile(WriteGate.Scratch(d)), RetryDelays = new[] { 50, 100, 200 } });
-        Assert.True((await slow.PublishAsync("theme", V("\"light\""))).Ok);
+        var landed = await slow.PublishAsync("theme", V("\"light\""));
+        long answeredAt = clock.ElapsedMilliseconds;
+        releaser.Join(10000);
+        Assert.True(landed.Ok, $"the publish answered at +{answeredAt} ms ({landed.Reason}); the writer closed its tmp copy at +{closedAt} ms, the holder let go at +{releasedAt} ms");
+        Assert.True(closedAt >= 0, "the writer's tmp copy was never seen closed");
+        Assert.Equal("light", ReadJson(d)["look"]!["theme"]!["v"]!.GetValue<string>());
+        Assert.Empty(Directory.GetFiles(d, "*.tmp"));
         holder.Dispose();
     }
 
