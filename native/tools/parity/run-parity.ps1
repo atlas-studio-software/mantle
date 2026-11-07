@@ -40,9 +40,15 @@ if (-not $env:CI -and -not $env:GITHUB_ACTIONS -and $env:MANTLE_PARITY_LOCAL -ne
   exit 2
 }
 
+Add-Type -Path (Join-Path $PSScriptRoot 'ParityNative.cs')   # default references only (ReferencedAssemblies drops them)
 Add-Type -AssemblyName System.Drawing
-$drawing = @([System.Drawing.Bitmap].Assembly.Location, [System.Drawing.Size].Assembly.Location) | Select-Object -Unique
-Add-Type -Path (Join-Path $PSScriptRoot 'ParityNative.cs') -ReferencedAssemblies $drawing
+# BGRA bytes (stride = w * 4) -> PNG, on the PowerShell side.
+function Save-Bgra([byte[]]$px, [int]$w, [int]$h, [string]$path) {
+  $bmp = [System.Drawing.Bitmap]::new($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  $d = $bmp.LockBits([System.Drawing.Rectangle]::new(0, 0, $w, $h), [System.Drawing.Imaging.ImageLockMode]::WriteOnly, $bmp.PixelFormat)
+  for ($row = 0; $row -lt $h; $row++) { [System.Runtime.InteropServices.Marshal]::Copy($px, $row * $w * 4, [IntPtr]::Add($d.Scan0, $row * $d.Stride), $w * 4) }
+  $bmp.UnlockBits($d); $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+}
 [void][ParityNative]::DpiAware()
 
 # ------------------------------------------------------------------ the runner desktop
@@ -108,9 +114,11 @@ function Wait-Still([string]$tag) {
   return $m
 }
 function Shoot([string]$dir, [string]$name) {
-  [ParityNative]::Capture($crop.x, $crop.y, $crop.w, $crop.h, (Join-Path $dir "$name.png"))
-  [ParityNative]::Capture(0, 0, $W, $H, (Join-Path $dir "$name-full.png"))
+  $px = [ParityNative]::Grab($crop.x, $crop.y, $crop.w, $crop.h)
+  Save-Bgra $px $crop.w $crop.h (Join-Path $dir "$name.png")
+  Save-Bgra ([ParityNative]::Grab(0, 0, $W, $H)) $W $H (Join-Path $dir "$name-full.png")
   [ParityNative]::VisibleWindows() | Set-Content -Encoding utf8 (Join-Path $dir "$name-windows.txt")
+  return , $px
 }
 function Stop-Profile([string]$profile) {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains("--profile-name=$profile") } |
@@ -139,6 +147,7 @@ foreach ($t in $themes) {
   $dir = Join-Path $Out $t; New-Item -ItemType Directory -Force -Path $dir | Out-Null
   Set-WinTheme $t; Start-Sleep -Seconds 2
   $r = [ordered]@{ theme = $t; crop = $crop; masks = @() }
+  $ePx = $null; $nPx = $null
 
   # Electron Mantle (--test instance, made visible)
   $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
@@ -151,7 +160,7 @@ foreach ($t in $themes) {
   if ($e -and $e.ok) {
     [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
     $r.electronMotion = Wait-Still "electron $t"
-    Shoot $dir 'electron'
+    $ePx = Shoot $dir 'electron'
     $r.electron = $e
     if ($e.clockDip) { $d = [double]$e.dpr; $r.masks += , @([int]($e.clockDip[0] * $d), [int]($e.clockDip[1] * $d), [int]($e.clockDip[2] * $d), [int]($e.clockDip[3] * $d)) }
     Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
@@ -174,7 +183,7 @@ foreach ($t in $themes) {
     Start-Sleep -Milliseconds 800
     [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
     $r.nativeMotion = Wait-Still "native $t"
-    Shoot $dir 'native'
+    $nPx = Shoot $dir 'native'
     $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
     $nc = Native-ClockRect $np.Id
     if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
@@ -186,11 +195,11 @@ foreach ($t in $themes) {
   Stop-Profile "parity-$t"
 
   # diff
-  $ep = Join-Path $dir 'electron.png'; $npng = Join-Path $dir 'native.png'
-  if ((Test-Path $ep) -and (Test-Path $npng)) {
+  if ($ePx -and $nPx) {
     $flat = [System.Collections.Generic.List[int]]::new()
     foreach ($m in $r.masks) { $flat.AddRange([int[]]@(($m[0] - 4 - $crop.x), ($m[1] - 4 - $crop.y), ($m[2] + 8), ($m[3] + 8))) }
-    $s = [ParityNative]::Diff($ep, $npng, (Join-Path $dir 'diff.png'), $flat.ToArray(), $PixelThreshold)
+    $s = [ParityNative]::Diff($ePx, $nPx, $crop.w, $crop.h, $flat.ToArray(), $PixelThreshold)
+    Save-Bgra $s.Heat $crop.w $crop.h (Join-Path $dir 'diff.png')
     $r.score = [ordered]@{ ssim = [Math]::Round($s.Ssim, 4); diffPxPct = [Math]::Round($s.DiffPxPct, 2); meanAbs = [Math]::Round($s.MeanAbs, 2)
       meanAbsRGB = @([Math]::Round($s.MeanAbsR, 2), [Math]::Round($s.MeanAbsG, 2), [Math]::Round($s.MeanAbsB, 2))
       compared = $s.Compared; masked = $s.Masked; pixelThreshold = $PixelThreshold }

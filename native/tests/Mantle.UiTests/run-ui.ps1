@@ -38,7 +38,7 @@ $proj = Join-Path $PSScriptRoot 'Mantle.UiTests.csproj'
 $targs = @('test', $proj, '-c', 'Release', '--logger', 'trx;LogFileName=ui.trx', '--logger', 'console;verbosity=normal', '--results-directory', $Out)
 if ($Filter) { $targs += @('--filter', $Filter) }
 $log = Join-Path $Out 'test.log'
-& dotnet @targs *>&1 | Tee-Object -FilePath $log | Select-String -Pattern '^\s*(Passed|Failed|Skipped)\s|error|Total tests|Passed!|Failed!' | ForEach-Object { $_.Line }
+& dotnet @targs *>&1 | Tee-Object -FilePath $log | Select-String -Pattern '^\s*(Passed|Failed|Skipped)\s|Assert\.|error|Total tests|Passed!|Failed!' | ForEach-Object { $_.Line }
 $code = $LASTEXITCODE
 
 $trx = Join-Path $Out 'ui.trx'

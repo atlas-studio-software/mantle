@@ -1,15 +1,13 @@
 // ParityNative.cs - helpers for run-parity.ps1 (loaded with Add-Type). Runner only: it changes the
 // desktop (wallpaper, theme, taskbar auto-hide, cursor) of the machine it runs on.
 //
-// Capture: the real composited screen pixels (CopyFromScreen), so glass, shadows and transparency are
+// Capture: the real composited screen pixels (GDI BitBlt with CAPTUREBLT), so glass, shadows and transparency are
 // what a person would see, not what a window thinks it drew.
 // Diff: per-channel mean absolute difference, the share of pixels whose largest channel delta is over a
 // threshold, and SSIM on luminance (8x8 windows, step 4), each over the UNMASKED pixels only. The heatmap
 // shows the first image dimmed to grey, the difference in red, and masked areas tinted blue.
 using System;
 using System.Collections.Generic;
-using System.Drawing;
-using System.Drawing.Imaging;
 using System.Runtime.InteropServices;
 
 public static class ParityNative
@@ -70,45 +68,46 @@ public static class ParityNative
         return list.ToArray();
     }
 
-    // ------------------------------------------------------------------ capture
-    // CAPTUREBLT: include layered (transparent) windows, as the spike bench did.
-    const CopyPixelOperation Blt = CopyPixelOperation.SourceCopy | CopyPixelOperation.CaptureBlt;
+    // ------------------------------------------------------------------ capture (GDI, no System.Drawing: Add-Type keeps its default references)
+    [DllImport("user32.dll")] static extern IntPtr GetDC(IntPtr h);
+    [DllImport("user32.dll")] static extern int ReleaseDC(IntPtr h, IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleDC(IntPtr dc);
+    [DllImport("gdi32.dll")] static extern IntPtr CreateCompatibleBitmap(IntPtr dc, int w, int h);
+    [DllImport("gdi32.dll")] static extern IntPtr SelectObject(IntPtr dc, IntPtr o);
+    [DllImport("gdi32.dll")] static extern bool BitBlt(IntPtr d, int x, int y, int w, int h, IntPtr s, int sx, int sy, uint rop);
+    [DllImport("gdi32.dll")] static extern bool DeleteObject(IntPtr o);
+    [DllImport("gdi32.dll")] static extern bool DeleteDC(IntPtr dc);
+    [StructLayout(LayoutKind.Sequential)]
+    struct BITMAPINFOHEADER { public int biSize, biWidth, biHeight; public short biPlanes, biBitCount; public int biCompression, biSizeImage, biXPelsPerMeter, biYPelsPerMeter, biClrUsed, biClrImportant; }
+    [DllImport("gdi32.dll")] static extern int GetDIBits(IntPtr dc, IntPtr bmp, uint start, uint lines, byte[] bits, ref BITMAPINFOHEADER bi, uint usage);
 
-    public static void Capture(int x, int y, int w, int h, string path)
+    /// <summary>BGRA bytes (alpha forced to 255) of a screen rectangle as DWM shows it. SRCCOPY | CAPTUREBLT,
+    /// so layered (transparent) windows are included, as the spike bench did.</summary>
+    public static byte[] Grab(int x, int y, int w, int h)
     {
-        using (var bmp = new Bitmap(w, h, PixelFormat.Format32bppArgb))
-        {
-            using (var g = Graphics.FromImage(bmp)) g.CopyFromScreen(x, y, 0, 0, new Size(w, h), Blt);
-            bmp.Save(path, ImageFormat.Png);
-        }
-    }
-
-    /// <summary>Mean absolute difference (0-255) between two captures of the same rect a moment apart: is it still moving?</summary>
-    public static double Motion(int x, int y, int w, int h, int gapMs)
-    {
-        byte[] pa, pb;
-        using (var a = new Bitmap(w, h, PixelFormat.Format32bppArgb))
-        using (var b = new Bitmap(w, h, PixelFormat.Format32bppArgb))
-        {
-            using (var g = Graphics.FromImage(a)) g.CopyFromScreen(x, y, 0, 0, new Size(w, h), Blt);
-            System.Threading.Thread.Sleep(gapMs);
-            using (var g = Graphics.FromImage(b)) g.CopyFromScreen(x, y, 0, 0, new Size(w, h), Blt);
-            pa = Pixels(a); pb = Pixels(b);
-        }
-        double s = 0; for (int i = 0; i < pa.Length; i++) if (i % 4 != 3) s += Math.Abs(pa[i] - pb[i]);
-        return s / (pa.Length / 4 * 3);
-    }
-
-    static byte[] Pixels(Bitmap b)
-    {
-        var d = b.LockBits(new Rectangle(0, 0, b.Width, b.Height), ImageLockMode.ReadOnly, PixelFormat.Format32bppArgb);
+        IntPtr s = GetDC(IntPtr.Zero), m = CreateCompatibleDC(s), b = CreateCompatibleBitmap(s, w, h);
+        IntPtr old = SelectObject(m, b);
         try
         {
-            var buf = new byte[b.Width * b.Height * 4];
-            for (int row = 0; row < b.Height; row++) Marshal.Copy(d.Scan0 + row * d.Stride, buf, row * b.Width * 4, b.Width * 4);
-            return buf;   // BGRA
+            BitBlt(m, 0, 0, w, h, s, x, y, 0x00CC0020 | 0x40000000);
+            SelectObject(m, old);
+            var bi = new BITMAPINFOHEADER { biSize = 40, biWidth = w, biHeight = -h, biPlanes = 1, biBitCount = 32 };
+            var bits = new byte[w * h * 4];
+            GetDIBits(m, b, 0, (uint)h, bits, ref bi, 0);
+            for (int i = 3; i < bits.Length; i += 4) bits[i] = 255;
+            return bits;
         }
-        finally { b.UnlockBits(d); }
+        finally { DeleteObject(b); DeleteDC(m); ReleaseDC(IntPtr.Zero, s); }
+    }
+
+    /// <summary>Mean absolute difference (0-255) between two grabs of the same rect a moment apart: is it still moving?</summary>
+    public static double Motion(int x, int y, int w, int h, int gapMs)
+    {
+        var pa = Grab(x, y, w, h);
+        System.Threading.Thread.Sleep(gapMs);
+        var pb = Grab(x, y, w, h);
+        double s = 0; for (int i = 0; i < pa.Length; i++) if (i % 4 != 3) s += Math.Abs(pa[i] - pb[i]);
+        return s / (pa.Length / 4 * 3);
     }
 
     // ------------------------------------------------------------------ diff
@@ -117,23 +116,18 @@ public static class ParityNative
         public int Width, Height, Compared, Masked;
         public double MeanAbsR, MeanAbsG, MeanAbsB, MeanAbs, DiffPxPct, Ssim;
         public int Threshold;
+        public byte[] Heat = Array.Empty<byte>();
     }
 
     /// <summary>
-    /// Compares two same-size PNGs. masks = flat [x, y, w, h, x, y, w, h, ...] in image pixels; those pixels
+    /// Compares two same-size BGRA grabs. masks = flat [x, y, w, h, x, y, w, h, ...] in image pixels; those pixels
     /// are left out of every number. threshold = largest-channel delta (0-255) that counts a pixel as different.
+    /// The heatmap (BGRA, same size) is left in Score.Heat for the caller to save.
     /// </summary>
-    public static Score Diff(string aPath, string bPath, string heatPath, int[] masks, int threshold)
+    public static Score Diff(byte[] pa, byte[] pb, int w, int h, int[] masks, int threshold)
     {
-        int w, h; byte[] pa, pb;
-        using (var a = new Bitmap(aPath))
-        using (var b = new Bitmap(bPath))
-        {
-            if (a.Width != b.Width || a.Height != b.Height)
-                throw new InvalidOperationException($"sizes differ: {a.Width}x{a.Height} vs {b.Width}x{b.Height}");
-            w = a.Width; h = a.Height;
-            pa = Pixels(a); pb = Pixels(b);
-        }
+        if (pa.Length != w * h * 4 || pb.Length != w * h * 4)
+            throw new InvalidOperationException($"sizes differ: {pa.Length} / {pb.Length} bytes for {w}x{h}");
         var mask = new bool[w * h];
         for (int m = 0; m + 3 < (masks ?? Array.Empty<int>()).Length; m += 4)
             for (int y = Math.Max(0, masks[m + 1]); y < Math.Min(h, masks[m + 1] + masks[m + 3]); y++)
@@ -162,13 +156,7 @@ public static class ParityNative
         s.DiffPxPct = 100.0 * over / n;
         s.Ssim = Ssim(la, lb, mask, w, h);
 
-        using (var hb = new Bitmap(w, h, PixelFormat.Format32bppArgb))
-        {
-            var d = hb.LockBits(new Rectangle(0, 0, w, h), ImageLockMode.WriteOnly, PixelFormat.Format32bppArgb);
-            for (int row = 0; row < h; row++) Marshal.Copy(heat, row * w * 4, d.Scan0 + row * d.Stride, w * 4);
-            hb.UnlockBits(d);
-            hb.Save(heatPath, ImageFormat.Png);
-        }
+        s.Heat = heat;
         return s;
     }
 
