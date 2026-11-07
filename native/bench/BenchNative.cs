@@ -195,8 +195,7 @@ public static class BenchNative
     }
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool EnumDisplaySettingsW(string dev, int mode, ref DEVMODE dm);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int ChangeDisplaySettingsW(ref DEVMODE dm, int flags);
-    [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
-    /// The primary screen's size now (WinForms' Screen caches it across a mode change).
+    /// The primary screen's size now (WinForms' Screen caches it across a mode change). GetSystemMetrics is declared above (Click).
     public static int[] ScreenSize() => new[] { GetSystemMetrics(0), GetSystemMetrics(1) };
 
     /// Set the primary screen's size for this session. 0 = done (DISP_CHANGE_SUCCESSFUL).
