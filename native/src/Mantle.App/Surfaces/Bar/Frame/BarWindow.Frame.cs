@@ -83,6 +83,18 @@ public sealed partial class BarWindow
     }
 
     /// XAML sizes from the geometry; after the first time also the shadow (it is drawn for one pill width).
+    /// The pill's hairlines the way Chromium draws them at any scale: the 1 px CSS border (`.bar::after`) is
+    /// floor(scale) device px, at least 1, and the lip (`--lg-lip-up: inset 0 1px 0`) is a shadow, so exactly
+    /// 1 DIP, anti-aliased, starting right inside that border. WinUI's layout rounding drew both 2 px at 150 %
+    /// (parity run 42371182726: the top edge a row thicker and the lip a row lower, light-150 0.9616, dark-150 0.955).
+    void SnapHairlines(double s)
+    {
+        double border = Math.Max(1, Math.Floor(s)) / s;   // DIP
+        Edge.BorderThickness = new Thickness(border);
+        Lip.UseLayoutRounding = false;
+        Lip.Margin = new Thickness(border);
+    }
+
     void ApplyGeometry(BarGeometry g, string why)
     {
         bool widthChanged = Math.Abs(g.PillWdip - _pillW) > 0.01;
@@ -91,6 +103,7 @@ public sealed partial class BarWindow
         Root.Height = BarGeometry.ShadowTop + BarGeometry.BarH + BarGeometry.Lift;
         Pill.Width = _pillW;
         Pill.Margin = new Thickness(BarGeometry.ShadowSide, BarGeometry.ShadowTop, 0, 0);
+        SnapHairlines(g.Scale);
         if (_vis != null) _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarH), 0);
         if (widthChanged && !_dark && _started) AddShadow();
         if (_started) Host.Log.Line($"bar placed ({why}): {g.Describe()}");
