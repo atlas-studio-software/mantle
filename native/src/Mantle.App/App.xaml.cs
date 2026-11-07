@@ -86,7 +86,7 @@ public partial class MantleApp : Application
             var choice = Mantle.Core.Platform.SidecarLocator.Resolve(Host.Args, Host.Env, AppContext.BaseDirectory);
             Host.Log.Line(choice.Line);
             _hostLoop = new Mantle.Core.Lifecycle.HostLoop();
-            _hostLoop.OnError += e => Host.Log.Line("mantle-native: a host-thread job failed: " + e);
+            _hostLoop.OnError += e => Host.Log.Line("a host-thread job failed: " + e);
             var opts = new Mantle.Core.Platform.SidecarOptions {
                 ExePath = choice.Path, ExeOverride = choice.Override, Passive = Host.Args.Kind != RunKind.Live,
                 StateFile = System.IO.Path.Combine(Host.Paths.DataRoot, "shell-state.json"),
@@ -94,11 +94,11 @@ public partial class MantleApp : Application
             };
             _hostLoop.Post(() => {
                 _platform = new Mantle.Core.Platform.ProcessPlatform(opts, new Mantle.Core.Platform.ProcessSidecarLauncher(_hostLoop), _hostLoop);
-                _platform.OnStatus(s => Host.Log.Line($"mantle-native: sidecar {s.State.ToString().ToLowerInvariant()}: {s.Reason}"));
+                _platform.OnStatus(s => Host.Log.Line($"sidecar {s.State.ToString().ToLowerInvariant()}: {s.Reason}"));
                 _platform.Start();
             });
         } catch (Exception e) {
-            Host.Log.Line("mantle-native: the platform could not be set up: " + e.Message);
+            Host.Log.Line("the platform could not be set up: " + e.Message);
         }
     }
 
@@ -108,9 +108,9 @@ public partial class MantleApp : Application
         if (loop == null) return;
         try {
             var stopped = loop.RunAsync(async () => { if (_platform != null) await _platform.StopAsync(why); return true; });
-            if (!stopped.Wait(TimeSpan.FromSeconds(4))) Host.Log.Line("mantle-native: the sidecar did not stop within 4 s; it ends itself when this process exits (--parent-pid)");
+            if (!stopped.Wait(TimeSpan.FromSeconds(4))) Host.Log.Line("the sidecar did not stop within 4 s; it ends itself when this process exits (--parent-pid)");
         } catch (Exception e) {
-            Host.Log.Line("mantle-native: stopping the sidecar failed: " + e.Message);
+            Host.Log.Line("stopping the sidecar failed: " + e.Message);
         }
     }
 }
