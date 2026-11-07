@@ -61,9 +61,36 @@ deliberate deviation for safety.
   Gamma Reg), the runner's Taskband Favorites value off for the run, run-parity.ps1 with `-MaskApps $false`, then
   the 440 DIP apps slot cropped out of both captures: `native/out/parity/bar-tasks/<theme>/strip-pair.png`.
 
+## Round 3, part 3 (native-r3-tasks-3)
+
+- Running-only order follows the z-order (above). `BarTests.Running_app_button_focuses_minimizes_and_restores_its_window`
+  failed 4 of 4 full UI rounds on it (its third click hit the spot A had before it was minimised and moved): it now
+  finds the button again, once settled, before each click.
+- Wiring swapped (above): no `MantleApp.AttachBarTasks`, no `TasksWiring.cs`.
+- Window list (`Tasks/BarWindow.WindowList.cs`; bar.js#flyList): a click on an app with two or more windows (bar.open
+  action `list`) opens the pop-up `winlist:<id>` ("Mantle pop-up: <app> windows") over the icon through the bar's
+  PopupHost: heading, a note, one row per window (active: accent ink and the 3x14 bar; minimised: quiet ink;
+  tooltip "(minimized)"), each with its X. A row: list closes, bar.window toggle/focus. The X: list closes,
+  bar.window close (a test run refuses it, "Window did not switch" chip as bar.js ACT_LABEL.window). The same icon
+  again closes it. DEVIATION until the previews exist: Electron opens the preview cards here and keeps the list for
+  too many windows; the native note says "live previews are not in the native bar yet, so this is the list".
+  ItemStatus gains "; N windows" (two or more). `BarTasksHost.Window` is the bar.window bridge.
+- The click flake (main run 42384431813, `Clicks_launch_...` "no dry-run line"): see "The click flake" below.
+- Test-only diagnostics (run with `--test` only): `bar tasks: test: press|click on bar.app.<n> (<title>)`,
+  `bar tasks: test: strip now [...]` on every order change, and a UI-thread ping every 250 ms that logs
+  `the UI thread ran queued work <n> ms late` (>= 500 ms) or `has not run queued work for <n> ms` (>= 2 s). A failed
+  strip test keeps the app's whole log in `native/out/ui/strip-<profile>-<time>-native-log.txt` and its "no dry-run"
+  message says where the click landed. `tools/parity/bar-tasks/repeat-ui.ps1` repeats a test filter N times and keeps
+  the strip tests' app logs per round.
+
+### The click flake
+
+FLAKE_NOTES
+
 ## Part 2 starts here
 
-Window previews (DWM thumbnails, BAR-221..234, 308..314), the window list for action `list`, drag to reorder
+Window previews (DWM thumbnails onto the bar's HWND, BAR-221..233, 308..314; the window list above is their
+fallback and today's stand-in), drag to reorder
 (BAR-239..254) with the overlay writes, the jump list / app menu (BAR-207..220, 315..332), overflow "+N"
 (BAR-235..238), badges (Helm count BAR-255..257, keep on top BAR-258, 333..347), Mantle apps standing in for
 Windows' (BAR-291..296), the top bar hide rows (348..351), the parity strip screenshots
