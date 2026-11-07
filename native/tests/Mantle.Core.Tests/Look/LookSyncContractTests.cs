@@ -250,9 +250,13 @@ public class LookSyncContractTests
         Assert.Empty(Directory.GetFiles(d, "*.tmp"));
         // released before the retries run out: it lands
         var holder = new FileStream(FileIn(d), FileMode.Open, FileAccess.Read, FileShare.Read);
-        _ = Task.Delay(8).ContinueWith(_ => holder.Dispose());
+        var clock = System.Diagnostics.Stopwatch.StartNew();
+        long releasedAt = -1;
+        _ = Task.Delay(8).ContinueWith(_ => { holder.Dispose(); releasedAt = clock.ElapsedMilliseconds; });
         using var slow = new LookSync(new LookSyncOptions { App = "helm", Dir = d, Files = new SafeFile(WriteGate.Scratch(d)), RetryDelays = new[] { 50, 100, 200 } });
-        Assert.True((await slow.PublishAsync("theme", V("\"light\""))).Ok);
+        var landed = await slow.PublishAsync("theme", V("\"light\""));
+        long answeredAt = clock.ElapsedMilliseconds;
+        Assert.True(landed.Ok, $"the publish answered at +{answeredAt} ms ({landed.Reason}); the holder was released at +{releasedAt} ms (-1: not yet); pool {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued");
         holder.Dispose();
     }
 

@@ -7,6 +7,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Mantle.Core.Commands;
 using Mantle.Core.Data;
+using Mantle.Core.Logging;
 using Mantle.Core.Look;
 using Microsoft.Win32;
 using Xunit;
@@ -18,10 +19,21 @@ namespace Mantle.Core.Tests.Look;
 // Windows through a scratch key, and the --theme pin. Real host thread, real folder watcher, scratch folders only.
 public class LookShellTests
 {
+    /// A log whose lines carry the ms since the rig was made, so a slow follow shows which step took the time.
+    sealed class StampLog : ILogSink
+    {
+        readonly Stopwatch _sw = Stopwatch.StartNew();
+        readonly ListLog _l = new();
+        public long Ms => _sw.ElapsedMilliseconds;
+        public void Line(string text) => _l.Line("+" + Ms + " ms [t" + Environment.CurrentManagedThreadId + "] " + text);
+        public string All => _l.All;
+        public string Pool() => $"pool: {ThreadPool.ThreadCount} threads, {ThreadPool.PendingWorkItemCount} queued, {ThreadPool.CompletedWorkItemCount} done";
+    }
+
     sealed class Rig : IDisposable
     {
         public readonly TestDir Dir = new("shell");
-        public readonly ListLog Log = new();
+        public readonly StampLog Log = new();
         public readonly Stores Stores;
         public readonly Mantle.Core.Lifecycle.HostLoop Loop = new();
         public readonly CommandBus Bus = new();
@@ -37,7 +49,7 @@ public class LookShellTests
             Shell = new LookShell(new LookShellOptions {
                 Stores = Stores, Files = new SafeFile(WriteGate.Scratch(Dir.Path)), LookDir = LookDir,
                 WindowsMode = windows ?? (() => new WindowsMode(Windows, null)), Post = Loop.Post, Events = Events, Log = Log, PinnedTheme = pinned,
-                Tune = o => o with { DebounceMs = 30, RetryDelays = new[] { 5, 10, 20 }, CorruptRetryMs = 60 },
+                Tune = o => o with { DebounceMs = 30, RetryDelays = new[] { 5, 10, 20 }, CorruptRetryMs = 60, Trace = t => Log.Line("mantle sync: " + t) },
             });
             Commands = Catalogs.Register(Bus, Shell);
         }
@@ -126,11 +138,22 @@ public class LookShellTests
         await r.Until(() => r.Shared() != null, "the seed of look.json");
         await Task.Delay(100);
         using var helm = new LookSync(new LookSyncOptions { App = "helm", Dir = r.LookDir, Files = new SafeFile(WriteGate.Scratch(r.Dir.Path)) });
-        var dark = r.NextTheme(p => p.Theme == "dark");
+        var dark = r.NextTheme(p => { if (p.Theme == "dark") r.Log.Line("theme event dark on the host thread"); return p.Theme == "dark"; });
         var sw = Stopwatch.StartNew();
-        Assert.True((await helm.PublishAsync("theme", JsonValue.Create("dark"))).Ok);
-        await Within(dark, 1000, "Helm's theme as the theme event");
-        Assert.True(sw.ElapsedMilliseconds < 1000, "followed after " + sw.ElapsedMilliseconds + " ms");
+        r.Log.Line("helm publishes; " + r.Log.Pool());
+        var pub = await helm.PublishAsync("theme", JsonValue.Create("dark"));
+        r.Log.Line("helm publish answered ok=" + pub.Ok + " after " + sw.ElapsedMilliseconds + " ms; " + r.Log.Pool());
+        Assert.True(pub.Ok);
+        try {
+            await Within(dark, 1000, "Helm's theme as the theme event");
+        } catch (Xunit.Sdk.XunitException e) {
+            r.Log.Line("gave up; " + r.Log.Pool());
+            throw new Xunit.Sdk.XunitException(e.Message + "
+" + r.Log.All);
+        }
+        r.Log.Line("test resumed; " + r.Log.Pool());
+        Assert.True(sw.ElapsedMilliseconds < 1000, "followed after " + sw.ElapsedMilliseconds + " ms
+" + r.Log.All);
         Assert.Equal("dark", (await r.Call("theme.get")).Result.GetProperty("mode").GetString());
         await Task.Delay(300);
         Assert.Equal("helm", ThemeBy(r.Shared()));   // applied from sync, never re-shared as Mantle's own pick

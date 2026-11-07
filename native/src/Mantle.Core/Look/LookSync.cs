@@ -47,6 +47,8 @@ public sealed record LookSyncOptions
     public int? Pid { get; init; }
     /// Where a handler that threw is said (the module would have thrown into its own stream).
     public Action<string>? Log { get; init; }
+    /// Tests only: each step of the follow path (event, debounce, read, apply), to time a slow follow on a busy runner.
+    internal Action<string>? Trace { get; init; }
 }
 
 /// <summary>
@@ -216,18 +218,20 @@ public sealed class LookSync : IDisposable
     void OnEvent(string? name)
     {
         if (_closed) return;
+        _o.Trace?.Invoke("event " + name);
         if (name != null && (Path.IsPathRooted(name) || name.Contains('\\') || name.Contains('/'))) { LostWatch("folder was removed"); return; }
         if (name != null && !string.Equals(name, LookSyncCore.FileName, StringComparison.OrdinalIgnoreCase)) return;   // temp files, stills, bad copies
         lock (_lock) {
             if (_closed) return;
             _debounce?.Dispose();
-            _debounce = new Timer(_ => Check(new()), null, _o.DebounceMs, Timeout.Infinite);
+            _debounce = new Timer(_ => { _o.Trace?.Invoke("debounce fired"); Check(new()); }, null, _o.DebounceMs, Timeout.Infinite);
         }
     }
 
     void LostWatch(string why)
     {
         if (_closed) return;
+        _o.Trace?.Invoke("lost watch: " + why);
         int ms;
         lock (_lock) {
             if (_watcher != null) { try { _watcher.Dispose(); } catch { } _watcher = null; }
@@ -268,6 +272,7 @@ public sealed class LookSync : IDisposable
     {
         if (_closed) return;
         var r = LookSyncCore.Read(Dir);
+        _o.Trace?.Invoke("check read " + r.State + (r.Hash != null && r.Hash == _lastHash ? " (no change)" : "") + (r.Reason != null ? ": " + r.Reason : ""));
         if (r.State == "corrupt") {
             await Task.Delay(_o.CorruptRetryMs).ConfigureAwait(false);   // a torn read mid-write: retry once
             if (_closed) return;
@@ -337,6 +342,7 @@ public sealed class LookSync : IDisposable
             if (changes.Count > 0) {
                 string? by = writer != null && LookSyncCore.Str(writer["app"]) is { Length: > 0 } a ? a : null;
                 applied = new LookApply(changes, by, docRev, cause ?? "remote");
+                _o.Trace?.Invoke("apply " + string.Join(",", changes.Select(x => x.Key)) + " by " + by);
                 Raise(Apply, applied, "apply");
             }
         }
