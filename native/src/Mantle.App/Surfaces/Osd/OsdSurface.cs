@@ -101,7 +101,7 @@ internal sealed class OsdSurface : ISurface
 
     void Build()
     {
-        _root = new Grid { Background = new SolidColorBrush(Colors.Transparent) };
+        _root = new Grid { Background = B("LgFill0") };
         _shadowHost = new Grid { IsHitTestVisible = false };
         _root.Children.Add(_shadowHost);
 
@@ -112,7 +112,7 @@ internal sealed class OsdSurface : ISurface
         _glyph = Btn(_glyphBox, 28, "glyph", () => OnGlyph(), on => { _glyphHover = on; Paint(); });
         _pill.Children.Add(_glyph);
 
-        _level = new Grid { Height = 14, VerticalAlignment = VerticalAlignment.Center, Background = new SolidColorBrush(Colors.Transparent) };
+        _level = new Grid { Height = 14, VerticalAlignment = VerticalAlignment.Center, Background = B("LgFill0") };
         _track = new Border { Height = 6, CornerRadius = new CornerRadius(3), VerticalAlignment = VerticalAlignment.Center };
         _fill = new Border { Height = 6, CornerRadius = new CornerRadius(3, 0, 0, 3), VerticalAlignment = VerticalAlignment.Center, HorizontalAlignment = HorizontalAlignment.Left };
         _knob = new Ellipse { Width = 14, Height = 14, StrokeThickness = 1, HorizontalAlignment = HorizontalAlignment.Left, RenderTransform = new TranslateTransform() };
@@ -164,7 +164,7 @@ internal sealed class OsdSurface : ISurface
     /// A flat icon button (osd.css .glyph/.more): 28 tall, --lg-r-ctl, transparent; hover/press/on painted in Paint().
     Border Btn(UIElement content, double w, string id, Action click, Action<bool> hover)
     {
-        var b = new Border { Width = w, Height = 28, CornerRadius = new CornerRadius(6), Child = content, Background = new SolidColorBrush(Colors.Transparent) };
+        var b = new Border { Width = w, Height = 28, CornerRadius = new CornerRadius(6), Child = content, Background = B("LgFill0") };
         AutomationProperties.SetAutomationId(b, id);
         b.PointerEntered += (_, _) => hover(true);
         b.PointerExited += (_, _) => hover(false);
@@ -221,7 +221,8 @@ internal sealed class OsdSurface : ISurface
         string theme = _dark ? "Dark" : "Light";
         foreach (var d in Application.Current.Resources.MergedDictionaries)
             if (Find(d, key, theme) is { } v) return v;
-        return new SolidColorBrush(Colors.Magenta);   // a missing token shows, never hides
+        if (_missing.Add(key)) _ctx?.Log.Line($"the theme token {key} is missing from Theme/Tokens.xaml, so that part is drawn clear");
+        return new SolidColorBrush();
     }
     static object? Find(ResourceDictionary d, string key, string theme)
     {
@@ -229,7 +230,8 @@ internal sealed class OsdSurface : ISurface
         foreach (var m in d.MergedDictionaries) if (Find(m, key, theme) is { } x) return x;
         return null;
     }
-    Brush B(string key) => Tok(key) as Brush ?? new SolidColorBrush(Colors.Magenta);
+    Brush B(string key) => Tok(key) as Brush ?? new SolidColorBrush();
+    readonly HashSet<string> _missing = new();
     double D(string key) => Tok(key) is double v ? v : 0;
 
     /// --hud-face: light = --lg-fill-strong three times over (one flat colour), dark = --lg-fill-pop.
@@ -238,7 +240,8 @@ internal sealed class OsdSurface : ISurface
         if (_dark) return B("LgFillPop");
         var c = ((SolidColorBrush)B("LgFillStrong")).Color;
         double a = c.A / 255.0, three = 1 - Math.Pow(1 - a, 3);
-        return new SolidColorBrush(global::Windows.UI.Color.FromArgb((byte)Math.Round(three * 255), c.R, c.G, c.B));
+        c.A = (byte)Math.Round(three * 255);   // the token's own colour, three layers of its alpha
+        return new SolidColorBrush(c);
     }
 
     // ------------------------------------------------------------------ painting (osd.js paint)
@@ -259,7 +262,7 @@ internal sealed class OsdSurface : ISurface
         double r = _open ? D("LgRPop") : D("LgRPill");
         _pane.CornerRadius = new CornerRadius(r);
         _lip.CornerRadius = new CornerRadius(Math.Max(0, r - 1));
-        _lip.BorderBrush = _dark ? B("LgLip") : new SolidColorBrush(Colors.Transparent);   // dark: --lg-lip-up, no outer shadow
+        _lip.BorderBrush = _dark ? B("LgLip") : B("LgFill0");   // dark: --lg-lip-up, no outer shadow
         _pane.Width = _open ? OpenW : PillW;
         _pillLine.BorderThickness = _open ? (_below ? new Thickness(0, 0, 0, 1) : new Thickness(0, 1, 0, 0)) : new Thickness(0);
         _pillLine.BorderBrush = _dark ? B("LgDivider") : B("LgSunk");
@@ -271,7 +274,7 @@ internal sealed class OsdSurface : ISurface
         Brush ink = _dark ? (on || _glyphHover ? B("LgInk") : B("LgInk2")) : on ? B("LgAccOn") : B("LgInk");
         if (!vol && _dark) ink = B("LgInk2");
         Colour(_glyphBox, ink);
-        _glyph.Background = on ? (_dark ? B("LgPress") : B("LgAcc")) : _glyphHover && vol && !d.Dead ? (_dark ? B("LgPress") : B("LgHover")) : new SolidColorBrush(Colors.Transparent);
+        _glyph.Background = on ? (_dark ? B("LgPress") : B("LgAcc")) : _glyphHover && vol && !d.Dead ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
         _glyph.BorderBrush = on && _dark ? B("LgEdgeOut") : null;
         _glyph.BorderThickness = new Thickness(on && _dark ? 1 : 0);
         _glyph.Opacity = _mutePending ? .6 : 1;
@@ -287,7 +290,7 @@ internal sealed class OsdSurface : ISurface
         _chev.Child = cc;
         Colour(_chev, _dark && _moreHover ? B("LgInk") : B("LgInk2"));
         ((RotateTransform)_chev.RenderTransform).Angle = _open ^ _below ? 180 : 0;
-        _more.Background = _moreHover ? (_dark ? B("LgPress") : B("LgHover")) : new SolidColorBrush(Colors.Transparent);
+        _more.Background = _moreHover ? (_dark ? B("LgPress") : B("LgHover")) : B("LgFill0");
         AutomationProperties.SetName(_more, _open ? "Hide the apps" : "Show every app’s volume");
 
         // the level, the number
@@ -634,13 +637,16 @@ internal sealed class OsdSurface : ISurface
         var box = c.CreateContainerVisual();
         double pw = _pane.ActualWidth, ph = _pane.ActualHeight, rad = _pane.CornerRadius.TopLeft;
         var o = _pane.TransformToVisual(_root).TransformPoint(new global::Windows.Foundation.Point(0, 0));
+        // the shadow ink: --lg-shadow is rgba(14,18,38,a); with no shadow token yet this is the light --lg-ink, the
+        // nearest token (a request for a shadow token is in docs/lanes/osd-toasts.md)
+        var ink = ((SolidColorBrush)B("LgInk")).Color;
         void Layer(double dy, double blur, double spread, byte alpha)
         {
             float w = (float)(pw + 2 * spread), h = (float)(ph + 2 * spread);
             if (w <= 0 || h <= 0) return;
             float r = (float)Math.Max(0, rad + spread);
             var geo = c.CreateRoundedRectangleGeometry(); geo.Size = new System.Numerics.Vector2(w, h); geo.CornerRadius = new System.Numerics.Vector2(r, r);
-            var shape = c.CreateSpriteShape(geo); shape.FillBrush = c.CreateColorBrush(Colors.Black);
+            var shape = c.CreateSpriteShape(geo); shape.FillBrush = c.CreateColorBrush(ink);   // a mask: only its alpha is used
             var sv = c.CreateShapeVisual(); sv.Size = new System.Numerics.Vector2(w, h); sv.Shapes.Add(shape);
             var surf = c.CreateVisualSurface(); surf.SourceVisual = sv; surf.SourceSize = new System.Numerics.Vector2(w, h);
             var sprite = c.CreateSpriteVisual();
@@ -650,7 +656,7 @@ internal sealed class OsdSurface : ISurface
             ds.Mask = c.CreateSurfaceBrush(surf);
             ds.BlurRadius = (float)blur;
             ds.Offset = new System.Numerics.Vector3(0, (float)dy, 0);
-            ds.Color = global::Windows.UI.Color.FromArgb(alpha, 14, 18, 38);
+            var col = ink; col.A = alpha; ds.Color = col;
             sprite.Shadow = ds;
             box.Children.InsertAtTop(sprite);
         }
@@ -704,7 +710,7 @@ internal sealed class OsdSurface : ISurface
 }
 
 /// A one-shot UI-thread timer that can be dropped.
-internal sealed class DispatcherQueueTimerHandle : IDisposable
+internal sealed partial class DispatcherQueueTimerHandle : IDisposable
 {
     Microsoft.UI.Dispatching.DispatcherQueueTimer? _t;
     public DispatcherQueueTimerHandle(Microsoft.UI.Dispatching.DispatcherQueue q, int ms, Action action)
@@ -719,7 +725,7 @@ internal sealed class DispatcherQueueTimerHandle : IDisposable
 }
 
 /// The fader's clock on the surface's UI thread.
-internal sealed class UiClock : IToastClock
+internal sealed partial class UiClock : IToastClock
 {
     readonly Microsoft.UI.Dispatching.DispatcherQueue _q;
     public UiClock(Microsoft.UI.Dispatching.DispatcherQueue q) { _q = q; }
