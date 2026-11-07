@@ -151,7 +151,7 @@ function Get-Tree([int]$top) {
   $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
   $set = [System.Collections.Generic.List[int]]::new(); $set.Add($top)
   for ($i = 0; $i -lt $set.Count; $i++) { foreach ($p in $all) { if ($p.ParentProcessId -eq $set[$i] -and -not $set.Contains([int]$p.ProcessId)) { $set.Add([int]$p.ProcessId) } } }
-  return , $set.ToArray()
+  return $set.ToArray()   # unrolled: callers collect it with @(...)
 }
 function Wait-Still([string]$tag, [int[]]$app) {
   $end = (Get-Date).AddSeconds(8); $m = 999
