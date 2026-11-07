@@ -236,6 +236,16 @@ public partial class MantleApp : Application
         // main.js replayAnswer('theme'): a surface that subscribes gets the theme now, so its first frame is right
         var look = _look;
         _offs.Add(_events.Replay("theme", () => look.Payload()));
+        // ---- launcher wiring (lane native-launcher): apps.index / apps.search / apps.launch, the index warmed at start (LAU-017).
+        // A --test run indexes only the scratch fixture MANTLE_TEST_LAUNCHER_DIR names, never the machine's Start Menu.
+        string launcherWhy = "";
+        var launcherInputs = test ? Mantle.Core.Features.LauncherIndex.IndexInputs.ForTestRun(Host.Env(Mantle.Core.Features.LauncherIndex.IndexInputs.TestDirEnv), out launcherWhy)
+            : Mantle.Core.Features.LauncherIndex.IndexInputs.ForWindows();
+        if (test) log("launcher: " + launcherWhy);
+        var launcher = new Mantle.Core.Features.Run.LauncherService(launcherInputs, test, Host.Log);
+        _offs.Add(Mantle.Core.Features.Run.LauncherCommands.Register(_bus, new Mantle.Core.Features.Run.LauncherCommands(launcher)));
+        _ = launcher.IndexAsync();
+        // ---- end launcher wiring
         StartSurfaces(log);
         // TODO(feature-host-2): RestCoordinator with the surfaces' IRestParts, rest.TrimSoon("60 s after start")
 
