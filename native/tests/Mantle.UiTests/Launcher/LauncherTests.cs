@@ -103,9 +103,9 @@ public class LauncherTests
 
     static void Open(App app, IntPtr h)
     {
-        int before = Count(app.Log, "launcher: shown (");
+        int before = Count(app.Log, ": launcher: shown (");
         Second(app, "--test-surface=show:launcher");
-        Assert.IsTrue(Host.Until(() => Count(app.Log, "launcher: shown (") > before && Win32.IsWindowVisible(h), 8000), "surface.show did not put the launcher on screen:\n" + Tail(app.Log));
+        Assert.IsTrue(Host.Until(() => Count(app.Log, ": launcher: shown (") > before && Win32.IsWindowVisible(h), 8000), "surface.show did not put the launcher on screen:\n" + Tail(app.Log));
     }
 
     static List<AutomationElement> Rows(AutomationElement win)
@@ -144,7 +144,7 @@ public class LauncherTests
         Second(app, "--test-surface=show:launcher");
         Second(app, "--test-surface=hide:launcher");
         Assert.IsTrue(Host.Until(() => !Win32.IsWindowVisible(h) && app.Log.Contains("launcher: hidden ("), 8000), "surface.hide did not park the launcher:\n" + Tail(app.Log));
-        Assert.AreEqual(1, Count(app.Log, "launcher: shown ("), "a show over a shown launcher showed it again");
+        Assert.AreEqual(1, Count(app.Log, ": launcher: shown ("), "a show over a shown launcher showed it again");
         Assert.AreEqual(1, AllWindows(app.Proc.Id, Title).Count, "hiding made or lost a launcher window");
     }
 
