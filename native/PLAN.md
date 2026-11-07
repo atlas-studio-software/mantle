@@ -21,6 +21,10 @@ The promise to the user:
   replaces anything.
 - The native app is built **alongside** Electron, which stays live and untouched until native reaches full
   parity. The switch-over happens only then, and Electron stays available as a fallback for a while after it.
+- **Electron is the floor, not the ceiling** (the user, 2026-11-07): where native can clearly do better than
+  Electron, it does. Each such row is marked `better:` in the parity docs with the reason, and every one is listed
+  to the user. Example: running apps keep a stable order in the bar (BAR-289) instead of Electron's z-order,
+  where an icon jumps when its window is focused.
 
 **Fully native is the target for every screen.** WebView2 is used only where a screen genuinely cannot be done
 well natively, and every such case is flagged to the user, never made silently (section 3.12).
@@ -491,9 +495,8 @@ native" exists for retries.
 
 **Fallback period:**
 
-- Electron stays installed and buildable on master for at least 4 weeks of daily native use with no
-  rollback-worthy bug. The length is the user's call.
-- Then removing it is the user's call.
+- Electron stays installed and buildable on master until the user says to remove it (decided 2026-11-07:
+  no fixed length). After the switch-over, ask the user once a week whether it can go.
 - Public users get native only after the user's own dogfood. It arrives as a normal release, which the
   Electron updater delivers, and its installer keeps the Electron folder for rollback.
 
@@ -558,7 +561,9 @@ cap.
 
 - **Q-O1** Install the .NET 10 SDK on the laptop for quick local unit tests and builds (about 1 GB, builds
   cost CPU), or stay cloud-only? The default is cloud-only.
-- **Q-O2** WebView2 by necessity for web (Lively) wallpapers and the Mission Control panel: OK?
+- **Q-O2** DECIDED 2026-11-07 (the user left it to the plan): yes, WebView2 for web (Lively) wallpapers and the
+  Mission Control panel only. Made on demand when one is showing, destroyed when it is not (a web view costs
+  a browser process), and named in the log and in Settings as a web view.
 - **Q-O3** Player and clips codecs: accept Windows' codec extensions with a native player, or WebView2 for the
   player if native can't match? Ask once the native attempt has numbers.
 - **Q-O4** Signing: use the same SignPath project for the native exes and installer? This needs coordination
@@ -567,4 +572,5 @@ cap.
 - **Q-O6** Optional: before full parity, would the user like to try standalone native app windows (Files,
   Task Manager, Settings) launched by hand while Electron stays live? The default is no, which keeps the
   "Electron untouched" promise.
-- **Q-O7** The length of the Electron fallback period. The default is at least 4 weeks.
+- **Q-O7** DECIDED 2026-11-07: no fixed length. Electron stays until the user says to remove it; after the
+  switch-over, ask once a week.
