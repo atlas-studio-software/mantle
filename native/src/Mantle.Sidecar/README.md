@@ -9,9 +9,10 @@ the **same files**, so the native app can use that code while the Electron build
 - **All 131 `sidecar/*.cs` files compile LINKED, unchanged**, as a `net10.0-windows10.0.26100.0`
   class library, in all three define variants of `build.ps1` (winmd, winrt, none). Nothing in
   `sidecar/` was edited and nothing is copied.
-- It takes **4 shim files** in `Shims/` (this folder only, never seen by csc) and one target-framework
-  choice. Before them the stock build had **9 errors in 3 files** (winmd variant; 5 in 1 file for
-  winrt and none).
+- It takes **3 shim files** in `Shims/` (AclCompat, FileStreamShadow, WinRtCompat; this folder only,
+  never seen by csc) and one target-framework choice; a 4th, TextCompat, holds helpers the runtime
+  edits E6-E9 call. Before them the stock build had **9 errors in 3 files** (winmd variant; 5 in 1
+  file for winrt and none). With edit E1 in sidecar/, FileStreamShadow goes (2 compile shims left).
 - **Behaviour matches** for everything the cloud runner can answer: the csc-built exe and the
   .NET-built exe (same sources, `SidecarExe=true`) give the same JSON shape for every command tried
   over stdio, the same 55 protocol commands and the same 344 feature commands; the linked code also
@@ -133,7 +134,63 @@ which needs a real Windows build in Desktops' list to test.
 
 ## Behaviour proof
 
-RESULTS_PLACEHOLDER
+`native/tests/Mantle.Sidecar.Tests` (MSTest, 8 tests), run by `check.ps1`. Last full run: cloud
+run 42353435159 at f4dc932, `check.ps1 -Compare -ProveEdits`:
+
+```
+SIDECAR-LINK: ok (stock: winmd built, winrt built, none built; 131/131 sidecar files linked, 4 shims;
+  tests 8/8 passed, 0 failed, 0 skipped or inconclusive; 0 behaviour differences in compare.txt ||
+  edited: winmd built, winrt built, none built; 131/131 sidecar files linked, 3 shims; tests 8/8 passed,
+  0 failed, 0 skipped or inconclusive; 0 behaviour differences in compare.txt;
+  edit proof ok (9 edits, csc view identical, both csc routes built))
+```
+
+What was compared, exactly:
+
+- **In-process** (the linked code called directly from the test, MTA thread, no message loop, no
+  `Main`): the wire format (`Json.Write`/`Parse`, strict-number rejection, NaN as null, culture
+  independence); `Program.Run` (the real dispatcher, via reflection, with `Passive` set) for `ping`,
+  `windows`, `foreground`: all answer; the feature table finds **344 commands, 0 registration
+  problems**; `desktops.list`, `taskview.list`, `layouts.monitors`, `maxfold.state`, `clip.status`,
+  `printers.list` answer, `elevate.status` answers its normal no-ticket error. `printers.list`
+  answers an EMPTY list in-process (its cache is warmed by the running sidecar) and 31 shape paths
+  from either exe.
+- **Over stdio, csc exe vs .NET exe**, both `--passive`, both the MANTLE_WINMD variant (the csc one
+  is `sidecar/build.ps1 -NoUnion`, the shipped build): the `ready` line; `ping` (same shape, 70
+  paths; `commands` 55 = 55 identical; `features.commands` 344 = 344 identical; 0 problems each;
+  same version 0.3.0 and dpiMode per-monitor-v2); `windows`, `foreground`, `desktops.list`,
+  `taskview.list`, `layouts.monitors`, `maxfold.state`, `clip.status`, `printers.list`: **same
+  shape every time**; `elevate.status`: the same error words. Values were not compared (pids, hwnds
+  and timings differ between any two runs); arrays were compared by the union of their elements' shapes.
+- **Time to `ready`** on the runner: csc 322-463 ms, .NET 1003-1173 ms on a first start; 81-164 ms
+  vs 121-242 ms when the files were already cached (the edited pass, minutes later).
+- **String hash**: `NetShimText.FrameworkHash` equals .NET Framework's `String.GetHashCode` (asked
+  of Windows PowerShell 5.1, 64-bit) on 10/10 samples, including non-BMP text and an embedded NUL;
+  .NET's own `GetHashCode` gave a different "abc" value in each test process.
+- **Edit proof**: all 9 edits applied; the csc view of all 7 touched files is identical to the
+  committed text; `build.ps1 -NoUnion` and the union-winmd build (MANTLE_WINRT) both compile the
+  edited sidecar; the three .NET variants build without `Shims/FileStreamShadow.cs`; the 8 tests pass
+  again on the edited build.
+
+Found along the way, the same in BOTH builds (a sidecar fact, not a port difference): on this
+runner's Windows build the first stdout line is a `desktops` warn log, not `ready` (sidecar/README.md
+says `ready` is "first line, always"): `Features.Table` is built before `ready` is emitted and
+Desktops' registration logs its version refusal then.
+
+NOT verified (said plainly):
+
+- **The recorder role** (R1, R2, edits E2-E5): the test records each exe's own stand-in window, but
+  on the runner the stand-in reports it would be visible (`hidden:false`) and refuses, identically
+  for both exes, so no capture ran. E2-E5 are proven to compile and to leave the csc build unchanged,
+  not proven to record.
+- **R5 Desktops interop**: the runner's Windows build (26100) is outside Desktops' measured list, so
+  both builds refuse before the IInspectable/HSTRING calls; whether .NET throws there is inferred
+  from the documented removal, not measured.
+- Anything the runner cannot answer: audio, Bluetooth, Wi-Fi, brightness, the tray, notifications,
+  media sessions, the shell-touching (non-passive) commands. Those compiled in all three variants and
+  were not run.
+- `Clipboard.GetData("Preferred DropEffect")` under .NET 10 WinForms (WFDEV005), PingTest's
+  ServicePointManager settings, ICU vs NLS: unmeasured.
 
 ## Hosting inside the WinUI app
 
