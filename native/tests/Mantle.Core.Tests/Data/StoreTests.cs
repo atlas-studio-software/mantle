@@ -102,9 +102,7 @@ public class StoreTests
         Assert.DoesNotContain(log.Lines, l => l.Contains(d.Path, StringComparison.OrdinalIgnoreCase));   // name only, never the path
 
         Assert.True(s.SetAsync("clipboard", JsonValue.Create(true)).Result.Ok);
-        Assert.Equal("{
-  \"clipboard\": true
-}", File.ReadAllText(d.File("features.json")));
+        Assert.Equal("{\n  \"clipboard\": true\n}", File.ReadAllText(d.File("features.json")));
         Assert.Equal("{\"clipboard\":", File.ReadAllText(d.File("features.json.unreadable")));
 
         // with writes refused the bad file stays exactly where it is
