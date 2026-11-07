@@ -8,7 +8,7 @@
 // attach fallback is kept for the case where it does not.
 using System;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal static class Focus
 {

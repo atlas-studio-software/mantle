@@ -9,7 +9,7 @@ using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
 
-namespace MantleBar.Native;
+namespace Mantle.App.Native;
 
 internal sealed class TransparentBackdrop : SystemBackdrop
 {

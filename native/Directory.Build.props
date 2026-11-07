@@ -1,0 +1,35 @@
+<Project>
+  <!--
+    Shared build settings for every project under native/ (MSBuild imports the nearest
+    Directory.Build.props, so a folder with its own file does not get this one).
+
+    Kept to defaults that cannot break another lane's project: no warnings-as-errors, no central
+    package management (it would reject a PackageReference that carries its own Version), no
+    output-layout change. Projects opt in to the shared properties by name:
+
+      $(MantleTfm)          net10.0. .NET 10 is the LTS (supported to November 2028); .NET 8
+                            support ends 2026-11-10. -p:MantleTfm=net9.0 builds on an older SDK.
+                            -p:SpikeTfm=<tfm> (the spike bench's switch) is still honoured.
+      $(MantleWindowsTfm)   $(MantleTfm)-windows10.0.22621.0: the Windows SDK projection the spike
+                            measured with. Minimum OS is 10.0.19041.0 (MantleWindowsMinVersion).
+      $(MantleWinAppSdkVersion), $(MantleWindowsSdkBuildToolsVersion)
+                            the exact Windows App SDK and SDK BuildTools versions. The spike asked
+                            for 1.7.* and 10.0.26100.*; these are the newest of those lines, pinned
+                            so a build never moves under the bench's numbers.
+  -->
+  <PropertyGroup>
+    <MantleTfm Condition="'$(MantleTfm)' == '' and '$(SpikeTfm)' != ''">$(SpikeTfm)</MantleTfm>
+    <MantleTfm Condition="'$(MantleTfm)' == ''">net10.0</MantleTfm>
+    <MantleWindowsSdk Condition="'$(MantleWindowsSdk)' == ''">10.0.22621.0</MantleWindowsSdk>
+    <MantleWindowsTfm>$(MantleTfm)-windows$(MantleWindowsSdk)</MantleWindowsTfm>
+    <MantleWindowsMinVersion>10.0.19041.0</MantleWindowsMinVersion>
+    <MantleWinAppSdkVersion>1.7.260224002</MantleWinAppSdkVersion>
+    <MantleWindowsSdkBuildToolsVersion>10.0.26100.9457</MantleWindowsSdkBuildToolsVersion>
+
+    <LangVersion>latest</LangVersion>
+    <Deterministic>true</Deterministic>
+    <Company>Mantle</Company>
+    <Product>Mantle (native)</Product>
+    <SatelliteResourceLanguages>en</SatelliteResourceLanguages>
+  </PropertyGroup>
+</Project>

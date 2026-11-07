@@ -1,0 +1,23 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!-- xUnit tests of Mantle.Core: arguments, data paths, the single-instance claim, the log, and the
+       read-only settings readers. Fixtures are synthetic (Fixtures/), derived from Electron Mantle's
+       code and defaults; nothing here comes from a real profile. Run on Windows (named mutex/pipe). -->
+  <PropertyGroup>
+    <TargetFramework>$(MantleTfm)</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>disable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <IsTestProject>true</IsTestProject>
+  </PropertyGroup>
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.Test.Sdk" Version="17.14.1" />
+    <PackageReference Include="xunit" Version="2.9.3" />
+    <PackageReference Include="xunit.runner.visualstudio" Version="3.1.5" />
+  </ItemGroup>
+  <ItemGroup>
+    <ProjectReference Include="..\..\src\Mantle.Core\Mantle.Core.csproj" />
+  </ItemGroup>
+  <ItemGroup>
+    <Content Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+</Project>
