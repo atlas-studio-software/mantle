@@ -26,7 +26,10 @@ param(
   [int]$Margin = 24,
   [bool]$MaskApps = $true,
   [bool]$KnownGaps = $true,
-  [string]$Exe
+  [string]$Exe,
+  # display scales to run, in %: each one sets the runner's primary display (DisplayConfigSetDeviceInfo) and
+  # writes <Out>/<theme>[-<pct>]/ (100 % keeps the plain <theme> folder); the scale is put back to 100 % after
+  [string]$Scales = '100,150'
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -104,19 +107,6 @@ if (-not $Exe -or -not (Test-Path $Exe)) { Write-Host "PARITY: FAILED (no native
 Say "native exe $Exe"
 $env:MANTLE_TEST_VISIBLE = '1'
 
-# ------------------------------------------------------------------ geometry
-$pw = [int]([Math]::Min(1120, $W / $scale - 28) * $scale)
-$pillX = [int](($W - $pw) / 2); $pillY = [int]($H - (14 + 48) * $scale); $pillH = [int](48 * $scale)
-$cx = [Math]::Max(0, $pillX - $Margin); $cy = [Math]::Max(0, $pillY - $Margin)
-$cr = [Math]::Min($W, $pillX + $pw + $Margin); $cb = [Math]::Min($H, $pillY + $pillH + $Margin)
-$crop = @{ x = $cx; y = $cy; w = $cr - $cx; h = $cb - $cy }
-# Masks in screen px. The clock slot sits 175..85 px left of the pill's right end in both apps (measured on
-# the runner, 2026-11-07); its seconds always differ between two captures. The apps slot is the centre of
-# the pill: Electron's --test bar listed NO running apps on the runner while the native bar listed them, so
-# that area is masked (-MaskApps $false compares it) until the Electron side shows the same set.
-$clockSlot = @(($pillX + $pw - 175), $pillY, 90, $pillH)
-$appsSlot = @(($pillX + [int]($pw / 2) - 220), $pillY, 440, $pillH)
-Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw, $pillH, $crop.x, $crop.y, $crop.w, $crop.h)
 
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the
 # gate stays -MinSsim / -MaxDiffPct for everything else) and gets its own line per theme:
@@ -124,7 +114,6 @@ Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw
 #   PARITY known-gap <id> <theme>: NOT seen any more (diffpx X%): remove it from $gapList so the gate covers it
 # Measured on the runner at 1920x1080, 100 % (run 42355091758, native/infra 0f4532b), relative to the pill's right
 # end. -KnownGaps $false scores the whole crop as before.
-$pillR = $pillX + $pw
 # right-cluster (the 14 px battery slot) and more-dot (the pip on "more") were closed by native-windows (R2-3):
 # both printed "NOT seen any more" / were removed so the gate covers that area again.
 $gapList = @()
@@ -182,81 +171,105 @@ function Native-ClockRect([int]$procId) {
 # ------------------------------------------------------------------ one theme
 $results = [ordered]@{}
 $themes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
-foreach ($t in $themes) {
-  $dir = Join-Path $Out $t; New-Item -ItemType Directory -Force -Path $dir | Out-Null
-  Set-WinTheme $t; Start-Sleep -Seconds 2
-  $r = [ordered]@{ theme = $t; crop = $crop; masks = @(, $clockSlot) }
-  if ($MaskApps) { $r.masks += , $appsSlot }
-  foreach ($g in $gapList) { $r.masks += , $g.rect }
-  $ePx = $null; $nPx = $null
+# ------------------------------------------------------------------ per display scale
+$scaleList = @($Scales -split ',' | ForEach-Object { [int]$_.Trim() } | Where-Object { $_ -gt 0 })
+foreach ($pct in $scaleList) {
+  $set = [ParityNative]::SetScale($pct); Start-Sleep -Seconds 3
+  $scale = [ParityNative]::PrimaryDpi() / 96.0
+  $scr = [ParityNative]::Screen(); $W = $scr[0]; $H = $scr[1]
+  Say ("display scale {0} %: {1}; primary dpi now {2} ({3} %), screen {4}x{5}" -f $pct, $set, [int]($scale * 96), [Math]::Round($scale * 100), $W, $H)
+  if ([Math]::Abs($scale * 100 - $pct) -gt 1) { Problem "the display did not go to $pct % ($set; it is at $([Math]::Round($scale * 100)) %)"; continue }
+  # ------------------------------------------------------------------ geometry
+  $pw = [int]([Math]::Min(1120, $W / $scale - 28) * $scale)
+  $pillX = [int](($W - $pw) / 2); $pillY = [int]($H - (14 + 48) * $scale); $pillH = [int](48 * $scale)
+  $cx = [Math]::Max(0, $pillX - $Margin); $cy = [Math]::Max(0, $pillY - $Margin)
+  $cr = [Math]::Min($W, $pillX + $pw + $Margin); $cb = [Math]::Min($H, $pillY + $pillH + $Margin)
+  $crop = @{ x = $cx; y = $cy; w = $cr - $cx; h = $cb - $cy }
+  # Masks in screen px. The clock slot sits 175..85 px left of the pill's right end in both apps (measured on
+  # the runner, 2026-11-07); its seconds always differ between two captures. The apps slot is the centre of
+  # the pill: Electron's --test bar listed NO running apps on the runner while the native bar listed them, so
+  # that area is masked (-MaskApps $false compares it) until the Electron side shows the same set.
+  $clockSlot = @(($pillX + $pw - [int](175 * $scale)), $pillY, [int](90 * $scale), $pillH)
+  $appsSlot = @(($pillX + [int]($pw / 2) - [int](220 * $scale)), $pillY, [int](440 * $scale), $pillH)
+  Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw, $pillH, $crop.x, $crop.y, $crop.w, $crop.h)
+  foreach ($t in $themes) {
+    $tag = if ($pct -eq 100) { $t } else { "$t-$pct" }
+    $dir = Join-Path $Out $tag; New-Item -ItemType Directory -Force -Path $dir | Out-Null
+    Set-WinTheme $t; Start-Sleep -Seconds 2
+    $r = [ordered]@{ theme = $t; crop = $crop; masks = @(, $clockSlot) }
+    if ($MaskApps) { $r.masks += , $appsSlot }
+    foreach ($g in $gapList) { $r.masks += , $g.rect }
+    $ePx = $null; $nPx = $null
 
-  # Electron Mantle (--test instance, made visible)
-  $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
-  $node = Start-Process node -ArgumentList (Join-Path $PSScriptRoot 'electron-bar.mjs'), "--root=$root", "--theme=$t", "--out=$ej", '--hold=240' `
-    -WorkingDirectory $root -PassThru -RedirectStandardOutput (Join-Path $dir 'electron-bar.out.txt') -RedirectStandardError (Join-Path $dir 'electron-bar.err.txt')
-  $end = (Get-Date).AddSeconds(180)
-  while ((Get-Date) -lt $end -and -not (Test-Path $ej) -and -not $node.HasExited) { Start-Sleep -Milliseconds 500 }
-  Start-Sleep -Milliseconds 300
-  $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
-  if ($e -and $e.ok) {
-    [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-    if (Clear-Taskbar "electron $t") { $r.electronMotion = Wait-Still "electron $t"; $ePx = Shoot $dir 'electron' }
-    $r.electron = $e
-    Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
-    $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
-    [void]$q.WaitForExit(20000)
-  } else {
-    Problem ("electron {0}: no bar ({1})" -f $t, $(if ($e) { $e.why } else { 'electron-bar.mjs wrote nothing; see electron-bar.*.txt' }))
-  }
-  Start-Sleep -Seconds 2
-  Stop-Profile "parity-$t"
-  if (-not $node.HasExited) { Stop-Process -Id $node.Id -Force -ErrorAction SilentlyContinue }
-
-  # the native app
-  $nd = Join-Path $dir 'native-bench'; New-Item -ItemType Directory -Force -Path $nd | Out-Null
-  $ud = Join-Path ([IO.Path]::GetTempPath()) "mantle-native-parity-$t"; New-Item -ItemType Directory -Force -Path $ud | Out-Null
-  $np = Start-Process -FilePath $Exe -ArgumentList '--test', "--profile-name=parity-$t", "--user-data=$ud", "--theme=$t", "--bench-out=$nd" -PassThru
-  $end = (Get-Date).AddSeconds(45)
-  while ((Get-Date) -lt $end -and -not (Test-Path (Join-Path $nd 'ready.json')) -and -not $np.HasExited) { Start-Sleep -Milliseconds 250 }
-  if (Test-Path (Join-Path $nd 'ready.json')) {
-    Start-Sleep -Milliseconds 800
-    [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-    if (Clear-Taskbar "native $t") { $r.nativeMotion = Wait-Still "native $t"; $nPx = Shoot $dir 'native' }
-    $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
-    $nc = Native-ClockRect $np.Id
-    if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
-    else { Say "native ${t}: no bar.clock through UI Automation; the clock slot mask alone covers it" }
-  } else {
-    Problem ("native {0}: no ready.json in 45 s (exited: {1})" -f $t, $np.HasExited)
-  }
-  if (-not $np.HasExited) { Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue }
-  Stop-Profile "parity-$t"
-
-  # diff
-  if ($ePx -and $nPx) {
-    $flat = [System.Collections.Generic.List[int]]::new()
-    foreach ($m in $r.masks) { $flat.AddRange([int[]]@(($m[0] - 4 - $crop.x), ($m[1] - 4 - $crop.y), ($m[2] + 8), ($m[3] + 8))) }
-    $s = [ParityNative]::Diff($ePx, $nPx, $crop.w, $crop.h, $flat.ToArray(), $PixelThreshold)
-    Save-Bgra $s.Heat $crop.w $crop.h (Join-Path $dir 'diff.png')
-    $r.score = [ordered]@{ ssim = [Math]::Round($s.Ssim, 4); diffPxPct = [Math]::Round($s.DiffPxPct, 2); meanAbs = [Math]::Round($s.MeanAbs, 2)
-      meanAbsRGB = @([Math]::Round($s.MeanAbsR, 2), [Math]::Round($s.MeanAbsG, 2), [Math]::Round($s.MeanAbsB, 2))
-      compared = $s.Compared; masked = $s.Masked; pixelThreshold = $PixelThreshold }
-    $r.knownGaps = @()
-    foreach ($g in $gapList) {
-      $gd = [ParityNative]::RegionDiff($ePx, $nPx, $crop.w, $crop.h, ($g.rect[0] - $crop.x), ($g.rect[1] - $crop.y), $g.rect[2], $g.rect[3], $PixelThreshold)
-      $still = $gd[0] -ge 1.0
-      $r.knownGaps += [ordered]@{ id = $g.id; stillThere = $still; diffPxPct = [Math]::Round($gd[0], 2); meanAbs = [Math]::Round($gd[1], 2); rect = $g.rect; what = $g.what; owner = $g.owner }
-      if ($still) { Write-Host ("PARITY known-gap {0} {1}: still there (diffpx {2:N2}% in its area) - {3}; owner {4}" -f $g.id, $t, $gd[0], $g.what, $g.owner) }
-      else { Write-Host ("PARITY known-gap {0} {1}: NOT seen any more (diffpx {2:N2}%): remove it from `$gapList in run-parity.ps1 so the gate covers that area again" -f $g.id, $t, $gd[0]) }
+    # Electron Mantle (--test instance, made visible)
+    $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
+    $node = Start-Process node -ArgumentList (Join-Path $PSScriptRoot 'electron-bar.mjs'), "--root=$root", "--theme=$t", "--out=$ej", '--hold=240' `
+      -WorkingDirectory $root -PassThru -RedirectStandardOutput (Join-Path $dir 'electron-bar.out.txt') -RedirectStandardError (Join-Path $dir 'electron-bar.err.txt')
+    $end = (Get-Date).AddSeconds(180)
+    while ((Get-Date) -lt $end -and -not (Test-Path $ej) -and -not $node.HasExited) { Start-Sleep -Milliseconds 500 }
+    Start-Sleep -Milliseconds 300
+    $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
+    if ($e -and $e.ok) {
+      [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
+      if (Clear-Taskbar "electron $t") { $r.electronMotion = Wait-Still "electron $t"; $ePx = Shoot $dir 'electron' }
+      $r.electron = $e
+      Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
+      $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
+      [void]$q.WaitForExit(20000)
+    } else {
+      Problem ("electron {0}: no bar ({1})" -f $t, $(if ($e) { $e.why } else { 'electron-bar.mjs wrote nothing; see electron-bar.*.txt' }))
     }
-    $pass = ($s.Ssim -ge $MinSsim) -and ($s.DiffPxPct -le $MaxDiffPct)
-    $r.ok = $pass
-    Write-Host ("PARITY bar {0}: ssim={1:N4} diffpx={2:N2}% meanabs={3:N2} ({4} vs ssim>={5}, diffpx<={6}%)" -f $t, $s.Ssim, $s.DiffPxPct, $s.MeanAbs, $(if ($pass) { 'ok' } else { 'FAILED' }), $MinSsim, $MaxDiffPct)
-    if (-not $pass) { Problem ("{0}: below the threshold (ssim {1:N4}, diffpx {2:N2}%)" -f $t, $s.Ssim, $s.DiffPxPct) }
-  } else { $r.ok = $false; if (-not $problems.Count) { Problem "${t}: a capture is missing" } }
-  $r | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $dir 'score.json')
-  $results[$t] = $r
+    Start-Sleep -Seconds 2
+    Stop-Profile "parity-$t"
+    if (-not $node.HasExited) { Stop-Process -Id $node.Id -Force -ErrorAction SilentlyContinue }
+
+    # the native app
+    $nd = Join-Path $dir 'native-bench'; New-Item -ItemType Directory -Force -Path $nd | Out-Null
+    $ud = Join-Path ([IO.Path]::GetTempPath()) "mantle-native-parity-$t"; New-Item -ItemType Directory -Force -Path $ud | Out-Null
+    $np = Start-Process -FilePath $Exe -ArgumentList '--test', "--profile-name=parity-$t", "--user-data=$ud", "--theme=$t", "--bench-out=$nd" -PassThru
+    $end = (Get-Date).AddSeconds(45)
+    while ((Get-Date) -lt $end -and -not (Test-Path (Join-Path $nd 'ready.json')) -and -not $np.HasExited) { Start-Sleep -Milliseconds 250 }
+    if (Test-Path (Join-Path $nd 'ready.json')) {
+      Start-Sleep -Milliseconds 800
+      [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
+      if (Clear-Taskbar "native $t") { $r.nativeMotion = Wait-Still "native $t"; $nPx = Shoot $dir 'native' }
+      $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
+      $nc = Native-ClockRect $np.Id
+      if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
+      else { Say "native ${t}: no bar.clock through UI Automation; the clock slot mask alone covers it" }
+    } else {
+      Problem ("native {0}: no ready.json in 45 s (exited: {1})" -f $t, $np.HasExited)
+    }
+    if (-not $np.HasExited) { Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue }
+    Stop-Profile "parity-$t"
+
+    # diff
+    if ($ePx -and $nPx) {
+      $flat = [System.Collections.Generic.List[int]]::new()
+      foreach ($m in $r.masks) { $flat.AddRange([int[]]@(($m[0] - 4 - $crop.x), ($m[1] - 4 - $crop.y), ($m[2] + 8), ($m[3] + 8))) }
+      $s = [ParityNative]::Diff($ePx, $nPx, $crop.w, $crop.h, $flat.ToArray(), $PixelThreshold)
+      Save-Bgra $s.Heat $crop.w $crop.h (Join-Path $dir 'diff.png')
+      $r.score = [ordered]@{ ssim = [Math]::Round($s.Ssim, 4); diffPxPct = [Math]::Round($s.DiffPxPct, 2); meanAbs = [Math]::Round($s.MeanAbs, 2)
+        meanAbsRGB = @([Math]::Round($s.MeanAbsR, 2), [Math]::Round($s.MeanAbsG, 2), [Math]::Round($s.MeanAbsB, 2))
+        compared = $s.Compared; masked = $s.Masked; pixelThreshold = $PixelThreshold }
+      $r.knownGaps = @()
+      foreach ($g in $gapList) {
+        $gd = [ParityNative]::RegionDiff($ePx, $nPx, $crop.w, $crop.h, ($g.rect[0] - $crop.x), ($g.rect[1] - $crop.y), $g.rect[2], $g.rect[3], $PixelThreshold)
+        $still = $gd[0] -ge 1.0
+        $r.knownGaps += [ordered]@{ id = $g.id; stillThere = $still; diffPxPct = [Math]::Round($gd[0], 2); meanAbs = [Math]::Round($gd[1], 2); rect = $g.rect; what = $g.what; owner = $g.owner }
+        if ($still) { Write-Host ("PARITY known-gap {0} {1}: still there (diffpx {2:N2}% in its area) - {3}; owner {4}" -f $g.id, $t, $gd[0], $g.what, $g.owner) }
+        else { Write-Host ("PARITY known-gap {0} {1}: NOT seen any more (diffpx {2:N2}%): remove it from `$gapList in run-parity.ps1 so the gate covers that area again" -f $g.id, $t, $gd[0]) }
+      }
+      $pass = ($s.Ssim -ge $MinSsim) -and ($s.DiffPxPct -le $MaxDiffPct)
+      $r.ok = $pass
+      Write-Host ("PARITY bar {0}: ssim={1:N4} diffpx={2:N2}% meanabs={3:N2} ({4} vs ssim>={5}, diffpx<={6}%)" -f $tag, $s.Ssim, $s.DiffPxPct, $s.MeanAbs, $(if ($pass) { 'ok' } else { 'FAILED' }), $MinSsim, $MaxDiffPct)
+      if (-not $pass) { Problem ("{0}: below the threshold (ssim {1:N4}, diffpx {2:N2}%)" -f $tag, $s.Ssim, $s.DiffPxPct) }
+    } else { $r.ok = $false; if (-not $problems.Count) { Problem "${tag}: a capture is missing" } }
+    $r | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $dir 'score.json')
+    $results[$tag] = $r
+  }
 }
+if (($scaleList | Where-Object { $_ -ne 100 }).Count) { Say ("display scale back to 100 %: " + [ParityNative]::SetScale(100)); Start-Sleep -Seconds 2 }
 
 if (-not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
 # The taskbar stays on auto-hide (runner only): later stages measure the bottom edge too.

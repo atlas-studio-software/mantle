@@ -22,6 +22,9 @@ change here is a change to the tests.
 | `bar.more` | More | Button | `More` | |
 | `bar.more.pip` | the pip on "more" | Group | `More pip` | shown while there is a problem to tell; HelpText = every problem in words, prefixed `warn: ` when one is a warning (bar.css .mpip) |
 
+| (top-level window) | a pop-up | Window | `Mantle pop-up: <Name>` | one per kind; an instant kind stays made and is cloaked between opens (DWMWA_CLOAKED), an on-demand kind is closed |
+| `popup.<key>` | a test stand-in pop-up's body (`more`, `cal`) | Text | the kind's name | only with `MANTLE_TEST_POPUPS=1` in a test run |
+
 WinUI 3 panels (Grid, Canvas, StackPanel, Border) make no automation peer, so an AutomationId on a
 plain one never reaches the tree; `Uia.cs` gives the three containers a Group peer.
 
@@ -32,3 +35,20 @@ plain one never reaches the tree; `Uia.cs` gives the three containers a Group pe
 layered alpha 0, click-through and never activated (it is still in the UIA tree, but real mouse
 input passes through it). A second launch with the same profile hands its arguments to the running
 one and exits; `--quit` with the same profile asks it to close.
+
+## The bar frame and the pop-ups in a test run
+
+- A `--test` or scratch run keeps the bar **up and still** (the smoke, bench and parity stages expect it).
+  `MANTLE_TEST_HOVER=1` gives it the live hover behaviour instead: the window is hidden (SW_HIDE) at rest and
+  shown when the cursor reaches the bottom 4 DIP of the primary display, hidden again 180 ms after it leaves.
+  Find a hidden bar by enumerating the process's top-level windows (it is not visible while hidden).
+- `--dock` makes it a permanent app bar on its bottom slot. A test run's platform is passive, so nothing is
+  reserved in Windows; the log says so (`dock (start): ... nothing reserved ...`).
+- `MANTLE_TEST_POPUPS=1`: More opens the stand-in pop-up "more" (instant, parked, no focus) and the clock opens
+  "cal" (on demand, takes the keyboard). `MANTLE_TEST_POPWATCH=1` arms the outside watch (outside clicks and Esc
+  close a pop-up); `=away` also closes it when another app comes to the front. Without it a test run watches
+  nothing (a live run always does).
+- With `--bench-out=<dir>` the log is mirrored to `<dir>/native-log.txt`; the frame writes stable lines the
+  UI tests read: `bar hidden: at rest`, `bar revealed (<why>)`, `bar hiding: <why>`, `bar hidden: window hidden,
+  nothing renders`, `bar blocked: <exe> is fullscreen in front ...`, `glass: light: live ...`, `glass: stopped ...`,
+  `pop-up <Name>: opening|shown at|closed (<why>)`, `pop-up watch: hook|poll ...`.

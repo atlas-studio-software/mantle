@@ -7,7 +7,7 @@ using System.Threading.Tasks;
 using Mantle.App.Native;
 using Mantle.App.Shell.Material;
 using Mantle.App.Surfaces.Bar.Frame;
-using Mantle.Core.Args;
+using Mantle.Core;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
@@ -62,7 +62,7 @@ public sealed partial class BarWindow
     internal BarGeometry Geometry => _g;
 
     /// The host wires the platform in (the dock app bar). Without it a dock run reserves nothing and says so.
-    internal void UseShell(IBarShell shell) { _shell = shell; if (FrameMode == "dock" && _started) _ = Dock("the platform was wired to the bar"); }
+    internal void UseShell(IBarShell shell) { _shell = shell; if (FrameMode == "dock" && _started) _ = DockBar("the platform was wired to the bar"); }
     bool _started;
 
     static string PickMode()
@@ -113,7 +113,7 @@ public sealed partial class BarWindow
             Host.Log.Line("bar keep zone: " + BarIntent.Describe(_g));
         } else {
             _revealed = true;
-            if (FrameMode == "dock") { _ = Dock("start"); _live.Reveal(_dark); }
+            if (FrameMode == "dock") { _ = DockBar("start"); _live.Reveal(_dark); }
         }
     }
 
@@ -339,7 +339,7 @@ public sealed partial class BarWindow
     }
 
     // ------------------------------------------------------------------ the dock app bar (BAR-106..108)
-    async Task Dock(string why)
+    async Task DockBar(string why)
     {
         var g = BarGeometry.Compute();
         int size = (int)Math.Round(BarGeometry.BarH * g.Scale);
@@ -358,7 +358,7 @@ public sealed partial class BarWindow
             // BAR-108: Explorer can stack a new app bar over a stale slot from a previous run; ask again once settled
             foreach (int ms in new[] { 300, 1500, 6000 }) {
                 var t = DispatcherQueue.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(ms); t.IsRepeating = false;
-                t.Tick += (_, _) => { t.Stop(); _ = Dock($"{ms} ms after start"); };
+                t.Tick += (_, _) => { t.Stop(); _ = DockBar($"{ms} ms after start"); };
                 t.Start();
             }
         }
@@ -401,7 +401,7 @@ public sealed partial class BarWindow
 
     void Replace(string why)
     {
-        if (FrameMode == "dock") { _ = Dock(why); return; }
+        if (FrameMode == "dock") { _ = DockBar(why); return; }
         var g = BarGeometry.Compute();
         if (g.SameAs(_g)) { Host.Log.Line($"bar placed ({why}): unchanged"); return; }
         ApplyGeometry(g, why);

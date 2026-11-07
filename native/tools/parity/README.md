@@ -80,3 +80,11 @@ even though the defects were plainly visible in the PNGs.
   - an Electron status icon left of the separator falls inside the masked apps slot.
   With the thresholds above, this run would fail. That is intended: the gate fails until the cluster and
   the badge match.
+
+## Display scales (`-Scales`, default `100,150`)
+
+Each scale in the list sets the runner's primary display with `DisplayConfigSetDeviceInfo` (the undocumented
+type -4 that SetDpi-style tools use; `ParityNative.SetScale`), re-reads the DPI, recomputes the crop and masks
+(the masks scale with it), and runs both themes. 100 % writes `<Out>/<theme>/` as before; any other scale writes
+`<Out>/<theme>-<pct>/` and scores as `PARITY bar <theme>-<pct>: ...`. The scale is put back to 100 % at the end.
+A scale Windows refuses on the runner's display is a problem line, never a silent skip.

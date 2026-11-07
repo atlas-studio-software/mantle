@@ -1,6 +1,6 @@
 using System;
 using Mantle.App.Shell.Popups;
-using Mantle.Core.Args;
+using Mantle.Core;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
 using Microsoft.UI.Xaml.Controls;
