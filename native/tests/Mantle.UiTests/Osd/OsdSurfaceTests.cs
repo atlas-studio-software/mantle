@@ -100,6 +100,18 @@ public class OsdSurfaceTests
     {
         Win32.DpiAware();
         using var app = Launch("uitest-osd");
+        try { Run(app); }
+        finally
+        {
+            // the app's whole log, next to the OSD pairs (run-ui prints only a message's first line)
+            var dir = Path.Combine(Host.OutDir, "..", "parity", "osd");
+            Directory.CreateDirectory(dir);
+            File.WriteAllText(Path.Combine(dir, "uitest-osd-native-log.txt"), app.Log);
+        }
+    }
+
+    static void Run(App app)
+    {
         Assert.IsTrue(Host.Until(() => app.Log.Contains("surface osd: made at start, hidden and parked"), 15000), "the osd surface was not made at start:\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => Osd(app) != IntPtr.Zero, 5000), "no '" + Title + "' window after start");
         IntPtr osd = Osd(app);

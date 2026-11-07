@@ -154,7 +154,7 @@ internal sealed class OsdSurface : ISurface
         AutomationProperties.SetAutomationId(_pane, "osd");
         _pane.PointerEntered += (_, _) => _fader.Hover(true);
         _pane.PointerExited += (_, _) => _fader.Hover(false);
-        _pane.PointerPressed += (_, _) => _fader.Poke();
+        _pane.PointerPressed += (_, e) => { _fader.Poke(); if (_ctx.Test) _ctx.Log.Line($"pointer pressed at {e.GetCurrentPoint(_pane).Position.X:0},{e.GetCurrentPoint(_pane).Position.Y:0} DIP on the pane"); };
         _pane.PointerWheelChanged += OnWheel;
         _pane.SizeChanged += (_, _) => { Report(); Shadow(); };
         _root.Children.Add(_pane);
@@ -395,6 +395,7 @@ internal sealed class OsdSurface : ISurface
     void OnGlyph()
     {
         _fader.Poke();
+        if (_ctx.Test) _ctx.Log.Line("glyph clicked (" + _kind + ")");
         if (_kind != "volume" || _mutePending) return;
         var cur = Cur;
         if (!cur.Ok) return;

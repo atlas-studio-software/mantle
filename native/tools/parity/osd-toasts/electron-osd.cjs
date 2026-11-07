@@ -17,6 +17,7 @@ const args = process.argv.slice(process.argv.indexOf(__filename) + 1);
 const [out, bg, ...specs] = args;
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
 app.disableHardwareAcceleration();
+app.on('window-all-closed', () => { /* one window per shot: never quit between them */ });
 
 app.whenReady().then(async () => {
   fs.mkdirSync(out, { recursive: true });

@@ -117,6 +117,7 @@ try {
       $r = [OsdWin]::Find($p.Id, 'Mantle volume')
       $ef = Join-Path $Out "electron-$tag.png"
       if (-not $ok -or -not $r) { $rows += "$tag no score: the native pop-up did not show ($(if ($ok) { 'no window' } else { 'no page drew line' }))"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt"); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+      if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
       $nat = [ParityNative]::Grab($r[0], $r[1], $r[2], $r[3])
       $nb = Png $nat $r[2] $r[3]; $nb.Save((Join-Path $Out "native-$tag.png"))
       $eb = [System.Drawing.Bitmap]::FromFile($ef)

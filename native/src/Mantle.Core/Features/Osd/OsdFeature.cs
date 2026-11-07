@@ -92,7 +92,9 @@ public sealed class OsdFeature : IFeature, IOsdView
             });
             ctx.Command("testHide", _ => { _testT?.Dispose(); _testT = null; Hide("testHide"); return new(CommandResult.Success(StateJson())); });
         }
-        _ = _keys.ProbeAsync();
+        // the probe needs the sidecar: at once if it is up, and again on every ready (a new sidecar process)
+        ctx.Platform.OnReady(() => _ = _keys.ProbeAsync());
+        if (ctx.Platform.Status.State == Mantle.Core.Platform.PlatformState.Ok) _ = _keys.ProbeAsync();
         return ValueTask.CompletedTask;
     }
 
