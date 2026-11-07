@@ -81,5 +81,41 @@ internal static class FrameProbe
         double a1 = p.TotalProcessorTime.TotalMilliseconds, d1 = dwm.Sum(SafeCpu);
         return (Math.Round(100 * (a1 - a0) / wall, 3), Math.Round(100 * (d1 - d0) / wall, 3));
     }
+    // ---- the runner's display scale (DisplayConfigGet/SetDeviceInfo, undocumented types -3 get / -4 set, as
+    // tools/parity/ParityNative.cs SetScale does). Runner only: it changes the display of the machine it runs on.
+    [StructLayout(LayoutKind.Sequential)] struct DcHdr { public int type; public int size; public uint lo; public int hi; public uint id; }
+    [StructLayout(LayoutKind.Sequential)] struct DcGet { public DcHdr h; public int min, cur, max; }
+    [StructLayout(LayoutKind.Sequential)] struct DcSet { public DcHdr h; public int rel; }
+    [DllImport("user32.dll")] static extern int GetDisplayConfigBufferSizes(uint f, out uint np, out uint nm);
+    [DllImport("user32.dll")] static extern int QueryDisplayConfig(uint f, ref uint np, IntPtr paths, ref uint nm, IntPtr modes, IntPtr topo);
+    [DllImport("user32.dll", EntryPoint = "DisplayConfigGetDeviceInfo")] static extern int DcGetDpi(ref DcGet p);
+    [DllImport("user32.dll", EntryPoint = "DisplayConfigSetDeviceInfo")] static extern int DcSetDpi(ref DcSet p);
+    [DllImport("user32.dll")] static extern IntPtr MonitorFromPoint(long pt, uint flags);
+    [DllImport("shcore.dll")] static extern int GetDpiForMonitor(IntPtr mon, int type, out uint x, out uint y);
+    static readonly int[] DpiSteps = { 100, 125, 150, 175, 200, 225, 250, 300, 350, 400, 450, 500 };
+
+    /// The primary display's scale in % (96 dpi = 100).
+    public static int PrimaryScale() => GetDpiForMonitor(MonitorFromPoint(0, 1), 0, out uint x, out _) == 0 ? (int)Math.Round(x / 96.0 * 100) : 100;
+
+    /// Sets the first active display (the runner has one) to `percent`: "ok ..." or why not.
+    public static string SetScale(int percent)
+    {
+        if (GetDisplayConfigBufferSizes(2, out uint np, out uint nm) != 0 || np == 0) return "no active display path";
+        IntPtr paths = Marshal.AllocHGlobal((int)np * 72), modes = Marshal.AllocHGlobal((int)nm * 64);
+        try {
+            if (QueryDisplayConfig(2, ref np, paths, ref nm, modes, IntPtr.Zero) != 0) return "QueryDisplayConfig failed";
+            var h = new DcHdr { lo = (uint)Marshal.ReadInt32(paths, 0), hi = Marshal.ReadInt32(paths, 4), id = (uint)Marshal.ReadInt32(paths, 8) };
+            var g = new DcGet { h = h }; g.h.type = -3; g.h.size = Marshal.SizeOf<DcGet>();
+            int hr = DcGetDpi(ref g);
+            if (hr != 0) return "get failed: " + hr;
+            int idx = Array.IndexOf(DpiSteps, percent), rel = idx + g.min;
+            if (idx < 0) return percent + " % is not a Windows scale step";
+            if (rel < g.min || rel > g.max) return $"{percent} % is outside what Windows allows here (rel {rel}, allowed {g.min}..{g.max})";
+            var st = new DcSet { h = h, rel = rel }; st.h.type = -4; st.h.size = Marshal.SizeOf<DcSet>();
+            int hs = DcSetDpi(ref st);
+            return hs == 0 ? $"ok (rel {rel})" : "set failed: " + hs;
+        } finally { Marshal.FreeHGlobal(paths); Marshal.FreeHGlobal(modes); }
+    }
+
     static double SafeCpu(Process d) { try { d.Refresh(); return d.TotalProcessorTime.TotalMilliseconds; } catch (Exception e) when (e is InvalidOperationException or System.ComponentModel.Win32Exception) { return 0; } }
 }

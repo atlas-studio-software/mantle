@@ -72,7 +72,7 @@ internal sealed class PopupHost
             if (_st == St.Shown && _win != null) WindowKinds.Raise(_win.Hwnd, _q, "pop-up " + kind.Name, _fgAtOpen);   // brought forward
             return;   // opening: this open joins the first
         }
-        if (_st != St.Hidden) CloseNow($"replaced by {kind.Name}");   // BAR-375: no exit, the room handed on
+        if (_st != St.Hidden) CloseNow($"replaced by {kind.Name}", motion: false);   // BAR-375/389: no exit, the room handed on
         if (!_bar.IsUp) _bar.Reveal("a pop-up opened");
         int seq = ++_seq;
         _kind = kind; _st = St.Opening;
@@ -87,6 +87,7 @@ internal sealed class PopupHost
         w.Root.RequestedTheme = _bar.Dark ? ElementTheme.Dark : ElementTheme.Light;
         w.Place(Place(kind, anchor), _bar.Geometry.Scale);
         w.Show();
+        w.Enter(_bar.ReducedMotion, BarWindow.SpringCurve);   // BAR-387/390
         Host.Log.Line($"pop-up {kind.Name}: opening ({(reused ? "parked, uncloaked" : "a new window")}{(kind.Focusable ? ", takes the keyboard" : ", no focus")})");
         if (reused && w.Painted) Shown(seq);
         else {
@@ -138,16 +139,30 @@ internal sealed class PopupHost
         return new Win32.RECT { Left = x, Top = bottom - h, Right = x + w, Bottom = bottom };
     }
 
-    public void Close(string why) { if (_st != St.Hidden) CloseNow(why); }
+    public void Close(string why) { if (_st != St.Hidden) CloseNow(why, motion: true); }
 
-    void CloseNow(string why)
+    /// Closed at once (state hidden, watches off); the window itself plays the exit (BAR-388) and is then parked
+    /// or closed, unless there is nothing to see: replaced by another pop-up, or never painted (BAR-389).
+    void CloseNow(string why, bool motion)
     {
         var w = _win; var k = _kind;
+        bool painted = _st == St.Shown || (w?.Painted == true && _st == St.Opening);
         _st = St.Hidden; _seq++; _win = null;
         _watch?.Disarm();
         DisarmAway();
-        if (w != null) { if (w.Instant) w.Park(); else w.Close(); }
-        Host.Log.Line($"pop-up {k?.Name ?? "?"}: closed ({why}){(w?.Instant == true ? ", parked" : "")}");
+        string fate = w?.Instant == true ? "parked" : "closed", end = fate;
+        if (w != null) {
+            if (motion && painted && Win32.IsWindowVisible(w.Hwnd)) {
+                int ms = _bar.ReducedMotion ? PopupWindow.ReducedMs : (int)Math.Round(PopupWindow.DurSMs * PopupWindow.LeaveK);
+                w.Leave(_bar.ReducedMotion, () => { if (w.Instant) w.Park(); else w.Close(); Host.Log.Line($"pop-up {k?.Name ?? "?"}: exit done, {fate}"); });
+                end = $"exit {ms} ms + {PopupWindow.LeaveTailMs} ms, then {fate}";
+            } else {
+                w.Rest();
+                if (w.Instant) w.Park(); else w.Close();
+                end = (w.Instant ? "parked" : "closed") + " at once";
+            }
+        }
+        Host.Log.Line($"pop-up {k?.Name ?? "?"}: closed ({why}), {end}");
     }
 
     /// The bar's own presses (BAR-392): one inside the bar but outside the pop-up's anchor closes it.

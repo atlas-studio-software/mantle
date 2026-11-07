@@ -1,9 +1,12 @@
 using System;
+using System.Numerics;
 using Mantle.App.Native;
 using Mantle.App.Shell.Windowing;
+using Microsoft.UI.Composition;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Hosting;
 using Microsoft.UI.Xaml.Markup;
 
 namespace Mantle.App.Shell.Popups;
@@ -54,14 +57,114 @@ internal sealed class PopupWindow
         TransparentBackdrop.MakeSeeThrough(Hwnd);
     }
 
-    /// Physical px. The window region is the rounded shape + 1 px (re-applied on every size).
+    /// Physical px. The window is `Slack` taller than the pop-up (room below it for the entrance's rise and the
+    /// exit's sink); the window region is the rounded shape + 1 px (re-applied on every size), and covers the
+    /// slack only while a motion runs.
     public void Place(Win32.RECT r, double scale)
     {
         Rect = r;
         int w = r.Right - r.Left, h = r.Bottom - r.Top;
+        _slack = (int)Math.Ceiling(RiseDip * scale); _radius = (int)Math.Round(16 * scale);
         Root.Width = w / scale; Root.Height = h / scale;
-        Win32.SetWindowPos(Hwnd, IntPtr.Zero, r.Left, r.Top, w, h, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */);
-        WindowKinds.ClipToShape(Hwnd, 0, 0, w, h, (int)Math.Round(16 * scale));
+        Root.HorizontalAlignment = HorizontalAlignment.Left; Root.VerticalAlignment = VerticalAlignment.Top;
+        Win32.SetWindowPos(Hwnd, IntPtr.Zero, r.Left, r.Top, w, h + _slack, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */);
+        Clip(false);
+    }
+
+    void Clip(bool withSlack)
+    {
+        int w = Rect.Right - Rect.Left, h = Rect.Bottom - Rect.Top;
+        WindowKinds.ClipToShape(Hwnd, 0, 0, w, h + (withSlack ? _slack : 0), _radius);
+    }
+
+    // ------------------------------------------------------------------ motion (BAR-387, BAR-388, BAR-390)
+    // bar.css .pop: m-pop-rise 8 px on the shared spring over --m-dur-s (320 ms), fading in over its first 40 %;
+    // bar.js#popLeave: an inert copy sinks 4 px and fades over 45 % of --m-dur-s (144 ms), removed 40 ms after;
+    // reduced motion: a 120 ms fade each way. The native pop-up IS the copy on the way out: the host has already
+    // closed it (state hidden, watches off) when Leave starts, and parks or closes the window when it ends.
+    public const int DurSMs = 320, ReducedMs = 120, LeaveTailMs = 40;
+    public const float RiseDip = 8, SinkDip = 4, EnterFadeK = 0.4f, LeaveK = 0.45f;
+    int _slack, _radius, _motion;
+    Visual? _vis;
+
+    Visual Vis()
+    {
+        if (_vis != null) return _vis;
+        _vis = ElementCompositionPreview.GetElementVisual(Root);
+        ElementCompositionPreview.SetIsTranslationEnabled(Root, true);
+        return _vis;
+    }
+
+    /// The entrance, from the first frame on. `spring` = the bar's spring samples (0..1).
+    public void Enter(bool reduced, float[] spring)
+    {
+        int seq = ++_motion;
+        var v = Vis(); var c = v.Compositor;
+        v.StopAnimation("Translation"); v.StopAnimation("Opacity");
+        var lin = c.CreateLinearEasingFunction();
+        var op = c.CreateScalarKeyFrameAnimation();
+        var batch = c.CreateScopedBatch(CompositionBatchTypes.Animation);
+        if (reduced) {
+            v.Properties.InsertVector3("Translation", Vector3.Zero);
+            op.Duration = TimeSpan.FromMilliseconds(ReducedMs);
+            op.InsertKeyFrame(0f, 0f); op.InsertKeyFrame(1f, 1f, lin);
+            v.StartAnimation("Opacity", op);
+        } else {
+            Clip(true);
+            var tr = c.CreateVector3KeyFrameAnimation();
+            tr.Duration = TimeSpan.FromMilliseconds(DurSMs);
+            for (int i = 0; i < spring.Length; i++)
+                tr.InsertKeyFrame(i / (float)(spring.Length - 1), new Vector3(0, RiseDip * (1 - spring[i]), 0), lin);
+            op.Duration = TimeSpan.FromMilliseconds(DurSMs * EnterFadeK);
+            op.InsertKeyFrame(0f, 0f); op.InsertKeyFrame(1f, 1f, c.CreateCubicBezierEasingFunction(new Vector2(0.2f, 0f), new Vector2(0f, 1f)));
+            v.StartAnimation("Translation", tr);
+            v.StartAnimation("Opacity", op);
+        }
+        batch.End();
+        var q = Win.DispatcherQueue;
+        batch.Completed += (_, _) => q.TryEnqueue(() => { if (seq == _motion) Clip(false); });
+    }
+
+    /// The exit; `done` runs LeaveTailMs after it ends (on the UI thread), unless an Enter came first.
+    public void Leave(bool reduced, Action done)
+    {
+        int seq = ++_motion;
+        var v = Vis(); var c = v.Compositor;
+        var op = c.CreateScalarKeyFrameAnimation();
+        var batch = c.CreateScopedBatch(CompositionBatchTypes.Animation);
+        op.InsertExpressionKeyFrame(0f, "this.StartingValue");
+        if (reduced) {
+            op.Duration = TimeSpan.FromMilliseconds(ReducedMs);
+            op.InsertKeyFrame(1f, 0f, c.CreateLinearEasingFunction());
+            v.StartAnimation("Opacity", op);
+        } else {
+            Clip(true);
+            var ease = c.CreateCubicBezierEasingFunction(new Vector2(0.4f, 0f), new Vector2(1f, 1f));
+            var tr = c.CreateVector3KeyFrameAnimation();
+            tr.Duration = op.Duration = TimeSpan.FromMilliseconds(DurSMs * LeaveK);
+            tr.InsertExpressionKeyFrame(0f, "this.StartingValue");
+            tr.InsertKeyFrame(1f, new Vector3(0, SinkDip, 0), ease);
+            op.InsertKeyFrame(1f, 0f, ease);
+            v.StartAnimation("Translation", tr);
+            v.StartAnimation("Opacity", op);
+        }
+        batch.End();
+        var q = Win.DispatcherQueue;
+        batch.Completed += (_, _) => q.TryEnqueue(() => {
+            var t = q.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(LeaveTailMs); t.IsRepeating = false;
+            t.Tick += (_, _) => { t.Stop(); if (seq == _motion) done(); };
+            t.Start();
+        });
+    }
+
+    /// Ready to show with no motion (replaced in place, BAR-375/389): the resting pose at once.
+    public void Rest()
+    {
+        ++_motion;
+        var v = Vis();
+        v.StopAnimation("Translation"); v.StopAnimation("Opacity");
+        v.Properties.InsertVector3("Translation", Vector3.Zero); v.Opacity = 1;
+        Clip(false);
     }
 
     public void Show()

@@ -52,6 +52,9 @@ public sealed partial class BarWindow
     IntPtr _hookShow, _hookFg, _hookTray;
     readonly List<long> _raiseTimes = new();
     readonly bool _reducedMotion = !new Windows.UI.ViewManagement.UISettings().AnimationsEnabled;
+    internal bool ReducedMotion => _reducedMotion;
+    /// The shared spring (samples 0..1) the pop-ups' entrance rides too (BAR-387).
+    internal static float[] SpringCurve => Spring;
 
     /// Pop-ups hold the bar up while one is open (WIN-019, BAR-102); the bar closes them when it hides (BAR-024).
     internal Func<bool>? HoldsBar;

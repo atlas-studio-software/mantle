@@ -81,4 +81,48 @@ public sealed class PopupTests
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(more1), 2000), "a switch to another app did not close the pop-up. Log:\n" + Tail(dir));
         StringAssert.Contains(FrameProbe.Log(dir), "pop-up watch: hook");
     }
+
+    /// BAR-388 / BAR-389, the window side: a close is immediate in state (the log says closed) while the window
+    /// plays its exit and is parked only after it (exit + 40 ms); a pop-up replaced by another goes at once.
+    /// Whether the runner has Windows animations on decides 144 ms (sink + fade) or 120 ms (fade only): read
+    /// from the log, which also says which it was.
+    [TestMethod]
+    public void Popup_exit_plays_before_the_park_and_a_replaced_one_goes_at_once()
+    {
+        string dir = FrameProbe.NewDir("popmotion");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_POPUPS"] = "1" };
+        using var app = BarApp.Launch("popmotion", env: env, extra: new[] { "--bench-out=" + dir });
+        int pid = app.Proc.Id;
+        IntPtr More() => FrameProbe.Find(pid, "Mantle pop-up: More");
+        IntPtr Cal() => FrameProbe.Find(pid, "Mantle pop-up: Calendar");
+        ClickEl(app, "bar.more");
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 2000) && FrameProbe.LogHas(dir, "pop-up More: shown at", 2000), "More did not open. Log:\n" + Tail(dir));
+        IntPtr m = More();
+
+        // its own button: closed in state at once, on screen until the exit has played
+        var b = app.Find("bar.more").BoundingRectangle;
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        ZOrder.Click(b.Left + b.Width / 2, b.Top + b.Height / 2);
+        long gone = -1;
+        while (sw.ElapsedMilliseconds < 2000) { if (!FrameProbe.Showing(m)) { gone = sw.ElapsedMilliseconds; break; } Thread.Sleep(5); }
+        Assert.IsTrue(gone >= 0, "More never went after its own button. Log:\n" + Tail(dir));
+        Assert.IsTrue(FrameProbe.LogHas(dir, "pop-up More: exit done, parked", 1500), "no exit-done line. Log:\n" + Tail(dir));
+        string log = FrameProbe.Log(dir);
+        var x = System.Text.RegularExpressions.Regex.Match(log, @"pop-up More: closed \(its button was clicked again\), exit (\d+) ms \+ 40 ms, then parked");
+        Assert.IsTrue(x.Success, "the close line does not name the exit. Log:\n" + Tail(dir));
+        int exitMs = int.Parse(x.Groups[1].Value);
+        Assert.IsTrue(exitMs is 144 or 120, $"exit {exitMs} ms: want 144 (45 % of 320) or 120 (reduced motion)");
+        // the click reaches the app after a few ms; parked at once would be well under the exit's length
+        Assert.IsTrue(gone >= exitMs - 20, $"More was gone {gone} ms after the click: sooner than its {exitMs} ms exit");
+        Assert.IsTrue(FrameProbe.Cloaked(m), "parked after the exit, but not cloaked");
+        Console.WriteLine($"exit {exitMs} ms; window gone {gone} ms after the click");
+
+        // replaced by another pop-up: no exit (BAR-375/389)
+        ClickEl(app, "bar.more");
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(More()), 1500), "More did not reopen");
+        ClickEl(app, "bar.clock");
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(Cal()), 2000), "the calendar did not open. Log:\n" + Tail(dir));
+        StringAssert.Contains(FrameProbe.Log(dir), "pop-up More: closed (replaced by Calendar), parked at once");
+        Assert.IsFalse(FrameProbe.Showing(m), "More still showing next to the calendar");
+    }
 }
