@@ -115,6 +115,16 @@ $clockSlot = @(($pillX + $pw - 175), $pillY, 90, $pillH)
 $appsSlot = @(($pillX + [int]($pw / 2) - 220), $pillY, 440, $pillH)
 Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw, $pillH, $crop.x, $crop.y, $crop.w, $crop.h)
 
+# The runner's taskbar must not cover the bar when a capture is scored: a covered capture is a problem, not a score.
+function Clear-Taskbar([string]$tag) {
+  $end = (Get-Date).AddSeconds(6); $tb = $null
+  while ((Get-Date) -lt $end) {
+    $tb = [ParityNative]::TaskbarOver($crop.y, $crop.y + $crop.h); if (-not $tb) { return $true }
+    [ParityNative]::TaskbarAutoHide($true); [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3)); Start-Sleep -Milliseconds 400
+  }
+  Problem ("{0}: the runner's taskbar covers the bar ({1}); capture not scored" -f $tag, ($tb -join ','))
+  return $false
+}
 function Wait-Still([string]$tag) {
   $end = (Get-Date).AddSeconds(8); $m = 999
   while ((Get-Date) -lt $end) { $m = [ParityNative]::Motion($crop.x, $crop.y, $crop.w, $crop.h, 300); if ($m -lt 0.5) { break } }
@@ -168,8 +178,7 @@ foreach ($t in $themes) {
   $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
   if ($e -and $e.ok) {
     [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-    $r.electronMotion = Wait-Still "electron $t"
-    $ePx = Shoot $dir 'electron'
+    if (Clear-Taskbar "electron $t") { $r.electronMotion = Wait-Still "electron $t"; $ePx = Shoot $dir 'electron' }
     $r.electron = $e
     Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
     $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
@@ -190,8 +199,7 @@ foreach ($t in $themes) {
   if (Test-Path (Join-Path $nd 'ready.json')) {
     Start-Sleep -Milliseconds 800
     [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-    $r.nativeMotion = Wait-Still "native $t"
-    $nPx = Shoot $dir 'native'
+    if (Clear-Taskbar "native $t") { $r.nativeMotion = Wait-Still "native $t"; $nPx = Shoot $dir 'native' }
     $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
     $nc = Native-ClockRect $np.Id
     if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
@@ -221,7 +229,7 @@ foreach ($t in $themes) {
 }
 
 if (-not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
-[ParityNative]::TaskbarAutoHide($false)
+# The taskbar stays on auto-hide (runner only): later stages measure the bottom edge too.
 $results | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $Out 'parity.json')
 $parts = foreach ($t in $results.Keys) { $x = $results[$t]; if ($x.score) { "$t ssim=$($x.score.ssim) diffpx=$($x.score.diffPxPct)%" } else { "$t no score" } }
 if ($problems.Count -eq 0) { Write-Host ("PARITY: ok (" + ($parts -join '; ') + ")"); exit 0 }

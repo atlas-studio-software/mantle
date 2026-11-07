@@ -43,6 +43,16 @@ public static class ParityNative
         SHAppBarMessage(0x0000000A, ref d);
     }
 
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    /// <summary>The runner's own taskbar rect if it is visible and reaches into [top, bottom), else null.</summary>
+    public static int[] TaskbarOver(int top, int bottom)
+    {
+        IntPtr t = FindWindowW("Shell_TrayWnd", null);
+        if (t == IntPtr.Zero || !IsWindowVisible(t) || !GetWindowRect(t, out RECT r)) return null;
+        return (r.Top < bottom && r.Bottom > top && r.Bottom - r.Top > 4) ? new[] { r.Left, r.Top, r.Right, r.Bottom } : null;
+    }
+
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     public static void ParkCursor(int x, int y) => SetCursorPos(x, y);
 
@@ -50,8 +60,6 @@ public static class ParityNative
     delegate bool EnumProc(IntPtr h, IntPtr l);
     [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
-    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
-    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, char[] b, int n);
     /// <summary>"hwnd|title|l,t,r,b" for every visible top-level window, for the log.</summary>
     public static string[] VisibleWindows()

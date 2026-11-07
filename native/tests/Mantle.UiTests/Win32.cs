@@ -81,6 +81,14 @@ internal static class Win32
         return list;
     }
 
+    /// <summary>Every visible top-level window with a title (to close what a test opened).</summary>
+    public static List<IntPtr> VisibleTitled()
+    {
+        var list = new List<IntPtr>();
+        EnumWindows((h, _) => { if (IsWindowVisible(h) && Title(h).Length > 0) list.Add(h); return true; }, IntPtr.Zero);
+        return list;
+    }
+
     public static RECT MonitorRect(IntPtr h)
     {
         var mi = new MONITORINFO { cbSize = Marshal.SizeOf<MONITORINFO>() };

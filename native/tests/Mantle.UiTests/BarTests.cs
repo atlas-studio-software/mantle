@@ -24,7 +24,8 @@ public static class AssemblySetup
     public static void Done()
     {
         Host.KillAll();
-        if (Host.Allowed) Win32.TaskbarAutoHide(false);
+        // The runner taskbar stays on auto-hide: later CI stages (bench, parity) measure the bar at the
+        // bottom edge too, and switching it back would undo their setup.
     }
 }
 
@@ -194,6 +195,7 @@ public class BarTests
     public void Right_cluster_buttons_invoke_without_crashing()
     {
         using var app = BarApp.Launch("uitest-cluster");
+        var before = new HashSet<IntPtr>(Win32.VisibleTitled());
         foreach (var id in ClusterIds)
         {
             var e = app.Find(id, 3000);
@@ -206,6 +208,11 @@ public class BarTests
             Assert.IsFalse(app.Proc.HasExited, $"the app exited after {id} was invoked (code {(app.Proc.HasExited ? app.Proc.ExitCode : 0)})");
         }
         Assert.IsTrue(Win32.IsWindow(app.Hwnd) && Win32.IsWindowVisible(app.Hwnd), "the bar window is gone after the cluster clicks");
+        // Close what the buttons opened (e.g. a File Explorer or console window): later CI stages share this desktop.
+        var opened = Win32.VisibleTitled().Where(h => !before.Contains(h) && h != app.Hwnd).ToList();
+        foreach (var h in opened) { Console.WriteLine($"closing a window the cluster opened: {Win32.Title(h)}"); Win32.PostMessageW(h, Win32.WM_CLOSE, IntPtr.Zero, IntPtr.Zero); }
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Host.Until(() => opened.All(h => !Win32.IsWindowVisible(h)), 5000);
     }
 
     [TestMethod]
