@@ -260,8 +260,7 @@ public sealed partial class BarWindow : Window
         MorePipRing.Fill = (Brush)TokenOr("LgFillStrong", "LgPaneFill");
         ToolTipService.SetToolTip(MoreBtn, shown ? tip : "More");
         AutomationProperties.SetHelpText(MorePip, shown ? (warn ? "warn: " : "") + tip : "");
-        Host.Log.Line(shown ? $"more pip: {(warn ? "warn" : "plain")} ({tip.Replace('
-', ';')})" : "more pip: none");
+        Host.Log.Line(shown ? $"more pip: {(warn ? "warn" : "plain")} ({tip.Replace("\n", "; ")})" : "more pip: none");
     }
     (bool, bool, string) _pipNow = (false, false, "");
 

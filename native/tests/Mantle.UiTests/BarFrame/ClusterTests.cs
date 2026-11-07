@@ -41,4 +41,20 @@ public sealed class ClusterTests
         Assert.AreEqual(more.Right - 5 * s, r.Right, 1.5, "the pip ring's right edge is 5 DIP in (dot at right 7)");
         Assert.AreEqual(more.Top + 5 * s, r.Top, 1.5, "the pip ring's top is 5 DIP down (dot at top 7)");
     }
+
+    /// BAR-416: the time box is sized for the longest string ("10:00:00 PM", min-width 80 px, tabular
+    /// figures), so a tick never moves the cluster: the clock's left edge stays put across ticks.
+    [TestMethod]
+    public void Clock_time_box_is_sized_for_the_longest_time_and_never_moves()
+    {
+        using var app = BarApp.Launch("uitest-clockbox");
+        double s = Win32.GetDpiForWindow(app.Hwnd) / 96.0;
+        var t = app.Find("bar.clock.time");
+        Assert.IsTrue(t.BoundingRectangle.Width >= 80 * s - 0.5, $"time box {t.BoundingRectangle.Width} px, want at least {80 * s}");
+        var clock = app.Find("bar.clock");
+        double left0 = clock.BoundingRectangle.Left;
+        string t0 = t.Name ?? "";
+        Assert.IsTrue(Host.Until(() => (t.Name ?? "") != t0, 3000), "the time did not tick in 3 s");
+        Assert.AreEqual(left0, clock.BoundingRectangle.Left, 0.5, "the clock moved when the time ticked");
+    }
 }

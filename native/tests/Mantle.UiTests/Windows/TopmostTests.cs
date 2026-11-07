@@ -66,26 +66,37 @@ public sealed class TopmostTests
     /// opens one small window per technique (Shell/Windows/TopmostProbe.cs) over a fixture that has the
     /// foreground, and the test reads from outside which ones really sit above it.
     [TestMethod]
-    public void Popup_opened_while_another_app_has_the_foreground_sits_above_it()
+    public void Popup_opened_while_another_app_has_the_foreground_sits_above_it() => Probe(cold: false);
+
+    /// The same, with Mantle STARTED while the other app is in front (a start at sign-in, or after a crash):
+    /// a new process the foreground app did not start has no foreground rights, the spike's failing case.
+    [TestMethod]
+    public void Bar_and_popups_started_while_another_app_is_in_front_sit_above_it() => Probe(cold: true);
+
+    static void Probe(bool cold)
     {
         Host.Guard();
+        string tag = cold ? "cold" : "warm";
         string dir = Path.Combine(Path.GetTempPath(), "mantle-topmost-probe-" + Guid.NewGuid().ToString("N")[..8]);
         Directory.CreateDirectory(dir);
-        using var app = BarApp.Launch("topmost", env: new Dictionary<string, string> { ["MANTLE_TEST_TOPMOST_PROBE"] = dir });
-        Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "ready.txt")), 15000), "the app never started its topmost probe");
-        string ready = File.ReadAllText(Path.Combine(dir, "ready.txt"));
-        using var fx = new Host.Fixture("Mantle topmost fixture", 600, 300);
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_TOPMOST_PROBE"] = dir };
+        BarApp? app = cold ? null : BarApp.Launch("topmost-" + tag, env: env);
+        if (!cold) Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "ready.txt")), 15000), "the app never started its topmost probe");
+        using var fx = new Host.Fixture("Mantle topmost fixture " + tag, 600, 300);
         Assert.IsTrue(ZOrder.Foreground(fx.Hwnd), "the fixture could not take the foreground, so the probe would prove nothing");
-        // then the user clicks in it and types (the case of a timer or notification pop-up in Mantle)
+        // then the user clicks in it (a timer or notification pop-up comes up while they work elsewhere)
         ZOrder.Click(600 + 210, 300 + 160);
         Thread.Sleep(300);
         Assert.AreEqual(fx.Hwnd, Win32.GetForegroundWindow(), "the click did not leave the fixture in front");
-        bool barTop = ZOrder.IsTopmost(app.Hwnd), barAbove = ZOrder.IsAbove(app.Hwnd, fx.Hwnd);
-        File.WriteAllText(Path.Combine(dir, "go.txt"), "600,300");
-        Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "result.json")), 15000), "the probe never wrote result.json");
+        if (cold) { File.WriteAllText(Path.Combine(dir, "go.txt"), "600,300"); app = BarApp.Launch("topmost-" + tag, env: env); }
+        using var _ = app!;
+        bool barTop = ZOrder.IsTopmost(app!.Hwnd), barAbove = ZOrder.IsAbove(app.Hwnd, fx.Hwnd);
+        if (!cold) File.WriteAllText(Path.Combine(dir, "go.txt"), "600,300");
+        Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "result.json")), 20000), "the probe never wrote result.json");
         Thread.Sleep(800);   // let the shows land, then read the z-order from outside
+        string ready = File.Exists(Path.Combine(dir, "ready.txt")) ? File.ReadAllText(Path.Combine(dir, "ready.txt")) : "?";
         using var doc = JsonDocument.Parse(File.ReadAllText(Path.Combine(dir, "result.json")));
-        var lines = new List<string> { "ready: " + ready, $"bar: topmost {barTop}, above the fixture {barAbove}", $"fixture {fx.Hwnd}, foreground now {Win32.GetForegroundWindow()}" };
+        var lines = new List<string> { $"[{tag}] ready: " + ready, $"[{tag}] bar: topmost {barTop}, above the fixture {barAbove}; now topmost {ZOrder.IsTopmost(app.Hwnd)}, above {ZOrder.IsAbove(app.Hwnd, fx.Hwnd)}", $"[{tag}] fixture {fx.Hwnd}, foreground now {Win32.GetForegroundWindow()}" };
         var verdict = new Dictionary<string, bool>();
         foreach (var w in doc.RootElement.GetProperty("windows").EnumerateArray())
         {
@@ -93,12 +104,18 @@ public sealed class TopmostTests
             var h = new IntPtr(w.GetProperty("hwnd").GetInt64());
             bool top = ZOrder.IsTopmost(h), above = ZOrder.IsAbove(h, fx.Hwnd), vis = Win32.IsWindowVisible(h);
             verdict[name] = top && above && vis;
-            lines.Add($"TOPMOST-PROBE {name}: topmost {top}, above the fixture {above}, visible {vis}; in-app: {w}");
+            lines.Add($"TOPMOST-PROBE [{tag}] {name}: topmost {top}, above the fixture {above}, visible {vis}; in-app: {w}");
         }
-        Host.Screenshot("topmost-probe");
-        File.WriteAllLines(Path.Combine(Host.OutDir, "topmost-probe.txt"), lines);
+        Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(dir, "raise.txt")), 5000), "WindowKinds.Raise never reported");
+        var raise = File.ReadAllText(Path.Combine(dir, "raise.txt")).Split(' ', 2);
+        var rh = new IntPtr(long.Parse(raise[0]));
+        lines.Add($"RAISE [{tag}] (WindowKinds.Raise, WIN-011): in-app '{raise[1]}'; from outside topmost {ZOrder.IsTopmost(rh)}, above the fixture {ZOrder.IsAbove(rh, fx.Hwnd)}");
+        Host.Screenshot("topmost-probe-" + tag);
+        File.WriteAllLines(Path.Combine(Host.OutDir, $"topmost-probe-{tag}.txt"), lines);
         foreach (var l in lines) Console.WriteLine(l);
         Assert.AreEqual(fx.Hwnd, Win32.GetForegroundWindow(), "a probe window took the foreground from the app in front");
-        Assert.IsTrue(verdict.Values.Any(v => v), "no technique put a window above the app in front:\n" + string.Join("\n", lines));
+        Assert.IsTrue(ZOrder.IsTopmost(app.Hwnd) && ZOrder.IsAbove(app.Hwnd, fx.Hwnd), "the bar is not above the app in front:" + Environment.NewLine + string.Join(Environment.NewLine, lines));
+        Assert.AreEqual("ok", raise[1], "WindowKinds.Raise said the pop-up is covered:" + Environment.NewLine + string.Join(Environment.NewLine, lines));
+        Assert.IsTrue(ZOrder.IsTopmost(rh) && ZOrder.IsAbove(rh, fx.Hwnd), "WindowKinds.Raise said ok, but from outside the pop-up is not above the app in front");
     }
 }

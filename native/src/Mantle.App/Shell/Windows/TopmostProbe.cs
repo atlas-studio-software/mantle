@@ -102,6 +102,13 @@ internal static class TopmostProbe
         One("parked", (w, h, r) => { Win32.SetWindowPos(h, IntPtr.Zero, r.X, r.Y, r.Width, r.Height, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */); WindowKinds.Cloak(h, false); }, true, Colors.Teal, _parked);
         // I: hidden window re-created by the bar's thread with WS_EX_TOPMOST in the style before the first show
         One("exstyle", (w, h, r) => { Place(w, r); Win32.SetWindowLongPtr(h, Win32.GWL_EXSTYLE, new IntPtr(Win32.GetWindowLongPtr(h, Win32.GWL_EXSTYLE).ToInt64() | 0x8)); Win32.ShowWindow(h, 8); }, false, Colors.Purple);
+        // WindowKinds.Raise (WIN-011): shown, raised, checked 60 ms later against the app in front
+        IntPtr fgAtGo = Win32.GetForegroundWindow();
+        var rw = Make("raise", aot: true, Colors.HotPink); IntPtr rh = Hwnd(rw);
+        rw.AppWindow.MoveAndResize(new RectInt32(x0 + 10 + (i % 6) * 65, y0 + 40 + (i / 6) * 65, 60, 60));
+        rw.AppWindow.Show(false);
+        WindowKinds.Raise(rh, rw.DispatcherQueue, "probe raise", fgAtGo, (ok, why) =>
+            File.WriteAllText(Path.Combine(_dir!, "raise.txt"), $"{rh} " + (ok ? "ok" : "covered: " + why)));
         sb.Append("]}");
         File.WriteAllText(Path.Combine(_dir!, "result.json"), sb.ToString());
         Host.Log.Line("topmost probe: " + i + " windows opened; result.json written");

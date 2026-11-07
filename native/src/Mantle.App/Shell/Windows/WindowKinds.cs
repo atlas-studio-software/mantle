@@ -37,6 +37,48 @@ internal static class WindowKinds
         return false;
     }
 
+    // ------------------------------------------------------------------ on top (lib/raise.js, WIN-011)
+    /// Every pop-up is put at the very top on EVERY show: HWND_TOPMOST (into the topmost band) then HWND_TOP
+    /// (first in it), both without activation. 60 ms later Windows is asked whether it worked: covered ->
+    /// raised once more and checked again; still covered -> ONE plain log line per window, never silent.
+    /// `over` names the window that should be under it (the app in front when it opened), or zero to
+    /// check only that the window is topmost and visible.
+    public static void Raise(IntPtr h, Microsoft.UI.Dispatching.DispatcherQueue q, string name, IntPtr over = default, Action<bool, string>? done = null)
+    {
+        Once(h);
+        var t = q.CreateTimer();
+        t.Interval = TimeSpan.FromMilliseconds(60);
+        t.IsRepeating = false;
+        int tries = 0;
+        t.Tick += (_, _) =>
+        {
+            string why = Covered(h, over);
+            if (why.Length > 0 && tries++ == 0) { Once(h); t.Start(); return; }
+            if (why.Length > 0 && s_said.Add(h)) Host.Log.Line($"raise: {name} is shown but NOT on top ({why}), after a second raise");
+            done?.Invoke(why.Length == 0, why);
+        };
+        t.Start();
+    }
+    static readonly HashSet<IntPtr> s_said = new();
+
+    static void Once(IntPtr h)
+    {
+        const uint f = Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE;
+        Win32.SetWindowPos(h, Win32.HWND_TOPMOST, 0, 0, 0, 0, f);
+        Win32.SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, f);
+    }
+
+    /// "" when the window is visible, not cloaked, topmost and (if given) above `over`; else the reason.
+    public static string Covered(IntPtr h, IntPtr over)
+    {
+        if (!Win32.IsWindow(h)) return "the window is gone";
+        if (!Win32.IsWindowVisible(h)) return "the window is not visible";
+        if (IsCloaked(h)) return "the window is cloaked";
+        if (!IsTopmost(h)) return "Windows did not make it topmost";
+        if (over != IntPtr.Zero && Win32.IsWindow(over) && !IsAbove(h, over)) return "the app in front is still above it";
+        return "";
+    }
+
     // ------------------------------------------------------------------ no frame line
     public sealed class HookState { public bool Erase = true, NcCalc = true; }
     delegate IntPtr SubclassProc(IntPtr hwnd, uint msg, IntPtr wp, IntPtr lp, UIntPtr id, IntPtr data);
