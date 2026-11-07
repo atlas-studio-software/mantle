@@ -167,7 +167,8 @@ public sealed class CallLog
     public static string Shown(JsonNode? node)
     {
         var buf = new MemoryStream();
-        using (var w = new Utf8JsonWriter(buf)) Write(w, node, null);
+        // relaxed escaping, as JSON.stringify prints: "<9 chars>", not "<9 chars>"
+        using (var w = new Utf8JsonWriter(buf, new JsonWriterOptions { Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping })) Write(w, node, null);
         return Encoding.UTF8.GetString(buf.ToArray());
     }
 
