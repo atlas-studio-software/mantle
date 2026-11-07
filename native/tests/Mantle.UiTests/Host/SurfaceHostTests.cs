@@ -108,6 +108,7 @@ public class SurfaceHostTests
         StringAssert.Contains(log, "surface test-lazy: destroyed (");
         StringAssert.Contains(log, "test-lazy: destroyed (");
         Assert.IsFalse(log.Contains("UNHANDLED"), "an unhandled error in the run:\n" + Tail(log));
+        Settle(app);
     }
 
     [TestMethod]
@@ -119,6 +120,18 @@ public class SurfaceHostTests
         Assert.AreEqual(0, Windows(app.Proc.Id, null).Count(h => Win32.Title(h).StartsWith(Prefix, StringComparison.Ordinal)), "a stand-in window was made in a run that did not ask for one");
         Assert.AreEqual(0, Second(app, false, "--open=test-lazy").Code);
         Assert.IsTrue(Host.Until(() => app.Log.Contains("but it did not open: test-lazy is a test stand-in; this --test run did not ask for it (MANTLE_TEST_SURFACES=1)"), 8000), "--open of a skipped stand-in was not answered:\n" + Tail(app.Log));
+        Settle(app);
+    }
+
+    /// End through the ONE shutdown (not a kill), and let its sidecar go, so the next test class starts on a quiet desktop.
+    static void Settle(App app)
+    {
+        if (!app.Proc.HasExited) {
+            Second(app, false, "--quit");
+            app.Proc.WaitForExit(20000);
+        }
+        Host.Until(() => Process.GetProcessesByName("Mantle.Sidecar").All(p => { try { return p.HasExited || p.StartTime < app.Proc.StartTime; } catch (Exception) { return true; } }), 5000);
+        Thread.Sleep(500);
     }
 
     static string Tail(string log) => string.Join("\n", log.Split('\n').TakeLast(30));
