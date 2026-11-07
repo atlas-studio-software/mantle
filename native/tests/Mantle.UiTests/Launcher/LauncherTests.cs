@@ -122,7 +122,8 @@ public class LauncherTests
     {
         using var app = Launch("uitest-launcher-parked", keys: false);
         StringAssert.Contains(app.Log, "launcher: created, hidden and parked (test, visible: never activated)");
-        StringAssert.Contains(app.Log, "launcher: a test run indexes only the fixture in " + app.Fixture);
+        StringAssert.Contains(app.Log, "launcher: a test run indexes only the fixture in ");   // the log writes the profile folder as %USERPROFILE%
+        StringAssert.Contains(app.Log, Path.GetFileName(app.Fixture) + " (MANTLE_TEST_LAUNCHER_DIR)");
         var h = LauncherHwnd(app);
         Assert.IsFalse(Win32.IsWindowVisible(h), "the parked launcher is on screen before anyone opened it");
         Assert.AreNotEqual(0, GetWindowLongPtrW(h, -20).ToInt64() & WS_EX_NOACTIVATE, "a --test launcher must be WS_EX_NOACTIVATE (never takes the keyboard)");
@@ -161,24 +162,26 @@ public class LauncherTests
         Thread.Sleep(300);
 
         Keyboard.Type("zephyr");
-        Assert.IsTrue(Host.Until(() => Rows(win).Count == 3, 5000), "typing \"zephyr\" did not list the 3 fixture apps; rows: " +
+        Assert.IsTrue(Host.Until(() => Rows(win).Count(r => r.Name.StartsWith("Zephyr ")) == 3, 5000), "typing \"zephyr\" did not list the 3 fixture apps; rows: " +
             string.Join(", ", Rows(win).Select(r => r.Name)) + "\n" + Tail(app.Log));
         var names = Rows(win).Select(r => r.Name).ToList();
-        CollectionAssert.AreEquivalent(new[] { "Zephyr Mail", "Zephyr Notes", "Zephyr Paint" }, names, "the rows for \"zephyr\"");
+        CollectionAssert.AreEquivalent(new[] { "Zephyr Mail", "Zephyr Notes", "Zephyr Paint" }, names.Where(n => n.StartsWith("Zephyr ")).ToList(), "the app rows for \"zephyr\"");
+        Assert.AreEqual(4, names.Count, "the rows for \"zephyr\": the 3 apps and the web row (as Electron): " + string.Join(", ", names));
+        int last = names.Count - 1;
         Assert.AreEqual(names[0], Selected(win), "the first row is not the selected one after typing");
-        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: typed \"zephyr\": 3 row(s) on screen "), 5000), "no keystroke-to-rows line:\n" + Tail(app.Log));
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: typed \"zephyr\": 4 row(s) on screen "), 5000), "no keystroke-to-rows line:\n" + Tail(app.Log));
 
         Keyboard.Type(VirtualKeyShort.DOWN);
         Assert.IsTrue(Host.Until(() => Selected(win) == names[1], 3000), "Down did not move to row 2 (selected: " + Selected(win) + ")");
         Keyboard.Type(VirtualKeyShort.END);
-        Assert.IsTrue(Host.Until(() => Selected(win) == names[2], 3000), "End did not move to the last row");
+        Assert.IsTrue(Host.Until(() => Selected(win) == names[last], 3000), "End did not move to the last row");
         Keyboard.Type(VirtualKeyShort.DOWN);
         Assert.IsTrue(Host.Until(() => Selected(win) == names[0], 3000), "Down on the last row did not wrap to the first (LAU-048)");
         Keyboard.Type(VirtualKeyShort.UP);
-        Assert.IsTrue(Host.Until(() => Selected(win) == names[2], 3000), "Up on the first row did not wrap to the last");
+        Assert.IsTrue(Host.Until(() => Selected(win) == names[last], 3000), "Up on the first row did not wrap to the last");
         Keyboard.Type(VirtualKeyShort.HOME);
         Assert.IsTrue(Host.Until(() => Selected(win) == names[0], 3000), "Home did not move to the first row");
-        StringAssert.Contains(app.Log, "launcher: key Down: row 2 of 3");
+        StringAssert.Contains(app.Log, "launcher: key Down: row 2 of 4");
 
         // Enter: a --test launch is a dry run that says what it would open, then the launcher hides
         Keyboard.Type(VirtualKeyShort.RETURN);

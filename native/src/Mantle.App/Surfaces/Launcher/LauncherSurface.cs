@@ -63,7 +63,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
     IDisposable? _themeSub;
     bool _shown, _activated, _dark, _keys, _clearHidden;
     int _seq;
-    long _openTs, _typedTs;
+    long _openTs, _typedTs, _lastKeyTs;
     DispatcherQueueTimerLike? _debounce;
     LauncherGroups.Result _view = new([], []);
     int _sel;
@@ -308,7 +308,13 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
     {
         long typedAt = Stopwatch.GetTimestamp();
         if (_typedTs == 0) _typedTs = typedAt;                               // the first keystroke of a burst the debounce folds
+        // A lone key searches at once; a key within 12 ms of the last one (auto-repeat, a paste) is folded into one
+        // search 12 ms later, as Electron's queueSearch does. (Electron waits 12 ms on every key; a WinUI timer rounds
+        // 12 ms up to the next 15.6 ms tick, so waiting here would put native behind it.)
+        bool burst = _lastKeyTs != 0 && Ms(_lastKeyTs) < 12;
+        _lastKeyTs = typedAt;
         _debounce?.Stop();
+        if (!burst) { RunSearch(_q.Text, _typedTs); return; }
         _debounce = DispatcherQueueTimerLike.After(_ctx.Dispatcher, 12, () => RunSearch(_q.Text, _typedTs));
     }
 

@@ -84,6 +84,9 @@ public partial class MantleApp : Application
         Host.Log.Line($"launched; theme {ThemeSettings.Word(StartMode())}{(Host.Args.Theme != null ? " (pinned by --theme)" : " (from " + Host.Data.Theme.Name + ")")}; app theme {RequestedTheme}");
         _window = new BarWindow();
         _window.FollowHostTheme();   // the bar takes the host's theme (ThemeShown) and keeps its own theme.json path
+        // (lane native-launcher) the bar closed = quit through the ONE shutdown: with the launcher parked at start the bar is
+        // no longer the last window, so WinUI's "last window closed" exit would never come
+        _window.Closed += (_, _) => Quit("the bar window was closed", 0);
         Host.Marks.Add("window");
         _window.ShowBar();
 

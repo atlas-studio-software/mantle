@@ -127,7 +127,9 @@ foreach ($t in $Themes) {
   $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
   $ePx = $null; $eRect = $null
   if ($e -and $e.ok) {
-    $s = $e.dpr; $eRect = @([int]($e.rect[0] * $s), [int]($e.rect[1] * $s), [int]($e.rect[2] * $s), [int]($e.rect[3] * $s))
+    # a --test Electron launcher is a FRAMED window (title bar + menu): grab its page (innerWidth x innerHeight), the pane's own 680x460
+    $s = $e.dpr; $bx = [int](($e.rect[2] - $e.inner[0]) / 2)
+    $eRect = @([int](($e.rect[0] + $bx) * $s), [int](($e.rect[1] + $e.rect[3] - $e.inner[1] - $bx) * $s), [int]($e.inner[0] * $s), [int]($e.inner[1] * $s))
     [ParityNative]::ParkCursor(4, 4)
     if (-not (Wait-Still $eRect[0] $eRect[1] $eRect[2] $eRect[3])) { Problem "electron ${t}: the launcher never stood still" }
     $ePx = [ParityNative]::Grab($eRect[0], $eRect[1], $eRect[2], $eRect[3])
@@ -166,7 +168,7 @@ foreach ($t in $Themes) {
     Start-Sleep -Milliseconds 800
     $keysN = @([regex]::Matches((Log-Text $ud), 'typed "[^"]*": \d+ row\(s\) on screen ([\d.]+) ms') | ForEach-Object { [double]$_.Groups[1].Value })
     $nRect = $null
-    $h = [LauncherParity.W]::FindWindowW($null, "Mantle launcher")
+    $h = [LauncherParity.W]::FindWindowW([NullString]::Value, "Mantle launcher")
     $rc = New-Object LauncherParity.W+RECT
     if ($h -ne [IntPtr]::Zero -and [LauncherParity.W]::GetWindowRect($h, [ref]$rc)) { $nRect = @($rc.Left, $rc.Top, ($rc.Right - $rc.Left), ($rc.Bottom - $rc.Top)) }
     if ($nRect) {
