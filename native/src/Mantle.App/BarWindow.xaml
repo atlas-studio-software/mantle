@@ -1,0 +1,132 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  The bar at rest, laid out like ui/bar/index.html + bar.css (all sizes in DIP = CSS px):
+  a 48 tall island, padding 0 8, gap 8; left = the Mantle mark (38 x 36); the dock centred on the
+  whole island (36 cells, 6 apart, 24 icons, a 3 px running line under each); right = separator,
+  downloads, volume, network, clock (two lines, min 80 wide), notifications, more (36 wide each, 4 apart).
+  The island is three layers like .bar / .bdrop / .bar::after: the blurred backdrop picture, the tint
+  with its 1 px hairline, and the 1 px white lip inside the top edge.
+-->
+<Window
+    x:Class="MantleBar.BarWindow"
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+    xmlns:local="using:MantleBar"
+    Title="Mantle bar (native spike)">
+  <Grid x:Name="Root">
+    <Grid.Resources>
+      <Style x:Key="LgBtn" TargetType="Button">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="Foreground" Value="{ThemeResource LgInk2}"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Padding" Value="0"/>
+        <Setter Property="Height" Value="36"/>
+        <Setter Property="MinWidth" Value="0"/>
+        <Setter Property="CornerRadius" Value="6"/>
+        <Setter Property="IsTabStop" Value="False"/>
+        <Setter Property="UseSystemFocusVisuals" Value="False"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
+        <Setter Property="Template">
+          <Setter.Value>
+            <ControlTemplate TargetType="Button">
+              <Grid x:Name="Face" Background="{TemplateBinding Background}" CornerRadius="{TemplateBinding CornerRadius}"
+                    Padding="{TemplateBinding Padding}">
+                <VisualStateManager.VisualStateGroups>
+                  <VisualStateGroup x:Name="CommonStates">
+                    <VisualState x:Name="Normal"/>
+                    <VisualState x:Name="PointerOver">
+                      <VisualState.Setters><Setter Target="Face.Background" Value="{ThemeResource LgHover}"/></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Pressed">
+                      <VisualState.Setters><Setter Target="Face.Background" Value="{ThemeResource LgPress}"/></VisualState.Setters>
+                    </VisualState>
+                    <VisualState x:Name="Disabled"/>
+                  </VisualStateGroup>
+                </VisualStateManager.VisualStateGroups>
+                <ContentPresenter HorizontalAlignment="Center" VerticalAlignment="Center" Foreground="{TemplateBinding Foreground}"/>
+              </Grid>
+            </ControlTemplate>
+          </Setter.Value>
+        </Setter>
+      </Style>
+    </Grid.Resources>
+
+    <!-- the light theme's drop shadow lives here, as composition visuals (BarWindow.xaml.cs) -->
+    <Canvas x:Name="ShadowHost" IsHitTestVisible="False"/>
+
+    <Grid x:Name="Pill" Height="48" HorizontalAlignment="Left" VerticalAlignment="Top">
+      <Border x:Name="Glass" CornerRadius="{ThemeResource LgPillCorner}">
+        <Border.Background><ImageBrush x:Name="GlassImage" Stretch="Fill"/></Border.Background>
+      </Border>
+      <!-- the fill runs under the hairline (bar.css .bar::after: background-clip: border-box), and the
+           hairline is its own background-less layer on top: a Border with both a Background and a
+           translucent BorderBrush drew the hairline nearly opaque on the runner (spike run 1) -->
+      <Border x:Name="Tint" CornerRadius="{ThemeResource LgPillCorner}" Background="{ThemeResource LgPaneFill}"/>
+      <Border x:Name="Lip" Margin="1" CornerRadius="{ThemeResource LgLipCorner}" BorderBrush="{ThemeResource LgLip}"
+              BorderThickness="0,1,0,0"/>
+      <Border x:Name="Edge" CornerRadius="{ThemeResource LgPillCorner}" BorderBrush="{ThemeResource LgEdgeOut}" BorderThickness="1"/>
+
+      <Grid x:Name="Content" Padding="8,0,8,0">
+        <Grid.ColumnDefinitions>
+          <ColumnDefinition Width="Auto"/>
+          <ColumnDefinition Width="*"/>
+          <ColumnDefinition Width="Auto"/>
+        </Grid.ColumnDefinitions>
+
+        <Button x:Name="StartBtn" Grid.Column="0" Style="{StaticResource LgBtn}" Width="38"
+                ToolTipService.ToolTip="Open the Mantle launcher">
+          <Viewbox Width="22" Height="22"><Canvas x:Name="MarkHost" Width="24" Height="24"/></Viewbox>
+        </Button>
+
+        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+          <Rectangle Width="1" Height="20" Fill="{ThemeResource LgEdgeOut}" VerticalAlignment="Center"/>
+          <Button Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
+          <Button Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
+          <Button Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NetworkHost" Width="16" Height="16"/></Button>
+          <Button x:Name="ClockBtn" Style="{StaticResource LgBtn}" Padding="9,0,9,0" MinWidth="62">
+            <StackPanel Spacing="2" HorizontalAlignment="Right">
+              <TextBlock x:Name="ClockT" FontSize="13" MinWidth="80" TextAlignment="Right" HorizontalAlignment="Right"
+                         Foreground="{ThemeResource LgInk}" FontFamily="{StaticResource LgFont}"
+                         LineHeight="13" LineStackingStrategy="BlockLineHeight" Text="--:--"/>
+              <TextBlock x:Name="ClockD" FontSize="{ThemeResource LgDateSize}" TextAlignment="Right" HorizontalAlignment="Right"
+                         Foreground="{ThemeResource LgInk2}" FontFamily="{StaticResource LgFont}"
+                         LineHeight="13" LineStackingStrategy="BlockLineHeight" Text="--"/>
+            </StackPanel>
+          </Button>
+          <Button Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NotifsHost" Width="16" Height="16"/></Button>
+          <Button Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="MoreHost" Width="16" Height="16"/></Button>
+        </StackPanel>
+      </Grid>
+
+      <!-- .dock: absolutely centred on the whole island, not between the clusters -->
+      <ItemsControl x:Name="Dock" HorizontalAlignment="Center" VerticalAlignment="Center" IsTabStop="False">
+        <ItemsControl.ItemsPanel>
+          <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6"/></ItemsPanelTemplate>
+        </ItemsControl.ItemsPanel>
+        <ItemsControl.ItemTemplate>
+          <DataTemplate x:DataType="local:CellVm">
+            <Button Style="{StaticResource LgBtn}" Width="36" Click="Cell_Click" Tag="{x:Bind}"
+                    ToolTipService.ToolTip="{x:Bind Name}">
+              <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
+                <Grid Width="24" Height="24" CornerRadius="6">
+                  <Border Background="{ThemeResource LgTile}" Visibility="{x:Bind TileVisibility}">
+                    <TextBlock Text="{x:Bind Letter}" FontSize="12.5" FontWeight="SemiBold" CharacterSpacing="20"
+                               Foreground="{ThemeResource LgInk}" FontFamily="{StaticResource LgFont}"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                  </Border>
+                  <Image Source="{x:Bind Icon}" Width="24" Height="24" Visibility="{x:Bind IconVisibility}"/>
+                </Grid>
+                <Grid Height="3" Width="16">
+                  <Border Width="6" Height="3" CornerRadius="1.5" Background="{ThemeResource LgInk2}"
+                          HorizontalAlignment="Center" Visibility="{x:Bind RunVisibility, Mode=OneWay}"/>
+                  <Border Width="16" Height="3" CornerRadius="1.5" Background="{ThemeResource LgAcc}"
+                          HorizontalAlignment="Center" Visibility="{x:Bind ActVisibility, Mode=OneWay}"/>
+                </Grid>
+              </StackPanel>
+            </Button>
+          </DataTemplate>
+        </ItemsControl.ItemTemplate>
+      </ItemsControl>
+    </Grid>
+  </Grid>
+</Window>

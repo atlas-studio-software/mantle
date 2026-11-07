@@ -1,0 +1,7 @@
+# Build and run outputs of the native (C# + WinUI 3) Mantle
+bin/
+obj/
+out/
+*.user
+.vs/
+TestResults/
