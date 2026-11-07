@@ -29,13 +29,13 @@ public class SafetyTests
         Assert.Equal("first line", Crash.What("first   line\n   at Stack.Frame()"));
         Assert.Equal(160, Crash.What(new string('x', 400)).Length);
         using var d = new TestDir("crash");
-        var plan = Crash.Record(d.Path, true, "boom", now);
+        var plan = Crash.Record(d.Path, new Mantle.Core.Data.SafeFile(Mantle.Core.Data.WriteGate.Scratch(d.Path)), "boom", now);
         Assert.True(plan.Restart);
         var back = Crash.Read(Path.Combine(d.Path, Crash.FileName));
         Assert.Equal(new List<long> { now }, back.History);
         Assert.Equal((long?)now, back.At);
         Assert.True(back.Restarted);
-        Assert.False(Crash.Record(d.Path, false, "boom", now + 1).Restart);
+        Assert.False(Crash.Record(d.Path, new Mantle.Core.Data.SafeFile(Mantle.Core.Data.WriteGate.Never("closed")), "boom", now + 1).Restart);
     }
 
     [Fact]
@@ -95,14 +95,14 @@ public class SafetyTests
     public void SAFE038_native_refuses_live_while_electron_mantle_runs_live()
     {
         var none = new ShellStateNote(false, false, null, null, null);
-        Assert.Null(TwoShells.Verdict(new TwoShells.Facts(false, Array.Empty<int>(), none, false, null)));
-        var locked = TwoShells.Verdict(new TwoShells.Facts(true, Array.Empty<int>(), none, false, null))!;
+        Assert.Null(TwoShells.Verdict(new TwoShells.Facts(LockState.Absent, Array.Empty<int>(), none, false, null)));
+        var locked = TwoShells.Verdict(new TwoShells.Facts(LockState.Held, Array.Empty<int>(), none, false, null))!;
         Assert.StartsWith("Mantle (the Electron app) is running live, so this native Mantle did not start", locked);
         Assert.Contains("its single-instance lock is held in its profile", locked);
-        Assert.Contains("Mantle.exe is running (pid 42)", TwoShells.Verdict(new TwoShells.Facts(false, new[] { 42 }, none, false, null)));
+        Assert.Contains("Mantle.exe is running (pid 42)", TwoShells.Verdict(new TwoShells.Facts(LockState.Absent, new[] { 42 }, none, false, null)));
         var live = new ShellStateNote(true, true, false, 77, null);
-        Assert.Contains("owned by pid 77 (Mantle.Sidecar), which is still running", TwoShells.Verdict(new TwoShells.Facts(false, Array.Empty<int>(), live, true, "Mantle.Sidecar")));
-        Assert.Null(TwoShells.Verdict(new TwoShells.Facts(false, Array.Empty<int>(), live, false, null)));   // dead owner: a dirty start, not a live shell
+        Assert.Contains("owned by pid 77 (Mantle.Sidecar), which is still running", TwoShells.Verdict(new TwoShells.Facts(LockState.Absent, Array.Empty<int>(), live, true, "Mantle.Sidecar")));
+        Assert.Null(TwoShells.Verdict(new TwoShells.Facts(LockState.Absent, Array.Empty<int>(), live, false, null)));   // dead owner: a dirty start, not a live shell
     }
 
     [Fact]
@@ -113,7 +113,7 @@ public class SafetyTests
         d.Write("shell-state.json", "{\"pid\":" + Environment.ProcessId + ",\"restored\":false}");
         var before = Directory.GetFiles(d.Path).Select(f => (f, File.GetLastWriteTimeUtc(f))).ToList();
         var f = TwoShells.Probe(d.Path, null);
-        Assert.True(f.LockFile);
+        Assert.Equal(LockState.Stale, f.Lock);   // a 0-byte lockfile nobody holds: Electron has exited
         Assert.Equal(false, f.State.Restored);
         Assert.False(f.StatePidAlive);   // our own pid never counts as the other shell
         Assert.Equal(before, Directory.GetFiles(d.Path).Select(x => (x, File.GetLastWriteTimeUtc(x))).ToList());

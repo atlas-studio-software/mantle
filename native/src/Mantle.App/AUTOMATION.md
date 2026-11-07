@@ -45,8 +45,8 @@ one and exits; `--quit` with the same profile asks it to close.
 - `--dock` makes it a permanent app bar on its bottom slot. A test run's platform is passive, so nothing is
   reserved in Windows; the log says so (`dock (start): ... nothing reserved ...`).
 - `MANTLE_TEST_POPUPS=1`: More opens the stand-in pop-up "more" (instant, parked, no focus) and the clock opens
-  "cal" (on demand, takes the keyboard). `MANTLE_TEST_POPWATCH=1` arms the outside watch (outside clicks and Esc
-  close a pop-up); `=away` also closes it when another app comes to the front. Without it a test run watches
+  "cal" (on demand, takes the keyboard). `--test-popwatch` arms the outside watch (outside clicks and Esc
+  close a pop-up); `--test-popwatch-away` also closes it when another app comes to the front. Without it a test run watches
   nothing (a live run always does).
 - With `--bench-out=<dir>` the log is mirrored to `<dir>/native-log.txt`; the frame writes stable lines the
   UI tests read: `bar hidden: at rest`, `bar revealed (<why>)`, `bar hiding: <why>`, `bar hidden: window hidden,

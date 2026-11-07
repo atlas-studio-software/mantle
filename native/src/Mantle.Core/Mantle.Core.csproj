@@ -21,4 +21,8 @@
     <InternalsVisibleTo Include="Mantle.Core.Tests" />
     <None Include="DATA.md" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- the [Command]/[Feature]/[Surface] catalogs (Mantle.Generators); compile-time only, never shipped -->
+    <ProjectReference Include="..\Mantle.Generators\Mantle.Generators.csproj" OutputItemType="Analyzer" ReferenceOutputAssembly="false" GlobalPropertiesToRemove="RuntimeIdentifier;SelfContained;PublishAot;PublishTrimmed;PublishReadyToRun;PublishSingleFile;WindowsAppSDKSelfContained;Platform" />
+  </ItemGroup>
 </Project>

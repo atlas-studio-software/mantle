@@ -120,6 +120,7 @@ public sealed partial class BarWindow : Window
         SystemBackdrop = new TransparentBackdrop();
         ConfigureWindow();
         PaintBackdrop();
+        FollowHostTheme();
         if (!_dark) AddShadow();   // dark: the lip only, no drop shadow (bar.css, dark .bar --pane-drop)
         BuildGlyphs();
         PoseDown();
@@ -289,6 +290,7 @@ public sealed partial class BarWindow : Window
         Host.Log.Line("data changed: " + c.Description);
         switch (c.File) {
             case DataFile.Theme:
+                if (_hostTheme) { Host.Log.Line("look: theme.json changed; the host's theme event brings it to the bar"); return; }
                 if (Host.Args.Theme != null) { Host.Log.Line($"look: theme.json changed, but this run is pinned by --theme={Host.Args.Theme}"); return; }
                 SetTheme(Resolve(Host.Data.Theme.Value.Mode));
                 break;
@@ -301,6 +303,19 @@ public sealed partial class BarWindow : Window
                 break;
         }
     }
+
+    // The host's theme (MantleApp.ThemeShown: theme.set, Match Windows through the host's own watch of the theme key,
+    // another app's look, a --theme pin): the bar shows what the host shows. Resolve below is only the fallback for a
+    // run with no host theme yet.
+    bool _hostTheme;
+    void FollowHostTheme()
+    {
+        MantleApp.ThemeShown += OnThemeShown;
+        _hostTheme = true;
+        Closed += (_, _) => MantleApp.ThemeShown -= OnThemeShown;
+        if (MantleApp.ThemeNow is { } now) OnThemeShown(now);
+    }
+    void OnThemeShown(Mantle.Core.Look.ThemePayload p) => SetTheme(p.Theme == "dark");
 
     /// light/dark from a mode; System follows Windows' app mode (AppsUseLightTheme), light when unknown.
     static bool Resolve(ThemeMode mode)

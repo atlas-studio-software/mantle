@@ -22,9 +22,10 @@ public sealed partial class BarWindow
     void StartPopups()
     {
         bool live = Host.Args.Kind == RunKind.Live;
-        string? w = Host.Env("MANTLE_TEST_POPWATCH");
-        bool watch = live || w == "1" || w == "away", away = live || w == "away";
-        Popups = new PopupHost(this, watch, "a test run watches nothing unless MANTLE_TEST_POPWATCH=1 (or =away)", away);
+        // lib/popwatch.js: a --test run watches nothing real unless asked (--test-popwatch, --test-popwatch-away)
+        bool asked = Host.Args.Test && Host.Args.Has("test-popwatch"), askedAway = Host.Args.Test && Host.Args.Has("test-popwatch-away");
+        bool watch = live || asked || askedAway, away = live || askedAway;
+        Popups = new PopupHost(this, watch, "a test run watches nothing unless --test-popwatch (or --test-popwatch-away)", away);
         Root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, e) => Popups.BarPressed(e.OriginalSource as DependencyObject, _popAnchor)), true);
         if (live || Host.Env("MANTLE_TEST_POPUPS") != "1") return;
         var more = new PopupKind("more", "More", 260, 180, Focusable: false, Instant: true, Away: true, () => Stand("more", "More"));

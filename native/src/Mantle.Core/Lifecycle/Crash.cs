@@ -82,19 +82,18 @@ public static class Crash
         } catch (Exception) { return (new List<long>(), null, false); }
     }
 
-    /// <summary>The whole uncaught-exception step: read, plan, write (only where this run may write).</summary>
+    /// <summary>The whole uncaught-exception step: read, plan, write through the ONE write gate (SafeFile).</summary>
     /// <returns>The plan; a failed write (or a refused one) never restarts, as in main.js.</returns>
-    public static Plan Record(string dataRoot, bool mayWrite, string? message, long now)
+    public static Plan Record(string dataRoot, Mantle.Core.Data.SafeFile files, string? message, long now)
     {
         string file = Path.Combine(dataRoot, FileName);
         try {
             var prev = Read(file);
             var plan = Decide(prev.History, now);
-            if (!mayWrite) return plan with { Restart = false, Why = "stopped with an error, and the crash could not be written down (this run may not write its profile), so it was not started again" };
-            Directory.CreateDirectory(dataRoot);
-            string tmp = file + ".tmp";
-            File.WriteAllText(tmp, Json(plan, now, What(message)));
-            File.Move(tmp, file, overwrite: true);
+            string? refused = files.Gate.Refusal(file);
+            if (refused != null) return plan with { Restart = false, Why = $"stopped with an error, and the crash could not be written down ({refused}), so it was not started again" };
+            string? failed = files.WriteAtomic(file, System.Text.Encoding.UTF8.GetBytes(Json(plan, now, What(message))), file + ".tmp");
+            if (failed != null) return plan with { Restart = false, Why = $"stopped with an error, and the crash could not be written down ({failed}), so it was not started again" };
             return plan;
         } catch (Exception e) {
             return new Plan(false, Array.Empty<long>(), 0, $"stopped with an error, and the crash could not be written down ({e.Message}), so it was not started again");

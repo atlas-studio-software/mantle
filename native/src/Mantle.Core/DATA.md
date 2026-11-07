@@ -103,3 +103,14 @@ has no reader for these; none is needed by the bar.
 None of the user's own files or values were copied to make this table or the test fixtures: the
 fixtures in `native/tests/Mantle.Core.Tests/Fixtures/profile` are synthetic, built from the schemas
 and defaults in Electron's code.
+
+## Look wiring and look.json reads (native-core-3, 2026-11-07)
+
+- The app's look is `Look/LookShell.cs`: `theme.json` through its JsonStore and `look-sync.json` through the look
+  host's store (both from the ONE gate's `Stores`), `look.json` through `Host.Files` (the same gate). A `--live` run
+  that is the only shell writes the user's own files; a `--test` or `--user-data=` run writes its own profile and its
+  own `<root>\look-sync` (or `LOOK_SYNC_DIR`, still behind the gate); anything else is refused in words.
+- `LookSyncCore.Read` opens look.json with `FileShare.ReadWrite | FileShare.Delete`, the sharing Node's
+  `readFileSync` uses (libuv). With `File.ReadAllBytes` (read share only) a native read was refused (EBUSY) while
+  another app's replace-rename was in flight, and a publish re-reads first, so the publish was lost; it also held
+  the other app's rename off while reading. Never a torn file: every failure was a refused open, before any bytes.

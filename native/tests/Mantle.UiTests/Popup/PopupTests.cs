@@ -4,7 +4,7 @@ namespace Mantle.UiTests;
 
 /// The pop-up framework (Shell/Popup) from outside, through the test stand-ins (MANTLE_TEST_POPUPS=1: More opens
 /// "more", instant and parked; the clock opens "cal", on demand and focusable), with the outside watch armed
-/// (MANTLE_TEST_POPWATCH=away). Every click and key is real input through the queue.
+/// (--test-popwatch-away). Every click and key is real input through the queue.
 [TestClass]
 public sealed class PopupTests
 {
@@ -21,8 +21,8 @@ public sealed class PopupTests
     public void Popups_open_one_at_a_time_toggle_park_and_close_on_outside_click_esc_and_app_switch()
     {
         string dir = FrameProbe.NewDir("popups");
-        var env = new Dictionary<string, string> { ["MANTLE_TEST_POPUPS"] = "1", ["MANTLE_TEST_POPWATCH"] = "away" };
-        using var app = BarApp.Launch("popups", env: env, extra: new[] { "--bench-out=" + dir });
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_POPUPS"] = "1" };
+        using var app = BarApp.Launch("popups", env: env, extra: new[] { "--bench-out=" + dir, "--test-popwatch-away" });
         using var fx = new Host.Fixture("Mantle pop-up fixture", 300, 150);
         Assert.IsTrue(ZOrder.Foreground(fx.Hwnd), "the fixture could not take the foreground");
         int pid = app.Proc.Id;

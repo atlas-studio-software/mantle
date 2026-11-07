@@ -67,6 +67,28 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
     readonly HashSet<long> _unawaited = new();
     readonly List<Waiter> _readyWaiters = new();
     readonly Dictionary<string, List<Action<PlatformEvent>>> _events = new(StringComparer.Ordinal);
+    readonly WindowIconCache _winIcons = new();
+    bool _winIconRepair;
+
+    /// The iconDiff cache (lib/sidecar.js _winIcons); emptied for every new sidecar process.
+    public WindowIconCache WindowIcons => _winIcons;
+
+    /// An hwnd with no icon kept (a lost list) is repaired from a full windows call, re-raised, said once per repair.
+    void RepairIcons(List<string> missed)
+    {
+        _winIconRepair = true;
+        _o.Log("warn", $"the window list arrived without the icons of {missed.Count} window(s) this side never got; reading the whole list again");
+        var t = CallAsync("windows", new System.Text.Json.Nodes.JsonObject(), TimeSpan.FromMilliseconds(4000));
+        void Done(PlatformReply r)
+        {
+            _winIconRepair = false;
+            if (!r.Ok || r.Result.ValueKind != JsonValueKind.Array) return;   // the next push brings the list
+            _winIcons.Fill(r.Result, missed);
+            Raise("windows", "{\"ev\":\"windows\",\"list\":" + r.Result.GetRawText() + "}");
+        }
+        if (t.IsCompleted) Done(t.Result);
+        else t.AsTask().ContinueWith(x => Done(x.Result), TaskContinuationOptions.ExecuteSynchronously);
+    }
     readonly List<Action<PlatformStatus>> _statusHandlers = new();
     readonly List<Action> _readyHandlers = new();
     IDisposable? _restartTimer;
@@ -151,6 +173,8 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
         _stdoutBuf = "";
         _scanFrom = 0;
         _dropping = null;
+        _winIcons.Reset();
+        _winIconRepair = false;
         _exitWait = new TaskCompletionSource<bool>();
         SetStatus(PlatformState.Starting, "sidecar started, waiting for its ready line" + (_hungProc != null ? " (restarted because the helper was not answering)" : ""));
     }
@@ -212,7 +236,7 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
             _restartTimer = _host.Delay(TimeSpan.FromMilliseconds(delay), Start);
         } else {
             GaveUp = true;
-            SetStatus(PlatformState.Down, $"sidecar {how} and gave up after {MaxRestarts} restarts in a row; try again (retry) or restart Mantle, and if it keeps stopping run npm run build:sidecar.{tail}");
+            SetStatus(PlatformState.Down, $"sidecar {how} and gave up after {MaxRestarts} restarts in a row; try again (retry) or restart Mantle; {PlatformWords.KeepsStopping}.{tail}");
         }
     }
 
@@ -367,6 +391,11 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
         } else if (ev == "log") {
             LastLog = Clip(Str(m, "message") ?? "", StderrLineMax);
             _o.Log(Str(m, "level") ?? "info", Str(m, "message") ?? "");
+        }
+        if (ev == "windows" && m.TryGetProperty("iconDiff", out var idf) && idf.ValueKind == JsonValueKind.True) {
+            var (full, missed) = _winIcons.Full(m);
+            m = full;
+            if (missed.Count > 0 && !_winIconRepair) RepairIcons(missed);
         }
         var body = new PlatformEvent(ev, m.Clone());
         if (_events.TryGetValue(ev, out var hs)) foreach (var h in hs.ToArray()) Safe(() => h(body), $"the \"{ev}\" event handler");
@@ -530,7 +559,7 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
             string version = Str(r.Result, "version") ?? "(no version)";
             return (true, aware, true, $"sidecar {version} speaks the current protocol and is {(aware ? "DPI-aware, so its rectangles are physical pixels" : "DPI-unaware, so its rectangles are already DIP on the primary display")}");
         }
-        return (false, null, true, "sidecar exe is older than the protocol: run npm run build:sidecar (its ping does not report dpiAware, so it does not know the auto-hide or app-bar commands, and Mantle will not guess at what it would do instead)");
+        return (false, null, true, "sidecar exe is older than the protocol: " + PlatformWords.Rebuild + " (its ping does not report dpiAware, so it does not know the auto-hide or app-bar commands, and Mantle will not guess at what it would do instead)");
     }
 
     /// lib/sidecar.js isOldExeError: the words an exe uses for a verb it does not know.
