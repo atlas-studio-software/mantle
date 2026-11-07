@@ -173,11 +173,11 @@ internal sealed class PopupWindow
     public void Open(double t0, int timeoutMs, Action<Dictionary<string, object?>> done)
     {
         double t1 = App.NowMs();
-        AwaitFrame(t0, timeoutMs, ms => { var d = Info(); d["renderMs"] = ms; d["callMs"] = _callMs; done(d); });
+        AwaitFrame(t0, timeoutMs, ms => { EnsureTopmost("first frame after open"); var d = Info(); d["renderMs"] = ms; d["callMs"] = _callMs; done(d); });
         Win.Activate();
         SetExStyle(Hwnd, GetExStyle(Hwnd) | WS_EX_NOACTIVATE);
         Strip();
-        SetWindowPos(Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | SWP_FRAMECHANGED);
+        EnsureTopmost("open", force: true);
         ApplyHit();
         _callMs = App.NowMs() - t1;
     }
@@ -185,14 +185,14 @@ internal sealed class PopupWindow
     public void Show(double t0, Action<Dictionary<string, object?>> done)
     {
         double t1 = App.NowMs();
-        AwaitFrame(t0, 500, ms => { var d = Info(); d["renderMs"] = ms; d["callMs"] = _callMs; done(d); });
+        AwaitFrame(t0, 500, ms => { EnsureTopmost("first frame after show"); var d = Info(); d["renderMs"] = ms; d["callMs"] = _callMs; done(d); });
         switch (_park) {
             case "swhide": ShowWindow(Hwnd, 4 /* SW_SHOWNOACTIVATE */); break;
             case "offscreen": SetWindowPos(Hwnd, IntPtr.Zero, Spec.X, Spec.Y, 0, 0, SWP_NOSIZE | SWP_NOZORDER | SWP_NOACTIVATE); break;
             case "cloak": { int v = 0; DwmSetWindowAttribute(Hwnd, 13 /* DWMWA_CLOAK */, ref v, 4); break; }
             default: Win.AppWindow.Show(false); break;
         }
-        SetWindowPos(Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE);
+        EnsureTopmost("show", force: true);
         Strip();
         _parked = false;
         _callMs = App.NowMs() - t1;
@@ -228,6 +228,18 @@ internal sealed class PopupWindow
         Win.Close();
     }
 
+
+    /// Topmost, re-asserted. Run 4: a popup opened after another app's window was clicked came up
+    /// WITHOUT WS_EX_TOPMOST (ex 0x08000180), under that window. Records every time it had to act.
+    public void EnsureTopmost(string when, bool force = false)
+    {
+        bool was = (GetExStyle(Hwnd) & 0x8) != 0;
+        if (was && !force) return;
+        bool ok = SetWindowPos(Hwnd, HWND_TOPMOST, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_NOACTIVATE | (when == "open" ? SWP_FRAMECHANGED : 0));
+        int err = ok ? 0 : System.Runtime.InteropServices.Marshal.GetLastWin32Error();
+        bool now = (GetExStyle(Hwnd) & 0x8) != 0;
+        if (!was || !ok || !now) _notes.Add($"{when}: topmost was {was}, SetWindowPos {(ok ? "ok" : "FAILED " + err)}, now {now}");
+    }
     // ------------------------------------------------------------------ click-through
     void ApplyHit()
     {
@@ -314,6 +326,7 @@ internal sealed class PopupWindow
             ["dwmFrame"] = new { x = fr.Left, y = fr.Top, w = fr.Right - fr.Left, h = fr.Bottom - fr.Top },
             ["shape"] = new { x = s.x, y = s.y, w = s.w, h = s.h, r = s.r },
             ["visible"] = IsWindowVisible(Hwnd), ["cloaked"] = cloaked,
+            ["topmost"] = (GetExStyle(Hwnd) & 0x8) != 0,
             ["fill"] = new int[] { Fill.A, Fill.R, Fill.G, Fill.B }, ["edge"] = new int[] { Edge.A, Edge.R, Edge.G, Edge.B },
             ["foregroundIsMine"] = fgPid == (uint)Environment.ProcessId,
             ["children"] = _children.ToArray(), ["notes"] = _notes.ToArray(),

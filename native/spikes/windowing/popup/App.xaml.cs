@@ -9,6 +9,7 @@
 //         show id=N            un-park (in its park mode); replies at the next frame (or 500 ms)
 //         park id=N park=MODE  hide it in MODE (apphide | swhide | offscreen | cloak)
 //         resize id=N w= h=    same top-left; replies at the next frame
+//         top id=N             re-assert topmost (notes say whether it had been lost)
 //         close id=N | info id=N | events | fixture x= y= w= h= | gc | quit
 //       The pipe thread blocks on the read (no polling), so an idle app costs nothing for the pipe.
 // Log: <out>/log.txt.
@@ -144,6 +145,7 @@ public partial class App : Application
             case "park": { var w = W(); if (w == null) break; Reply(w.Park(a.TryGetValue("park", out var m) ? m : "apphide")); return; }
             case "resize": { var w = W(); if (w == null) break; w.Resize(tRecv, Int("w", 400), Int("h", 200), Reply); return; }
             case "info": { var w = W(); if (w == null) break; Reply(w.Info()); return; }
+            case "top": { var w = W(); if (w == null) break; w.EnsureTopmost("top command"); Reply(w.Info()); return; }
             case "close": {
                 var w = W(); if (w == null) break;
                 double t1 = NowMs();

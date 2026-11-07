@@ -202,6 +202,7 @@ foreach ($theme in 'light', 'dark') {
 Note 'dpi' 'runner is 1920x1080 at 100% (one display); 150% not tested in this lane'
 
 # ================================================================== 5. click-through
+Note 'minimized_before_hit' ([PopupProbe]::MinimizeOthers())   # run 4: a System Properties dialog came up mid-run
 Set-WinTheme light
 [void][PopupProbe]::BroadcastTheme()
 Start-Sleep -Milliseconds 1000
@@ -247,6 +248,11 @@ foreach ($mode in @('none', $tech, 'none-after')) {
   [void][PopupProbe]::Click($ptCtl[0], $ptCtl[1]); Start-Sleep -Milliseconds 300
   $ctl = @(Fix-Since $n | Where-Object kind -EQ 'down').Count
   [void][PopupProbe]::Move($ptAway[0], $ptAway[1]); Start-Sleep -Milliseconds 200
+  # The popup must be ABOVE the fixture or none of what follows means anything (run 4: a later
+  # popup came up without WS_EX_TOPMOST and the control click raised the fixture over it).
+  $top = Cmd "top id=$id"
+  $fixH = [PopupProbe]::FindByTitle('popup-fixture')
+  $above1 = [PopupProbe]::IsAbove([long]$o.hwnd, $fixH)
   # b. moves over the transparent corner
   Cmd 'events' | Out-Null
   $n = @(Fix-Lines).Count
@@ -259,6 +265,7 @@ foreach ($mode in @('none', $tech, 'none-after')) {
   $n = @(Fix-Lines).Count
   [void][PopupProbe]::Click($ptPass[0], $ptPass[1]); Start-Sleep -Milliseconds 300
   $fixDown = @(Fix-Since $n | Where-Object { $_.kind -eq 'down' -and $_.x -ge $HW.x -and $_.y -ge $HW.y }).Count
+  $above2 = [PopupProbe]::IsAbove([long]$o.hwnd, $fixH)
   $ev = Cmd 'events'
   $popPass = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count
   # d. click on the shape, after the cursor has rested there
@@ -281,9 +288,11 @@ foreach ($mode in @('none', $tech, 'none-after')) {
     controlClickReachedFixture = $ctl; passMovesAtFixture = $mv; movesSeenByPopup = $popMoves
     passClickAtFixture = $fixDown; passClickAtPopup = $popPass
     shapeClickAtPopup = $popShape; shapeClickAtFixture = $fixShape; shapeClickNoRestAtPopup = $popNoRest
+    popupAboveFixture = ($above1 -and $above2); topmostNotes = $(if ($top) { $top.notes } else { $null }); topmostAtOpen = $o.topmost
     exStyle = $(if ($info) { $info.exStyle } else { '?' }); children = $o.children; notes = $(if ($info) { $info.notes } else { $o.notes }); hitTransparent = $(if ($info) { $info.hitTransparent } else { $null })
   }
-  $r.passesToOtherProcess = ($fixDown -ge 1 -and $popPass -eq 0 -and $mv -ge 1)
+  $r.passesToOtherProcess = ($r.popupAboveFixture -and $fixDown -ge 1 -and $popPass -eq 0 -and $mv -ge 1)
+  Check "popup above the fixture through the test: $tech process, hit=$mode" $r.popupAboveFixture "above before the corner tests $above1, after the corner click $above2; topmost at open $($o.topmost); notes $(($r.topmostNotes) -join ' | ')"
   $r.shapeTakesClicks = ($popShape -ge 1 -and $fixShape -eq 0)
   Note $(if ($mode -like 'none*') { "hit_${tech}_$mode" } else { "hit_$mode" }) $r
   if ($mode -like 'none*') {
@@ -343,20 +352,22 @@ if ($p) {
   foreach ($mode in @($tech)) {
     $id++
     [void][PopupProbe]::Move($ptAway[0], $ptAway[1])
-    Cmd 'fixture x=560 y=560 w=120 h=120' | Out-Null
+    $fx2 = Cmd 'fixture x=560 y=560 w=120 h=120'
     $o = Cmd "open id=$id frame=$FrameWinner theme=light fill=glass hit=$mode x=600 y=600 w=400 h=200"
     Start-Sleep -Milliseconds 800
+    Cmd "top id=$id" | Out-Null
+    $aboveS = $fx2 -and $o -and [PopupProbe]::IsAbove([long]$o.hwnd, [long]$fx2.hwnd)
     Save-Shot "hit-samethread-$mode.png" @{ x = 552; y = 552; w = 456; h = 256 } | Out-Null
     Cmd 'events' | Out-Null
     [void][PopupProbe]::Click(612, 612); Start-Sleep -Milliseconds 300
     $ev = Cmd 'events'
-    $same = [ordered]@{ fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
+    $same = [ordered]@{ popupAboveFixture = $aboveS; fixtureSameThreadPressed = @($ev.events | Where-Object { $_.kind -eq 'fixturePressed' }).Count; popupPressed = @($ev.events | Where-Object { $_.kind -eq 'pressed' }).Count }
     Note "hit_${mode}_sameThread" $same
-    $sd = "same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
+    $sd = "popup above it: $aboveS; same-thread WinUI window under the corner got $($same.fixtureSameThreadPressed) press(es), the popup $($same.popupPressed)"
     if ($SameThreadWorks -contains $mode) {
-      Check "click-through to a window of the popup's own thread: hit=$mode" ($same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) $sd
+      Check "click-through to a window of the popup's own thread: hit=$mode" ($aboveS -and $same.fixtureSameThreadPressed -ge 1 -and $same.popupPressed -eq 0) $sd
     } elseif ($mode -eq 'nchittest') {
-      Check "HTTRANSPARENT does NOT reach a window of the popup's own thread (the popup keeps the click)" ($same.fixtureSameThreadPressed -eq 0 -and $same.popupPressed -ge 1) $sd
+      Check "HTTRANSPARENT does NOT reach a window of the popup's own thread (the popup keeps the click)" ($aboveS -and $same.fixtureSameThreadPressed -eq 0 -and $same.popupPressed -ge 1) $sd
     }
     Cmd "close id=$id" | Out-Null
     Cmd 'unfixture' | Out-Null
@@ -368,6 +379,7 @@ if ($p) {
 if ($fixP) { Stop-Tree $fixP.Id }
 
 # ================================================================== 7. instant-open cost
+Note 'minimized_before_open' ([PopupProbe]::MinimizeOthers())
 $OW = @{ x = 300; y = 300; w = 400; h = 200 }
 $WR = @{ x = 496; y = 396; w = 8; h = 8 }         # centre of the (solid) shape
 $OA = @{ x = $OW.x; y = $OW.y; w = $OW.w; h = $OW.h }

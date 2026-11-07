@@ -211,6 +211,18 @@ public static class PopupProbe
         return string.Join("; ", done);
     }
 
+    public static long FindByTitle(string title) => FindWindowW(null, title).ToInt64();
+
+    /// True when window `a` is above window `b` in the real z-order (EnumWindows runs top to bottom).
+    public static bool IsAbove(long a, long b)
+    {
+        int ia = -1, ib = -1, i = 0;
+        EnumProc cb = (h, l) => { long v = h.ToInt64(); if (v == a) ia = i; if (v == b) ib = i; i++; return true; };
+        EnumWindows(cb, IntPtr.Zero);
+        GC.KeepAlive(cb);
+        return ia >= 0 && ib >= 0 && ia < ib;
+    }
+
     /// Top of the non-topmost band, without activating (the fixture, before each test).
     public static bool RaiseByTitle(string title)
     {
