@@ -19,7 +19,8 @@ namespace Mantle.App.Surfaces.Bar.Tasks;
 /// <c>icon</c>, <c>app</c>); every new strip is re-posted here and raised as <see cref="Changed"/> on the UI thread.
 /// Attached once the host is up (<see cref="AttachOnHost"/>, on the host thread).
 /// </summary>
-internal sealed class BarTasksHost : IDisposable
+// partial: IDisposable is WinRT's IClosable to CsWinRT, so an AOT build wants the type partial (CsWinRT1028)
+internal sealed partial class BarTasksHost : IDisposable
 {
     readonly DispatcherQueue _ui;
     readonly Action<string> _log;

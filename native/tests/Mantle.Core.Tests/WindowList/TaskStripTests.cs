@@ -41,14 +41,17 @@ public class TaskStripTests
     public void Windows_group_aumid_first_exe_second_and_learn_the_other_identifier()
     {
         var g = RunningWindows.Group(new[] {
-            W("1", @"C:\D\Discord.exe", icon: null),
+            // main.js keys a window by its aumid, else its exe: the first window carries only the aumid, the second
+            // both, so the group learns the exe (a window with no aumid would start a group of its own, as in Electron)
+            W("1", null, aumid: "com.squirrel.Discord", icon: null),
             W("2", @"C:\D\Discord.exe", aumid: "com.squirrel.Discord", fg: true),
             W("3", @"C:\Windows\ApplicationFrameHost.exe", aumid: "Calc_8wekyb3d8bbwe!App"),
             W("4", @"C:\Windows\ApplicationFrameHost.exe", aumid: "Mail_8wekyb3d8bbwe!App"),
         });
         Assert.Equal(3, g.Count);
-        Assert.Equal(@"c:\d\discord.exe", g[0].Key);
-        Assert.Equal("com.squirrel.discord", g[0].Aumid);   // learned from the second window
+        Assert.Equal("com.squirrel.discord", g[0].Key);
+        Assert.Equal(@"c:\d\discord.exe", g[0].Exe);   // learned from the second window
+        Assert.Equal(@"C:\D\Discord.exe", g[0].ExeRaw);
         Assert.Equal("data:image/png;base64,AA", g[0].Icon);
         Assert.Equal(2, g[0].Windows.Count);
         Assert.Equal(new[] { "calc_8wekyb3d8bbwe!app", "mail_8wekyb3d8bbwe!app" }, g.Skip(1).Select(x => x.Key));
@@ -189,6 +192,7 @@ public class TaskStripTests
         Assert.Single(got);                                   // at most once a second (BAR-297)
         host.Advance(600);
         Assert.Equal(2, got.Count);
+        Assert.True(got[1].Items.Count == 1, $"the second push has {got[1].Items.Count} items (ok {got[1].Ok}, reason: {got[1].Reason ?? "none"}; windows pushes {svc.WindowPushes}, builds {svc.Builds})");
         Assert.Equal("A2", got[1].Items.Single().Windows.Single().Title);
         p.Raise("windows", "{\"ev\":\"windows\",\"list\":null}");
         Assert.Equal("the list of open windows could not be read, so the running marks may be out of date", problems.Last());
