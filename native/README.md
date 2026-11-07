@@ -57,8 +57,9 @@ three linked build variants + the sidecar tests).
   prints `DESK <stage> before / reset / after`; a watcher logs every taskbar attention request and move, summed up
   per stage as `DESK <stage> during: ...` (full log `native/out/desk-watch.log`). A window that asks for attention
   lights its taskbar button, and the runner's auto-hide taskbar then stays up over the bar until it is cleared.
-- Parity masks two KNOWN GAPS of the native bar (the right cluster ~18 px right, the orange dot on "more"); each
-  prints its own `PARITY known-gap` line per theme, and the gate (0.98 SSIM / 0.5 %) holds for everything else.
+- Parity masks no known gaps any more: the two it masked (the right cluster ~18 px right, the orange dot on "more")
+  were closed in round 2, so the gate (0.98 SSIM / 0.5 %) covers the whole crop. A new gap goes in `$gapList` in
+  `tools/parity/run-parity.ps1` and prints its own `PARITY known-gap` line per theme.
 - The workflow `.github/workflows/native-ci.yml` runs the same `ci.ps1` on pushes to `native/main` and on
   pull requests that touch `native/`, with every stage except `parity` (a bare runner has no Electron
   setup), and uploads `native/out` without `bin/`.

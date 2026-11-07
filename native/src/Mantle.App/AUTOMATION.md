@@ -14,11 +14,13 @@ change here is a change to the tests.
 | `bar.downloads` | Downloads | Button | `Downloads` | |
 | `bar.volume` | Volume | Button | `Volume` | |
 | `bar.network` | Network | Button | `Network` | |
+| `bar.battery` | the battery slot | Button | `Battery` | empty and 14 px wide with no battery, as Electron's hidden battery button |
 | `bar.clock` | the clock | Button | `Clock` | |
 | `bar.clock.time` | the time line | Text | the time, `h:mm:ss AM` | |
 | `bar.clock.date` | the date line | Text | the date (the current culture's short date) | |
 | `bar.notifications` | Notifications | Button | `Notifications` | |
 | `bar.more` | More | Button | `More` | |
+| `bar.more.pip` | the pip on "more" | Group | `More pip` | shown while there is a problem to tell; HelpText = every problem in words, prefixed `warn: ` when one is a warning (bar.css .mpip) |
 
 WinUI 3 panels (Grid, Canvas, StackPanel, Border) make no automation peer, so an AutomationId on a
 plain one never reaches the tree; `Uia.cs` gives the three containers a Group peer.
