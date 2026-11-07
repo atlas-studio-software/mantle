@@ -19,7 +19,7 @@ public sealed partial class FeatureHost
 
     /// <summary>One install's context (lib/features.js makeCtx). Everything registered through it is released
     /// when the feature stops, rests or fails to install; after that it refuses new registrations.</summary>
-    sealed class Ctx : IFeatureContext, IFeatureHostAccess, IFeatureTestKeys, IFeatureDirectory
+    sealed class Ctx : IFeatureContext, IFeatureHostAccess, IFeatureTestKeys, IFeatureDirectory, IFeatureHostServices
     {
         readonly FeatureHost _h;
         readonly F _f;
@@ -158,6 +158,14 @@ public sealed partial class FeatureHost
         public KeyDelivery RunChord(string chord, string via, bool dryRun = false) => _h.RunChordFor(_f, chord, via ?? "no reason given", dryRun);
 
         public bool HasCommand(string name) => _h._o.Commands.Has(name);
+
+        public GameWatch GameWatch => _h.GameWatch;
+
+        public Task<RestAnswer> RestAsync(bool on, string why)
+        {
+            if (!Alive) return Task.FromResult(new RestAnswer(false, $"{_f.Label} is stopped, so it cannot rest Mantle"));
+            return _h.RestHost?.RestAsync(on, why) ?? Task.FromResult(new RestAnswer(false, "resting for a game is not part of this build yet"));
+        }
 
         public KeyDelivery FireChord(string chord) => _h.FireChord(chord, $"{_f.Name} (test)");
         public KeyDelivery FireKey(string key) => _h.FireKey(key, $"{_f.Name} (test)");
