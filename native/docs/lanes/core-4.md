@@ -54,3 +54,33 @@ been appended there is here.
   yet; at quit the bar's `StopFrame` removes its app bar when the window closes (after the sidecar has stopped, so
   Explorer drops it).
 - A live `--open` failure is not shown as a tray notice yet (Electron's `trayNotice`).
+
+## The first click right after start (lane native-r3-core-4b)
+
+- Symptom: UI test `Popup_exit_plays_before_the_park_and_a_replaced_one_goes_at_once` failed with "More did not open"
+  (about half the runs on this branch, also in popup-only runs, so not a test-order effect). It is the only test that
+  clicks the bar the moment its window appears (the others make a fixture window first).
+- Root cause (CI logs with a test-only subclass on the bar's windows, runs 42380318551 and 42381646443): for some tens
+  of ms after a WinUI window's first frame, its content island does not take the pointer yet. The press reaches the
+  input site's HWND (`Microsoft.UI.Content.DesktopChildSiteBridge`) as WM_POINTERDOWN, WinUI lets it fall through to
+  DefWindowProc, which makes WM_LBUTTONDOWN/UP, and no XAML element hears it (lost when made 16..39 ms after the first
+  `Rendering`; a click 62 ms after went straight to XAML and the HWND got no mouse message at all). Win32 and UI
+  Automation already show the window and its buttons in place at that point. This branch's start work only shifted the
+  timing (bisect: 0 failures in 6 runs at a72e56e/f6fe3a7, failures from 66f5923 on, whose start-up change is one
+  queued UI job and a log line).
+- Fix: `Shell/Host/EarlyClicks.cs`. The bar (`BarWindow.Popups.cs`, one call) watches its input site: a fallen-through
+  left click (down and up on the same enabled `Button`) is passed to that button (`new ButtonAutomationPeer(b).Invoke()`;
+  the element's own peer comes back typed `FrameworkElementAutomationPeer` in the AOT build), with the line
+  `bar: input: a click on <id> came before the window took the pointer itself (its first moments), so Mantle pressed
+  <id> for it`. WinUI never makes those legacy messages for a press it took, so nothing is clicked twice; the watch
+  comes off once XAML hears a press itself. Any other surface window can use the same `EarlyClicks.Watch(hwnd, root,
+  name, log)`.
+- The popup test's failure message now says where the click went (`WindowFromPoint`, the window in front) and keeps the
+  whole app log in `native/out/ui/popmotion-<time>-native-log.txt`; it prints which path the first click took.
+
+## Launcher created at start (native/main c34ceda merged)
+
+- `surface launcher: could not be made (at start, hidden and parked): Specified cast is not valid.` in the AOT build
+  (CI run 42382391852, the one full app log kept from the merged build; not checked in other runs). The surface host logs it, calls Destroy and will try again on the next
+  show, so start and the bar are unaffected. The launcher lane needs to find the cast in `LauncherSurface.Create`
+  (`XamlReader.Load` result or a `FindName` cast; the bar's own `(TextBlock)XamlReader.Load(...)` works in AOT).
