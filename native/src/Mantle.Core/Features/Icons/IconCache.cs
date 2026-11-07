@@ -35,7 +35,7 @@ public static class IconFresh
     {
         if (p == null || !AbsPath.IsMatch(p)) return null;
         try {
-            var s = stat != null ? stat(p) : Stat(p);
+            (bool Exists, bool IsFile, double MtimeMs, long Size) s = stat != null ? stat(p) : Stat(p);
             if (!s.Exists) return "missing";
             return s.IsFile ? Math.Round(s.MtimeMs).ToString(System.Globalization.CultureInfo.InvariantCulture) + ":" + s.Size : "not-a-file";
         } catch (Exception) { return "missing"; }
