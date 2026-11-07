@@ -122,14 +122,15 @@ if ($Mode -eq 'grab') {
 }
 if ($Mode -eq 'diff') {
   # mean |a-b| over RGB: of one row (Row >= 0) or of every 3rd pixel of the whole picture
-  $a = [System.Drawing.Bitmap]::FromFile($A); $b = [System.Drawing.Bitmap]::FromFile($B)
+  # (not $a / $b: PowerShell names are case-blind, and the [string] params $A / $B would turn a bitmap into text)
+  $ia = New-Object System.Drawing.Bitmap $A; $ib = New-Object System.Drawing.Bitmap $B
   $sum = 0.0; $n = 0
-  $ys = if ($Row -ge 0) { @($Row) } else { 0..($a.Height - 1) | Where-Object { $_ % 3 -eq 0 } }
+  $ys = if ($Row -ge 0) { @($Row) } else { 0..($ia.Height - 1) | Where-Object { $_ % 3 -eq 0 } }
   $step = if ($Row -ge 0) { 1 } else { 3 }
-  foreach ($y in $ys) { for ($x = 0; $x -lt $a.Width; $x += $step) {
-    $p = $a.GetPixel($x, $y); $q = $b.GetPixel($x, $y)
-    $sum += ([math]::Abs($p.R - $q.R) + [math]::Abs($p.G - $q.G) + [math]::Abs($p.B - $q.B)) / 3.0; $n++ } }
-  $a.Dispose(); $b.Dispose()
+  foreach ($y in $ys) { for ($x = 0; $x -lt $ia.Width; $x += $step) {
+    $p = $ia.GetPixel($x, $y); $q = $ib.GetPixel($x, $y)
+    $sum += ([math]::Abs([int]$p.R - $q.R) + [math]::Abs([int]$p.G - $q.G) + [math]::Abs([int]$p.B - $q.B)) / 3.0; $n++ } }
+  $ia.Dispose(); $ib.Dispose()
   [math]::Round($sum / [math]::Max($n, 1), 2)
   exit
 }
@@ -283,7 +284,9 @@ function Stage-smoke {
       $dq = P @('-Mode', 'diff', '-A', (Join-Path $dir 'quiet-before.png'), '-B', (Join-Path $dir 'quiet-after.png'))
       $dv = P @('-Mode', 'diff', '-A', (Join-Path $dir 'band-before.png'), '-B', (Join-Path $dir 'band-after.png'))
       $notes.Add("quiet: mean RGB change over the bar's band $dq (the visible bar changed it by $dv)")
-      if ([double]$dq -gt 1.0) { $fails.Add("quiet: the quiet window changed the screen (mean $dq)") }
+      $dqn = 0.0
+      if (-not [double]::TryParse(($dq -as [string]).Trim(), [System.Globalization.NumberStyles]::Float, [System.Globalization.CultureInfo]::InvariantCulture, [ref]$dqn)) { $fails.Add("quiet: the pixel comparison gave no number ('$dq')") }
+      elseif ($dqn -gt 1.0) { $fails.Add("quiet: the quiet window changed the screen (mean $dq)") }
     }
     & $exe '--test' '--profile-name=ci-quiet' "--user-data=$ud2" '--quit' | Out-Null
     if (-not $q.WaitForExit(10000)) { $fails.Add('quiet: --quit did not close it') }

@@ -191,7 +191,15 @@ public sealed partial class BarWindow : Window
         // after the first show: a click on the bar must never take the focus from the app in front
         long ex = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE).ToInt64() | Win32.WS_EX_NOACTIVATE;
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
+        // the presenter put WS_DLGFRAME | WS_SYSMENU back before the show (CI run 1: 0x84480000), so
+        // the frame bits are stripped again now that the window is up
+        long frameBits = Win32.WS_CAPTION | Win32.WS_THICKFRAME | Win32.WS_SYSMENU | Win32.WS_MINIMIZEBOX | Win32.WS_MAXIMIZEBOX | Win32.WS_BORDER | Win32.WS_DLGFRAME;
+        long st = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_STYLE).ToInt64();
+        Win32.SetWindowLongPtr(_hwnd, Win32.GWL_STYLE, new IntPtr((st & ~frameBits) | Win32.WS_POPUP));
         Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_FRAMECHANGED);
+        long got = Win32.GetWindowLongPtr(_hwnd, Win32.GWL_STYLE).ToInt64();
+        _frameState += $"; after show 0x{st:X8} -> 0x{got:X8}" + ((got & frameBits) == 0 ? " (no frame bits)" : " (frame bits still set)");
+        Host.Log.Line("frame: after show: " + _frameState);
         _list.Start();
         Tick();
     }

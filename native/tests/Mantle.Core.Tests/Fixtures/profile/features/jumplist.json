@@ -1,11 +1,11 @@
 {
   "pins": {
-    "hide": [{ "id": "exe:c:\apps\example\hidden.exe", "name": "Hidden App", "exe": "C:\Apps\Example\hidden.exe", "aumid": null }],
+    "hide": [{ "id": "exe:c:\\apps\\example\\hidden.exe", "name": "Hidden App", "exe": "C:\\Apps\\Example\\hidden.exe", "aumid": null }],
     "add": [
       { "id": "aumid:Example.Notes_abc123!App", "name": "Example Notes", "exe": null, "aumid": "Example.Notes_abc123!App", "shortcut": null },
-      { "id": "exe:c:\apps\example\editor.exe", "name": "Example Editor", "exe": "C:\Apps\Example\editor.exe", "aumid": null, "shortcut": null }
+      { "id": "exe:c:\\apps\\example\\editor.exe", "name": "Example Editor", "exe": "C:\\Apps\\Example\\editor.exe", "aumid": null, "shortcut": null }
     ],
-    "order": ["exe:c:\apps\example\editor.exe", "aumid:Example.Notes_abc123!App"]
+    "order": ["exe:c:\\apps\\example\\editor.exe", "aumid:Example.Notes_abc123!App"]
   },
   "otherSetting": 3
 }
