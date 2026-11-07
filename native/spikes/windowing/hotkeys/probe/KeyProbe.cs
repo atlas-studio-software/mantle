@@ -62,11 +62,18 @@ public static class KeyProbe
     public static string StartOpen()
     {
         string fg = ProcName(GetForegroundWindow());
-        if (fg == "StartMenuExperienceHost") return "foreground " + Foreground();
+        if (fg == "StartMenuExperienceHost" || fg == "SearchHost") return "foreground " + Foreground();
         return Find(h => ProcName(h) == "StartMenuExperienceHost");
     }
     /// Task View (Win11: XamlExplorerHostIslandWindow titled Task View; Win10: MultitaskingViewFrame).
-    public static string TaskViewOpen() => Find(h => { string c = Cls(h); return c == "MultitaskingViewFrame" || (c == "XamlExplorerHostIslandWindow" && Title(h).Contains("Task")); });
+    /// The runner showed it as the FOREGROUND window while the cloaked/visible scan missed it, so both are asked.
+    static bool IsTaskView(IntPtr h) { string c = Cls(h); return c == "MultitaskingViewFrame" || (c == "XamlExplorerHostIslandWindow" && Title(h).Contains("Task")); }
+    public static string TaskViewOpen()
+    {
+        IntPtr fg = GetForegroundWindow();
+        if (IsTaskView(fg)) return "foreground " + Desc(fg);
+        return Find(IsTaskView);
+    }
     /// A window menu (Alt+Space) or any popup menu: class #32768 shown.
     public static string MenuOpen() => Find(h => Cls(h) == "#32768");
     public static string RunOpen() => Find(h => Cls(h) == "#32770" && Title(h) == "Run");

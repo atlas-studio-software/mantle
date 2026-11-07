@@ -5,7 +5,8 @@
 //   HotkeySpike.exe --out=<dir> [--accept-injected] [--hook-on=own|ui] [--altspace=hook|registerhotkey]
 // Writes <out>/ready.json, <out>/status.json (every 250 ms), <out>/events.jsonl (one line per gesture
 // handled on the UI thread) and <out>/log.txt. Takes commands from <out>/cmd.txt ("<id> <verb> <arg>",
-// the newest line wins): block <ms> = the UI thread sleeps, stall <ms> = the next hook callback sleeps.
+// the newest line wins): block <ms> = the UI thread sleeps, stall <ms> = the next hook callback sleeps,
+// freeze <ms> = the hook thread stops pumping, drop = the hook is removed behind KeyHook's back (test).
 using System;
 using System.IO;
 using System.Diagnostics;
@@ -101,6 +102,8 @@ public partial class App : Application
         WriteStatus();
         if (parts[1] == "block") { Thread.Sleep(arg); Log($"cmd {id}: UI thread free again"); }
         else if (parts[1] == "stall") _hook!.StallNext(arg);
+        else if (parts[1] == "freeze") _hook!.Freeze(arg);
+        else if (parts[1] == "drop") _hook!.SimulateDrop();
         else if (parts[1] == "quit") Exit();
         WriteStatus();
     }

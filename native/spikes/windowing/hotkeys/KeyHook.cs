@@ -53,6 +53,9 @@ public sealed class KeyHook
     // counters (read by Status from any thread)
     public int Callbacks, Raw, RawSinceHook, Heals, Swallowed, Dummies, Fired, SlowestMs;
     public string? LastHeal;
+    /// At the last re-install: did unhooking the OLD handle succeed (true = it was still installed,
+    /// the heal was a false alarm; false = Windows had removed it).
+    public bool? LastOldUnhook;
     volatile int _lastCallback = Environment.TickCount;
     int _healedAt; bool _healed;
     volatile int _stallNextMs;
@@ -63,7 +66,7 @@ public sealed class KeyHook
     int _ringHead;
 
     public const int MissedKeys = 4, QuietMs = 1500, BackoffMs = 15000;
-    const uint MSG_EVENT = 0x8000 + 21, MSG_STALL = 0x8000 + 22, MSG_QUIT = 0x8000 + 23;
+    const uint MSG_EVENT = 0x8000 + 21, MSG_FREEZE = 0x8000 + 22, MSG_QUIT = 0x8000 + 23, MSG_DROP = 0x8000 + 24;
     static readonly IntPtr MARK = new IntPtr(0x4D414E54);   // 'MANT' in dwExtraInfo: our own partner key
     const ushort VK_DUMMY = 0xFF;
 
@@ -83,6 +86,11 @@ public sealed class KeyHook
     /// The next hook callback sleeps ms on the hook thread (simulates a starved hook thread, so
     /// Windows times the hook out and drops it).
     public void StallNext(int ms) { _stallNextMs = ms; }
+    /// The hook thread stops pumping for ms (a starved thread: every key waits LowLevelHooksTimeout).
+    public void Freeze(int ms) { PostThreadMessageW(_tid, MSG_FREEZE, new IntPtr(ms), IntPtr.Zero); }
+    /// TEST: unhook without telling anyone, exactly what Windows does when it drops a hook, so the
+    /// raw-input health check has a dead hook to find.
+    public void SimulateDrop() { PostThreadMessageW(_tid, MSG_DROP, IntPtr.Zero, IntPtr.Zero); }
 
     void Run(ManualResetEventSlim ready)
     {
@@ -110,6 +118,8 @@ public sealed class KeyHook
                     _dq.TryEnqueue(() => _onUi(EvAltSpace, q, t, "registerhotkey"));
                     continue;
                 }
+                if (m.message == MSG_FREEZE) { _log($"hook thread frozen for {(int)m.wParam} ms"); Thread.Sleep((int)m.wParam); _log("hook thread pumping again"); continue; }
+                if (m.message == MSG_DROP) { bool u = UnhookWindowsHookEx(_hook); _log($"TEST: hook removed behind our back (UnhookWindowsHookEx {u})"); continue; }
                 if (m.message == MSG_QUIT) break;
             }
             TranslateMessage(ref m); DispatchMessageW(ref m);
@@ -119,7 +129,8 @@ public sealed class KeyHook
 
     void Install(string why)
     {
-        if (_hook != IntPtr.Zero) UnhookWindowsHookEx(_hook);   // fails quietly for a hook Windows already removed
+        // Fails for a hook Windows already removed: that answer tells a real drop from a false alarm.
+        if (_hook != IntPtr.Zero) LastOldUnhook = UnhookWindowsHookEx(_hook);
         _proc ??= new HookProc(Proc);
         _hook = SetWindowsHookExW(13 /* WH_KEYBOARD_LL */, _proc, GetModuleHandleW(null), 0);
         _lastCallback = Environment.TickCount;
@@ -242,7 +253,7 @@ public sealed class KeyHook
 
     public object Status() => new {
         thread = OnUiThread ? "ui" : "own", hooked = _hook != IntPtr.Zero, callbacks = Callbacks, raw = Raw, rawSinceHook = RawSinceHook,
-        msSinceCallback = unchecked(Environment.TickCount - _lastCallback), heals = Heals, lastHeal = LastHeal,
+        msSinceCallback = unchecked(Environment.TickCount - _lastCallback), heals = Heals, lastHeal = LastHeal, lastOldUnhookOk = LastOldUnhook,
         swallowed = Swallowed, dummies = Dummies, fired = Fired, slowestSwallowedMs = SlowestMs, registerHotKey = RegisterHotKeyOk,
         acceptInjected = AcceptInjected,
     };

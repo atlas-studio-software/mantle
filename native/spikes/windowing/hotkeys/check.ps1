@@ -40,8 +40,15 @@ FocusNotepad
 Note 'start' ([ordered]@{ notepadWindow = $npWin; foreground = [KeyProbe]::Foreground(); shown = [KeyProbe]::Shown() })
 
 # ------------------------------------------------------------------ baselines: what Windows does with no hook
-TapWin | Out-Null; Start-Sleep -Milliseconds 1500
-$bStart = [KeyProbe]::StartOpen(); $bShownStart = [KeyProbe]::Shown()
+# Start's first open can be slow (StartMenuExperienceHost cold): up to 3 s, then a second try
+$bStart = ''; $bFgStart = @()
+for ($try = 0; $try -lt 2 -and -not $bStart; $try++) {
+  TapWin | Out-Null
+  for ($w = 0; $w -lt 15 -and -not $bStart; $w++) { Start-Sleep -Milliseconds 200; $bStart = [KeyProbe]::StartOpen() }
+  $bFgStart += [KeyProbe]::Foreground()
+  if (-not $bStart) { FocusNotepad }
+}
+$bShownStart = [KeyProbe]::Shown()
 PressEsc; FocusNotepad
 Chord $LWIN $TAB | Out-Null; Start-Sleep -Milliseconds 1800
 $bTask = [KeyProbe]::TaskViewOpen(); $bShownTask = [KeyProbe]::Shown(); $bFgTask = [KeyProbe]::Foreground()
@@ -52,7 +59,7 @@ PressEsc; FocusNotepad
 Chord $LWIN $R | Out-Null; Start-Sleep -Milliseconds 1800
 $bRun = [KeyProbe]::RunOpen()
 PressEsc; FocusNotepad
-Note 'baseline' ([ordered]@{ winTapStart = $bStart; winTabTaskView = $bTask; winTabForeground = $bFgTask; altSpaceMenu = $bMenu; winRRun = $bRun
+Note 'baseline' ([ordered]@{ winTapStart = $bStart; winTapForeground = $bFgStart; winTabTaskView = $bTask; winTabForeground = $bFgTask; altSpaceMenu = $bMenu; winRRun = $bRun
     shownAfterWinTap = $bShownStart; shownAfterWinTab = $bShownTask })
 $canStart = $bStart -ne ''; $canTask = $bTask -ne ''; $canMenu = $bMenu -ne ''; $canRun = $bRun -ne ''
 foreach ($x in @(@('Start menu', $canStart), @('Task View', $canTask), @('window menu (Alt+Space)', $canMenu), @('Run dialog (Win+R)', $canRun))) {
@@ -175,23 +182,38 @@ $s = Status
 Check 'hook alive after the block' ($after.Count -eq 1 -and $s.hook.heals -eq 0) "taps after the block: $($after.Count); heals $($s.hook.heals); hook $($s.hook | ConvertTo-Json -Compress)"
 Note 'uiBlocked' $lb
 
-# HookHealth: a hook callback stalled for 3 s (past LowLevelHooksTimeout) -> Windows drops the hook
+# HookHealth. First the natural way: the hook thread stops pumping for 6 s while 12 keys arrive
+# (each waits LowLevelHooksTimeout), then 6 more keys. If Windows dropped the hook, the raw-input
+# count re-arms it. Run 3 showed Windows 26100 did NOT drop it (a 3 s stall in one callback), so the
+# heal path is then proved with a simulated drop: the hook is unhooked behind KeyHook's back.
+function F24s([int]$n, [int]$gapMs) { for ($i = 0; $i -lt $n; $i++) { [KeyProbe]::Down($F24) | Out-Null; [KeyProbe]::Up($F24) | Out-Null; Start-Sleep -Milliseconds $gapMs } }
 $s0 = Status
-Cmd 'stall' 3000 | Out-Null
-[KeyProbe]::Down($F24) | Out-Null; [KeyProbe]::Up($F24) | Out-Null       # this key's callback sleeps 3 s
-Start-Sleep -Milliseconds 3600
+Cmd 'freeze' 6000 | Out-Null
+F24s 12 400
+Start-Sleep -Milliseconds 1500
 $s1 = Status
-for ($i = 0; $i -lt 6; $i++) { [KeyProbe]::Down($F24) | Out-Null; [KeyProbe]::Up($F24) | Out-Null; Start-Sleep -Milliseconds 300 }
+F24s 6 400
 Start-Sleep -Milliseconds 600
 $s2 = Status
+$healedOnFreeze = [int]$s2.hook.heals -gt [int]$s0.hook.heals
+# a heal after the freeze re-installs; unhooking the old handle succeeding = Windows had NOT removed it
+$natural = $healedOnFreeze -and ($s2.hook.lastOldUnhookOk -eq $false)
+Note 'hookHealthFreeze' ([ordered]@{ healedAfterFreeze = $healedOnFreeze; oldHandleUnhookOk = $s2.hook.lastOldUnhookOk; windowsDroppedTheHook = $natural; before = $s0.hook; afterFreeze = $s1.hook; afterKeys = $s2.hook })
+# the deterministic proof: wait out the 15 s re-arm back-off, then drop the hook behind KeyHook's back
+if ($healedOnFreeze) { Start-Sleep -Milliseconds 15500 }
+$h0 = [int](Status).hook.heals
+Cmd 'drop' 0 | Out-Null
+Start-Sleep -Milliseconds 300
+F24s 6 400
+Start-Sleep -Milliseconds 600
+$s3 = Status
 $n0 = @(Events).Count
 TapWin | Out-Null; Start-Sleep -Milliseconds 900
 $after = New-Since $n0 'winTap'
 $st = [KeyProbe]::StartOpen()
-Note 'hookHealth' ([ordered]@{ before = $s0.hook; afterStall = $s1.hook; afterKeys = $s2.hook })
-$dropped = $s2.hook.heals -ge 1
-Check 'stalled hook: Windows dropped it, it was re-armed' $dropped "heals $($s2.hook.heals): $($s2.hook.lastHeal); callbacks $($s1.hook.callbacks) -> $($s2.hook.callbacks) over 12 key events after the stall; raw $($s1.hook.raw) -> $($s2.hook.raw)"
-Check 'Win tap fires after the stall' ($after.Count -eq 1 -and $st -eq '') "taps: $($after.Count); Start: '$st'"
+Note 'hookHealth' ([ordered]@{ naturalDrop = $natural; final = $s3.hook })
+Check 'dead hook found and re-armed' ([int]$s3.hook.heals -gt $h0 -and $s3.hook.lastOldUnhookOk -eq $false) "hook unhooked behind KeyHook's back, then 6 keys: heals $h0 -> $($s3.hook.heals) ($($s3.hook.lastHeal)); old handle unhook ok: $($s3.hook.lastOldUnhookOk). The 6 s freeze before it: healed $healedOnFreeze, Windows had removed the hook: $natural"
+Check 'Win tap fires after the re-arm' ($after.Count -eq 1 -and $st -eq '') "taps: $($after.Count); Start: '$st'"
 if ($st) { PressEsc }
 FocusNotepad
 Note 'memory' (Get-Mem $a.p.Id)
