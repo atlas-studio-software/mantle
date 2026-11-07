@@ -40,6 +40,40 @@ public sealed partial class BarWindow
         ClockBtn.Click += (_, _) => { _popAnchor = ClockBtn; Popups.Toggle(cal, ClockBtn); };
         Popups.Anchor(MoreBtn); Popups.Anchor(ClockBtn);
         Host.Log.Line("pop-ups: MANTLE_TEST_POPUPS=1: More opens the stand-in \"more\" (instant, parked), the clock \"cal\" (on demand, focusable)");
+        WatchInputForTest();
+    }
+
+    // DIAGNOSTIC (stand-in runs only): where the mouse messages of the first clicks go, at the Win32 level, and the
+    // input site's place over the first frames.
+    FrameNative.SubclassProc? _inSub;
+    int _inFrames;
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)]
+    static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+
+    void WatchInputForTest()
+    {
+        IntPtr Site() => FindWindowExW(_hwnd, IntPtr.Zero, "Microsoft.UI.Content.DesktopChildSiteBridge", null);
+        string Where(IntPtr h) { if (h == IntPtr.Zero) return "none"; FrameNative.GetWindowRect(h, out var r); return $"0x{h.ToInt64():X} {FrameNative.Rect(r)}{(IsWindowVisible(h) ? "" : " hidden")}"; }
+        int seen = 0;
+        _inSub = (h, msg, wp, lp, id, data) => {
+            if (seen < 40 && msg is 0x21 or 0x84 or 0xA1 or 0x201 or 0x202 or 0x241 or 0x242 or 0x245 or 0x246 or 0x247 or 0x24B or 0x200) {
+                if (msg is not (0x84 or 0x200 or 0x245) || seen < 12) { seen++; long v = lp.ToInt64(); Host.Log.Line($"bar: test: msg 0x{msg:X} to {(h == _hwnd ? "the window" : "the input site")} lp ({(short)(v & 0xFFFF)},{(short)((v >> 16) & 0xFFFF)})"); }
+            }
+            return FrameNative.DefSubclassProc(h, msg, wp, lp);
+        };
+        IntPtr site = Site();
+        bool a = FrameNative.SetWindowSubclass(_hwnd, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero);
+        bool b = site != IntPtr.Zero && FrameNative.SetWindowSubclass(site, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero);
+        Host.Log.Line($"bar: test: window {Where(_hwnd)}; input site {Where(site)}; watched {a}/{b}");
+        void Tick(object? s, object e)
+        {
+            if (++_inFrames > 4) { CompositionTarget.Rendering -= Tick; return; }
+            IntPtr now = Site();
+            if (!b && now != IntPtr.Zero) { b = FrameNative.SetWindowSubclass(now, _inSub!, new UIntPtr(0x4D50), IntPtr.Zero); Host.Log.Line($"bar: test: input site watched from frame {_inFrames}: {b}"); }
+            Host.Log.Line($"bar: test: frame {_inFrames}: input site {Where(now)}");
+        }
+        CompositionTarget.Rendering += Tick;
     }
 
     /// A stand-in body: the kind's name, findable as popup.&lt;key&gt; (AUTOMATION.md).
