@@ -96,6 +96,14 @@ even though the defects were plainly visible in the PNGs.
   - an Electron status icon left of the separator falls inside the masked apps slot.
   With the thresholds above, this run would fail. That is intended: the gate fails until the cluster and
   the badge match.
+- Run 42371737228 (2026-11-07, native/r2-windows-2 668f38d: clean grabs, the crop cleared, the pill's
+  hairlines in device px): light 0.9966 (0.07 %), dark 0.9916 (0.14 %), light-150 0.9950 (0.16 %),
+  dark-150 0.9810 (0.23 %); all four pass. Before it, at 150 % with the consoles out of the way (run
+  42371182726) the pairs scored 0.9616 / 0.9550: the native pill's edge and lip were 2 px each where
+  Electron draws the 1 px CSS border as floor(scale) device px and the inset lip shadow as exactly 1 DIP
+  (BarWindow.Frame.cs SnapHairlines). Still visible at 150 % but under the gate: the bell's stroke a shade
+  darker in native, the dark fill a few levels off (as at 100 %), and an Electron "A" status chip at the
+  edge of the masked apps slot. Dark-150 is the closest to the threshold.
 
 ## Display scales (`-Scales`, default `100,150`)
 

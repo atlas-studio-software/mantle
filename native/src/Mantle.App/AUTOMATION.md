@@ -51,4 +51,8 @@ one and exits; `--quit` with the same profile asks it to close.
 - With `--bench-out=<dir>` the log is mirrored to `<dir>/native-log.txt`; the frame writes stable lines the
   UI tests read: `bar hidden: at rest`, `bar revealed (<why>)`, `bar hiding: <why>`, `bar hidden: window hidden,
   nothing renders`, `bar blocked: <exe> is fullscreen in front ...`, `glass: light: live ...`, `glass: stopped ...`,
-  `pop-up <Name>: opening|shown at|closed (<why>)`, `pop-up watch: hook|poll ...`.
+  `pop-up <Name>: opening|shown at|closed (<why>), <end>` where `<end>` is `exit <ms> ms + 40 ms, then
+  parked|closed` (the window plays the exit: 144 ms, or 120 ms with Windows animations off) or `parked|closed
+  at once` (replaced by another pop-up, or never painted), then `pop-up <Name>: exit done, parked|closed`;
+  `pop-up watch: hook|poll ...`; `bar placed (<why>): primary ... at <pct> % (dpi <dpi>); pill ...` on every
+  display or DPI change (`WM_DPICHANGED <dpi>`, `WM_DISPLAYCHANGE <w>x<h>`, `... (end of a burst)`).
