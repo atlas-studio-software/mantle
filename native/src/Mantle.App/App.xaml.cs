@@ -39,7 +39,13 @@ public partial class MantleApp : Application
         if (mode == ThemeMode.Dark) RequestedTheme = ApplicationTheme.Dark;
         else if (mode == ThemeMode.Light) RequestedTheme = ApplicationTheme.Light;
         InitializeComponent();
-        UnhandledException += (_, e) => Host.Log.Line("UNHANDLED: " + e.Exception);
+        UnhandledException += (_, e) => {
+            Host.Log.Line("UNHANDLED: " + e.Exception);
+            // SAFE-018: the crash record (only where this run may write its profile)
+            var plan = Mantle.Core.Lifecycle.Crash.Record(Host.Paths.DataRoot, Mantle.Core.Safety.WriteGate.May(Host.Paths, Host.Args.Kind),
+                e.Exception?.Message, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+            Host.Log.Line("mantle: Mantle " + plan.Why);
+        };
         Host.Marks.Add("app");
     }
 
@@ -53,6 +59,7 @@ public partial class MantleApp : Application
 
         Host.Data.Changed += c => _queue.TryEnqueue(() => _window?.OnDataChanged(c));
         Host.Data.StartWatching();
+        StartPlatform();
         Host.Instance.Listen(
             argv => _queue.TryEnqueue(() => OnSecondLaunch(argv)),
             err => Host.Log.Line("single instance: " + err));
@@ -63,8 +70,47 @@ public partial class MantleApp : Application
         Host.Log.Line("single instance: a second launch handed off: " + (argv.Length == 0 ? "(no arguments)" : string.Join(' ', argv)));
         if (argv.Any(a => LaunchArgs.NameOf(a) == "quit")) {
             Host.Log.Line("--quit from a second launch: closing");
+            StopPlatform("Mantle was asked to quit (--quit)");
             _window?.Close();
             Exit();
+        }
+    }
+
+    // The platform on its own host thread (PLAN.md A6): today's Mantle.Sidecar.exe, passive unless --live.
+    Mantle.Core.Lifecycle.HostLoop? _hostLoop;
+    Mantle.Core.Platform.ProcessPlatform? _platform;
+
+    void StartPlatform()
+    {
+        try {
+            var choice = Mantle.Core.Platform.SidecarLocator.Resolve(Host.Args, Host.Env, AppContext.BaseDirectory);
+            Host.Log.Line(choice.Line);
+            _hostLoop = new Mantle.Core.Lifecycle.HostLoop();
+            _hostLoop.OnError += e => Host.Log.Line("mantle-native: a host-thread job failed: " + e);
+            var opts = new Mantle.Core.Platform.SidecarOptions {
+                ExePath = choice.Path, ExeOverride = choice.Override, Passive = Host.Args.Kind != RunKind.Live,
+                StateFile = System.IO.Path.Combine(Host.Paths.DataRoot, "shell-state.json"),
+                Log = (level, message) => Host.Log.Line($"[sidecar {level}] {message}"),
+            };
+            _hostLoop.Post(() => {
+                _platform = new Mantle.Core.Platform.ProcessPlatform(opts, new Mantle.Core.Platform.ProcessSidecarLauncher(_hostLoop), _hostLoop);
+                _platform.OnStatus(s => Host.Log.Line($"mantle-native: sidecar {s.State.ToString().ToLowerInvariant()}: {s.Reason}"));
+                _platform.Start();
+            });
+        } catch (Exception e) {
+            Host.Log.Line("mantle-native: the platform could not be set up: " + e.Message);
+        }
+    }
+
+    void StopPlatform(string why)
+    {
+        var loop = _hostLoop;
+        if (loop == null) return;
+        try {
+            var stopped = loop.RunAsync(async () => { if (_platform != null) await _platform.StopAsync(why); return true; });
+            if (!stopped.Wait(TimeSpan.FromSeconds(4))) Host.Log.Line("mantle-native: the sidecar did not stop within 4 s; it ends itself when this process exits (--parent-pid)");
+        } catch (Exception e) {
+            Host.Log.Line("mantle-native: stopping the sidecar failed: " + e.Message);
         }
     }
 }
