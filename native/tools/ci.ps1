@@ -192,7 +192,7 @@ function Stage-smoke {
   New-Item -ItemType Directory -Force -Path $ud, $bench | Out-Null
   # Electron's data files, synthetic (the unit tests' fixtures): the published exe reads all five at start.
   $fixtures = Join-Path $native 'tests\Mantle.Core.Tests\Fixtures\profile'
-  $dataFiles = @('theme.json', 'look-sync.json', 'look.json', 'features.json', 'features\jumplist.json')
+  $dataFiles = @('theme.json', 'look-sync.json', 'look-sync\look.json', 'features.json', 'features\jumplist.json')
   if (Test-Path $fixtures) { Copy-Item -Recurse -Force (Join-Path $fixtures '*') $ud }
   Set-Content -Path (Join-Path $ud 'theme.json') -Value '{ "mode": "dark" }' -Encoding utf8NoBOM
   $nativeLog = Join-Path $ud 'mantle-native.log'
@@ -245,7 +245,7 @@ function Stage-smoke {
         if ($txt -notlike "*$want*") { $fails.Add("the log has no '$want'") }
       }
       if (Test-Path $fixtures) {
-        $read = @(Get-Content $nativeLog | Where-Object { $_ -match ' data: (theme\.json|look-sync\.json|look\.json|features\.json|features\\jumplist\.json): ' })
+        $read = @(Get-Content $nativeLog | Where-Object { $_ -match ' data: (theme\.json|look-sync\.json|look-sync\\look\.json|features\.json|features\\jumplist\.json): ' })
         $notes.Add('data files: ' + (($read | ForEach-Object { ($_ -replace '^.*? data: ', '') -replace '^(.{90}).+$', '$1...' }) -join ' | '))
         foreach ($f in $dataFiles) {
           if (-not ($read | Where-Object { $_ -like "* data: ${f}: ok*" })) { $fails.Add("data file $f was not read as ok from the fixture profile ($(@($read | Where-Object { $_ -like "* data: ${f}:*" })[0]))") }
@@ -369,6 +369,8 @@ function Stage-script([string]$name, [string]$script, [string[]]$argv) {
   $env:MANTLE_NATIVE_EXE = $exe
   $code = Run $name 'pwsh' (@('-NoProfile', '-File', $script) + $argv)
   $last = Get-Content (Join-Path $logs "$name.log") -Tail 1
+  # parity's per-theme score and known-gap lines, so a known gap is named in the CI log, not only in parity.log
+  Select-String -Path (Join-Path $logs "$name.log") -Pattern '^PARITY (bar|known-gap) ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
   if ($code -ne 0) { return "FAILED (exit $code; $(Short $last))" }
   return "ok ($(Short $last))"
 }

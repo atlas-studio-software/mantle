@@ -75,7 +75,7 @@ three linked build variants + the sidecar tests).
 - The repo is public: fixtures are synthetic, no user data, no machine paths, no personal names in
   committed text. Commits pass the oss-guard hooks (never `--no-verify`).
 
-## Build mode: Native AOT recommended
+## Build mode: Native AOT (what CI builds)
 
 Measured on the same runner (`bench/README.md`, modes run 42357655845, app 511a8ff, light theme):
 
@@ -86,12 +86,17 @@ Measured on the same runner (`bench/README.md`, modes run 42357655845, app 511a8
 | framework-dependent + ReadyToRun (`fd`) | 50.0 MB, 40 files | 406 ms | 38.8 / 116.5 MB | .NET 10 + Windows App Runtime 1.7 (67.9 MB installer), updated outside the app |
 | Native AOT + trimming (`aot`), with the fix below | 105.6 MB, 276 files | 141 ms | 31.0 / 77.1 MB | nothing |
 
-AOT is the lowest on memory and the fastest to start, at half today's size, with nothing to install.
-Plain `aot` builds but crashes at start: `TransparentBackdrop` must be `partial` (CsWinRT1028). After
-that one-word change it works. Before CI and shipping move to AOT:
-- make the CsWinRT/trim/AOT warnings errors;
-- point ci.ps1's build stage at `publish.ps1 -Mode aot`;
-- run the UI tests, the hand-off, `--quit` and real data files under AOT (not yet covered).
+AOT is the lowest on memory and the fastest to start, at half the self-contained size, with nothing to
+install. CI builds and tests it (`ci.ps1 -BuildMode aot`, the default): the build, smoke (incl. the single-instance
+hand-off, `--quit`, the quiet `--test` window and the five data files from the synthetic fixture profile), UI
+tests, bench and parity all run against the AOT exe. In the full pipeline (bench smoke mode) the AOT bar measured
+first frame 151 / 143 ms and 32.1 / 27.5 MB private (light / dark), against 469 / 391 ms and 43.7 / 40.3 MB for the
+self-contained build in the same pipeline before.
+
+AOT rules (they are build errors in `Mantle.App.csproj`, `WarningsAsErrors`): a class that implements a WinRT
+interface (derives from a WinUI type, or `IDisposable` = WinRT `IClosable`) is `partial` (CsWinRT1028; without it the
+app dies at start); no reflection the trimmer cannot follow (IL2xxx) or code that needs the JIT (IL3050/IL3051).
+`ci.ps1 -BuildMode sc` (or `NATIVE_CI_BUILD_MODE=sc`) is the self-contained fallback if AOT ever blocks a lane.
 
 The full list is in `bench/README.md`.
 
