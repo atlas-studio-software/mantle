@@ -72,7 +72,7 @@ internal abstract class TestStandIn : ISurface
     void Render(ShellState s, string why)
     {
         if (_text == null || _ctx == null) return;
-        _text.Text = $"{_ctx.Name}: sidecar {s.Sidecar.State.ToString().ToLowerInvariant()}; theme {_themeNow}; shows {_shows} ({why})";
+        _text.Text = $"{_ctx.Name}: sidecar {s.Sidecar.Status.ToString().ToLowerInvariant()}; theme {_themeNow}; shows {_shows} ({why})";
     }
 
     public void Show(string why)

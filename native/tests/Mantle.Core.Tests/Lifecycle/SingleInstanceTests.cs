@@ -61,7 +61,12 @@ public class SingleInstanceTests
         // a thread that takes the mutex and ends without releasing it = an abandoned mutex
         var t = new Thread(() => { var m = new Mutex(false, InstanceKey.MutexName(key)); m.WaitOne(); GC.KeepAlive(m); });
         t.Start(); t.Join();
-        using var s = SingleInstance.TryClaim(key, out var why);
+        // Join returns when the managed thread is done; Windows abandons the mutex when the OS thread has ended, which can
+        // be a moment later on a busy runner (a claim tried in that gap finds it still held). Ask again for up to 2 s.
+        string why = "";
+        SingleInstance? s = null;
+        for (int i = 0; i < 40 && s == null; i++) { s = SingleInstance.TryClaim(key, out why); if (s == null) Thread.Sleep(50); }
+        using var held = s;
         Assert.NotNull(s);
         Assert.NotNull(s!.Note);
         Assert.Contains("without", why);
