@@ -57,18 +57,26 @@ Lines: `PARITY bar <theme>: ssim=.. diffpx=..% meanabs=.. (ok|FAILED vs ...)` pe
 - The Electron page's DOM rects do not map 1:1 to screen pixels in the `--test-live-bar` window (page
   1280 CSS px wide in a 1120 DIP window), so the masks are spec-relative, not taken from the DOM.
 
-## Thresholds (provisional)
+## Thresholds
 
-`-MinSsim 0.80` and `-MaxDiffPct 25`. They are a first guess, not calibrated. Tighten them as the native
-bar converges.
+`-MinSsim 0.98` and `-MaxDiffPct 0.5`. These were set after the first comparable run (below), so that the
+defects still visible in its diff images fail the gate. At the first guess (0.80 / 25 %) that run passed
+even though the defects were plainly visible in the PNGs.
 
 ## Results so far
 
-Run 42352739396 (2026-11-07, base app = the spike bar, before the masks above; only the clock was
-masked, imprecisely): light SSIM 0.667, 13.2 % of pixels changed; dark SSIM 0.707, 11.4 %. Seen in the
-PNGs: the pill shape, glass and right cluster are close. The differences were these:
-- the apps (none in Electron, two in native);
-- the native pill sits about 2 px lower, and the native window shows a 1 px light line along its bottom
-  edge (the known frame-line defect);
-- the native right cluster sits about 20 px further right (the separator and icons);
-- the clock text.
+- Run 42352739396 (base app = the spike bar; only the clock masked, imprecisely): light SSIM 0.667 with
+  13.2 % of pixels changed, dark 0.707 with 11.4 %. The differences:
+  - the apps (none in Electron, two in native);
+  - the native pill 3 px low and right, plus a 1 px frame line (both fixed since in the app);
+  - the right cluster;
+  - the clock text.
+- Run 42355091758 (2026-11-07, native/infra 0f4532b: the contract app with the frame fix, the clock and apps
+  slots masked): light SSIM 0.9692 with 0.65 % of pixels changed, dark 0.9624 with 0.77 %. The PNGs show
+  both bars rendered, and the pill outline, glass and Mantle mark now coincide. What still differs:
+  - the native right cluster (downloads, volume, network, bell) sits about 18 px further right than
+    Electron's;
+  - Electron draws an orange badge dot on "more", which native does not have;
+  - an Electron status icon left of the separator falls inside the masked apps slot.
+  With the thresholds above, this run would fail. That is intended: the gate fails until the cluster and
+  the badge match.

@@ -2,7 +2,7 @@
 # same wallpaper, same Windows theme, same screen size, captured from the real screen and diffed.
 #
 #   pwsh -NoProfile -File native/tools/parity/run-parity.ps1 [-Theme light|dark|both] [-Surface bar]
-#        [-Out native/out/parity] [-MinSsim 0.80] [-MaxDiffPct 25] [-PixelThreshold 24] [-Margin 24] [-Exe <path>]
+#        [-Out native/out/parity] [-MinSsim 0.98] [-MaxDiffPct 0.5] [-PixelThreshold 24] [-Margin 24] [-Exe <path>]
 #
 # RUNNER ONLY: it changes the desktop it runs on (wallpaper, theme, taskbar auto-hide, cursor) and shows
 # both apps' test windows, so it refuses unless CI / GITHUB_ACTIONS is set (MANTLE_PARITY_LOCAL=1 overrides,
@@ -20,8 +20,8 @@ param(
   [ValidateSet('light', 'dark', 'both')] [string]$Theme = 'both',
   [ValidateSet('bar')] [string]$Surface = 'bar',
   [string]$Out,
-  [double]$MinSsim = 0.80,
-  [double]$MaxDiffPct = 25,
+  [double]$MinSsim = 0.98,
+  [double]$MaxDiffPct = 0.5,
   [int]$PixelThreshold = 24,
   [int]$Margin = 24,
   [bool]$MaskApps = $true,
