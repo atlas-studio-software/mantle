@@ -83,10 +83,15 @@ public partial class MantleApp : Application
         _surfaces = new SurfaceHost(_queue, Host.Args.Test, SurfaceSet.TestSurfacesWanted(Host.Args.Test, Host.Env), Host.Log);
         Host.Log.Line($"launched; theme {ThemeSettings.Word(StartMode())}{(Host.Args.Theme != null ? " (pinned by --theme)" : " (from " + Host.Data.Theme.Name + ")")}; app theme {RequestedTheme}");
         _window = new BarWindow();
+        _window.FollowHostTheme();   // the bar takes the host's theme (ThemeShown) and keeps its own theme.json path
         Host.Marks.Add("window");
         _window.ShowBar();
 
-        Host.Data.Changed += c => _queue.TryEnqueue(() => _window?.OnDataChanged(c));
+        Host.Data.Changed += c => {
+            _queue.TryEnqueue(() => _window?.OnDataChanged(c));
+            // the host's theme follows theme.json too (Electron's Settings writes it), so every surface hears "theme"
+            if (c.File == DataFile.Theme) _hostLoop?.Post(() => _look?.ThemeFileChanged());
+        };
         Host.Data.StartWatching();
         StartHost();
         _session = SessionWindow.Create(Host.Log.Line, (q, wp, lp) => OnSession(q, wp, lp), why => _hostLoop?.Post(() => OnWake(why)));
@@ -151,6 +156,14 @@ public partial class MantleApp : Application
         _surfaceControl = new SurfaceControl(() => _surfaces?.Set, work => _surfaces?.PostUi(work) ?? false);
         _offs.Add(Catalogs.Register(_bus, new SurfaceCommands(_surfaceControl)));
         _platform = new ProcessPlatform(opts, new ProcessSidecarLauncher(loop), loop);
+        // the bar's dock (--dock only; hover is the live default) reserves its app bar through the platform. A test or
+        // scratch run's sidecar is passive, so it refuses and nothing is reserved in Windows (the dock line says so).
+        var platform = _platform;
+        _queue?.TryEnqueue(() => {
+            if (_window == null) return;
+            _window.UseShell(new Mantle.App.Surfaces.Bar.Frame.PlatformBarShell(platform, loop));
+            Host.Log.Line($"bar: the platform is wired to the bar's dock ({(Host.Args.Has("dock") ? "--dock: it asks for its app bar now" : "not docked: hover or up, nothing to reserve")}{(live ? "" : "; this run's sidecar is passive and reserves nothing")})");
+        });
         _platform.OnStatus(s => {
             Host.Log.Line($"sidecar {s.State.ToString().ToLowerInvariant()}: {s.Reason}");
             _hub.Set(st => st with { Sidecar = new SidecarPiece(s.State, s.Reason) });

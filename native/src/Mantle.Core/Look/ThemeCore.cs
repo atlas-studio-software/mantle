@@ -137,6 +137,21 @@ public sealed class ThemeCore
         return new ThemeSetResult(true, Tell(), _mode, null);
     }
 
+    /// <summary>theme.json changed on disk (Electron's Settings, or a test, wrote it): read the mode again and tell
+    /// listeners only when the view moved. A run pinned by --theme ignores it.</summary>
+    public bool FileChanged()
+    {
+        if (_override != null || _file == null) return false;
+        _file.Load();
+        string before = $"{_mode}|{_current}";
+        _mode = Load();
+        _current = Resolve(_mode, _win.Mode);
+        if ($"{_mode}|{_current}" == before) return false;
+        _log.Line($"theme: {_file.Name} changed: {ModeWords(_mode)} -> Mantle is {_current}");
+        Tell();
+        return true;
+    }
+
     /// Windows' app mode may have changed: re-read it; tell listeners only when the view moved.
     public bool WindowsChanged()
     {
