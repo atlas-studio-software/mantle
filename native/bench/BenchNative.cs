@@ -144,6 +144,9 @@ public static class BenchNative
     // ---- desktop setup
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern bool SystemParametersInfoW(uint a, uint b, string c, uint d);
     public static bool SetWallpaper(string path) => SystemParametersInfoW(0x0014, 0, path, 0x3);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfoW(uint a, uint b, out int c, uint d);
+    /// SPI_GETACTIVEWINDOWTRACKING: does hovering a window activate it ("X-mouse")?
+    public static bool ActiveWindowTracking() => SystemParametersInfoW(0x1000, 0, out int on, 0) && on != 0;
 
     [StructLayout(LayoutKind.Sequential)] struct RECT { public int l, t, r, b; }
     [StructLayout(LayoutKind.Sequential)] struct APPBARDATA { public int cbSize; public IntPtr hWnd; public uint cb; public uint edge; public RECT rc; public IntPtr lParam; }

@@ -68,7 +68,7 @@ $runner = [ordered]@{
   date = (Get-Date).ToUniversalTime().ToString('yyyy-MM-dd HH:mm') + ' UTC'; sha = $sha
   os = "$($os.Caption) $($os.Version)"; image = $env:ImageOS + ' ' + $env:ImageVersion; cpu = $cpu.Name; cores = [Environment]::ProcessorCount
   ramGB = [Math]::Round($os.TotalVisibleMemorySize / 1MB, 1); screen = "$($scr.Width)x$($scr.Height)"
-  dotnetSdks = ($sdks -join ' | ')
+  dotnetSdks = ($sdks -join ' | '); hoverActivates = [BenchNative]::ActiveWindowTracking()
 }
 Say ("runner: " + (($runner.GetEnumerator() | ForEach-Object { "$($_.Key) $($_.Value)" }) -join '; '))
 
@@ -251,18 +251,28 @@ function Get-Cpu([int]$rootPid, [bool]$electron, [int]$seconds) {
 # A real click on its caption, then the cursor where the measurement wants it. Returns the foreground process.
 # On a small screen the tiled windows overlap: raise charmap first, and click a caption point that is
 # charmap's on screen (a click that lands on notepad would make the click checks start from notepad).
-function Focus-Steady($cursorTo) {
+# -Park leaves the cursor on the bottom edge (Electron's bar up); otherwise it rests inside charmap, away
+# from the bar and over the window that should stay in front (also right if the runner has hover-to-activate).
+function PName([uint32]$id) { try { (Get-Process -Id $id -ErrorAction Stop).ProcessName } catch { "pid $id" } }
+function Focus-Steady([switch]$Park) {
+  $note = @()
   $h = @([BenchNative]::WindowsOf([uint32]$charmapPid)) | Select-Object -First 1
+  $rest = $away
   if ($h) {
     [BenchNative]::Raise($h) | Out-Null; Start-Sleep -Milliseconds 250
     $r = [BenchNative]::RectOf($h); $y = $r[1] + 12
-    $x = @([int](($r[0] + $r[2]) / 2), ($r[0] + 80), ($r[0] + 140)) | Where-Object { [BenchNative]::PidAt($_, $y) -eq $charmapPid } | Select-Object -First 1
-    if ($null -ne $x) { [BenchNative]::Click([int]$x, $y) | Out-Null; Start-Sleep -Milliseconds 400 }
-  }
-  [BenchNative]::SetCursorPos($cursorTo.x, $cursorTo.y) | Out-Null
+    $rest = @{ x = [int](($r[0] + $r[2]) / 2); y = [int](($r[1] + $r[3]) / 2) }
+    $cands = @([int](($r[0] + $r[2]) / 2), ($r[0] + 80), ($r[0] + 140))
+    $note += "charmap [$($r -join ',')]; at y $y`: " + (($cands | ForEach-Object { "$_ $(PName ([BenchNative]::PidAt($_, $y)))" }) -join ', ')
+    $x = $cands | Where-Object { [BenchNative]::PidAt($_, $y) -eq $charmapPid } | Select-Object -First 1
+    if ($null -ne $x) { [BenchNative]::Click([int]$x, $y) | Out-Null; Start-Sleep -Milliseconds 400; $note += "clicked $x,$y -> $(PName ([BenchNative]::ForegroundPid()))" }
+    else { $note += 'no caption point is charmap''s: not clicked' }
+  } else { $note += 'charmap has no window' }
+  $to = if ($Park) { $park } else { $rest }
+  [BenchNative]::SetCursorPos($to.x, $to.y) | Out-Null
   Start-Sleep -Seconds 2
-  $fp = [BenchNative]::ForegroundPid()
-  return $(try { (Get-Process -Id $fp -ErrorAction Stop).ProcessName } catch { "pid $fp" })
+  $fg = PName ([BenchNative]::ForegroundPid())
+  return [ordered]@{ foreground = $fg; note = ($note -join '; ') + "; cursor $($to.x),$($to.y) -> $fg" }
 }
 
 # Never walk the tree of a root that has exited: its pid may already be someone else's.
@@ -321,12 +331,13 @@ function Run-Electron([string]$theme) {
   for ($i = 0; $i -lt 20 -and -not (Test-Path $mp); $i++) { Start-Sleep -Milliseconds 250 }
   if (Test-Path $mp) { $mUp = Get-Content $mp -Raw | ConvertFrom-Json }
   $mem = Get-Mem (Get-AppPids $proc.Id $true) $(if ($mUp) { $mUp.pages } else { $null })
-  $fg = Focus-Steady $park
-  $cpuUp = Get-Cpu $proc.Id $true 60; $cpuUp.foreground = $fg
+  $fs = Focus-Steady -Park
+  $cpuUp = Get-Cpu $proc.Id $true 60; $cpuUp.foreground = $fs.foreground; $cpuUp.focusNote = $fs.note
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Seconds 6
   $shots += Save-Shot "$tag-hidden.png" $shot
-  $cpuHidden = Get-Cpu $proc.Id $true 60; $cpuHidden.foreground = (Focus-Steady $away)
+  $fs = Focus-Steady
+  $cpuHidden = Get-Cpu $proc.Id $true 60; $cpuHidden.foreground = $fs.foreground; $cpuHidden.focusNote = $fs.note
   Set-Content -Path (Join-Path $probe 'dump-hidden.req') -Value 'x'
   $memHidden = Get-Mem (Get-AppPids $proc.Id $true) $(if ($mUp) { $mUp.pages } else { $null })
   Start-Sleep -Seconds 2
@@ -441,8 +452,8 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   $cornerDiff = [Math]::Round([BenchNative]::Diff([BenchNative]::Grab($cornerAt.x, $cornerAt.y, 16, 16), $cornerBase), 2)
   if ($cornerDiff -gt 3) { Problem "$tag window is not see-through outside the pill (corner differs by $cornerDiff)" }
   $mem = Get-Mem (Get-AppPids $proc.Id $false) $null
-  $fg = Focus-Steady $away
-  $cpuUp = Get-Cpu $proc.Id $false $cpuS; $cpuUp.foreground = $fg
+  $fs = Focus-Steady
+  $cpuUp = Get-Cpu $proc.Id $false $cpuS; $cpuUp.foreground = $fs.foreground; $cpuUp.focusNote = $fs.note
 
   # Focus on click, through the real input queue: notepad, then charmap, then charmap again (minimize), then again (restore).
   $focus = [ordered]@{}
@@ -455,14 +466,20 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   $focus.icons = [bool]($np -and $cm -and $np.hasIcon -and $cm.hasIcon)
   if (-not $focus.icons) { Problem "$tag notepad/charmap cells missing or without their real icon (cells: $($focus.cells -join ', '))" }
   if ($np -and $cm) {
-    ClickCell $np; $focus.notepadFront = ([BenchNative]::ForegroundPid() -eq $notepadPid)
-    ClickCell $cm; $focus.charmapFront = ([BenchNative]::ForegroundPid() -eq $charmapPid)
-    ClickCell $cm; $focus.charmapMinimized = [BenchNative]::AnyIconic($charmapPid)
-    ClickCell $cm; $focus.charmapRestored = (-not [BenchNative]::AnyIconic($charmapPid)) -and ([BenchNative]::ForegroundPid() -eq $charmapPid)
+    # A click on the cell of the window in front minimizes it (as on Windows' taskbar), so start with the
+    # one that is NOT in front: notepad, unless notepad already is. A = first, B = second.
+    $fgNow = [BenchNative]::ForegroundPid()
+    $a = @{ c = $np; pid = $notepadPid; n = 'notepad' }; $b = @{ c = $cm; pid = $charmapPid; n = 'charmap' }
+    if ($fgNow -eq $notepadPid) { $a, $b = $b, $a }
+    $focus.order = "$($a.n), then $($b.n) (in front before: $(PName $fgNow))"
+    ClickCell $a.c; $focus.clickBringsAFront = ([BenchNative]::ForegroundPid() -eq $a.pid)
+    ClickCell $b.c; $focus.clickBringsBFront = ([BenchNative]::ForegroundPid() -eq $b.pid)
+    ClickCell $b.c; $focus.clickAgainMinimizes = [BenchNative]::AnyIconic($b.pid)
+    ClickCell $b.c; $focus.clickAgainRestores = (-not [BenchNative]::AnyIconic($b.pid)) -and ([BenchNative]::ForegroundPid() -eq $b.pid)
     $shots += Save-Shot "$tag-after-clicks.png" $shot
-    foreach ($k in 'notepadFront', 'charmapFront', 'charmapMinimized', 'charmapRestored') { if (-not $focus[$k]) { Problem "$tag focus check $k failed" } }
+    foreach ($k in 'clickBringsAFront', 'clickBringsBFront', 'clickAgainMinimizes', 'clickAgainRestores') { if (-not $focus[$k]) { Problem "$tag focus check $k failed ($($focus.order))" } }
   }
-  $focus.ok = [bool]($focus.icons -and $focus.notepadFront -and $focus.charmapFront -and $focus.charmapMinimized -and $focus.charmapRestored)
+  $focus.ok = [bool]($focus.icons -and $focus.clickBringsAFront -and $focus.clickBringsBFront -and $focus.clickAgainMinimizes -and $focus.clickAgainRestores)
   [BenchNative]::SetCursorPos($away.x, $away.y) | Out-Null
   Start-Sleep -Seconds 2
   $memAfter = Get-Mem (Get-AppPids $proc.Id $false) $null
