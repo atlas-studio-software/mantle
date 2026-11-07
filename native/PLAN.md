@@ -559,15 +559,16 @@ cap.
 
 **For the user:**
 
-- **Q-O1** Install the .NET 10 SDK on the laptop for quick local unit tests and builds (about 1 GB, builds
-  cost CPU), or stay cloud-only? The default is cloud-only.
+- **Q-O1** DECIDED 2026-11-07: cloud-only. No .NET SDK on the laptop; every build and test runs on GitHub
+  runners.
 - **Q-O2** DECIDED 2026-11-07 (the user left it to the plan): yes, WebView2 for web (Lively) wallpapers and the
   Mission Control panel only. Made on demand when one is showing, destroyed when it is not (a web view costs
   a browser process), and named in the log and in Settings as a web view.
 - **Q-O3** Player and clips codecs: accept Windows' codec extensions with a native player, or WebView2 for the
   player if native can't match? Ask once the native attempt has numbers.
-- **Q-O4** Signing: use the same SignPath project for the native exes and installer? This needs coordination
-  with the installer/SignPath work.
+- **Q-O4** DECIDED 2026-11-07 (left to the plan): the native exes and installer are signed under the same
+  SignPath project as the Electron installer, with a second artifact configuration. The SignPath application
+  itself has not been submitted yet (the user submits it); until it is approved, native pre-releases are unsigned.
 - **Q-O5** The switch-over release version number and its name (version numbers are the user's call).
 - **Q-O6** Optional: before full parity, would the user like to try standalone native app windows (Files,
   Task Manager, Settings) launched by hand while Electron stays live? The default is no, which keeps the
