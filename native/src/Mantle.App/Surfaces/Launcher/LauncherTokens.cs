@@ -20,6 +20,9 @@ internal sealed class LauncherTokens
     readonly ILogSink _log;
     readonly HashSet<string> _missing = new();
 
+    /// No fill at all (alpha 0): not a colour, so not a token.
+    public static readonly Color None = default;
+
     public LauncherTokens(ILogSink log) { _log = log; }
 
     /// A token's colour in the given theme (transparent, with one log line, when Tokens.xaml has no such key).
@@ -34,7 +37,7 @@ internal sealed class LauncherTokens
         if (v is SolidColorBrush b) c = b.Color;
         else
         {
-            c = Colors.Transparent;
+            c = None;
             if (_missing.Add(theme + key)) _log.Line("Tokens.xaml has no " + theme + " " + key + " brush, so it is drawn transparent");
         }
         cache[key] = c;
@@ -63,7 +66,7 @@ internal sealed class LauncherTokens
             r = l.R * la + r * (1 - la); g = l.G * la + g * (1 - la); bl = l.B * la + bl * (1 - la);
             a = la + a * (1 - la);
         }
-        if (a <= 0) return Colors.Transparent;
-        return Windows.UI.Color.FromArgb((byte)Math.Round(a * 255), (byte)Math.Round(r / a), (byte)Math.Round(g / a), (byte)Math.Round(bl / a));
+        if (a <= 0) return None;
+        return new Color { A = (byte)Math.Round(a * 255), R = (byte)Math.Round(r / a), G = (byte)Math.Round(g / a), B = (byte)Math.Round(bl / a) };
     }
 }

@@ -134,7 +134,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         _q = new TextBox
         {
             VerticalAlignment = VerticalAlignment.Center, FontSize = 15, BorderThickness = new Thickness(0), Padding = new Thickness(0),
-            MinHeight = 0, Background = new SolidColorBrush(Colors.Transparent), IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
+            MinHeight = 0, Background = new SolidColorBrush(LauncherTokens.None), IsSpellCheckEnabled = false, IsTextPredictionEnabled = false,
             PlaceholderText = "Apps, files, settings, commands, or a URL",
         };
         // lightweight styling: the TextBox template's own states (hover, focus) keep the line plain, as #q (border 0, transparent)
@@ -143,7 +143,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
                      "TextControlForeground", "TextControlForegroundPointerOver", "TextControlForegroundFocused",
                      "TextControlPlaceholderForeground", "TextControlPlaceholderForegroundPointerOver", "TextControlPlaceholderForegroundFocused" })
         {
-            var b = new SolidColorBrush(Colors.Transparent);
+            var b = new SolidColorBrush(LauncherTokens.None);
             _qBrushes[k] = b;
             _q.Resources[k] = b;
         }
@@ -239,14 +239,14 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         _panel.Background = new SolidColorBrush(dark ? t.Of("LgFill", true)
             : LauncherTokens.Over(t.Of("LgFillStrong", false), t.Of("LgFill", false), t.Of("LgFillStrong", false), t.Of("LgSunk", false)));
         _edge.BorderBrush = t.Brush("LgEdgeOut", dark);
-        _lip.BorderBrush = new SolidColorBrush(dark ? Windows.UI.Color.FromArgb(18, 255, 255, 255) : Windows.UI.Color.FromArgb(158, 255, 255, 255));   // --lg-lip-up
+        _lip.BorderBrush = t.Brush("LgLip", dark);                          // --lg-lip-up: inset 0 1px 0
         var line = t.Brush(dark ? "LgDivider" : "LgEdgeOut", dark);
         _slot.BorderBrush = line;
         _foot.BorderBrush = line;
         _focusLine.Background = t.Brush("LgAcc", dark);
         _q.FontSize = dark ? 16 : 15;
         foreach (var (k, b) in _qBrushes)
-            b.Color = k.Contains("Placeholder") ? t.Of("LgInk3", dark) : k.Contains("Foreground") ? t.Of("LgInk", dark) : Colors.Transparent;
+            b.Color = k.Contains("Placeholder") ? t.Of("LgInk3", dark) : k.Contains("Foreground") ? t.Of("LgInk", dark) : LauncherTokens.None;
         _q.Foreground = t.Brush("LgInk", dark);
         _q.SelectionHighlightColor = new SolidColorBrush(t.Of("LgAcc", dark));
         _notice.Foreground = t.Brush("LgWarn", dark);
@@ -446,7 +446,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         main.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         main.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         main.Children.Add(tile); main.Children.Add(name); main.Children.Add(sub);
-        var g = new LauncherGrid(Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.ListItem) { Height = 44, Background = new SolidColorBrush(Colors.Transparent) };   // a fill so the whole row takes the pointer
+        var g = new LauncherGrid(Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.ListItem) { Height = 44, Background = new SolidColorBrush(LauncherTokens.None) };   // a fill so the whole row takes the pointer
         g.Children.Add(wash); g.Children.Add(tick); g.Children.Add(main);
         if (index > 0 && _rows.Count > 0) g.Margin = new Thickness(0, 1, 0, 0);
         AutomationProperties.SetAutomationId(g, "row-" + it.Id);
