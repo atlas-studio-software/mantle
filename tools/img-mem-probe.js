@@ -93,7 +93,47 @@ fs.writeFileSync(PAGE, '<!doctype html><meta http-equiv="Content-Security-Policy
   ' await t("data",u);var b1=URL.createObjectURL(bytes(u));await t("blob",b1);' +
   ' var b2=URL.createObjectURL(bytes(u));var pre=new Image();pre.src=b2;await pre.decode();await t("blob-after-decode",b2);' +
   ' var b3=URL.createObjectURL(bytes(u));var pre3=new Image();pre3.src=b3;await pre3.decode();URL.revokeObjectURL(b3);await t("blob-after-decode-revoked",b3);return out;};' +
-  '</script>');
+  '</script><script>(' + bakePage.toString() + ')();</script>');
+
+/* The dark pop-up's glass, step by step (what ui/bar/bar.js does on every open), to find which step keeps
+   memory: decode-only (blob: Image, URL let go), pixels (+ read back through one shared willReadFrequently
+   canvas, as glass-adapt.js pixelsOf), bake (+ the two-canvas edge clamp and blur, toDataURL),
+   bake-nofilter (the same without the blur filter), bake-css-data / bake-css-blob (+ shown as the box's
+   background through a data: or a blob: url(), the previous blob: let go). */
+function bakePage() {
+  let scratch = null, cssUrl = null;
+  const frames = () => new Promise((r) => requestAnimationFrame(() => requestAnimationFrame(r)));
+  window.bakeRun = async function (kind, list) {
+    for (const u of list) {
+      const url = URL.createObjectURL(bytes(u));   // eslint-disable-line no-undef
+      const im = new Image(); im.src = url; await im.decode(); URL.revokeObjectURL(url);
+      if (kind === 'decode-only') continue;
+      const w = im.naturalWidth, h = im.naturalHeight;
+      if (!scratch) scratch = document.createElement('canvas');
+      scratch.width = w; scratch.height = h;
+      const sg = scratch.getContext('2d', { willReadFrequently: true });
+      sg.clearRect(0, 0, w, h); sg.drawImage(im, 0, 0, w, h); sg.getImageData(0, 0, w, h);
+      if (kind === 'pixels') continue;
+      const P = 23;
+      const a = document.createElement('canvas'); a.width = w + 2 * P; a.height = h + 2 * P;
+      const ga = a.getContext('2d'); ga.imageSmoothingEnabled = false;
+      ga.drawImage(im, P, P); ga.drawImage(im, 0, 0, 1, h, 0, P, P, h); ga.drawImage(im, w - 1, 0, 1, h, P + w, P, P, h);
+      const b = document.createElement('canvas'); b.width = w; b.height = h;
+      const gb = b.getContext('2d');
+      gb.filter = kind === 'bake-nofilter' ? 'none' : 'blur(7.5px)';
+      gb.drawImage(a, -P, -P);
+      const d = b.toDataURL('image/png');
+      if (kind === 'bake' || kind === 'bake-nofilter') continue;
+      const v = kind === 'bake-css-blob' ? URL.createObjectURL(bytes(d)) : d;   // eslint-disable-line no-undef
+      document.getElementById('box').style.cssText = 'width:' + w + 'px;height:' + h + 'px;background-image:url("' + v + '")';
+      await frames();
+      if (cssUrl) URL.revokeObjectURL(cssUrl);
+      cssUrl = kind === 'bake-css-blob' ? v : null;
+    }
+    await frames();
+    return true;
+  };
+}
 
 async function run(kind) {
   const win = new BrowserWindow({ show: false, width: 800, height: 600, webPreferences: { sandbox: true, contextIsolation: true, preload: PRELOAD, backgroundThrottling: false } });
@@ -109,7 +149,8 @@ async function run(kind) {
   const imgs = async () => { const u = JSON.parse(await wc.executeJavaScript('JSON.stringify(probe.usage().images)')); return u.count + ' images ' + Math.round(u.size / 1048576) + ' MB (live ' + Math.round(u.liveSize / 1048576) + ')'; };
   const browserPriv = () => { const m = app.getAppMetrics().find((x) => x.type === 'Browser'); return m ? Math.round(m.memory.privateBytes / 1024) : null; };
   const same = []; for (let i = 0; i < K; i++) same.push(png());
-  const one = (k) => wc.executeJavaScript(`show(${JSON.stringify(k === 'img-same' ? 'img-data' : k.replace(/-(clear|gc)$/, ''))}, ${JSON.stringify(k === 'img-same' ? same : Array.from({ length: K }, png))})`);
+  const BAKE = /^(decode-only|pixels|bake)/.test(kind);
+  const one = (k) => BAKE ? wc.executeJavaScript(`bakeRun(${JSON.stringify(k)}, ${JSON.stringify(Array.from({ length: K }, png))})`) : wc.executeJavaScript(`show(${JSON.stringify(k === 'img-same' ? 'img-data' : k.replace(/-(clear|gc)$/, ''))}, ${JSON.stringify(k === 'img-same' ? same : Array.from({ length: K }, png))})`);
   await one(kind); await gc(); await sleep(300);
   const warm = priv(), warmWs = ws(), warmBrowser = browserPriv();
   const marks = [];
