@@ -239,7 +239,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         var s = new StringBuilder(Header);
         s.Append("namespace Mantle.Generated\n{\n");
         s.Append("    /// <summary>Every [Command] of this assembly, registered without reflection.</summary>\n");
-        s.Append("    internal static class CommandCatalog\n    {\n");
+        s.Append("    internal static partial class CommandCatalog\n    {\n");
         s.Append("        /// <summary>Every command of this assembly: its name, its owner's type, and whether it is static.</summary>\n");
         s.Append("        public static global::System.Collections.Generic.IReadOnlyList<(string Name, string Owner, bool Static)> All { get; } = new (string, string, bool)[] {\n");
         foreach (var f in good) s.Append($"            ({Lit(f.Name)}, {Lit(f.TypeShort)}, {(f.Static ? "true" : "false")}),\n");
@@ -260,7 +260,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
             foreach (var f in g) s.Append($"                made.Add(bus.Register(new {Reg}({Lit(f.Name)}, {f.Owner}, {Handler(f, "owner")})));\n");
             s.Append("            } catch { made.Dispose(); throw; }\n            return made;\n        }\n");
         }
-        s.Append("\n        sealed class Batch : global::System.IDisposable\n        {\n");
+        s.Append("\n        sealed partial class Batch : global::System.IDisposable\n        {\n");
         s.Append("            readonly global::System.Collections.Generic.List<global::System.IDisposable> _all = new();\n");
         s.Append("            public void Add(global::System.IDisposable d) => _all.Add(d);\n");
         s.Append("            public void Dispose() { for (int i = _all.Count - 1; i >= 0; i--) _all[i].Dispose(); _all.Clear(); }\n");
@@ -274,7 +274,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         var s = new StringBuilder(Header);
         s.Append("namespace Mantle.Generated\n{\n");
         s.Append("    /// <summary>One FeatureDescriptor per [Feature] class of this assembly; Create makes a fresh instance.</summary>\n");
-        s.Append("    internal static class FeatureCatalog\n    {\n");
+        s.Append("    internal static partial class FeatureCatalog\n    {\n");
         s.Append("        public static global::System.Collections.Generic.IReadOnlyList<global::Mantle.Core.Features.FeatureDescriptor> All { get; } = new global::Mantle.Core.Features.FeatureDescriptor[] {\n");
         foreach (var f in good)
             s.Append($"            global::Mantle.Core.Features.FeatureDescriptor.Of({f.Init}, static () => new {f.TypeName}(){(f.Options != null ? ", " + f.Options : "")}),\n");
@@ -288,7 +288,7 @@ public sealed class CatalogGenerator : IIncrementalGenerator
         var s = new StringBuilder(Header);
         s.Append("namespace Mantle.Generated\n{\n");
         s.Append("    /// <summary>One SurfaceDescriptor per [Surface] class of this assembly.</summary>\n");
-        s.Append("    internal static class SurfaceCatalog\n    {\n");
+        s.Append("    internal static partial class SurfaceCatalog\n    {\n");
         s.Append("        public static global::System.Collections.Generic.IReadOnlyList<global::Mantle.App.Shell.SurfaceDescriptor> All { get; } = new global::Mantle.App.Shell.SurfaceDescriptor[] {\n");
         foreach (var f in good)
             s.Append($"            new global::Mantle.App.Shell.SurfaceDescriptor({Lit(f.Name)}, {(f.AtStart ? "true" : "false")}, static () => new {f.TypeName}()),\n");
