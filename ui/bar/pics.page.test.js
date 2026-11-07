@@ -52,7 +52,8 @@ const srcOf = (pg, sel) => pg.eval((s) => { var e = document.querySelector(s); r
 async function run() {
   if (H.gaming()) { console.log('a game is running: the browser half is skipped'); t.check('not skipped (a game was running)', false); return; }
   await H.withBrowser(async (open) => {
-    const pg = await open('?mode=pill&media=playing&spq=long', { w: 1280, h: 560, settle: 900, init: COUNT + DARK });
+    const pg = await open('?mode=pill&media=playing&spq=long&reveal=0', {   // reveal=0: the mock sends no strips of its own at boot
+      w: 1280, h: 560, settle: 900, init: COUNT + DARK });
     t.check('the page has MantlePic (ui/shared/pic-url.js loaded under the CSP)', await pg.eval(() => !!window.MantlePic));
 
     // ---- the backdrop strip: a new picture each reveal
@@ -88,7 +89,7 @@ async function run() {
     hd = await held();
     t.check('...and its URL is let go', hd.live === hd.cached, hd);
     await pg.eval(() => window.__mockMain.reveal('pics test: back'));
-    await settle(pg, 700);
+    await settle(pg, 2600);   // past the mock's own six strips after a reveal (250 ms apart)
 
     // a strip that is not a picture says so (never a silent blank)
     await pg.eval(() => { window.__warns.length = 0; });
@@ -125,7 +126,7 @@ async function run() {
     await pg.click('#mchip', { wait: 500 });
     const s1 = await pg.eval(() => window.MantlePic.stats());
     const covers2 = await pg.eval(() => Array.from(document.querySelectorAll('#pop .spq-art img')).map((i) => i.complete && i.naturalWidth > 0));
-    t.check('Up next drawn again: its covers come from the cache (hits, no new URL)', covers2.length > 0 && s1.made === s0.made && s1.hits > s0.hits, { s0, s1, n: covers2.length });
+    t.check('Up next drawn again: its covers come from the cache (hits, no new cover URL)', covers2.length > 0 && s1.misses === s0.misses && s1.hits > s0.hits, { s0, s1, n: covers2.length });
     t.check('Up next drawn again: every cover decoded', covers2.length > 0 && covers2.every(Boolean));
     t.check('the cache stays within its limits', s1.cached <= 160 && s1.heldBytes <= 3 * 1048576, s1);
     hd = await held();
