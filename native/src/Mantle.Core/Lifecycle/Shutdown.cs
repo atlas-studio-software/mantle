@@ -55,7 +55,8 @@ public sealed class Shutdown
         using var all = new CancellationTokenSource(_hardStop);
         var road = Steps(steps, all.Token);
         var first = await Task.WhenAny(road, Task.Delay(_hardStop)).ConfigureAwait(true);
-        if (first != road) {
+        // the road also ends when the hard stop cancels its last step: that is the hard stop too, not a finish
+        if (first != road || !road.Result) {
             _log($"mantle-native: the restore did not finish in {_hardStop.TotalSeconds:0}s, leaving anyway. If Windows looks wrong, run: {_recovery}");
             return exitCode;
         }
@@ -63,7 +64,8 @@ public sealed class Shutdown
         return exitCode;
     }
 
-    async Task Steps(IReadOnlyList<Step> steps, CancellationToken all)
+    /// True when every step ended before the hard stop.
+    async Task<bool> Steps(IReadOnlyList<Step> steps, CancellationToken all)
     {
         foreach (var s in steps) {
             if (all.IsCancellationRequested) { Ran.Add((s.Name, "skipped: out of time")); continue; }
@@ -83,5 +85,6 @@ public sealed class Shutdown
             Ran.Add((s.Name, outcome));
             if (outcome != "ok") _log($"mantle-native: shutdown step \"{s.Name}\" {outcome}; going on with the next");
         }
+        return !all.IsCancellationRequested;
     }
 }
