@@ -32,8 +32,24 @@ windows.
    `--quit --test --profile-name=parity-<theme>`, then by PID for anything left with that profile.
 3. Native: `MantleNative.exe --test --profile-name=parity-<theme> --user-data=<temp> --theme=<theme>
    --bench-out=<dir>`, waiting for `ready.json` (first frame).
-4. Each capture waits until the crop stops moving (two grabs 300 ms apart, mean change < 0.5), then grabs
-   the real composited screen (GDI BitBlt with CAPTUREBLT).
+4. Each capture first clears the crop: any visible window of another process over it (not the app under test
+   or its child processes, not the fixture, not the desktop or the runner's taskbar) is minimised without
+   activation; one that stays is a problem and the capture is not scored. Then it waits until the crop stops
+   moving (two grabs 300 ms apart, mean change < 0.5) and grabs the real composited screen (GDI BitBlt with
+   CAPTUREBLT): the crop, then the whole screen, each a *clean* grab (below), and the crop must match the same
+   rect of the whole-screen grab (mean change < 3, the clock may tick) or both are taken again (4 tries, then
+   a problem line).
+
+   **Clean grabs.** Both bars' light glass takes a picture of what is behind the bar 4 times a second, and for
+   each picture the bar window is switched to `WDA_EXCLUDEFROMCAPTURE` (Electron `main.js#captureBackdrop`:
+   25 ms settle plus the sidecar's shot, which ran past a second while the sidecar was busy starting; the
+   native `LiveGlass` the same way). Any screen grab in that moment has no bar in it, and nothing else shows
+   it: the eye sees the bar the whole time. `ParityNative.CleanGrab` reads the display affinity of the app's
+   windows over the rect and grabs only after it has read 0 for 60 ms, and only keeps the grab if it still
+   reads 0 right after. Without it Electron light at 100 % scored 0.7251 on two runs of native/r2-windows-2
+   (runs 42368866513, 42369550297): its crop was bare wallpaper while the whole-screen grab taken right after
+   showed the bar. A native/r2-core-2 run at the same time (run 42369209048, 0.9966) had the opposite pair (bar
+   in the crop, none in the whole-screen shot): the same race landing the other way.
 5. Crop: the pill's spec rect (min(1120, screen - 28) DIP wide, 48 tall, 14 above the bottom edge,
    centred) plus `-Margin` (24) px each side, so a pill in the wrong place shows up as a difference.
 6. Diff over the unmasked pixels: SSIM on luminance (8x8 windows, step 4), the share of pixels whose largest
@@ -88,3 +104,8 @@ type -4 that SetDpi-style tools use; `ParityNative.SetScale`), re-reads the DPI,
 (the masks scale with it), and runs both themes. 100 % writes `<Out>/<theme>/` as before; any other scale writes
 `<Out>/<theme>-<pct>/` and scores as `PARITY bar <theme>-<pct>: ...`. The scale is put back to 100 % at the end.
 A scale Windows refuses on the runner's display is a problem line, never a silent skip.
+
+At 150 % the runner's own consoles (Windows Terminal: the job's PowerShell window and the console of
+`electron-bar.mjs`) grow with the scale and reached over the bar's crop: both apps' 150 % captures in run
+42369550297 were mostly a black console window (light-150 0.7432, dark-150 0.7669), which said nothing about
+either bar. The crop clearing in step 4 minimises them and logs each one.

@@ -135,18 +135,49 @@ function Clear-Taskbar([string]$tag) {
   Problem ("{0}: the runner's taskbar covers the bar ({1}); capture not scored" -f $tag, ($tb -join ','))
   return $false
 }
-function Wait-Still([string]$tag) {
+# Nothing of another process over the crop: the runner's consoles (Windows Terminal) grow with the display scale and
+# covered the whole bar at 150 % (run 42369550297, both apps). They are minimised without activation; one that
+# stays is a problem, not a score. $keep = the app under test and its child processes, plus the fixture.
+function Clear-Crop([string]$tag, [int[]]$keep) {
+  $done = @([ParityNative]::ClearRect($crop.x, $crop.y, $crop.w, $crop.h, $keep))
+  if ($done.Count) { Say ("{0}: {1} window(s) of other processes were over the bar: {2}" -f $tag, $done.Count, ($done -join '; ')); Start-Sleep -Milliseconds 700 }
+  $left = @([ParityNative]::Covering($crop.x, $crop.y, $crop.w, $crop.h, $keep))
+  if ($left.Count) { Problem ("{0}: still over the bar: {1}; capture not scored" -f $tag, ($left -join '; ')); return $false }
+  return $true
+}
+# The pid and every process under it (Electron's renderers and sidecar draw nothing of their own over the bar, but
+# they are the app, so they are never moved out of the way).
+function Get-Tree([int]$top) {
+  $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+  $set = [System.Collections.Generic.List[int]]::new(); $set.Add($top)
+  for ($i = 0; $i -lt $set.Count; $i++) { foreach ($p in $all) { if ($p.ParentProcessId -eq $set[$i] -and -not $set.Contains([int]$p.ProcessId)) { $set.Add([int]$p.ProcessId) } } }
+  return , $set.ToArray()
+}
+function Wait-Still([string]$tag, [int[]]$app) {
   $end = (Get-Date).AddSeconds(8); $m = 999
-  while ((Get-Date) -lt $end) { $m = [ParityNative]::Motion($crop.x, $crop.y, $crop.w, $crop.h, 300); if ($m -lt 0.5) { break } }
+  while ((Get-Date) -lt $end) { $m = [ParityNative]::MotionClean($app, $crop.x, $crop.y, $crop.w, $crop.h, 300); if ($m -lt 0.5) { break } }
   Say ("{0}: motion {1:N2} before capture" -f $tag, $m)
   return $m
 }
-function Shoot([string]$dir, [string]$name) {
-  $px = [ParityNative]::Grab($crop.x, $crop.y, $crop.w, $crop.h)
-  Save-Bgra $px $crop.w $crop.h (Join-Path $dir "$name.png")
-  Save-Bgra ([ParityNative]::Grab(0, 0, $W, $H)) $W $H (Join-Path $dir "$name-full.png")
+# The crop and the whole screen, each a clean grab (ParityNative.CleanGrab: never while the app's glass has the bar
+# excluded from capture), and the crop must match the same rect of the whole-screen shot taken right after it (the
+# clock may tick: under 3 of 255 on average): else the screen changed under the shot, and it is taken again.
+function Shoot([string]$dir, [string]$name, [int[]]$app) {
+  $ok = $false; $what = "$name $tag"
+  for ($try = 1; $try -le 4 -and -not $ok; $try++) {
+    $c = [ParityNative]::CleanGrab($app, $crop.x, $crop.y, $crop.w, $crop.h, 60, 5000)
+    $f = [ParityNative]::CleanGrab($app, 0, 0, $W, $H, 60, 5000)
+    $same = [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $f.Px, $W, $crop.x, $crop.y)
+    $ok = $c.Clean -and $f.Clean -and $same -lt 3
+    Say ("{0}: shot {1}: crop clean={2} ({3} window(s), {4} ms, {5} grab(s)), full clean={6} ({7} ms), crop vs full {8:N2}{9}" -f $what, $try,
+      $c.Clean, $c.Windows, $c.WaitedMs, $c.Tries, $f.Clean, $f.WaitedMs, $same, $(if ($ok) { '' } else { ': taken again' }))
+    if (-not $ok) { Start-Sleep -Milliseconds 400 }
+  }
+  if (-not $ok) { Problem ("{0}: no steady shot in 4 tries (the last one is saved; see the shot lines in the log)" -f $tag) }
+  Save-Bgra $c.Px $crop.w $crop.h (Join-Path $dir "$name.png")
+  Save-Bgra $f.Px $W $H (Join-Path $dir "$name-full.png")
   [ParityNative]::VisibleWindows() | Set-Content -Encoding utf8 (Join-Path $dir "$name-windows.txt")
-  return , $px
+  return , $c.Px
 }
 function Stop-Profile([string]$profile) {
   Get-CimInstance Win32_Process | Where-Object { $_.CommandLine -and $_.CommandLine.Contains("--profile-name=$profile") } |
@@ -215,7 +246,8 @@ foreach ($pct in $scaleList) {
     $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
     if ($e -and $e.ok) {
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-      if (Clear-Taskbar "electron $t") { $r.electronMotion = Wait-Still "electron $t"; $ePx = Shoot $dir 'electron' }
+      $app = @(Get-Tree $e.pid); $keep = $app + @($fixture.Id)
+      if ((Clear-Taskbar "electron $tag") -and (Clear-Crop "electron $tag" $keep)) { $r.electronMotion = Wait-Still "electron $tag" $app; $ePx = Shoot $dir 'electron' $app }
       $r.electron = $e
       Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
       $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
@@ -236,7 +268,8 @@ foreach ($pct in $scaleList) {
     if (Test-Path (Join-Path $nd 'ready.json')) {
       Start-Sleep -Milliseconds 800
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
-      if (Clear-Taskbar "native $t") { $r.nativeMotion = Wait-Still "native $t"; $nPx = Shoot $dir 'native' }
+      $app = @(Get-Tree $np.Id); $keep = $app + @($fixture.Id)
+      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $dir 'native' $app }
       $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
       $nc = Native-ClockRect $np.Id
       if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
