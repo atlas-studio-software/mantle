@@ -201,6 +201,7 @@ public sealed partial class BarWindow : Window
         _frameState += $"; after show 0x{st:X8} -> 0x{got:X8}" + ((got & frameBits) == 0 ? " (no frame bits)" : " (frame bits still set)");
         Host.Log.Line("frame: after show: " + _frameState);
         _list.Start();
+        Shell.Windowing.TopmostProbe.Start(_hwnd, DispatcherQueue);   // CI only (MANTLE_TEST_TOPMOST_PROBE)
         Tick();
     }
 
