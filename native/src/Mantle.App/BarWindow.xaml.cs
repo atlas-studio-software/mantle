@@ -241,13 +241,25 @@ public sealed partial class BarWindow : Window
     }
 
     /// A token from Tokens.xaml for the theme the bar shows now (code cannot use {ThemeResource}).
+    /// Tokens.xaml is merged through Theme/Theme.xaml, so the search goes into nested merged dictionaries.
     object ThemeToken(string key)
     {
         string theme = _dark ? "Dark" : "Light";
         foreach (var md in Application.Current.Resources.MergedDictionaries)
-            if (md.ThemeDictionaries.TryGetValue(theme, out object? td) && td is ResourceDictionary rd && rd.TryGetValue(key, out object? v))
+            if (md is not Microsoft.UI.Xaml.Controls.XamlControlsResources && FindThemeToken(md, theme, key, 0) is object v)
                 return v;
         throw new InvalidOperationException("Tokens.xaml has no " + theme + " " + key);
+    }
+
+    static object? FindThemeToken(ResourceDictionary d, string theme, string key, int depth)
+    {
+        if (d.ThemeDictionaries.TryGetValue(theme, out object? td) && td is ResourceDictionary rd && rd.TryGetValue(key, out object? v))
+            return v;
+        if (depth >= 4) return null;   // Theme.xaml -> Tokens.xaml is one level; the cap only stops a cycle
+        foreach (var md in d.MergedDictionaries)
+            if (FindThemeToken(md, theme, key, depth + 1) is object found)
+                return found;
+        return null;
     }
 
     // ------------------------------------------------------------------ Electron's settings, live
