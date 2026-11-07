@@ -123,7 +123,7 @@ public sealed class Supervisor
         var prev = ReadJson(_main);
         long told = prev != null && prev["told"] is JsonValue tv && tv.TryGetValue(out long t) ? t : 0;
         var args = new JsonArray();
-        foreach (var a in _o.Argv) args.Add(a);
+        foreach (var a in _o.Argv) args.Add(JsonValue.Create(a));
         _rec = new JsonObject {
             ["v"] = 1, ["pid"] = _o.Pid, ["at"] = _o.Now(), ["exe"] = _o.ExePath, ["args"] = args, ["cwd"] = _o.Cwd, ["root"] = _o.Root,
             ["standDown"] = null, ["crashNote"] = null, ["told"] = told, ["native"] = true,

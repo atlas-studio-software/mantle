@@ -42,7 +42,7 @@ public sealed class WindowIconCache
             string raw = "null";
             if (_icons.TryGetValue(h, out var kept)) raw = kept; else missed.Add(h);
             next[h] = raw;
-            outList.Add(WithIcon(w, raw));
+            outList.Add((JsonNode)WithIcon(w, raw));
         }
         _icons = next;
         return (outList, missed);

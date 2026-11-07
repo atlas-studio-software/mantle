@@ -44,7 +44,7 @@ public sealed class HostCommands
     static JsonArray Problems(ShellState s)
     {
         var a = new JsonArray();
-        foreach (var p in ShellStateHub.Problems(s)) a.Add(new JsonObject { ["piece"] = p.Piece, ["reason"] = p.Reason });
+        foreach (var p in ShellStateHub.Problems(s)) a.Add((JsonNode)new JsonObject { ["piece"] = p.Piece, ["reason"] = p.Reason });
         return a;
     }
 
