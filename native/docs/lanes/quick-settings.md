@@ -151,3 +151,35 @@ Left (not done in part 2):
 - BAR-682, the 1 s network re-check while open: the native bar has no `net` readout watch yet to speed up.
 - The `volume` broadcast for the bar's speaker glyph, the power plan list, right-click to open.
 - The screenshot pair (part 1's script) and an AUTOMATION.md copy of the ids.
+
+## Part 3 (lane native-r5-qs3, same branch, origin/native/stage = native/main 64f4eb3 merged)
+
+The three red full runs of part 2 were not this branch's:
+
+- 42792161352 `Theme_set_switches_the_bar...` ran before any quick-settings test (09:43:40; the first qs test 09:43:55),
+  its log says the host went dark and only the pixels did not; the same "the bar never went dark" failure hit runs
+  42769441389 and 42771856358 on toasts-lane snapshots without any PopupHost change.
+- 42794684579 unit `LookShellTests.Another_apps_theme...` (1236 ms): Mantle.Core.Tests, no quick-settings code on its
+  path; it failed the same way on native/main runs 42384431813 and 42390282384.
+- 42797283215 `ClusterTests.Clock_time_box...`: a UIA timeout in `ElementFromHandle` at launch, the third UI test of the
+  run, before any quick-settings code ran (nothing of this branch runs at start beyond two event subscriptions).
+- The merged branch's full run 42800384215: unit 595/595, ui 45/45; it failed only `previews` (light 0.8196), whose
+  ELECTRON reference crop has a black band over the flyout's top (the native crop is right).
+
+The pair (Electron's part1 shot now keeps the "›" buttons native draws):
+
+- Width: the main view is sized to its content as Electron's `.pop` is (max-content of its rows, min 268, max 360 with
+  the split tiles; `PopupHost.Resize(key, h, w)`); a view keeps the panel's width (qs-more.js pins it, BAR-609).
+- Chromium's line boxes (`Type`: font size + line-height, BlockLineHeight, whole pixels); dark uses Helm's type scale
+  (13, tile sub 12), dead tiles `--lg-card`, the dark pm switch is Helm's `.seg` (field + hairline, 12/500, current
+  `--lg-press` with a hairline).
+- Sliders: Chromium's range look on the Slider's named parts (8 px track, accent fill to the thumb's centre, 16 px solid
+  thumb). Deviation: Chromium's own track colours are not tokens; native draws them from `--lg-fill0`/`--lg-edge-out`
+  and `--lg-ink-3`/`--lg-ink-2` at a fraction (`Alpha`).
+- Power mode: `PowerModeView` (Mantle.Core/Features/PowerMode), a pure port of powermode.js view() (modes half): "When
+  plugged in" / "When on battery", absent `settable` is settable, a refusal is the row's note (`qs.powermode.note`).
+- Battery footer: battery.js's time left (`secondsLeft` / `minutesLeft`). The fixture was right; native ignored the
+  field. A live sidecar's qs `power` part still carries no time (Electron words the `battery` reading; not wired).
+
+Left: the qs-tiles row (airplane mode, do not disturb, focus, project, cast), game mode, top bar, hot corners, the
+power plan list and toggle (BAR-740), the `battery` reading for the footer, AUTOMATION.md.

@@ -381,6 +381,7 @@ internal sealed partial class QsPanel
             var notes = new List<string>(_note.Values);
             PaintNotes(QsView.Problems(_parts, notes));
             foreach (var t in new[] { _toWin, _gear }) t.Foreground = B("LgInk2");
+            ((TextBlock)_toWin.Content).Foreground = B("LgInk2");   // its own TextBlock (Text() inks it at build time)
             Fill(_gearGlyph, GearPaths, "LgInk2");
             _soundMore.Background = B("LgTile");
             PaintChevron(_soundMore, "LgInk");

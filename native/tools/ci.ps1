@@ -408,10 +408,10 @@ $Floors = [ordered]@{
   'launcher dark'  = 0.80   # 0.8175, 0.8170 (same runs); the --test Electron launcher is a framed window (docs/lanes/launcher.md)
   'osd'            = 0.55   # lowest state: vol-dead (unavailable) 0.58, the why line wraps differently (docs/lanes/osd-toasts.md)
   'strip'          = 0.90   # dark 0.9091 / 0.9091, light 0.9258 / 0.9580 (runs 42786941393, 42789738354)
-  # qs: native part 1's pop-up is ~44 px taller (row spacing) and 20 px wider than Electron's and words the power
-  # plan and battery differently, so the bottom-aligned pair scores low; a regression still moves it (lane notes)
-  'qs light'       = 0.36   # 0.3872 (run 42789738354, the first with the Wi-Fi and Bluetooth tiles kept)
-  'qs dark'        = 0.43   # 0.4519 (same run)
+  # qs: content-sized like Electron's .pop, Chromium's line boxes and range look, powermode.js words (lane notes,
+  # part 3); the rest is text rasterisation and Chromium's own track colours
+  'qs light'       = 0.89   # 0.9094 (run 42805925467; was 0.3872 before part 3)
+  'qs dark'        = 0.84   # 0.8636 (same run; was 0.4519)
   'previews light' = 0.92   # 0.9545 / 0.9545 / 0.9418 (runs 42786941393, 42789738354, 42792223889; live DWM pictures)
   'previews dark'  = 0.94   # 0.9746 / 0.9746 / 0.9599 (same runs)
 }
