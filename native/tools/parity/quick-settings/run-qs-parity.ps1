@@ -12,9 +12,9 @@
   <out>/qs-<theme>-pair.png (Electron above, native below) and one QS-PARITY line each, then a summary line.
 
   Runner only (CI / GITHUB_ACTIONS, or MANTLE_PARITY_LOCAL=1 on a machine nobody is using): it shows windows.
-  Not wired into ci.ps1 (the core lane's file): the stage to add is
+  ci.ps1 stage qs runs it as
     & native/tools/parity/quick-settings/run-qs-parity.ps1 -Exe <published exe> -Out native/out/parity/qs
-  gated on "QS-PARITY summary: 2 scored of 2" and a floor under the lowest ssim it prints.
+  gated on "QS-PARITY summary: 2 scored of 2" and per-theme floors under the lowest ssim it printed.
 #>
 param(
   [string]$Out,

@@ -19,8 +19,9 @@
      (bar.css: 200x112 box, 6 px card padding, 24 px head, 8 px pop padding + border; scale 1 on the runner), and
      that rectangle plus -Margin px is cropped out of both: native/out/parity/bar-tasks/preview/<theme>/
      electron-preview.png, native-preview.png, preview-pair.png (Electron above, native below), plus both full
-     screens. One PREVIEW-PARITY line per theme (SSIM, diff px) and a summary line. No gate yet: the numbers are
-     reported, and a missing capture is the only FAILED.
+     screens. One PREVIEW-PARITY line per theme (SSIM, diff px) and a summary line; a missing capture is the
+     only FAILED here. ci.ps1 stage previews runs it with -Exe and -Out native/out/parity/previews and gates each
+     theme on its floor.
 
   Runner only (CI / GITHUB_ACTIONS, or MANTLE_PARITY_LOCAL=1 on a machine nobody is using): it changes the
   wallpaper, theme and taskbar, and shows both apps and the fixture windows.
@@ -28,6 +29,7 @@
 param(
   [ValidateSet('light', 'dark', 'both')] [string]$Theme = 'both',
   [string]$Out,
+  [string]$Exe,   # the native app (default: $env:MANTLE_NATIVE_EXE, else native/out/bin/MantleNative/MantleNative.exe)
   [int]$Margin = 16,
   [int]$PixelThreshold = 24,
   [switch]$Build
@@ -46,8 +48,8 @@ $Out = (Resolve-Path $Out).Path
 if ($Build) {
   & (Join-Path $root 'native/tools/ci.ps1') -Stages build
 }
-$exe = Join-Path $root 'native/out/bin/MantleNative/MantleNative.exe'
-if (-not (Test-Path $exe)) { Write-Host 'PREVIEW-PARITY: FAILED (no native/out/bin/MantleNative/MantleNative.exe: run with -Build)'; exit 1 }
+$exe = if ($Exe) { $Exe } elseif ($env:MANTLE_NATIVE_EXE) { $env:MANTLE_NATIVE_EXE } else { Join-Path $root 'native/out/bin/MantleNative/MantleNative.exe' }
+if (-not (Test-Path $exe)) { Write-Host "PREVIEW-PARITY: FAILED (no native app at ${exe}: run with -Build)"; exit 1 }
 $electronExe = (& node -e "console.log(require(require('path').join(process.argv[1],'node_modules','electron')))" $root 2>$null | Select-Object -Last 1)
 if (-not $electronExe -or -not (Test-Path $electronExe)) { Write-Host "PREVIEW-PARITY: FAILED (electron is not installed in ${root}: npm install first)"; exit 1 }
 
