@@ -74,9 +74,6 @@ namespace Mantle {
     }
 
     static bool IsFullScreen(IntPtr hwnd, Win32.RECT r, int pid) {
-      // A maximised window overhangs its monitor by the invisible resize border, so its rect
-      // "covers" rcMonitor too; it is not fullscreen (the user's maximised browser must not hide the bar).
-      if (IsZoomed(hwnd)) return false;
       // Shell furniture is never "full-screen" however big it is.
       string cls = Win32.GetClassName(hwnd);
       if (cls == "Progman" || cls == "WorkerW" ||
@@ -93,12 +90,57 @@ namespace Mantle {
       mi.cbSize = (uint)System.Runtime.InteropServices.Marshal.SizeOf(typeof(Win32.MONITORINFO));
       if (!Win32.GetMonitorInfoW(mon, ref mi)) return false;
 
-      // rcMonitor, NOT rcWork: a maximised window fills the work area, and a
-      // maximised window is not full-screen - the bar should stay visible over
-      // it. Covering means covering, so <= / >= rather than equality: a game
-      // may legitimately extend a pixel past the edge.
-      return r.left <= mi.rcMonitor.left && r.top <= mi.rcMonitor.top &&
-             r.right >= mi.rcMonitor.right && r.bottom >= mi.rcMonitor.bottom;
+      long style = Win32.GetWindowLongPtr(hwnd, Win32.GWL_STYLE).ToInt64();
+      return Covers(IsZoomed(hwnd), style, r, mi.rcMonitor);
+    }
+
+    const long WS_CAPTION = 0x00C00000L;     // WS_BORDER | WS_DLGFRAME
+    const long WS_THICKFRAME = 0x00040000L;
+
+    /// Pure: does a window with this maximised flag, style and rect cover the monitor `mon`
+    /// as a full-screen window (not merely as a maximised one)? All rects physical px.
+    ///
+    /// rcMonitor, NOT rcWork: a maximised window fills the work area, and a maximised window
+    /// is not full-screen - the bar should stay visible over it. Covering means covering, so
+    /// <= / >= rather than equality: a game may legitimately extend a pixel past the edge.
+    ///
+    /// MAXIMISED WITH A FRAME is never full-screen: it overhangs its monitor by the invisible
+    /// resize border, so its rect "covers" rcMonitor whenever the work area is the whole
+    /// monitor (the top bar hidden by hand over an auto-hide taskbar), and the user's
+    /// maximised browser must not hide the bar.
+    ///
+    /// MAXIMISED WITHOUT A FRAME is judged by its rect (2026-11-09, the user: "the top bar
+    /// doesnt go away for like youtube and robinhood legend if i go fullscreen"). Chromium's
+    /// full screen (ui/views/win/fullscreen_handler.cc, which Chrome, Edge, Opera, and every
+    /// Electron app with a frame, Quartz included, go through for F11 and for a page's
+    /// element full screen) never restores a maximised window first: it strips WS_CAPTION and
+    /// WS_THICKFRAME, keeps every other bit of the style (WS_MAXIMIZE too, so IsZoomed stays
+    /// TRUE) and moves the window onto rcMonitor exactly. The old "IsZoomed = not full screen"
+    /// rule turned that, the most common full screen on this desktop, into "not full screen"
+    /// whenever the browser had been maximised first. A borderless window has no resize border
+    /// to overhang with, so a borderless rect that covers the monitor is the full screen.
+    public static bool Covers(bool zoomed, long style, Win32.RECT r, Win32.RECT mon) {
+      if (zoomed && (style & (WS_CAPTION | WS_THICKFRAME)) != 0) return false;
+      return r.left <= mon.left && r.top <= mon.top && r.right >= mon.right && r.bottom >= mon.bottom;
+    }
+
+    /// TEST SEAM (`foreground` with a `judge` object): Covers() on numbers the caller gives,
+    /// no window read. {zoomed, style, rect:[l,t,r,b], monitor:[l,t,r,b]} -> {fullscreen}.
+    public static IDictionary Judge(IDictionary j) {
+      bool zoomed = j["zoomed"] is bool && (bool)j["zoomed"];
+      long style = j["style"] is double ? (long)(double)j["style"] : 0L;
+      Win32.RECT r = RectOf(j["rect"]), m = RectOf(j["monitor"]);
+      return Json.Obj("judged", true, "fullscreen", Covers(zoomed, style, r, m));
+    }
+    static Win32.RECT RectOf(object o) {
+      var a = o as IList;
+      var r = new Win32.RECT();
+      if (a == null || a.Count != 4) return r;
+      r.left = (int)Convert.ToDouble(a[0], CultureInfo.InvariantCulture);
+      r.top = (int)Convert.ToDouble(a[1], CultureInfo.InvariantCulture);
+      r.right = (int)Convert.ToDouble(a[2], CultureInfo.InvariantCulture);
+      r.bottom = (int)Convert.ToDouble(a[3], CultureInfo.InvariantCulture);
+      return r;
     }
 
     /// Mantle's own processes: this sidecar, and the Electron main process that started it
