@@ -115,7 +115,8 @@ Built:
   `PopupHost.TakeKeyboard("qs")`: WS_EX_NOACTIVATE comes off, the window in front is remembered, the pop-up is raised.
   Cancel, a sent password, leaving the view or the close give it back (`GiveBackKeyboard`: NOACTIVATE back on, focus
   to the remembered window if the pop-up still has it). Another window taking focus raises `KeyboardLost`: the box
-  closes with "The keyboard went to another window, so the password box closed." The password is read once on Next or
+  closes with "The keyboard went to another window, so the password box closed." (When that window is Mantle's own,
+  a press on the bar, the remembered window still gets the keyboard back on the close.) The password is read once on Next or
   Enter, the field cleared in the same step, sent in one call; the service logs its LENGTH only.
 - **Watch holders (BAR-677..679)** (`qs.watch {on, who}`) and the **re-take after a sidecar restart (BAR-683)**.
 - **PopupHost** (item 4): the `Closed(key, why)` event (the 250 ms poll is gone) and `Resize(key, heightDip)`; the
