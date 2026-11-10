@@ -114,7 +114,7 @@ internal sealed class ToastsSurface : ISurface
         p.SetBorderAndTitleBar(false, false);
         _win.AppWindow.SetPresenter(p);
         _win.AppWindow.IsShownInSwitchers = false;
-        _win.SystemBackdrop = new TransparentBackdrop();
+        _win.SystemBackdrop = new Mantle.App.Surfaces.Osd.SeeThroughBackdrop(_ctx.Log.Line);
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_win);
         int pref = Win32.DWMWCP_DONOTROUND; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, 4);
         int none = Win32.DWMWA_COLOR_NONE; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_BORDER_COLOR, ref none, 4);
