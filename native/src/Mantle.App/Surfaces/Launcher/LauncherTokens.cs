@@ -23,6 +23,10 @@ internal sealed class LauncherTokens
     /// No fill at all (alpha 0): not a colour, so not a token.
     public static readonly Color None = default;
 
+    /// The unfold's dim on the moving leaf (ui/shared/unfold-live.js: "a NEUTRAL black multiply, no hue"), at an alpha:
+    /// not a theme colour (it is the same in both themes and only darkens), so not a token in Tokens.xaml.
+    public static Color Dim(byte alpha) => new() { A = alpha, R = 0, G = 0, B = 0 };
+
     public LauncherTokens(ILogSink log) { _log = log; }
 
     /// A token's colour in the given theme (transparent, with one log line, when Tokens.xaml has no such key).

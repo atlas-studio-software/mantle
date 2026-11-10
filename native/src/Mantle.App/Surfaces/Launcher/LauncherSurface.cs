@@ -230,7 +230,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
             Background = new LinearGradientBrush
             {
                 StartPoint = new Windows.Foundation.Point(0, 0), EndPoint = new Windows.Foundation.Point(1, 0),
-                GradientStops = { new GradientStop { Color = Windows.UI.Color.FromArgb(26, 0, 0, 0), Offset = 0 }, new GradientStop { Color = Windows.UI.Color.FromArgb(51, 0, 0, 0), Offset = .5 }, new GradientStop { Color = Windows.UI.Color.FromArgb(145, 0, 0, 0), Offset = 1 } },
+                GradientStops = { new GradientStop { Color = LauncherTokens.Dim(26), Offset = 0 }, new GradientStop { Color = LauncherTokens.Dim(51), Offset = .5 }, new GradientStop { Color = LauncherTokens.Dim(145), Offset = 1 } },
             },
         };
         _panelGrid = new LauncherGrid(Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.Group); var panelGrid = _panelGrid;
