@@ -114,7 +114,9 @@ deliberate deviation for safety.
 - Live previews (`Tasks/BarWindow.Previews.cs`, `Tasks/Thumbs.cs`, `Mantle.Core/Features/WindowList/Previews.cs`):
   bar.js THE WINDOW FLYOUT and lib/thumbs.js. Three ways in: resting 400 ms on a running app's icon (closes 350 ms
   after the pointer leaves icon and flyout; moving across running icons swaps at once; a pin with no windows starts
-  the close), a click when bar.open answers `list`, and `MANTLE_TEST_FLYOUT=<name or exe>` in a `--test` run. One
+  the close; the swap is queued on the dispatcher just after the cell's PointerEntered, never run inside it: run
+  inside it, the flipped cell tooltip and the new pop-up window crashed the app with an E_UNEXPECTED from inside XAML,
+  no managed frame, every round (repeat run 42775281973: 0 of 3; after the fix 42775627180: 5 of 5), a click when bar.open answers `list`, and `MANTLE_TEST_FLYOUT=<name or exe>` in a `--test` run. One
   card per window (icon, title with "Minimized · " / "Still open · ", the X, the 16x3 accent line on the active one),
   each box with a DWM thumbnail registered onto the PREVIEW POP-UP'S OWN HWND (a top-level window of this process;
   found from the body's XamlRoot island, else by its title). Pictures land after the pop-up's 320 ms entrance (the
