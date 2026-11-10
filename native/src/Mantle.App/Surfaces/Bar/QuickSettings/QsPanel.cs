@@ -324,7 +324,7 @@ internal sealed class QsPanel
             bool muted = QsParts.IsTrue(v?["muted"]);
             double lvl = muted ? 0 : QsParts.Num(v?["level"]) ?? 0;
             int waves = muted ? 0 : lvl <= 0.005 ? 0 : lvl <= 0.33 ? 1 : lvl <= 0.66 ? 2 : 3;   // bar.js volumeSvg (0-100 levels: 3 waves at any level)
-            Fill(_muteGlyph, VolumePaths(waves, muted), muted ? B("LgAccOn") : B("LgInk"));
+            Fill(_muteGlyph, VolumePaths(waves, muted), muted ? "LgAccOn" : "LgInk");
             _mute.Background = muted ? B("LgAcc") : B("LgTile");
             _mute.Opacity = _busy.ContainsKey("mute") ? .6 : 1;
             AutomationProperties.SetName(_mute, muted ? "Unmute" : "Mute");
@@ -339,7 +339,7 @@ internal sealed class QsPanel
             var notes = new List<string>(_note.Values);
             PaintNotes(QsView.Problems(_parts, notes));
             foreach (var t in new[] { _toWin, _gear }) t.Foreground = B("LgInk2");
-            Fill(_gearGlyph, GearPaths, B("LgInk2"));
+            Fill(_gearGlyph, GearPaths, "LgInk2");
         } finally { _painting = false; }
     }
 
@@ -349,12 +349,13 @@ internal sealed class QsPanel
         t.View = v;
         bool pending = _busy.ContainsKey(v.Key);
         t.B.Background = v.On ? B("LgAcc") : v.Dead ? B("LgSunk") : B("LgTile");
-        var ink = v.On ? B("LgAccOn") : v.Dead ? B("LgInk3") : B("LgInk");
+        string inkKey = v.On ? "LgAccOn" : v.Dead ? "LgInk3" : "LgInk";
+        var ink = B(inkKey);
         t.Lbl.Foreground = ink;
         t.Sub.Text = v.Sub;
         t.Sub.Foreground = v.On ? B("LgAccOn") : B("LgInk3");
         t.Sub.Opacity = v.On ? .82 : 1;
-        Fill(t.Ico, paths, ink);
+        Fill(t.Ico, paths, inkKey);
         t.Ico.Opacity = v.Dead ? .55 : 1;
         t.B.Opacity = pending ? .6 : 1;
         ToolTipService.SetToolTip(t.B, v.Tip);
@@ -391,7 +392,7 @@ internal sealed class QsPanel
         foreach (var (m, label, f) in QsView.PowerModes) {
             var b = _pmBtns[m];
             bool on = shown == m;
-            b.Background = on ? (settable ? B("LgAcc") : B("LgTile")) : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+            b.Background = on ? (settable ? B("LgAcc") : B("LgTile")) : new SolidColorBrush();
             b.Foreground = on && settable ? B("LgAccOn") : settable ? B("LgInk") : on ? B("LgInk2") : B("LgInk3");
             b.Opacity = _pmPending == m ? .6 : 1;
             ToolTipService.SetToolTip(b, settable ? f + (on ? " (current)" : " — use") : f + " — " + reason);
@@ -538,7 +539,7 @@ internal sealed class QsPanel
         foreach (var d in Application.Current.Resources.MergedDictionaries)
             if (Find(d, key, theme) is Brush b) return b;
         if (_missing.Add(key)) _log($"qs: the theme token {key} is missing from Theme/Tokens.xaml, so that part is drawn clear");
-        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        return new SolidColorBrush();
     }
     static object? Find(ResourceDictionary d, string key, string theme)
     {
@@ -587,7 +588,7 @@ internal sealed class QsPanel
     {
         foreach (var d in Application.Current.Resources.MergedDictionaries)
             if (Find(d, key, theme) is Brush b) return b;
-        return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        return new SolidColorBrush();
     }
 
     /// SVG path data in the XAML path syntax's spelling: "2-.3.5" is "2 -.3 .5" (SVG lets a sign or a second dot start
@@ -607,23 +608,17 @@ internal sealed class QsPanel
         return System.Text.RegularExpressions.Regex.Replace(o.ToString(), " +", " ").Trim();
     }
 
-    /// Draws the paths into a 16x16 canvas in one ink (the SVG's currentColor).
-    static void Fill(Canvas c, string[] paths, Brush ink)
+    /// Draws the paths into a 16x16 canvas in one ink (the SVG's currentColor), a theme token resolved by the element's
+    /// own theme. Built inline: the AOT build cannot cast XamlReader's result to Shapes.Path (it can to UIElement).
+    static void Fill(Canvas c, string[] paths, string inkKey)
     {
         c.Children.Clear();
         foreach (var spec in paths) {
             int bar = spec.IndexOf('|');
             string kind = spec[..bar], data = spec[(bar + 1)..];
-            var p = (Path)XamlReader.Load($"<Path {Ns} Data='{Norm(data)}'/>");
-            if (kind == "F") p.Fill = ink;
-            else {
-                p.Stroke = ink;
-                p.StrokeThickness = kind == "s" ? 1.2 : kind == "g" ? 1.1 : 1.3;
-                p.StrokeStartLineCap = p.StrokeEndLineCap = PenLineCap.Round;
-                p.StrokeLineJoin = PenLineJoin.Round;
-                if (kind == "D") p.Opacity = .28;
-            }
-            c.Children.Add(p);
+            string paint = kind == "F" ? $"Fill='{{ThemeResource {inkKey}}}'"
+                : $"Stroke='{{ThemeResource {inkKey}}}' StrokeThickness='{(kind == "s" ? "1.2" : kind == "g" ? "1.1" : "1.3")}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'" + (kind == "D" ? " Opacity='0.28'" : "");
+            c.Children.Add((UIElement)XamlReader.Load($"<Path {Ns} Data='{Norm(data)}' {paint}/>"));
         }
     }
 }

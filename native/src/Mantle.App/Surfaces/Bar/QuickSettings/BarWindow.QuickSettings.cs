@@ -23,9 +23,9 @@ public sealed partial class BarWindow
     {
         if (Popups == null) { Host.Log.Line("qs: the pop-up framework is not up, so quick settings does not open"); return; }
         _qs = new QsPanel(Host.Log.Line, Host.Args.Test);
-        foreach (var b in new FrameworkElement[] { VolumeBtn, NetworkBtn, BatteryBtn }) {
+        foreach (var b in new[] { VolumeBtn, NetworkBtn, BatteryBtn }) {
             var anchor = b;
-            ((Microsoft.UI.Xaml.Controls.Button)anchor).Click += (_, _) => OpenQuickSettings(anchor);
+            anchor.Click += (_, _) => OpenQuickSettings(anchor);
             Popups.Anchor(anchor);
         }
     }
