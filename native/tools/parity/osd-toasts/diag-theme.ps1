@@ -6,7 +6,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $out = Join-Path $repo 'native\out\ui\diag'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $proj = Join-Path $repo 'native\tests\Mantle.UiTests\Mantle.UiTests.csproj'
-$vars = 'MANTLE_DIAG_NO_SHADOW', 'MANTLE_DIAG_NO_TOASTS_SURFACE', 'MANTLE_DIAG_NO_TOASTS_FEATURE', 'DOTNET_GCgen0size'
+$vars = 'MANTLE_DIAG_NO_SHADOW', 'MANTLE_DIAG_SHADOW', 'MANTLE_DIAG_NO_TOASTS_SURFACE', 'MANTLE_DIAG_NO_TOASTS_FEATURE', 'DOTNET_GCgen0size'
 function Pass([string]$tag, [hashtable]$set, [int]$times = 2) {
   foreach ($v in $vars) { Remove-Item "env:$v" -ErrorAction SilentlyContinue }
   foreach ($k in $set.Keys) { Set-Item "env:$k" $set[$k] }
@@ -27,9 +27,8 @@ function Pass([string]$tag, [hashtable]$set, [int]$times = 2) {
 }
 Pass 'base' @{}
 Pass 'no-shadow' @{ MANTLE_DIAG_NO_SHADOW = '1' }
-Pass 'no-surface' @{ MANTLE_DIAG_NO_TOASTS_SURFACE = '1' }
-Pass 'no-feature' @{ MANTLE_DIAG_NO_TOASTS_FEATURE = '1' }
-Pass 'no-surface-feature' @{ MANTLE_DIAG_NO_TOASTS_SURFACE = '1'; MANTLE_DIAG_NO_TOASTS_FEATURE = '1' }
-Pass 'all-three' @{ MANTLE_DIAG_NO_SHADOW = '1'; MANTLE_DIAG_NO_TOASTS_SURFACE = '1'; MANTLE_DIAG_NO_TOASTS_FEATURE = '1' }
-Pass 'big-gen0' @{ DOTNET_GCgen0size = '10000000' }
+Pass 'shadow-hide' @{ MANTLE_DIAG_SHADOW = 'hide' }
+Pass 'shadow-sbs' @{ MANTLE_DIAG_SHADOW = 'sbs' }
+Pass 'shadow-nocopy' @{ MANTLE_DIAG_SHADOW = 'nocopy' }
+Pass 'shadow-noimg' @{ MANTLE_DIAG_SHADOW = 'noimg' }
 Write-Host 'DIAG: done'
