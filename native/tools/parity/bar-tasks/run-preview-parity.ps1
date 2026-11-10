@@ -49,7 +49,7 @@ if ($Build) {
 $exe = Join-Path $root 'native/out/bin/MantleNative/MantleNative.exe'
 if (-not (Test-Path $exe)) { Write-Host 'PREVIEW-PARITY: FAILED (no native/out/bin/MantleNative/MantleNative.exe: run with -Build)'; exit 1 }
 $electronExe = (& node -e "console.log(require(require('path').join(process.argv[1],'node_modules','electron')))" $root 2>$null | Select-Object -Last 1)
-if (-not $electronExe -or -not (Test-Path $electronExe)) { Write-Host "PREVIEW-PARITY: FAILED (electron is not installed in $root: npm install first)"; exit 1 }
+if (-not $electronExe -or -not (Test-Path $electronExe)) { Write-Host "PREVIEW-PARITY: FAILED (electron is not installed in ${root}: npm install first)"; exit 1 }
 
 Add-Type -Path (Join-Path $PSScriptRoot '..\ParityNative.cs')
 Add-Type -AssemblyName System.Drawing
