@@ -14,7 +14,7 @@ function Pass([string]$tag, [hashtable]$set, [int]$times = 2) {
   $crash = 0; $logs = 0; $res = @()
   for ($i = 1; $i -le $times; $i++) {
     Get-ChildItem -Path $env:TEMP -Directory -Filter 'mantle-native-uitest-*' -ErrorAction SilentlyContinue | Remove-Item -Recurse -Force -ErrorAction SilentlyContinue
-    $r = & dotnet test $proj -c Release -nologo --no-build --filter 'FullyQualifiedName~Theme_set_switches|FullyQualifiedName~Another_apps_theme' 2>&1
+    $r = & dotnet test $proj -c Release -nologo --filter 'FullyQualifiedName~Theme_set_switches|FullyQualifiedName~Another_apps_theme' 2>&1
     $res += (@($r | Where-Object { "$_" -match '^(Passed!|Failed!)' }) -join ' ') -replace '\s+', ' '
     Get-ChildItem -Path $env:TEMP -Directory -Filter 'mantle-native-uitest-*' -ErrorAction SilentlyContinue | ForEach-Object {
       $l = Get-ChildItem -Path $_.FullName -Recurse -Filter 'mantle-native.log' -ErrorAction SilentlyContinue | Select-Object -First 1
