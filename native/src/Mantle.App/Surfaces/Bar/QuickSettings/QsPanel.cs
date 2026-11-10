@@ -2,6 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using Mantle.Core.Features.PowerMode;
 using Mantle.Core.Features.QuickSettings;
 using Mantle.Core.Lifecycle;
 using Microsoft.UI.Text;
@@ -26,7 +27,13 @@ namespace Mantle.App.Surfaces.Bar.QuickSettings;
 /// </summary>
 internal sealed partial class QsPanel
 {
-    public const double WidthDip = 340, PadX = 12, PadY = 11;
+    /// WidthDip: the views' width (and the panel's when nothing could be measured). The main view is sized to its
+    /// content as Electron's .pop is (min-width 268, max-width 360 once the Wi-Fi tile is split, qs-more.css).
+    public const double WidthDip = 340, MinWidthDip = 268, MaxWidthDip = 360, PadX = 12, PadY = 11;
+    const double RCtl = 6, ChevW = 22;   // --lg-r-ctl (both themes); qs-more.css .qsx-chev flex-basis
+    double _width = WidthDip;
+    /// The pop-up's width now (DIP), measured with its height before each open.
+    public double Width => _width;
     const string Ns = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
 
     readonly Action<string> _log;
@@ -37,7 +44,7 @@ internal sealed partial class QsPanel
     readonly Dictionary<string, int> _busy = new(StringComparer.Ordinal);
     readonly Dictionary<string, string> _note = new(StringComparer.Ordinal);
     JsonObject? _pm;
-    string? _pmPending, _pmNote;
+    string? _pmPending, _pmErr;
     bool _dark, _painting;
     readonly HashSet<string> _missing = new();
 
@@ -49,7 +56,7 @@ internal sealed partial class QsPanel
     readonly Canvas _muteGlyph = new() { Width = 16, Height = 16 }, _gearGlyph = new() { Width = 16, Height = 16 };
     readonly Grid _pmSeg;
     readonly StackPanel _pmRow;
-    readonly TextBlock _pmHead, _pmSub, _pmWhy;
+    readonly TextBlock _pmHead, _pmSub, _pmWhy, _pmNote;
     readonly Dictionary<string, Button> _pmBtns = new(StringComparer.Ordinal);
     readonly TextBlock _power;
     readonly Button _toWin, _gear;
@@ -58,7 +65,7 @@ internal sealed partial class QsPanel
     sealed class Tile { public Button B = null!; public Button? Chev; public Canvas Ico = null!; public TextBlock Lbl = null!, Sub = null!; public QsTileView? View; }
     sealed class SliderRow
     {
-        public StackPanel Wrap = null!; public TextBlock Name = null!, Val = null!; public Slider Range = null!; public Grid Line = null!;
+        public StackPanel Wrap = null!; public TextBlock Name = null!, Val = null!; public Slider Range = null!; public Grid Line = null!; public Border Track = null!;
         public bool Dragging; public bool InFlight; public double? Waiting;
     }
 
@@ -83,11 +90,17 @@ internal sealed partial class QsPanel
             var t = MakeTile(key, label);
             FrameworkElement cell = t.B;
             if (key is "wifi" or "bluetooth") {
-                // Windows 11's split tile: the tile switches the radio, its "›" always opens the list (BAR-608, BAR-630)
-                var split = new Grid { ColumnSpacing = 1 };
+                // Windows 11's split tile: the tile switches the radio, its "›" always opens the list (BAR-608, BAR-630).
+                // qs-more.css .qsx-split / .qsx-chev: no gap, the tile's right corners square, a 22 px "›" with a 1 px left
+                // edge and its right corners round (--lg-r-ctl)
+                var split = new Grid { ColumnSpacing = 0 };
                 split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 split.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 t.Chev = Chevron("qs.more." + key, key == "wifi" ? "Show Wi-Fi networks" : "Show Bluetooth devices");
+                t.Chev.Width = ChevW;
+                t.Chev.BorderThickness = new Thickness(1, 0, 0, 0);
+                t.Chev.CornerRadius = new CornerRadius(0, RCtl, RCtl, 0);
+                t.B.CornerRadius = new CornerRadius(RCtl, 0, 0, RCtl);
                 Grid.SetColumn(t.Chev, 1);
                 string view = key == "wifi" ? "wifi" : "bt";
                 t.Chev.Click += (_, _) => Enter(view);
@@ -114,7 +127,7 @@ internal sealed partial class QsPanel
         _vol.Line.Children.Add(_mute);
         _vol.Line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _soundMore = Chevron("qs.more.sound", "Sound output and volume mixer");
-        _soundMore.Height = 28; _soundMore.Margin = new Thickness(4, 0, 0, 0);
+        _soundMore.Height = 28; _soundMore.Margin = new Thickness(8, 0, 0, 0);   // a .qsmute square in .qsline (gap 8)
         Grid.SetColumn(_soundMore, 2);
         _soundMore.Click += (_, _) => Enter("sound");
         _vol.Line.Children.Add(_soundMore);
@@ -129,21 +142,23 @@ internal sealed partial class QsPanel
         Uia(_notes, "qs.notes", "Notes");
         _stack.Children.Add(_notes);
 
-        // ---- power mode (ui/bar/powermode.js: .pmrow / .pmseg / .pmbtn)
-        _pmRow = new StackPanel { Margin = new Thickness(0, 2 + 9, 0, 9) };
+        // ---- power mode (ui/bar/powermode.js: .pmrow / .pmseg / .pmbtn; its top margin is 2 and collapses into the
+        // volume row's 9 unless a note sits between them, PaintNotes)
+        _pmRow = new StackPanel { Margin = new Thickness(0, 0, 0, 9) };
         var pmHead = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         _pmHead = Text("Power mode", 12.5); _pmSub = Text("", 12.5);
-        _pmSub.HorizontalAlignment = HorizontalAlignment.Right; _pmSub.TextTrimming = TextTrimming.CharacterEllipsis; _pmSub.MaxWidth = (WidthDip - 2 - 2 * PadX) * 0.62;
+        _pmSub.HorizontalAlignment = HorizontalAlignment.Right; _pmSub.TextTrimming = TextTrimming.CharacterEllipsis;
         pmHead.Children.Add(_pmHead); pmHead.Children.Add(_pmSub);
         _pmRow.Children.Add(pmHead);
-        _pmSeg = new Grid { ColumnSpacing = 2, Padding = new Thickness(2), CornerRadius = new CornerRadius(6) };
+        _pmSeg = new Grid { ColumnSpacing = 2, Padding = new Thickness(2), CornerRadius = new CornerRadius(RCtl) };
         int c = 0;
-        foreach (var (mode, label, _) in QsView.PowerModes) {
+        foreach (var (mode, label, _) in PowerModeView.Modes) {
             _pmSeg.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             var b = Btn("qs.powermode." + mode, label, double.NaN, 26);
             b.CornerRadius = new CornerRadius(5);
             b.HorizontalAlignment = HorizontalAlignment.Stretch;
-            b.Content = new TextBlock { Text = label, FontSize = 12, TextTrimming = TextTrimming.CharacterEllipsis };
+            b.Padding = new Thickness(4, 0, 4, 0);
+            b.Content = new TextBlock { Text = label, FontSize = 12, FontFamily = Font(), TextTrimming = TextTrimming.CharacterEllipsis };
             Grid.SetColumn(b, c++);
             string m = mode;
             b.Click += (_, _) => _ = PowerMode(m);
@@ -155,6 +170,9 @@ internal sealed partial class QsPanel
         _pmWhy = Text("", 12.5); _pmWhy.Margin = new Thickness(0, 5, 0, 0); _pmWhy.TextWrapping = TextWrapping.Wrap;
         AutomationProperties.SetAutomationId(_pmWhy, "qs.powermode.why");
         _pmRow.Children.Add(_pmWhy);
+        _pmNote = Text("", 12.5); _pmNote.Margin = new Thickness(0, 5, 0, 0); _pmNote.TextWrapping = TextWrapping.Wrap;
+        AutomationProperties.SetAutomationId(_pmNote, "qs.powermode.note");
+        _pmRow.Children.Add(_pmNote);
         _stack.Children.Add(_pmRow);
 
         // ---- footer (.qsfoot): the battery line, "Windows quick settings", the gear
@@ -168,7 +186,7 @@ internal sealed partial class QsPanel
         var acts = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4 };
         _toWin = Btn("qs.windows", "Windows quick settings", double.NaN, double.NaN);
         _toWin.Padding = new Thickness(7, 5, 7, 5);
-        _toWin.Content = new TextBlock { Text = "Windows quick settings", FontSize = 12.5 };
+        _toWin.Content = Text("Windows quick settings", 12.5);
         ToolTipService.SetToolTip(_toWin, "Open Windows' own quick settings (Win+A)");
         _toWin.Click += (_, _) => OpenSettings("ms-actioncenter:controlcenter/&showFooter=true", "Windows quick settings");
         _gear = Btn("qs.gear", "Open Windows Settings", 26, 26);
@@ -297,14 +315,15 @@ internal sealed partial class QsPanel
     {
         if (_link == null || _pmPending != null) return;
         var pm = _pm;
-        if (pm == null || !QsParts.IsOk(pm) || !QsParts.IsTrue(pm["settable"]) || QsParts.Str(pm["mode"]) == mode) return;
-        _pmPending = mode; _pmNote = null; Paint();
+        // powermode.js: no click while unread, unavailable or locked (settable false; absent is settable)
+        if (pm == null || !QsParts.IsOk(pm) || QsParts.IsFalse(pm["available"]) || QsParts.IsFalse(pm["settable"]) || QsParts.Str(pm["mode"]) == mode) return;
+        _pmPending = mode; _pmErr = null; Paint();
         var r = await _link.CallAsync("powermode.set", new JsonObject { ["mode"] = mode });
         _pmPending = null;
         var res = r.Ok ? Obj(r.Result) : null;
         if (res?["state"] is JsonObject st) _pm = st;
         if (res == null || !QsParts.IsOk(res))
-            _pmNote = "Power mode did not change: " + (QsParts.Str(res?["reason"]) ?? r.Error ?? "no reason was given");
+            _pmErr = QsParts.Str(res?["reason"]) ?? r.Error ?? "";
         Paint();
     }
 
@@ -354,6 +373,7 @@ internal sealed partial class QsPanel
             var bd = QsBattery.Describe(Part("power"));
             _power.Text = bd.Footer;
             _power.Foreground = B("LgInk2");
+            Type(_power, Fs, 1.35); Type((TextBlock)_toWin.Content, Fs, 1);
             ToolTipService.SetToolTip(_power, bd.Tip);
             _foot.BorderBrush = B("LgEdgeOut");
             var notes = new List<string>(_note.Values);
@@ -371,16 +391,23 @@ internal sealed partial class QsPanel
         var t = _tiles[v.Key];
         t.View = v;
         bool pending = _busy.ContainsKey(v.Key);
-        t.B.Background = v.On ? B("LgAcc") : v.Dead ? B("LgSunk") : B("LgTile");
+        // dark (bar.css, Helm's look): a dead tile is a card, not the input well
+        t.B.Background = v.On ? B("LgAcc") : v.Dead ? (_dark ? B("LgCard") : B("LgSunk")) : B("LgTile");
         string inkKey = v.On ? "LgAccOn" : v.Dead ? "LgInk3" : "LgInk";
         var ink = B(inkKey);
         t.Lbl.Foreground = ink;
+        Type(t.Lbl, Fs, 1.1); Type(t.Sub, SubFs, 1.2);
         t.Sub.Text = v.Sub;
         t.Sub.Foreground = v.On ? B("LgAccOn") : B("LgInk3");
         t.Sub.Opacity = v.On ? .82 : 1;
         Fill(t.Ico, paths, inkKey);
-        if (t.Chev != null) { t.Chev.Background = t.B.Background; PaintChevron(t.Chev, inkKey); }
-        t.Ico.Opacity = v.Dead ? .55 : 1;
+        if (t.Chev != null) {
+            // .qsx-chev wears its tile's state: accent when on, sunk when dead; its left edge a hairline
+            t.Chev.Background = v.On ? B("LgAcc") : v.Dead ? B("LgSunk") : B("LgTile");
+            t.Chev.BorderBrush = v.On ? Alpha(B("LgAccOn"), .3) : _dark ? B("LgDivider") : B("LgEdgeOut");
+            PaintChevron(t.Chev, inkKey);
+        }
+        t.Ico.Opacity = v.Dead ? (_dark ? .45 : .55) : 1;
         t.B.Opacity = pending ? .6 : 1;
         ToolTipService.SetToolTip(t.B, v.Tip);
         AutomationProperties.SetHelpText(t.B, v.Sub);
@@ -392,7 +419,12 @@ internal sealed partial class QsPanel
     {
         bool held = Held(part);
         s.Range.IsEnabled = v.Live;
-        s.Wrap.Opacity = v.Live ? 1 : .55;
+        s.Wrap.Opacity = v.Live ? 1 : _dark ? .45 : .55;
+        Type(s.Name, Fs, 1); Type(s.Val, Fs, 1);
+        // Chromium's own range track (not a token in Electron either): light #efefef ringed #b2b2b2, dark #3b3b3b
+        // ringed #858585; drawn from the nearest tokens
+        s.Track.Background = _dark ? B("LgEdgeOut") : B("LgFill0");
+        s.Track.BorderBrush = _dark ? Alpha(B("LgInk2"), .7) : Alpha(B("LgInk3"), .45);
         if (!held && v.Level is double l) s.Range.Value = Math.Round(l);
         if (!held || !v.Live) s.Val.Text = v.Value;
         s.Name.Foreground = B("LgInk2"); s.Val.Foreground = B("LgInk3");
@@ -401,45 +433,62 @@ internal sealed partial class QsPanel
         AutomationProperties.SetItemStatus(s.Range, v.Value);
     }
 
+    /// powermode.js paint() from its pure view() (PowerModeView); light is the accent block, dark is Helm's .seg
+    /// (a --lg-field recess with a hairline, 12/500 ink-2 segments, the current one --lg-press with a hairline).
     void PaintPower()
     {
-        var s = _pm;
-        bool ok = s != null && QsParts.IsOk(s);
-        bool live = ok && QsParts.IsTrue(s!["available"]), settable = live && QsParts.IsTrue(s!["settable"]);
-        string? shown = _pmPending ?? (ok ? QsParts.Str(s!["mode"]) : null);
-        string reason = s == null ? "the power mode has not been read yet" : QsParts.Str(s["reason"]) ?? (ok ? "" : "Windows did not say why the power mode cannot be read");
-        string full = "";
-        foreach (var (m, _, f) in QsView.PowerModes) if (m == shown) full = f;
+        var v = PowerModeView.View(_pm, _pmPending, _pmErr);
+        Type(_pmHead, Fs, 1); Type(_pmSub, Fs, 1);
         _pmHead.Foreground = B("LgInk2"); _pmSub.Foreground = B("LgInk3");
-        _pmSub.Text = settable ? full : ok && shown != null ? full + " · locked" : "Unavailable";
-        _pmSeg.Background = settable ? B("LgTile") : B("LgSunk");
-        foreach (var (m, label, f) in QsView.PowerModes) {
-            var b = _pmBtns[m];
-            bool on = shown == m;
-            b.Background = on ? (settable ? B("LgAcc") : B("LgTile")) : new SolidColorBrush();
-            b.Foreground = on && settable ? B("LgAccOn") : settable ? B("LgInk") : on ? B("LgInk2") : B("LgInk3");
-            b.Opacity = _pmPending == m ? .6 : 1;
-            ToolTipService.SetToolTip(b, settable ? f + (on ? " (current)" : " — use") : f + " — " + reason);
-            AutomationProperties.SetItemStatus(b, (on ? "chosen" : "") + (settable ? "" : (on ? "; " : "") + "locked"));
+        _pmSub.Text = v.Sub;
+        _pmSub.MaxWidth = (_width - 2 - 2 * PadX) * 0.62;
+        _pmSeg.Background = _dark ? B("LgField") : v.Dead ? B("LgSunk") : B("LgTile");
+        _pmSeg.BorderBrush = B("LgEdgeOut");
+        _pmSeg.BorderThickness = new Thickness(_dark ? 1 : 0);
+        _pmSeg.Padding = new Thickness(_dark ? 1 : 2);
+        AutomationProperties.SetName(_pmSeg, v.Aria);
+        foreach (var g in v.Segs) {
+            var b = _pmBtns[g.Mode];
+            var tb = (TextBlock)b.Content;
+            b.CornerRadius = new CornerRadius(_dark ? RCtl - 2 : 5);
+            tb.FontWeight = _dark ? FontWeights.Medium : FontWeights.Normal;
+            Brush bg = B("LgFill0"), ink;
+            bool ring = false;
+            if (g.On && !v.Dead) { bg = _dark ? B("LgPress") : B("LgAcc"); ink = _dark ? B("LgInk") : B("LgAccOn"); ring = _dark; }
+            else if (g.On) { bg = _dark ? B("LgCard") : B("LgTile"); ink = B("LgInk2"); ring = _dark; }
+            else ink = v.Dead ? B("LgInk3") : _dark ? B("LgInk2") : B("LgInk");
+            b.Background = bg; b.Foreground = ink; tb.Foreground = ink;
+            b.BorderBrush = B("LgEdgeOut");
+            b.BorderThickness = new Thickness(ring ? 1 : 0);
+            b.Opacity = g.Pending ? .6 : 1;
+            ToolTipService.SetToolTip(b, g.Title);
+            AutomationProperties.SetItemStatus(b, (g.On ? "chosen" : "") + (v.Dead ? (g.On ? "; " : "") + "locked" : ""));
         }
-        string why = _pmNote ?? (!settable ? reason : "");
-        _pmWhy.Text = why;
-        _pmWhy.Foreground = _pmNote != null ? B("LgWarn") : B("LgInk2");
-        _pmWhy.Visibility = why.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        _pmWhy.Text = v.Why;
+        _pmWhy.Foreground = B("LgInk2");
+        Type(_pmWhy, Fs, 1.4);
+        _pmWhy.Visibility = v.Why.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
+        ToolTipService.SetToolTip(_pmWhy, v.Detail != null ? PowerModeView.Sentence(v.Detail) : null);
+        _pmNote.Text = v.Note ?? "";
+        _pmNote.Foreground = B("LgWarn");
+        Type(_pmNote, Fs, 1.4);
+        _pmNote.Visibility = v.Note != null ? Visibility.Visible : Visibility.Collapsed;
     }
 
     void PaintNotes(List<string> lines)
     {
         _notes.Children.Clear();
         for (int i = 0; i < lines.Count; i++) {
-            var t = Text(lines[i], 12.5);
-            t.TextWrapping = TextWrapping.Wrap; t.LineHeight = 12.5 * 1.45; t.Foreground = B("LgWarn");
+            var t = Text(lines[i], Fs);
+            t.TextWrapping = TextWrapping.Wrap; Type(t, Fs, 1.45); t.Foreground = B("LgWarn");
             t.Padding = new Thickness(0, i == 0 ? 6 : 2, 0, 0);
             AutomationProperties.SetAutomationId(t, "qs.note." + i);
             AutomationProperties.SetName(t, lines[i]);
             _notes.Children.Add(t);
         }
         _notes.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // .pmrow's 2 px top margin collapses into the volume row's 9 when no note is between them
+        _pmRow.Margin = new Thickness(0, lines.Count > 0 ? 2 : 0, 0, 9);
         if (lines.Count != _notesShown) { _notesShown = lines.Count; if (Open && _view == null) Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => Fit()); }   // a late note is not cut off
     }
     int _notesShown;
@@ -459,8 +508,8 @@ internal sealed partial class QsPanel
         g.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
         t.Ico = new Canvas { Width = 16, Height = 16, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Center };
         Grid.SetRowSpan(t.Ico, 2);
-        t.Lbl = Text(label, 12.5); t.Lbl.LineHeight = 12.5 * 1.1;
-        t.Sub = Text("", 12.5); t.Sub.TextTrimming = TextTrimming.CharacterEllipsis; t.Sub.LineHeight = 12.5 * 1.2;
+        t.Lbl = Text(label, 12.5); Type(t.Lbl, 12.5, 1.1);
+        t.Sub = Text("", 12.5); t.Sub.TextTrimming = TextTrimming.CharacterEllipsis; Type(t.Sub, 12.5, 1.2);
         Grid.SetColumn(t.Lbl, 1); Grid.SetColumn(t.Sub, 1); Grid.SetRow(t.Sub, 1);
         g.Children.Add(t.Ico); g.Children.Add(t.Lbl); g.Children.Add(t.Sub);
         t.B.Content = g;
@@ -477,9 +526,12 @@ internal sealed partial class QsPanel
         s.Line = new Grid();
         s.Line.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         s.Line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
-        s.Range = new Slider { Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 10, IsThumbToolTipEnabled = false, VerticalAlignment = VerticalAlignment.Center, Height = 28, Padding = new Thickness(0), Margin = new Thickness(0) };
+        // .qsline input[type=range] with accent-color, as Chromium draws it at scale 1: a 16 px box with a 2 px margin,
+        // an 8 px track 1 px in from its ends (Track, behind), the part before the thumb and a 16 px solid thumb in --lg-acc
+        s.Track = new Border { Height = 8, Margin = new Thickness(3, 0, 3, 0), CornerRadius = new CornerRadius(4), BorderThickness = new Thickness(1), VerticalAlignment = VerticalAlignment.Center };
+        s.Line.Children.Add(s.Track);
+        s.Range = new Slider { Style = RangeStyle(), Minimum = 0, Maximum = 100, StepFrequency = 1, SmallChange = 1, LargeChange = 10, IsThumbToolTipEnabled = false, VerticalAlignment = VerticalAlignment.Center, Height = 16, MinHeight = 0, Padding = new Thickness(0), Margin = new Thickness(2) };
         Uia(s.Range, "qs." + key, label);
-        Accent(s.Range);
         s.Line.Children.Add(s.Range);
         s.Wrap.Children.Add(head); s.Wrap.Children.Add(s.Line);
         _stack.Children.Add(s.Wrap);
@@ -534,7 +586,7 @@ internal sealed partial class QsPanel
         "<Setter Property='IsTabStop' Value='False'/><Setter Property='UseSystemFocusVisuals' Value='False'/>" +
         "<Setter Property='HorizontalContentAlignment' Value='Center'/><Setter Property='VerticalContentAlignment' Value='Center'/>" +
         "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Button'>" +
-        "<Grid x:Name='Face' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' CornerRadius='{TemplateBinding CornerRadius}'>" +
+        "<Grid x:Name='Face' xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='{TemplateBinding CornerRadius}'>" +
         "<Border x:Name='Over' CornerRadius='{TemplateBinding CornerRadius}'/>" +
         "<ContentPresenter Padding='{TemplateBinding Padding}' HorizontalContentAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalContentAlignment='{TemplateBinding VerticalContentAlignment}' Foreground='{TemplateBinding Foreground}'/>" +
         "<VisualStateManager.VisualStateGroups><VisualStateGroup x:Name='CommonStates'><VisualState x:Name='Normal'/>" +
@@ -598,7 +650,71 @@ internal sealed partial class QsPanel
         return o.ToArray();
     }
 
-    /// The sliders' fill and thumb in --lg-acc (Electron: accent-color), per theme, set before the template is applied.
+    static Style? _rangeStyle;
+    /// The range's own template: the Slider's named parts (it sizes HorizontalDecreaseRect and puts the thumb after it),
+    /// with the accent fill drawn to the thumb's centre over them; the track itself is SliderRow.Track.
+    static Style RangeStyle() => _rangeStyle ??= (Style)XamlReader.Load(
+        $"<Style {Ns} xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Slider'><Setter Property='UseSystemFocusVisuals' Value='False'/>" +
+        "<Setter Property='Template'><Setter.Value><ControlTemplate TargetType='Slider'>" +
+        "<Grid x:Name='SliderContainer' Background='{ThemeResource LgFill0}'><Grid x:Name='HorizontalTemplate'>" +
+        "<Grid.ColumnDefinitions><ColumnDefinition Width='Auto'/><ColumnDefinition Width='Auto'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" +
+        "<Rectangle x:Name='HorizontalTrackRect' Grid.ColumnSpan='3' Height='8' Fill='{ThemeResource LgFill0}'/>" +
+        "<Rectangle x:Name='HorizontalDecreaseRect' Height='8' Fill='{ThemeResource LgFill0}'/>" +
+        "<Border Grid.ColumnSpan='2' Height='8' Margin='1,0,8,0' CornerRadius='4' Background='{ThemeResource LgAcc}'/>" +
+        "<Thumb x:Name='HorizontalThumb' Grid.Column='1' Width='16' Height='16'><Thumb.Template><ControlTemplate TargetType='Thumb'>" +
+        "<Ellipse Fill='{ThemeResource LgAcc}'/></ControlTemplate></Thumb.Template></Thumb>" +
+        "</Grid></Grid></ControlTemplate></Setter.Value></Setter></Style>");
+
+    /// Electron's type per theme: light 12.5 throughout; dark (Helm's scale, bar.css) 13, a tile's sub line 12.
+    double Fs => _dark ? 13 : 12.5;
+    double SubFs => _dark ? 12 : 12.5;
+
+    /// A CSS line box: font size and line-height (a multiple), the line exactly that tall as Chromium makes it.
+    static void Type(TextBlock t, double fs, double lh)
+    {
+        t.FontSize = fs;
+        t.LineHeight = Math.Round(fs * lh, 2);
+        t.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
+    }
+
+    /// A token at a fraction of its own opacity (a colour Electron mixes, or Chromium's own control colours).
+    static Brush Alpha(Brush b, double a) => b is SolidColorBrush s ? new SolidColorBrush(s.Color) { Opacity = s.Opacity * a } : b;
+
+    /// The main view's width as Electron's .pop takes it: its widest row unwrapped (max-content), clamped to
+    /// min-width 268 / max-width 360. The rows are measured with one detached TextBlock in the panel's font.
+    double MainWidth()
+    {
+        double tile = 0;
+        foreach (var t in _tiles.Values)
+            tile = Math.Max(tile, 9 + 22 + 8 + Math.Max(TextW(t.Lbl.Text, Fs), TextW(t.Sub.Text, SubFs)) + 9 + (t.Chev != null ? ChevW : 0));
+        double need = 2 * tile + 6;
+        foreach (var n in _notes.Children) if (n is TextBlock nt) need = Math.Max(need, TextW(nt.Text, Fs));
+        need = Math.Max(need, TextW(_pmHead.Text, Fs) + TextW(_pmSub.Text, Fs));
+        double seg = 0;
+        foreach (var (_, label, _) in PowerModeView.Modes) seg = Math.Max(seg, TextW(label, 12, _dark ? FontWeights.Medium : FontWeights.Normal) + 8);
+        need = Math.Max(need, 3 * seg + 2 * 2 + 2 * 2);
+        if (_pmWhy.Visibility == Visibility.Visible) need = Math.Max(need, TextW(_pmWhy.Text, Fs));
+        if (_pmNote.Visibility == Visibility.Visible) need = Math.Max(need, TextW(_pmNote.Text, Fs));
+        double foot = TextW(_power.Text, Fs) + 8 + TextW("Windows quick settings", Fs) + 14 + 4 + 26;
+        need = Math.Max(need, foot);
+        if (!(foot > 40)) { _log("qs: the panel's text could not be measured, so it keeps the fixed width"); return WidthDip; }
+        return Math.Clamp(Math.Ceiling(need) + 2 * PadX + 2, MinWidthDip, MaxWidthDip);
+    }
+
+    TextBlock? _meter;
+    double TextW(string? s, double fs, Windows.UI.Text.FontWeight? weight = null)
+    {
+        if (string.IsNullOrEmpty(s)) return 0;
+        _meter ??= new TextBlock { FontFamily = Font(), TextWrapping = TextWrapping.NoWrap };
+        _meter.FontSize = fs;
+        _meter.FontWeight = weight ?? FontWeights.Normal;
+        _meter.Text = s;
+        _meter.Measure(new Windows.Foundation.Size(double.PositiveInfinity, double.PositiveInfinity));
+        return _meter.DesiredSize.Width;
+    }
+
+    /// The sound view's per-app sliders (the stock Slider): fill and thumb in --lg-acc, per theme, set before the
+    /// template is applied.
     void Accent(Slider s)
     {
         foreach (var theme in new[] { "Light", "Dark" }) {

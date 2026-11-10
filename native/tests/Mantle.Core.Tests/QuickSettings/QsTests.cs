@@ -252,6 +252,15 @@ public class QsTests
     [InlineData("{\"ok\":true,\"present\":true,\"percent\":55,\"ac\":false}", "55% · estimating time left")]
     [InlineData("{\"ok\":true,\"present\":true,\"percent\":4,\"ac\":false}", "4% · very low, plug in now")]
     [InlineData("{\"ok\":true,\"present\":true,\"percent\":255,\"ac\":true}", "Plugged in")]
+    // the time left (battery.js secondsLeft / hm): the mock's reading, the older minutesLeft, a whole hour, under a
+    // minute, low with a time, and Windows' "unknown" (0 or 100 h and more) still said as pending
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":72,\"ac\":false,\"secondsLeft\":11040,\"minutesLeft\":184}", "72% · 3 hr 4 min left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":72,\"onBattery\":true,\"minutesLeft\":45}", "72% · 45 min left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":60,\"ac\":false,\"secondsLeft\":7200}", "60% · 2 hr left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":60,\"ac\":false,\"secondsLeft\":30}", "60% · under 1 min left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":8,\"ac\":false,\"secondsLeft\":1500}", "8% · low, 25 min left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":55,\"ac\":false,\"secondsLeft\":0}", "55% · estimating time left")]
+    [InlineData("{\"ok\":true,\"present\":true,\"percent\":55,\"ac\":false,\"secondsLeft\":360000}", "55% · estimating time left")]
     public void The_footer_words_the_battery_as_battery_js_does(string? part, string footer)
         => Assert.Equal(footer, QsBattery.Describe(part == null ? null : O(part)).Footer);
 

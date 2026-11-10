@@ -26,7 +26,7 @@ namespace Mantle.App.Surfaces.Bar.QuickSettings;
 internal sealed partial class QsPanel
 {
     /// The pop-up's room: its height re-asked, and the keyboard taken and given back for the password field.
-    public sealed record Room(Func<double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys);
+    public sealed record Room(Func<double, double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys);
 
     public const double SubHeightDip = QsMoreView.ViewHeightDip + 2 * PadY + 2;
 
@@ -164,7 +164,10 @@ internal sealed partial class QsPanel
         _vStatus.Text = "";
         PaintFrame();
         _vList.Children.Clear();
-        bool roomed = _room.Resize(SubHeightDip);
+        // a view keeps the fixed width it was laid out for; the way back re-fits the main view (Fit, never skipped)
+        _width = WidthDip; Root.Width = WidthDip - 2;
+        _fitted = 0; _fittedW = 0;
+        bool roomed = _room.Resize(SubHeightDip, WidthDip);
         _log($"qs: the {_vTitle.Text} view opened" + (roomed ? "" : "; the pop-up could not be re-sized, so the view may be clipped"));
         int g = _gen;
         if (kind == "wifi") { if (_wifiData != null) RenderWifi(true); else StateBlock(_vList, "Looking for networks…", null, null, null, false); _ = WifiOpen(g); }
@@ -201,15 +204,19 @@ internal sealed partial class QsPanel
     void Fit()
     {
         if (!Open || _view != null) return;
+        double w = _width;
         double h = Need();
-        if (Math.Abs(h - _fitted) < 1) return;
-        _fitted = h;
-        _room.Resize(h);
+        if (Math.Abs(h - _fitted) < 1 && Math.Abs(w - _fittedW) < 1) return;
+        _fitted = h; _fittedW = w;
+        _room.Resize(h, w);
     }
+    double _fittedW;
 
     double Need()
     {
-        Root.Measure(new Windows.Foundation.Size(WidthDip - 2, double.PositiveInfinity));
+        _width = _view != null ? WidthDip : MainWidth();
+        Root.Width = _width - 2;
+        Root.Measure(new Windows.Foundation.Size(_width - 2, double.PositiveInfinity));
         double h = Math.Ceiling(Root.DesiredSize.Height) + 2;
         return h < 120 ? 460 : Math.Min(h, 640);
     }

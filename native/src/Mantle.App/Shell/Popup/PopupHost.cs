@@ -67,14 +67,16 @@ internal sealed class PopupHost
     IntPtr _kbPrev;
 
     /// Electron's `bar.popover {height}` re-ask: the open pop-up of <paramref name="key"/> takes a new height, its
-    /// bottom kept 7 DIP above the pill (a view that changes, a note that arrives late). False when it is not open.
-    public bool Resize(string key, double heightDip)
+    /// bottom kept 7 DIP above the pill (a view that changes, a note that arrives late), and a new width when one is
+    /// given (a content-sized pop-up, re-centred on its anchor). False when it is not open.
+    public bool Resize(string key, double heightDip, double widthDip = double.NaN)
     {
         if (_st == St.Hidden || _win == null || _kind == null || _kind.Key != key || _anchor == null) return false;
-        if (Math.Abs(_kind.HeightDip - heightDip) < 0.5) return true;
-        _kind = _kind with { HeightDip = heightDip };
+        double w = double.IsNaN(widthDip) ? _kind.WidthDip : widthDip;
+        if (Math.Abs(_kind.HeightDip - heightDip) < 0.5 && Math.Abs(_kind.WidthDip - w) < 0.5) return true;
+        _kind = _kind with { HeightDip = heightDip, WidthDip = w };
         _win.Place(Place(_kind, _anchor), _bar.Geometry.Scale);
-        Host.Log.Line($"pop-up {_kind.Name}: resized to {Math.Round(heightDip)} DIP high");
+        Host.Log.Line($"pop-up {_kind.Name}: resized to {Math.Round(heightDip)} DIP high" + (double.IsNaN(widthDip) ? "" : $", {Math.Round(w)} DIP wide"));
         return true;
     }
 

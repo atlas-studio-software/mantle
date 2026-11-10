@@ -7,7 +7,7 @@
  *   node_modules/.bin/electron native/tools/parity/quick-settings/electron-qs.cjs <out-dir> <bg #rrggbb> [part1|full]
  *
  * part1 (default): the rows native part 1 does not draw yet are taken out of Electron's panel before the shot (the
- * qs-tiles row, the three ">" buttons, game mode, top bar and hot corners), so the pair compares like with like; full:
+ * qs-tiles row, game mode, top bar, hot corners and the power plan toggle), so the pair compares like with like; full:
  * the whole panel, for the eye. Writes <out>/qs-state.json: the mock's qs.get and powermode.get answers, which the native
  * side takes as MANTLE_TEST_QS so both apps draw the same readings.
  * Prints: ELECTRON-QS <theme> <w>x<h> <file>, and ELECTRON-QS-STATE <file>.
@@ -31,11 +31,8 @@ const PART2_OUT = `(() => {
   for (const c of Array.from(pop.children)) if (![...c.classList].some((k) => keep.has(k))) { c.remove(); gone++; }
   const grid = pop.querySelector('.qsgrid');
   if (grid) Array.from(grid.children).slice(4).forEach((c) => { c.remove(); gone++; });
-  // the ">" buttons qs-more.js adds beside the Wi-Fi and Bluetooth tiles (each tile wrapped with its chevron in a
-  // .qsx-split: unwrapped here, so the tile keeps its own width, as native draws it) and after the mute button
-  // (class "qsmute qsx-more"). The first CI run (42786941393) removed the tiles themselves with ".qsgrid > * > button".
-  pop.querySelectorAll('.qsx-chev, .qsx-more').forEach((b) => { b.remove(); gone++; });
-  pop.querySelectorAll('.qsx-split').forEach((s) => { while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s); s.remove(); });
+  // the ">" buttons qs-more.js adds (the split Wi-Fi and Bluetooth tiles, the one after the mute button) stay: native
+  // draws them since quick settings part 2. The power plan list and its toggle go (not drawn natively yet).
   pop.querySelectorAll('.pmplans, .pmplantoggle').forEach((b) => { b.remove(); gone++; });
   return 'removed ' + gone;
 })()`;

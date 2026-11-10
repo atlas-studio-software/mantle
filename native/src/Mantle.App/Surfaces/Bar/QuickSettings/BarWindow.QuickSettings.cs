@@ -29,7 +29,7 @@ public sealed partial class BarWindow
         var popups = Popups;
         bool keys = !Host.Args.Test || (Host.Env(QsKeysEnv) == "1" && !Host.Quiet);
         _qs = new QsPanel(Host.Log.Line, Host.Args.Test, new QsPanel.Room(
-            Resize: h => popups.Resize("qs", h),
+            Resize: (h, w) => popups.Resize("qs", h, w),
             TakeKeys: () => keys ? popups.TakeKeyboard("qs")
                 : (false, "a test instance never takes the keyboard from whoever is at the machine, so a password cannot be typed here"),
             GiveKeys: why => popups.GiveBackKeyboard(why)));
@@ -56,10 +56,10 @@ public sealed partial class BarWindow
         bool closing = Popups.OpenKey == "qs";
         double h = closing ? 0 : _qs.Prepare(Dark);
         var qs = _qs;
-        Popups.Toggle(new PopupKind("qs", "Quick settings", QsPanel.WidthDip, closing ? 400 : h, Focusable: false, Instant: true, Away: true, () => qs.Root), anchor);
+        Popups.Toggle(new PopupKind("qs", "Quick settings", closing ? QsPanel.WidthDip : qs.Width, closing ? 400 : h, Focusable: false, Instant: true, Away: true, () => qs.Root), anchor);
         if (Popups.OpenKey == "qs" && !qs.Open) {
             qs.Opened();
-            Host.Log.Line($"qs: the panel opened from {Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(anchor)} ({QsPanel.WidthDip}x{h} DIP)");
+            Host.Log.Line($"qs: the panel opened from {Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(anchor)} ({qs.Width}x{h} DIP)");
         }
     }
 

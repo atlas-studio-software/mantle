@@ -89,7 +89,8 @@ public class QuickSettingsTests
         // power mode: a change in a test run is refused with Electron's words, and the row says so
         ClickEl(El(w, "qs.powermode.performance"));
         Assert.IsTrue(FrameProbe.LogHas(dir, "powermode: set performance (dry run): refused (this is a test run, so Windows was not changed)", 3000), "no power mode line. Log:\n" + Tail(dir));
-        Assert.IsTrue(Host.Until(() => El(w, "qs.powermode.why").Name.Contains("this is a test run"), 2000), "the power mode row did not say why");
+        // the refusal is the row's note (powermode.js .pmnote), as Electron words it
+        Assert.IsTrue(Host.Until(() => El(w, "qs.powermode.note").Name == "Power mode did not change: this is a test run, so Windows was not changed.", 2000), "the power mode row did not say why");
         Assert.AreEqual("chosen", Status(El(w, "qs.powermode.balanced")), "the mode moved although Windows was not changed");
 
         // its own button again closes it, and the watch is let go

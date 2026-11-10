@@ -53,10 +53,34 @@ public static class QsBattery
             string nc = charging == false ? ", not charging" : "";
             return ($"{pct}% · plugged in{nc}", $"Battery status: {pct}% available (plugged in{nc})");
         }
-        // on battery: the power part carries no time left (QuickSettings.cs keys), so the estimate is said as pending
+        // on battery (battery.js describe): the time left when the reading carries one (secondsLeft, or the older
+        // minutesLeft; the sidecar's `battery` reading does, its qs `power` part does not), else the estimate is pending
         double low = QsParts.Num(r["lowAt"]) is double l && l >= 0 ? l : 10, crit = QsParts.Num(r["criticalAt"]) is double c && c >= 0 ? c : 5;
-        string foot = pct <= crit ? $"{pct}% · very low, plug in now" : pct <= low ? $"{pct}% · low, plug in soon" : $"{pct}% · estimating time left";
-        return (foot, $"Battery status: {pct}% remaining");
+        string? left = SecondsLeft(r) is long s ? Hm(s) : null;
+        string words = left != null ? $"{left} ({pct}%) remaining" : $"{pct}% remaining";
+        string foot = pct <= crit ? $"{pct}% · very low, plug in now"
+            : pct <= low ? $"{pct}% · low" + (left != null ? $", {left} left" : ", plug in soon")
+            : left != null ? $"{pct}% · {left} left" : $"{pct}% · estimating time left";
+        string warn = pct <= crit ? "\nBattery very low: plug in now" : pct <= low ? "\nBattery low: plug in soon" : "";
+        return (foot, "Battery status: " + words + warn);
+    }
+
+    /// battery.js secondsLeft: seconds left on battery, or null when Windows does not know (0, negative, 100 h or more).
+    public static long? SecondsLeft(JsonObject r)
+    {
+        double? s = QsParts.Num(r["secondsLeft"]);
+        if (s == null && QsParts.Num(r["minutesLeft"]) is double m) s = m * 60;
+        if (s is not double v || !double.IsFinite(v) || v <= 0 || v >= 100 * 3600) return null;
+        return (long)Math.Floor(v);
+    }
+
+    /// battery.js hm: Windows' shape, "3 hr 12 min", "2 hr", "45 min", "under 1 min".
+    public static string Hm(long sec)
+    {
+        long m = sec / 60, h = m / 60;
+        m %= 60;
+        if (h == 0 && m == 0) return "under 1 min";
+        return h > 0 ? h + " hr" + (m > 0 ? " " + m + " min" : "") : m + " min";
     }
 
     static bool? Bool(JsonNode? n) => n is JsonValue v && v.TryGetValue<bool>(out var b) ? b : null;
