@@ -6,6 +6,7 @@ using System.Text.Json;
 using System.Threading.Tasks;
 using Mantle.Core.Data;
 using Mantle.Core.Features.Pinned;
+using PinOverlay = Mantle.Core.Features.Pinned.PinOverlay;
 using Mantle.Core.Features.WindowList;
 using Xunit;
 
@@ -90,7 +91,7 @@ public class DragOrderTests
         Assert.Equal(new[] { "b", "a", "c" }, PinOverlay.MergeOrder(new[] { "a", "b", "c" }, new[] { "b", "a", "c" }));
         Assert.Equal(new[] { "c", "a", "x", "b" }, PinOverlay.MergeOrder(new[] { "a", "x", "b", "c" }, new[] { "c", "a", "b" }));
         Assert.Equal(new[] { "x", "b", "a" }, PinOverlay.MergeOrder(new[] { "x", "a", "b" }, new[] { "b", "a" }));
-        Assert.Equal(new[] { "a", "b" }, PinOverlay.MergeOrder(Array.Empty<string>(), new[] { "a", "b", "a", "", null }));
+        Assert.Equal(new[] { "a", "b" }, PinOverlay.MergeOrder(Array.Empty<string>(), new string?[] { "a", "b", "a", "", null }));
         // a runaway stored list is cut at 400, never the ids on the bar
         var stored = Enumerable.Range(0, 500).Select(i => "s" + i).ToArray();
         var merged = PinOverlay.MergeOrder(stored, new[] { "a", "b" });

@@ -6,6 +6,7 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Mantle.Core.Data;
 using Mantle.Core.Features.Pinned;
+using PinOverlay = Mantle.Core.Features.Pinned.PinOverlay;
 
 namespace Mantle.Core.Features.WindowList;
 

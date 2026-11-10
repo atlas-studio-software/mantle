@@ -162,7 +162,7 @@ public sealed partial class BarWindow
         d.Lifted = true;
         // nothing opens on top of a drag, and what was open closes
         StopTimer(_flyDwell);
-        if (Popups?.OpenKey != null) Popups.Close("an icon was lifted to be dragged");
+        if (Popups?.OpenKey != null) Popups?.Close("an icon was lifted to be dragged");
         DragQuietOn();
         HoldBarWhileDragging();
         // the pointer is the strip's now: the cell's Button loses it, so a drag never ends in its click

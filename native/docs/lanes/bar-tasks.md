@@ -140,11 +140,42 @@ deliberate deviation for safety.
   fade-only entrance for the preview kind (Electron `.pop.fly`: no rise), so the pictures could land during the fade.
 - ci.ps1 (native-r4-core): run-preview-parity.ps1 is not wired into ci.ps1.
 
+## Round 5: drag to reorder (native-r5-drag)
+
+- Pure parts in `Mantle.Core/Features/WindowList/DragOrder.cs`: the constants (DRAG_PX 5, DRAG_OUT 24, SETTLE_MS 150,
+  the 160 ms slide, ORDER_HOLD_MS 4000, the 400 ms click swallow, the 180 ms grace), `DragPlan` (the group's slots read
+  once at the lift; clamp to the group, nearest slot, who slides which way), `OrderHold` (bar.js orderKept),
+  `OrderSave` (jumplist.js 'order'). `PinOverlay.MergeOrder` is _jumplist-pins.js#mergeOrder.
+- Saving: pins go into `features\jumplist.json` "pins".order through a `JsonStore` on the ONE write gate (hide, add and
+  every other key kept; a file changed on disk is re-read first). `BarTasksHost` opens its own `Stores` for it, because
+  the feature host's are made later in HostStart and no native feature opens jumplist.json yet: when one does, it should
+  hand the strip that same store. Running-only apps: `RunningOrder` for the session, on top of BAR-289's first-seen order.
+  After a drop the host rebuilds at once (still at most once a second), saved or not.
+- Strip (`Tasks/BarWindow.Drag.cs`): handlers on the Dock with handledEventsToo. The lift takes the pointer capture from
+  the cell's Button, so the Button never clicks at the end of a drag (the 400 ms swallow in Cell_Click stays as a
+  second guard). Moves are `UIElement.Translation` offsets, the neighbours' with a 160 ms `Vector3Transition`, the drop's
+  glide 150 ms; the commit takes every offset off and moves the cells in the same UI tick. Lifted look: LgHover
+  surface, a 1 px LgEdgeOut hairline added inside the Button's Face, the glyph scaled 1.1. A strip push mid-drag waits
+  for the drop (`_dragPending`); the dropped order is held over older lists for 4 s.
+- Cancel: Esc (the Root's KeyDown, and the key itself read every 30 ms, since the bar is no-activate), the pointer more
+  than 24 DIP outside the pill (from the pointer events and from the real cursor every 30 ms), capture lost, pointer
+  cancelled, the button found up on a move. The hold: the frame's `HoldsBar` is wrapped once at the first lift (drag
+  busy, or under 180 ms since the drop). The quiet: every cell's tooltip off from the lift until the pointer reaches
+  another cell or leaves the strip; no dwell flyout, no middle-click.
+- Log: `bar tasks: drag: lifted a <kind> app at N of M`, `drag: dropped at N of M`, `drag: cancelled (<why>): ...`,
+  `order: a pinned app moved 1 -> 3 of 3, saved (in this test profile)` (positions only, never a name).
+- Test hook: `MANTLE_TEST_ORDER_FAIL=<words>` in a `--test` run makes every pin order save fail (not used by a UI test
+  yet; the failure path is unit-tested through a refusing gate).
+- Tests: `Mantle.Core.Tests/WindowList/DragOrderTests.cs`; `Mantle.UiTests/BarTasks/StripTests.Drag.cs` (real input:
+  SendInput moves, FlaUI's Mouse.Down/Up and Keyboard): pin 1 -> 3 in UIA and the log, held over the pushes, in
+  jumplist.json, kept over a restart; a 4 px move is a click; Esc springs back; a pin dragged past the divider stops on
+  the last pin's slot.
+
 ## Part 2 starts here
 
 Previews are done except BAR-233 (re-place on a bar width change or the island's move) and BAR-313 (the Alt+Tab
-switcher's own set: `Thumbs` is per window, so it only needs the switcher); drag to reorder
-(BAR-239..254) with the overlay writes, the jump list / app menu (BAR-207..220, 315..332), overflow "+N"
+switcher's own set: `Thumbs` is per window, so it only needs the switcher); drag to reorder is done (round 5, above;
+the "+N" tail rule waits for the overflow), the jump list / app menu (BAR-207..220, 315..332), overflow "+N"
 (BAR-235..238), badges (Helm count BAR-255..257, keep on top BAR-258, 333..347), Mantle apps standing in for
 Windows' (BAR-291..296), the top bar hide rows (348..351), the parity strip screenshots
 (`native/tools/parity/bar-tasks/`), and PEND-011.
