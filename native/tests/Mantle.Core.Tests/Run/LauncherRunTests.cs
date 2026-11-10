@@ -86,4 +86,50 @@ public sealed class LauncherRunTests
             try { using var p = System.Diagnostics.Process.GetProcessById(pid); if (!p.HasExited) p.Kill(); }
             catch (ArgumentException) { /* already gone */ }
     }
+
+    const string Png = "data:image/png;base64,iVBORw0KGgo=";
+
+    [Fact]
+    public async Task IconsAreAskedOnceAndRideOnTheSearchRows()
+    {
+        using var fx = new LauncherGoldenTests.Fixture();
+        int asked = 0;
+        var svc = new LauncherService(fx.Inputs, test: true)
+        {
+            IconSource = p => { Interlocked.Increment(ref asked); return new((Png, null)); },
+        };
+        var snap = await svc.IndexAsync();
+        await svc.IconsSettled;
+        int apps = snap.Items.Count(i => i.Kind == "app" && i.MantleApp == null && !i.Path.StartsWith("mantle:", StringComparison.Ordinal));
+        Assert.True(apps > 0);
+        Assert.Equal(snap.Items.Where(i => i.Kind == "app" && i.MantleApp == null && !i.Path.StartsWith("mantle:", StringComparison.Ordinal)).Select(i => i.Path.ToLowerInvariant()).Distinct().Count(), asked);
+        var app = svc.Search("calc").First(h => h.Item.Kind == "app").Item;
+        Assert.Equal(Png, app.Icon);
+        Assert.Null(svc.Search("display").First(h => h.Item.Kind == "setting").Item.Icon);   // settings draw a glyph, never asked
+        // with a resolver, the apps source no longer says none was passed
+        Assert.DoesNotContain(LauncherIndexer.NoIconResolver, svc.Current.Sources.First(s => s.Name == "apps").Reason);
+        // an open within the 10 minutes asks nothing again: every path has its picture
+        await svc.IndexAsync(); await svc.IconsSettled;
+        Assert.Equal(snap.Items.Where(i => i.Kind == "app" && i.MantleApp == null && !i.Path.StartsWith("mantle:", StringComparison.Ordinal)).Select(i => i.Path.ToLowerInvariant()).Distinct().Count(), asked);
+    }
+
+    [Fact]
+    public async Task ASidecarThatCannotBeAskedIsSaidAndAskedAgainNextOpen()
+    {
+        using var fx = new LauncherGoldenTests.Fixture();
+        bool up = false; int asked = 0;
+        var svc = new LauncherService(fx.Inputs, test: true)
+        {
+            IconSource = p => { Interlocked.Increment(ref asked); return new(up ? (Png, null) : ((string?)null, "no icon: the sidecar cannot be asked (it is starting)")); },
+        };
+        await svc.IndexAsync(); await svc.IconsSettled;
+        Assert.Contains("icons unavailable: no icon: the sidecar cannot be asked (it is starting)", svc.Current.Sources.First(s => s.Name == "apps").Reason);
+        Assert.Null(svc.Search("calc").First(h => h.Item.Kind == "app").Item.Icon);
+        int first = asked;
+        up = true;
+        await svc.IndexAsync(); await svc.IconsSettled;              // the next open re-asks the misses
+        Assert.True(asked > first);
+        Assert.Equal(Png, svc.Search("calc").First(h => h.Item.Kind == "app").Item.Icon);
+        Assert.DoesNotContain("icons unavailable", svc.Current.Sources.First(s => s.Name == "apps").Reason);
+    }
 }

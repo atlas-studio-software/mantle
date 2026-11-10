@@ -12,7 +12,10 @@
   Both apps index the same scratch fixture (make-golden.cjs --fixture). RUNNER ONLY: it changes the wallpaper, the
   theme and the taskbar and shows test windows. Output: native/out/parity/launcher/. Summary line: LAUNCHER: ...
 #>
-param([string]$Query = 'steam', [int]$Opens = 5, [string[]]$Themes = @('light', 'dark'), [switch]$Ui, [string]$Exe)
+# -DarkDesktop solid (default): the dark pass runs over a SOLID BLACK desktop (no wallpaper picture), the fair pass: a --test
+# Electron launcher is a framed opaque window (its margin is black and, in dark, it cannot picture the wallpaper), so both
+# apps then stand on the same black. -DarkDesktop wallpaper: the dark pass over the wallpaper, as the light one always is.
+param([string]$Query = 'steam', [int]$Opens = 5, [string[]]$Themes = @('light', 'dark'), [switch]$Ui, [string]$Exe, [ValidateSet('solid', 'wallpaper')][string]$DarkDesktop = 'solid')
 $ErrorActionPreference = 'Continue'
 $root = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $Out = Join-Path $root 'native\out\parity\launcher'
@@ -44,10 +47,11 @@ $env:MANTLE_NATIVE_EXE = $Exe
 if ($Ui) {
   $uiLog = Join-Path $Out 'ui-launcher.log'
   & pwsh -NoProfile -File (Join-Path $root 'native\tests\Mantle.UiTests\run-ui.ps1') -Exe $Exe -Filter 'FullyQualifiedName~Mantle.UiTests.Launcher|FullyQualifiedName~Mantle.UiTests.Surfaces' *> $uiLog
-  $sum = Get-Content $uiLog | Where-Object { $_ -match 'Passed!|Failed!|Total tests|Passed:|Failed:' } | Select-Object -Last 2
+  $sum = Get-Content $uiLog | Where-Object { $_ -match 'Passed!|Failed!|Total tests|Passed:|Failed:|UITEST:' } | Select-Object -Last 2
   Say ("UI tests: " + ($sum -join ' | '))
   Get-Content $uiLog | Where-Object { $_ -match '^\s+(Failed|Passed) ' } | ForEach-Object { Say $_.Trim() }
-  if (-not ($sum -match 'Passed!') -or ($sum -match 'Failed!')) { Problem 'launcher/surface UI tests did not all pass (ui-launcher.log)' }
+  # run-ui.ps1's summary line is "UITEST: ok|FAILED (...)" (older: dotnet test's "Passed!" / "Failed!")
+  if (-not ($sum -match 'Passed!|UITEST: ok') -or ($sum -match 'Failed!|UITEST: FAILED')) { Problem 'launcher/surface UI tests did not all pass (ui-launcher.log)' }
 }
 
 # ------------------------------------------------------------------ 4. the runner desktop
@@ -67,7 +71,20 @@ function Save-Bgra([byte[]]$px, [int]$w, [int]$h, [string]$path) {
 [void][ParityNative]::DpiAware()
 $scr = [ParityNative]::Screen(); $W = $scr[0]; $H = $scr[1]
 Say "screen ${W}x${H}, dpi $([ParityNative]::PrimaryDpi())"
-Say ("wallpaper " + [ParityNative]::SetWallpaper((Join-Path $root 'assets\backgrounds\snow-peak.jpg')))
+Add-Type -Namespace LauncherParity -Name Desk -MemberDefinition @'
+[System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] public static extern bool SystemParametersInfoW(uint a, uint p, string v, uint f);
+[System.Runtime.InteropServices.DllImport("user32.dll")] public static extern bool SetSysColors(int n, int[] e, int[] c);
+public static string Solid() { bool a = SystemParametersInfoW(0x14, 0, "", 3); bool b = SetSysColors(1, new[] { 1 }, new[] { 0 }); return "solid black desktop (no picture " + a + ", colour " + b + ")"; }
+'@
+$wallpaper = Join-Path $root 'assets\backgrounds\snow-peak.jpg'
+# the runner's desktop put back first (tools/desk/desk.ps1 -Reset, as ci.ps1 does before every GUI stage): a stray window
+# (run 42769793275: the runner's own console stood over both launchers) would be scored as a launcher difference
+$deskPs = Join-Path $root 'native\tools\desk\desk.ps1'
+function Desk-Reset([string]$tag) { if (Test-Path $deskPs) { & pwsh -NoProfile -File $deskPs -Reset -Tag $tag 2>&1 | Select-Object -Last 2 | ForEach-Object { Say "desk: $_" } } }
+function Set-Desk([string]$t) {
+  Desk-Reset "launcher-$t"
+  [ParityNative]::ParkCursor(4, 4)
+  if ($t -eq 'dark' -and $DarkDesktop -eq 'solid') { Say ("desktop: " + [LauncherParity.Desk]::Solid()) } else { Say ("wallpaper " + [ParityNative]::SetWallpaper($wallpaper)) } }
 $pers = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 New-Item -Force -Path $pers | Out-Null
 Set-ItemProperty -Path $pers -Name EnableTransparency -Value 1 -Type DWord
@@ -114,6 +131,7 @@ foreach ($t in $Themes) {
   Set-ItemProperty -Path $pers -Name AppsUseLightTheme -Value $v -Type DWord
   Set-ItemProperty -Path $pers -Name SystemUsesLightTheme -Value $v -Type DWord
   [ParityNative]::BroadcastTheme()
+  Set-Desk $t
   Start-Sleep -Seconds 2
   $r = @{ theme = $t }
 
