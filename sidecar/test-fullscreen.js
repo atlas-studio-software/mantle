@@ -77,7 +77,9 @@ async function realChromium(t, s) {
   kid.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { lines.push(buf.slice(0, i).trim()); buf = buf.slice(i + 1); } });
   const waitLine = async (re, ms) => { const end = Date.now() + ms; while (Date.now() < end) { const l = lines.find((x) => re.test(x)); if (l) return l; await T.sleep(50); } return null; };
   const say = (cmd) => kid.stdin.write(cmd + '\n');
-  const snap = async () => { const r = await s.send('topbar.focus', {}, 4000); return r.ok ? (r.result.focus || r.result) : { error: r.error }; };
+  const brief = (f) => JSON.stringify({ hwnd: f.hwnd, fg: f.fgRect || f.rect, fullscreen: f.fullscreen, zoomed: f.zoomed, err: f.error }) + ' probe: ' + lines.slice(-3).join(' | ');
+  const fgRead = async () => { const r = await s.send('foreground', {}, 4000); return r.ok ? r.result : { error: r.error }; };
+  const snap = async () => { const r = await s.send('topbar.focus', {}, 4000); if (!r.ok) return { error: r.error }; const f = r.result.focus || r.result; const g = await fgRead(); f.fgRect = g.rect; f.fgFull = g.fullscreen; return f; };
   const settle = async (want, ms) => { const end = Date.now() + ms; let f; do { await T.sleep(100); f = await snap(); } while (Date.now() < end && !want(f)); return f; };
   try {
     const ready = await waitLine(/^READY /, 15000);
@@ -86,25 +88,25 @@ async function realChromium(t, s) {
     say('max');
     await waitLine(/^MAX /, 5000);
     let f = await settle((x) => x && x.hwnd === hwnd && x.zoomed === true, 4000);
-    t.check('part 2: the maximised Quartz-framed window is in front, zoomed, and NOT full screen', f.hwnd === hwnd && f.zoomed === true && f.fullscreen === false, JSON.stringify(f).slice(0, 300));
+    t.check('part 2: the maximised Quartz-framed window is in front, zoomed, and NOT full screen', f.hwnd === hwnd && f.zoomed === true && f.fullscreen === false, brief(f));
     say('fs on');
     await waitLine(/^FS on/, 5000);
     f = await settle((x) => x && x.hwnd === hwnd && x.fullscreen === true, 4000);
     t.check('part 2: setFullScreen from maximised: Chromium KEEPS WS_MAXIMIZE (zoomed true) and the sidecar now says full screen',
-      f.hwnd === hwnd && f.fullscreen === true && f.zoomed === true, JSON.stringify(f).slice(0, 300));
+      f.hwnd === hwnd && f.fullscreen === true && f.zoomed === true, brief(f));
     say('fs off');
     await waitLine(/^FS off/, 5000);
     f = await settle((x) => x && x.hwnd === hwnd && x.fullscreen === false && x.zoomed === true, 4000);
-    t.check('part 2: out of full screen: maximised again, not full screen', f.fullscreen === false && f.zoomed === true, JSON.stringify(f).slice(0, 300));
+    t.check('part 2: out of full screen: maximised again, not full screen', f.fullscreen === false && f.zoomed === true, brief(f));
     say('el on');
     const el = await waitLine(/^EL on/, 8000);
     f = await settle((x) => x && x.hwnd === hwnd && x.fullscreen === true, 5000);
     t.check('part 2: a <webview> page\'s ELEMENT full screen (YouTube\'s button, Legend\'s) takes the window full screen and the sidecar says so',
-      !!el && f.fullscreen === true, `${el} ${JSON.stringify(f).slice(0, 300)}`);
+      !!el && f.fullscreen === true, `${el} ${brief(f)}`);
     say('el off');
     await waitLine(/^EL off/, 8000);
     f = await settle((x) => x && x.hwnd === hwnd && x.fullscreen === false, 5000);
-    t.check('part 2: the page leaving element full screen: not full screen again', f.fullscreen === false, JSON.stringify(f).slice(0, 300));
+    t.check('part 2: the page leaving element full screen: not full screen again', f.fullscreen === false, brief(f));
   } finally {
     try { say('quit'); } catch (_) { /* gone */ }
     await T.sleep(800);
@@ -124,6 +126,7 @@ app.whenReady().then(async () => {
   w.show(); w.focus();
   const hwnd = w.getNativeWindowHandle().readBigUInt64LE(0).toString();
   console.log('READY ' + hwnd);
+  const race = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r('timeout 3 s'), 3000))]);
   const guest = () => w.webContents.executeJavaScript('document.getElementById("v").getWebContentsId()').then((id) => require('electron').webContents.fromId(id));
   let buf = '';
   process.stdin.on('data', async (d) => {
@@ -131,11 +134,11 @@ app.whenReady().then(async () => {
     while ((i = buf.indexOf('\n')) >= 0) {
       const cmd = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
       try {
-        if (cmd === 'max') { w.maximize(); setTimeout(() => console.log('MAX ' + w.isMaximized()), 500); }
-        else if (cmd === 'fs on') { w.setFullScreen(true); setTimeout(() => console.log('FS on ' + w.isFullScreen()), 700); }
+        if (cmd === 'max') { w.maximize(); setTimeout(() => console.log('MAX ' + w.isMaximized() + ' ' + JSON.stringify(w.getBounds()) + ' focused ' + w.isFocused()), 500); }
+        else if (cmd === 'fs on') { w.setFullScreen(true); setTimeout(() => console.log('FS on ' + w.isFullScreen() + ' ' + JSON.stringify(w.getBounds()) + ' max ' + w.isMaximized()), 700); }
         else if (cmd === 'fs off') { w.setFullScreen(false); setTimeout(() => console.log('FS off ' + w.isFullScreen()), 700); }
-        else if (cmd === 'el on') { const g = await guest(); await g.executeJavaScript('document.body.requestFullscreen().then(() => "ok", (e) => "refused " + e.message)', true).then((r) => setTimeout(() => console.log('EL on ' + r + ' ' + w.isFullScreen()), 900)); }
-        else if (cmd === 'el off') { const g = await guest(); await g.executeJavaScript('document.exitFullscreen().then(() => "ok", (e) => "refused " + e.message)', true).then((r) => setTimeout(() => console.log('EL off ' + r + ' ' + w.isFullScreen()), 900)); }
+        else if (cmd === 'el on') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL on no guest: ' + g); continue; } await race(g.executeJavaScript('document.body.requestFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL on ' + r + ' ' + w.isFullScreen()), 900)); }
+        else if (cmd === 'el off') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL off no guest: ' + g); continue; } await race(g.executeJavaScript('document.exitFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL off ' + r + ' ' + w.isFullScreen()), 900)); }
         else if (cmd === 'quit') app.quit();
       } catch (e) { console.log('ERR ' + cmd + ' ' + e.message); }
     }
