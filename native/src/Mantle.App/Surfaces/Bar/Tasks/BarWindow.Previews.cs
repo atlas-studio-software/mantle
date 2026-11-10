@@ -474,7 +474,7 @@ public sealed partial class BarWindow
     }
 
     // ------------------------------------------------------------------ TEST RUNS ONLY: open it without a mouse
-    // MANTLE_TEST_FLYOUT=<text> in a --test run: the first running app whose name or window title contains <text>
+    // MANTLE_TEST_FLYOUT=<text> in a --test run: the first running app whose name (else exe) contains <text>
     // gets its flyout, as a click would open it (it stays until something closes it), 2 s after the strip first has
     // it. The preview parity script (tools/parity/bar-tasks/run-preview-parity.ps1) photographs it.
     void TestFlyout(TaskList list)
@@ -482,8 +482,9 @@ public sealed partial class BarWindow
         if (!Host.Args.Test || _testFlyoutDone) return;
         _testFlyout ??= Environment.GetEnvironmentVariable("MANTLE_TEST_FLYOUT") ?? "";
         if (_testFlyout.Length == 0) { _testFlyoutDone = true; return; }
-        var vm = _cells.FirstOrDefault(c => c.Item.Windows.Count > 0 && (c.Name.Contains(_testFlyout, StringComparison.OrdinalIgnoreCase)
-            || c.Item.Windows.Any(w => w.Title.Contains(_testFlyout, StringComparison.OrdinalIgnoreCase))));
+        // the NAME first, then the exe, as Electron's bar.test.flyout picks
+        var vm = _cells.FirstOrDefault(c => c.Item.Windows.Count > 0 && c.Name.Contains(_testFlyout, StringComparison.OrdinalIgnoreCase))
+            ?? _cells.FirstOrDefault(c => c.Item.Windows.Count > 0 && (c.Item.Exe ?? "").Contains(_testFlyout, StringComparison.OrdinalIgnoreCase));
         if (vm == null) return;
         _testFlyoutDone = true;
         var t = DispatcherQueue.CreateTimer();
