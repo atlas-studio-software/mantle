@@ -403,7 +403,7 @@ $Floors = [ordered]@{
   'launcher light' = 0.78   # 0.8295 (run 42388736155)
   'launcher dark'  = 0.55   # 0.5864: the --test Electron launcher is a framed opaque window (docs/lanes/launcher.md)
   'osd'            = 0.55   # lowest state: vol-dead (unavailable) 0.58, the why line wraps differently (docs/lanes/osd-toasts.md)
-  'strip'          = 0.50   # first gated run: see README "CI floors"
+  'strip'          = 0.88   # dark 0.9091, light 0.9258 (run 42770119126, the first gated run)
 }
 
 function Scores([string]$log, [string]$pattern) {

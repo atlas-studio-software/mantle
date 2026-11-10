@@ -51,3 +51,21 @@
 - Not changed: Mantle's own look.json publish still flushes before its rename, so Helm and Quartz see Mantle's change
   after that flush (up to ~1.3 s on a busy disk; Electron's is faster there). Kept for crash safety: a torn look.json
   would lose the shared look.
+
+## Proof and numbers (cloud, public repo, 0 min billed)
+
+- Full `ci.ps1` at 03a753f (run 42770119126): `NATIVE-CI: ok (10 ok, 0 skipped)` in 12 min 16 s (build 135 s, unit
+  522/522 + launcher GOLDEN ok 16 s, smoke 15 s, ui 33/33 192 s, bench 102 s, parity 94 s (light 0.9966, dark 0.9916,
+  light-150 0.9949, dark-150 0.9809), launcher 68 s (light 0.8295, dark 0.5864), osd 41 s (12 of 12, lowest
+  vol-dead-light 0.5757), strip 44 s (dark 0.9091, light 0.9258), sidecar 30 s). The three new stages add ~2.5 min.
+- The 1 s promise on a loaded runner: `test-loop.ps1 -Runs 30` (whole suite in parallel, run 42770129663):
+  `TEST-LOOP: 30 of 30 runs clean`; timed on the host thread: Helm's theme as the theme event median 42 / p95 53 /
+  max 91 ms; after theme.set max 1 ms; after Windows went dark max 18 ms; while its save was failing max 32 ms.
+  Before (core-5, the same suite x40): one 1672 ms (theme.json's save in the path) and 1300 ms (test-side) outliers.
+  Two things changed: Mantle's follow path no longer waits for theme.json's save, and the Helm stand-in now writes as
+  Electron's Helm does (no fsync), so the clock no longer includes a native flush Helm never pays.
+- The rest: `ShellRestPartsTests` (unit, real coordinator + real SurfaceSet) and `Mantle.UiTests/Rest/RestTests`
+  (the real app, `--dock`, the stand-ins: windows gone during the rest, the bar kept, a show refused in words, the
+  AtStart one back hidden on the wake, the on-first-use one back on use, the work area unchanged before, during, after
+  the wake and after the quit, the passive sidecar refusing the app bar, no 4 s wait at quit).
+- CI floors: tools/parity/README.md "CI floors" (launcher 0.78 / 0.55, osd 0.55, strip 0.88; the golden exact).
