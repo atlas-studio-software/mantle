@@ -30,6 +30,11 @@ internal sealed partial class TransparentBackdrop : SystemBackdrop
         base.OnTargetDisconnected(target);
     }
 
+    // A clear brush follows no backdrop configuration. WinUI's base handler throws when it is called with
+    // no target, which happened on a theme change after a full GC and took the whole app down (found by the
+    // osd-toasts lane, runs 42775032765..42779579180). Handle it here and never pass it on.
+    protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot) { }
+
     // The brush alone left the window painted white (light) / black (dark) on the runner (spike run 2):
     // the HWND's redirection surface is still erased with the theme colour under the XAML content.
     // Extending the DWM frame over the whole client area and erasing with black (alpha 0 in the
