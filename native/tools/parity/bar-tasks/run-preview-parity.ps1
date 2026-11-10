@@ -92,10 +92,15 @@ function Find-Flyout([byte[]]$px, [int]$w, [int]$h) {
   foreach ($c in 'red', 'blue') { $best[$c] = @{ n = 0; x0 = [int]::MaxValue; x1 = -1; y0 = [int]::MaxValue; y1 = -1 } }
   for ($y = [int]($h / 2); $y -lt $h; $y += 2) {
     $o = $y * $w * 4
+    $rowHits = @{ red = 0; blue = 0 }; $rowX0 = @{ red = [int]::MaxValue; blue = [int]::MaxValue }; $rowX1 = @{ red = -1; blue = -1 }
     for ($x = 0; $x -lt $w; $x += 2) {
       $i = $o + $x * 4; $b = $px[$i]; $g = $px[$i + 1]; $r = $px[$i + 2]
       $c = if ($r -gt 170 -and $g -lt 70 -and $b -lt 70) { 'red' } elseif ($b -gt 170 -and $r -lt 70 -and $g -lt 70) { 'blue' } else { $null }
-      if ($c) { $s = $best[$c]; $s.n++; if ($x -lt $s.x0) { $s.x0 = $x }; if ($x -gt $s.x1) { $s.x1 = $x }; if ($y -lt $s.y0) { $s.y0 = $y }; if ($y -gt $s.y1) { $s.y1 = $y } }
+      if ($c) { $rowHits[$c] += 1; if ($x -lt $rowX0[$c]) { $rowX0[$c] = $x }; if ($x -gt $rowX1[$c]) { $rowX1[$c] = $x } }
+    }
+    # only rows with a long run of the colour count (a picture is 100+ px wide; a red tray badge or a blue app icon is not)
+    foreach ($c in 'red', 'blue') {
+      if ($rowHits[$c] -ge 30) { $s = $best[$c]; $s.n += $rowHits[$c]; if ($rowX0[$c] -lt $s.x0) { $s.x0 = $rowX0[$c] }; if ($rowX1[$c] -gt $s.x1) { $s.x1 = $rowX1[$c] }; if ($y -lt $s.y0) { $s.y0 = $y }; if ($y -gt $s.y1) { $s.y1 = $y } }
     }
   }
   $found = @($best.Values | Where-Object { $_.n -ge 200 })

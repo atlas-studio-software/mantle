@@ -195,19 +195,21 @@ public partial class StripTests
         Cell? Other() { cs = Cells(app); return cs.FirstOrDefault(c => !c.Pinned && c.Name == other.Title); }
         Assert.IsTrue(Host.Until(() => Alpha() != null && Beta() != null && Other() != null, 20000, 250), $"in 20 s the strip did not show Alpha (open), Beta (pin) and the running app: {Describe(cs)}");
         IntPtr Pop() => Flyout(app, "Alpha Shell");
+        // a UI Automation read of the strip can miss a cell while it re-renders: read again for up to 3 s
+        Cell Must(Func<Cell?> f, string what) { Cell? c = null; Host.Until(() => (c = f()) != null, 3000, 100); return c ?? throw new AssertFailedException($"{what}'s cell is not in the strip: {Describe(cs)}"); }
         var away = new Point(5, 5);
         MoveTo(away);
         Thread.Sleep(600);
 
         // a pin with no windows: no flyout however long the pointer rests (BAR-221)
-        MoveTo(Centre(Beta()!.Rect));
+        MoveTo(Centre(Must(Beta, "Beta").Rect));
         Thread.Sleep(1200);
         Assert.AreEqual(IntPtr.Zero, FrameProbe.All(app.Proc.Id).FirstOrDefault(w => w.Title.StartsWith("Mantle pop-up:", StringComparison.Ordinal) && FrameProbe.Showing(w.Hwnd)).Hwnd,
             "resting on a pin with no windows opened a pop-up");
 
         // resting on a running app: nothing at once, its previews after the 400 ms dwell (BAR-221)
         var t0 = Stopwatch.StartNew();
-        MoveTo(Centre(Alpha()!.Rect));
+        MoveTo(Centre(Must(Alpha, "Alpha").Rect));
         Thread.Sleep(150);
         Assert.IsFalse(FrameProbe.Showing(Pop()), "the previews opened before the dwell");
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(Pop()), 3000, 50), $"resting on a running app did not open its previews in 3 s; log: {Tail(LogSince(profile, 0))}");
@@ -226,17 +228,17 @@ public partial class StripTests
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(Pop()), 2000, 50), "leaving the icon and the flyout did not close it in 2 s");
 
         // open again, then across to another running app: its flyout at once, no dwell (BAR-222)
-        MoveTo(Centre(Alpha()!.Rect));
+        MoveTo(Centre(Must(Alpha, "Alpha").Rect));
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(Pop()), 3000, 50), "the previews did not open the second time");
         IntPtr OtherPop() => FrameProbe.All(app.Proc.Id).FirstOrDefault(w => w.Title.StartsWith("Mantle pop-up:", StringComparison.Ordinal) && w.Title != "Mantle pop-up: Alpha Shell windows" && FrameProbe.Showing(w.Hwnd)).Hwnd;
         var t1 = Stopwatch.StartNew();
-        MoveTo(Centre(Other()!.Rect));
+        MoveTo(Centre(Must(Other, "Other").Rect));
         Assert.IsTrue(Host.Until(() => OtherPop() != IntPtr.Zero, 2000, 30), "moving to another running app did not swap the flyout to its windows");
         Assert.IsTrue(t1.ElapsedMilliseconds < 1500, $"the swap took {t1.ElapsedMilliseconds} ms");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(Pop()), 2000, 50), "Alpha's flyout stayed up beside the other app's");
 
         // across a pin with no windows: the close starts (BAR-222)
-        MoveTo(Centre(Beta()!.Rect));
+        MoveTo(Centre(Must(Beta, "Beta").Rect));
         Assert.IsTrue(Host.Until(() => OtherPop() == IntPtr.Zero, 2000, 50), "crossing a pin with no windows did not close the flyout");
         MoveTo(away);
         Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
