@@ -394,7 +394,10 @@ public class SurfaceHostTests
         Assert.Equal(SecondAsk.Plain, SecondLaunch.Route(new[] { "--test-surface=show:x" }, false).Ask);   // never outside a test run
         Assert.Equal((SecondAsk.Theme, "dark"), SecondLaunch.Route(new[] { "--test", "--test-theme=dark" }, true));
         Assert.Equal(SecondAsk.Plain, SecondLaunch.Route(new[] { "--test-theme=dark" }, false).Ask);
-        var args = LaunchArgs.Parse(new[] { "x.exe", "--test-surface=show:x", "--user-data=C:\\scratch" });
+        Assert.Equal(SecondAsk.Gc, SecondLaunch.Route(new[] { "--test", "--test-gc" }, true).Ask);
+        Assert.Equal(SecondAsk.Plain, SecondLaunch.Route(new[] { "--test-gc" }, false).Ask);   // a live instance never collects for a second start
+        Assert.Contains("--test-gc", LaunchArgs.Parse(new[] { "x.exe", "--test-gc", "--live" }).IgnoredTestSwitches());
+        var args =LaunchArgs.Parse(new[] { "x.exe", "--test-surface=show:x", "--user-data=C:\\scratch" });
         Assert.Contains("--test-surface", args.IgnoredTestSwitches());
         Assert.Empty(args.Unknown);
     }

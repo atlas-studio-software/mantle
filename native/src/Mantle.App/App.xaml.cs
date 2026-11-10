@@ -394,6 +394,23 @@ public partial class MantleApp : Application
         Host.Log.Line($"mantle: test-rest {verb}: {(a.Ok ? "ok" : "NOT ok")}: {a.Text ?? a.Reason}");
     }
 
+    /// --test-gc from a second start (test only): a full, blocking, compacting collection with the finalizers run, then
+    /// another, so whatever WinUI frees on a full GC is gone before the test's next step (the GC-then-theme regression:
+    /// SystemBackdrop's base configuration handler threw on a null target after one). Off the UI thread, so a finalizer
+    /// that needs the UI thread cannot wait on it; the counts and the heap are logged.
+    async Task GcFromSecondAsync()
+    {
+        static string Counts() => $"{GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}";
+        string before = Counts();
+        long heap = GC.GetTotalMemory(false);
+        await Task.Run(() => {
+            GC.Collect(2, GCCollectionMode.Forced, blocking: true);
+            GC.WaitForPendingFinalizers();
+            GC.Collect();
+        }).ConfigureAwait(true);
+        Host.Log.Line($"mantle: test-gc: ok: a full blocking GC ran (gen 0/1/2 collections {before} -> {Counts()}; managed heap {heap / 1048576.0:0.0} -> {GC.GetTotalMemory(false) / 1048576.0:0.0} MB)");
+    }
+
     async Task OnReadyAsync()
     {
         int n = ++_readies;
@@ -450,6 +467,7 @@ public partial class MantleApp : Application
             case SecondAsk.Surface: _ = SurfaceFromSecondAsync(value ?? ""); break;
             case SecondAsk.Theme: _ = ThemeFromSecondAsync(value ?? ""); break;
             case SecondAsk.Rest: _ = RestFromSecondAsync(value ?? ""); break;
+            case SecondAsk.Gc: _ = GcFromSecondAsync(); break;
             case SecondAsk.Tray: Host.Log.Line("mantle: test-tray: " + (_tray?.TestTrayLine() ?? "the tray was never built")); break;
             case SecondAsk.Report:
                 if (_tray != null) _ = _tray.CopyReportAsync("a second instance (test)").ContinueWith(t => { if (t.IsFaulted) Host.Log.Line("mantle: test-report failed: " + t.Exception?.GetBaseException().Message); }, TaskScheduler.Default);
