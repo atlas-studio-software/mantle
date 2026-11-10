@@ -121,9 +121,9 @@ public class LauncherTests
     public void Launcher_is_made_at_start_parked_and_a_test_show_never_takes_the_keyboard()
     {
         using var app = Launch("uitest-launcher-parked", keys: false);
-        StringAssert.Contains(app.Log, "launcher: created, hidden and parked (test, visible: never activated)");
-        StringAssert.Contains(app.Log, "launcher: a test run indexes only the fixture in ");   // the log writes the profile folder as %USERPROFILE%
-        StringAssert.Contains(app.Log, Path.GetFileName(app.Fixture) + " (MANTLE_TEST_LAUNCHER_DIR)");
+        Host.LogContains(() => app.Log, "launcher: created, hidden and parked (test, visible: never activated)");
+        Host.LogContains(() => app.Log, "launcher: a test run indexes only the fixture in ");   // the log writes the profile folder as %USERPROFILE%
+        Host.LogContains(() => app.Log, Path.GetFileName(app.Fixture) + " (MANTLE_TEST_LAUNCHER_DIR)");
         var h = LauncherHwnd(app);
         Assert.IsFalse(Win32.IsWindowVisible(h), "the parked launcher is on screen before anyone opened it");
         Assert.AreNotEqual(0, GetWindowLongPtrW(h, -20).ToInt64() & WS_EX_NOACTIVATE, "a --test launcher must be WS_EX_NOACTIVATE (never takes the keyboard)");
@@ -152,7 +152,7 @@ public class LauncherTests
     public void Typing_shows_the_fixture_rows_and_the_arrows_Enter_and_Esc_work()
     {
         using var app = Launch("uitest-launcher-keys", keys: true);
-        StringAssert.Contains(app.Log, "launcher: created, hidden and parked (test, visible; MANTLE_TEST_LAUNCHER_KEYS=1");
+        Host.LogContains(() => app.Log, "launcher: created, hidden and parked (test, visible; MANTLE_TEST_LAUNCHER_KEYS=1");
         var h = LauncherHwnd(app);
         Open(app, h);
         var win = Host.Uia.FromHandle(h);
@@ -184,7 +184,7 @@ public class LauncherTests
         Assert.IsTrue(Host.Until(() => Selected(win) == names[last], 3000), "Up on the first row did not wrap to the last");
         Keyboard.Type(VirtualKeyShort.HOME);
         Assert.IsTrue(Host.Until(() => Selected(win) == names[0], 3000), "Home did not move to the first row");
-        StringAssert.Contains(app.Log, "launcher: key Down: row 2 of 4");
+        Host.LogContains(() => app.Log, "launcher: key Down: row 2 of 4");
 
         // Enter: a --test launch is a dry run that says what it would open, then the launcher hides
         Keyboard.Type(VirtualKeyShort.RETURN);

@@ -103,7 +103,7 @@ public class ThemeTests
         Console.WriteLine($"LOOK-044: pill luminance light {light:0.0} -> {dark:0.0}; the bar showed Helm's dark {took} ms after the write");
         Assert.IsTrue(took >= 0, $"the bar never went dark within 3 s of Helm's write (luminance {light:0.0} -> {dark:0.0}):\n" + Tail(app.Log));
         Assert.IsTrue(took < 1000, $"the bar went dark {took} ms after Helm's write; the target is under 1 s");
-        StringAssert.Contains(app.Log, "look: following Helm");
+        Host.LogContains(() => app.Log, "look: following Helm");
     }
 
     [TestMethod]
@@ -116,7 +116,7 @@ public class ThemeTests
             using var app = Launch("uitest-matchwin", "system", null, new Dictionary<string, string> { ["MANTLE_TEST_THEME_KEY"] = sub });
             var probe = Probe(app);
             Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Mantle is light"), 8000), "the host never said its theme:\n" + Tail(app.Log));
-            StringAssert.Contains(app.Log, "(MANTLE_TEST_THEME_KEY), never the user's own");
+            Host.LogContains(() => app.Log, "(MANTLE_TEST_THEME_KEY), never the user's own");
             Thread.Sleep(1200);
             double light = Host.Luminance(probe);
             Assert.IsFalse(app.Log.Contains("Windows apps are dark now"), "the log said dark before the key changed:\n" + Tail(app.Log));

@@ -72,8 +72,8 @@ public class RestTests
         StringAssert.Contains(restLine, "test-lazy");
         if (launcher) StringAssert.Contains(restLine, "launcher");
         StringAssert.Contains(restLine, "kept: bar, the link to Windows and the host");
-        StringAssert.Contains(app.Log, "mantle: rest: resting while uitest-game runs in ");
-        StringAssert.Contains(app.Log, "surfaces: rest: destroyed ");
+        Host.LogContains(() => app.Log, "mantle: rest: resting while uitest-game runs in ");
+        Host.LogContains(() => app.Log, "surfaces: rest: destroyed ");
         Assert.AreEqual(0, Windows(app.Proc.Id, Prefix + "test-parked").Count, "the parked stand-in's window outlived the rest");
         Assert.AreEqual(0, Windows(app.Proc.Id, Prefix + "test-lazy").Count, "the opened stand-in's window outlived the rest");
         Assert.AreEqual(1, Win32.WindowsOf(app.Proc.Id, BarApp.WindowTitle).Count, "the bar did not stay through the rest");
@@ -90,7 +90,7 @@ public class RestTests
         Assert.IsTrue(Host.Until(() => Windows(app.Proc.Id, Prefix + "test-parked").Count == 1, 5000), "the AtStart stand-in was not made again on the wake:\n" + Tail(app.Log));
         Assert.IsFalse(Win32.IsWindowVisible(Windows(app.Proc.Id, Prefix + "test-parked")[0]), "the stand-in made again on the wake is on screen");
         Assert.AreEqual(0, Windows(app.Proc.Id, Prefix + "test-lazy").Count, "the on-first-use stand-in was made on the wake, before its next use");
-        StringAssert.Contains(app.Log, "surfaces: wake: made again ");
+        Host.LogContains(() => app.Log, "surfaces: wake: made again ");
         if (launcher) StringAssert.Contains(Line(app.Log, "mantle: test-rest off: ok: "), "launcher");
         Assert.IsTrue(Host.Until(() => Count(app.Log, "test-parked: theme light reached it on its UI thread: True") >= 2, 5000), "the stand-in made again did not get the theme:\n" + Tail(app.Log));
         // it comes back on use, as before the rest

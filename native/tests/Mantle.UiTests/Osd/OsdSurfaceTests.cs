@@ -129,7 +129,7 @@ public class OsdSurfaceTests
         Assert.IsTrue(Host.Until(() => app.Log.Contains("osd: shown (testShow, volume 62, seq 1)"), 8000), "the pop-up was not shown:\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(osd), 3000), "the pop-up window is not visible after the show");
         Assert.IsTrue(Host.Until(() => app.Log.Contains("osd: raised: "), 3000), "no raise verdict:\n" + Tail(app.Log));
-        StringAssert.Contains(app.Log, "osd: raised: on top of everything", "the pop-up was not put on top:\n" + Tail(app.Log));
+        Host.LogContains(() => app.Log, "osd: raised: on top of everything", "the pop-up was not put on top:\n" + Tail(app.Log));
         Assert.IsTrue((GetWindowLongPtrW(osd, -20).ToInt64() & 0x8) != 0, "the pop-up is not WS_EX_TOPMOST");
         Assert.IsTrue(IsAbove(osd, top.Hwnd), "the topmost fixture of another process is above the pop-up");
         Assert.IsTrue((GetWindowLongPtrW(osd, -20).ToInt64() & 0x08000000) != 0, "the pop-up can take the keyboard (no WS_EX_NOACTIVATE)");
@@ -179,7 +179,7 @@ public class OsdSurfaceTests
         // surface.hide: gone, and the feature hears it faded
         Second(app, "--test-surface=hide:osd");
         Assert.IsTrue(Host.Until(() => !Win32.IsWindowVisible(osd), 3000), "surface.hide left the pop-up on screen");
-        StringAssert.Contains(app.Log, "osd: hidden (");
+        Host.LogContains(() => app.Log, "osd: hidden (");
 
         // a volume key in --test: a DRY step (or the runner's "no playback device"), shown, then it fades by itself
         Second(app, "--test-chord=VolumeUp");

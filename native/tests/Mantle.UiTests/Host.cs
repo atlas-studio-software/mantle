@@ -78,6 +78,20 @@ internal static class Host
 
     public static bool Until(Func<bool> f, int ms, int stepMs = 100) => Until(() => f() ? "y" : null, ms, stepMs) != null;
 
+    /// <summary>
+    /// The app writes its log behind the work it describes, so a window can already be shown or hidden
+    /// before the line saying so reaches the file (staging run 42782943069: the hover flyout was up and the
+    /// OSD was gone, but one immediate read of the log missed both lines). Read the log again until the
+    /// line is there, for up to <paramref name="ms"/>.
+    /// </summary>
+    public static void LogContains(Func<string> log, string needle, string? why = null, int ms = 3000)
+    {
+        string last = "";
+        if (Until(() => (last = log() ?? "").Contains(needle, StringComparison.Ordinal), ms, 50)) return;
+        string tail = last.Length > 1500 ? last[^1500..] : last;
+        throw new AssertFailedException($"{why ?? "the log is missing a line"}: in {ms} ms the log never said \"{needle}\"; its end:\n{tail}");
+    }
+
     /// <summary>A plain window owned by a process the test controls: a stand-in for "a running app".</summary>
     public sealed class Fixture : IDisposable
     {

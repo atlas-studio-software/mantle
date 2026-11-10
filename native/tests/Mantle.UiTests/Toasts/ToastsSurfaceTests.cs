@@ -120,7 +120,7 @@ public class ToastsSurfaceTests
         Assert.IsTrue(Host.Until(() => app.Log.Contains("toasts: listening; the window is made on the first banner"), 15000), "the toasts surface did not start:\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => System.Text.RegularExpressions.Regex.IsMatch(app.Log, @"features: started [^;\r\n]*\btoasts\b"), 10000), "the toasts feature did not start:\n" + Tail(app.Log));
         // THE TAKEOVER GATE: a --test run makes no banner owner, so nothing of Windows' is taken
-        StringAssert.Contains(app.Log, "toasts: not a --live run, so Windows' own banners are never taken here");
+        Host.LogContains(() => app.Log, "toasts: not a --live run, so Windows' own banners are never taken here");
         StringAssert.DoesNotMatch(app.Log, new System.Text.RegularExpressions.Regex("Windows' own pop-up(s)? (is|are) (off|taken)|took \\d+ app"), "a --test run took Windows' banners");
         Assert.AreEqual(IntPtr.Zero, Win(app), "a banner window exists before any banner (it is made on demand)");
         Mouse.Position = new System.Drawing.Point(5, 5);   // never over the stack (a hover holds every timer)
@@ -134,7 +134,7 @@ public class ToastsSurfaceTests
         Assert.IsTrue(Host.Until(() => Win(app) is var w && w != IntPtr.Zero && Win32.IsWindowVisible(w), 4000), "no visible banner window:\n" + Tail(app.Log));
         IntPtr win = Win(app);
         Assert.IsTrue(Host.Until(() => app.Log.Contains("toasts: raised: "), 3000), "no raise verdict:\n" + Tail(app.Log));
-        StringAssert.Contains(app.Log, "toasts: raised: on top of everything");
+        Host.LogContains(() => app.Log, "toasts: raised: on top of everything");
         Assert.IsTrue(IsAbove(win, top.Hwnd), "the topmost fixture of another process is above the banners");
         Assert.AreNotEqual(win, Win32.GetForegroundWindow(), "the banner window took the foreground");
         Assert.AreNotEqual(0L, GetWindowLongPtrW(win, -20).ToInt64() & 0x08000000L, "the banner window lacks WS_EX_NOACTIVATE");

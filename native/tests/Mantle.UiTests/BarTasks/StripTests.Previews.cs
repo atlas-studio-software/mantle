@@ -175,7 +175,7 @@ public partial class StripTests
         // the last window gone: the flyout closes
         forms.Dispose();
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(Pop()), 6000), "the flyout stayed open after its app's windows all closed (BAR-232)");
-        Assert.IsTrue(LogSince(profile, 0).Contains("taken down (", StringComparison.Ordinal), "the log never says the pictures were taken down (BAR-311)");
+        Host.LogContains(() => LogSince(profile, 0), "taken down (", "the log never says the pictures were taken down (BAR-311)");
         Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
     }
 
@@ -214,7 +214,7 @@ public partial class StripTests
         Assert.IsFalse(FrameProbe.Showing(Pop()), "the previews opened before the dwell");
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(Pop()), 3000, 50), $"resting on a running app did not open its previews in 3 s; log: {Tail(LogSince(profile, 0))}");
         Assert.IsTrue(t0.ElapsedMilliseconds >= 380, $"the previews opened {t0.ElapsedMilliseconds} ms after the pointer arrived, before the 400 ms dwell");
-        Assert.IsTrue(LogSince(profile, 0).Contains("bar previews: Alpha Shell: opened by hover", StringComparison.Ordinal), "the log does not say the hover opened it");
+        Host.LogContains(() => LogSince(profile, 0), "bar previews: Alpha Shell: opened by hover", "the log does not say the hover opened it");
         Assert.IsTrue(Host.Until(() => StatusOf(ById(Pop(), "bar.preview.0.shot")).StartsWith("live", StringComparison.Ordinal), 4000), $"the hover card has no live picture: [{StatusOf(ById(Pop(), "bar.preview.0.shot"))}]");
 
         // into the flyout: it stays (re-entering cancels the leave, BAR-223)

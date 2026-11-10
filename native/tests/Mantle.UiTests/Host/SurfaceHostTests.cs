@@ -64,7 +64,7 @@ public class SurfaceHostTests
     {
         using var app = Launch("uitest-surfaces", standIns: true);
         Assert.IsTrue(Host.Until(() => app.Log.Contains("surface test-parked: made at start, hidden and parked"), 15000), "the AtStart stand-in was not made at start:\n" + Tail(app.Log));
-        StringAssert.Contains(app.Log, "test-parked: made hidden (test stand-in); quiet False; state mode test");
+        Host.LogContains(() => app.Log, "test-parked: made hidden (test stand-in); quiet False; state mode test");
         // made, parked and hidden: its window exists but is not on screen; the on-first-use one does not exist yet
         Assert.IsTrue(Host.Until(() => Windows(app.Proc.Id, Prefix + "test-parked").Count == 1, 5000), "no window for the parked stand-in");
         Assert.IsFalse(Win32.IsWindowVisible(Windows(app.Proc.Id, Prefix + "test-parked")[0]), "the parked stand-in is on screen before anyone showed it");
@@ -76,7 +76,7 @@ public class SurfaceHostTests
         Assert.AreEqual(0, open.Code, "the --open second start: " + open.Out);
         StringAssert.Contains(open.Out, "asked the running Mantle");
         Assert.IsTrue(Host.Until(() => app.Log.Contains("mantle: opened test-lazy for a second start (--open=test-lazy, a test stand-in)"), 8000), "--open=test-lazy did not open it:\n" + Tail(app.Log));
-        StringAssert.Contains(app.Log, "surface test-lazy: made on first use (a second start (--open=test-lazy))");
+        Host.LogContains(() => app.Log, "surface test-lazy: made on first use (a second start (--open=test-lazy))");
         Assert.IsTrue(Host.Until(() => Win32.WindowsOf(app.Proc.Id, Prefix + "test-lazy").Count == 1, 5000), "the opened stand-in is not on screen");
         Assert.IsTrue(Host.Until(() => app.Log.Contains("test-lazy: state.get answered ok (mode test) on its UI thread: True"), 5000), "the stand-in's command did not come back on its UI thread:\n" + Tail(app.Log));
         var lazy = Host.Uia.FromHandle(Win32.WindowsOf(app.Proc.Id, Prefix + "test-lazy")[0]);
