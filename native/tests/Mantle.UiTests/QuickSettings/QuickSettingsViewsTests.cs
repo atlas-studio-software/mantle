@@ -151,7 +151,11 @@ public class QuickSettingsViewsTests
         string log = FrameProbe.Log(dir);
         Assert.IsFalse(log.Contains("short-and-long") || log.Contains("and-long"), "the password reached the log");
 
+        // Esc in the field closes it and gives the keyboard back to the window that had it
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Has(dir, "pop-up Quick settings: gave the keyboard back (the password field closed)", "Esc did not give the keyboard back");
+        Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.wifi.password")) == null, 3000), "the password field stayed after Esc");
         ClickEl(app.Find("bar.volume"));
-        Has(dir, "pop-up Quick settings: gave the keyboard back", "the keyboard was not given back on the close");
+        Has(dir, "qs: the panel closed (its button was clicked again)", "the panel did not close");
     }
 }

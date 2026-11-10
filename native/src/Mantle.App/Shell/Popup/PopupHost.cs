@@ -117,6 +117,18 @@ internal sealed class PopupHost
         _kbPrev = IntPtr.Zero;
     }
 
+    /// The keyboard went to Mantle's own window while the pop-up held it: on the close it goes back to the window
+    /// that had it, if a Mantle window still has the foreground.
+    void HandBackFromOwn(string why)
+    {
+        IntPtr prev = _kbPrev, fg = Win32.GetForegroundWindow();
+        _kbPrev = IntPtr.Zero;
+        uint pid = 0;
+        if (fg != IntPtr.Zero) Win32.GetWindowThreadProcessId(fg, out pid);
+        bool back = pid == (uint)Environment.ProcessId && Win32.IsWindow(prev) && Win32.SetForegroundWindow(prev);
+        Host.Log.Line($"pop-up: gave the keyboard back ({why}){(back ? ", from Mantle's own window to the window that had it" : "; another window already had it")}");
+    }
+
     static void NoActivate(PopupWindow w, bool on)
     {
         long ex = Win32.GetWindowLongPtr(w.Hwnd, Win32.GWL_EXSTYLE).ToInt64();
@@ -128,9 +140,15 @@ internal sealed class PopupHost
     {
         if (_kbWin != w || e.WindowActivationState != WindowActivationState.Deactivated) return;
         _kbWin = null;
-        _kbPrev = IntPtr.Zero;
         NoActivate(w, true);
-        Host.Log.Line($"pop-up {w.Name}: another window took the keyboard; it is not dragged back");
+        // Mantle's own window (a press on the bar): the remembered window still gets the keyboard back on the close;
+        // another app: the user went there on purpose, so nothing is dragged back
+        IntPtr fg = Win32.GetForegroundWindow();
+        uint pid = 0;
+        if (fg != IntPtr.Zero) Win32.GetWindowThreadProcessId(fg, out pid);
+        bool own = fg != IntPtr.Zero && pid == (uint)Environment.ProcessId;
+        if (!own) _kbPrev = IntPtr.Zero;
+        Host.Log.Line($"pop-up {w.Name}: " + (own ? "Mantle's own window took the keyboard; the window that had it gets it back on the close" : "another window took the keyboard; it is not dragged back"));
         KeyboardLost?.Invoke(w.Key);
     }
 
@@ -231,6 +249,7 @@ internal sealed class PopupHost
         bool painted = _st == St.Shown || (w?.Painted == true && _st == St.Opening);
         _st = St.Hidden; _seq++; _win = null;
         if (_kbWin != null) GiveBackKeyboard("the pop-up closed");
+        else if (_kbPrev != IntPtr.Zero) HandBackFromOwn("the pop-up closed");
         _watch?.Disarm();
         DisarmAway();
         string fate = w?.Instant == true ? "parked" : "closed", end = fate;
