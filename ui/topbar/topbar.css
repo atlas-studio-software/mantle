@@ -448,7 +448,7 @@ body.mock.dark { background: linear-gradient(160deg, #10131c 0%, #252b3b 60%, #3
     opacity   calc(var(--m-dur-l) * .4) var(--m-fade-in);
 }
 body.away #stage {
-  transform: translateY(-100%); opacity: 0; pointer-events: none;
+  transform: translateY(calc(-1 * var(--tb-h))); opacity: 0; pointer-events: none;   /* the bar's own height: off the top edge */
   transition:
     transform calc(var(--m-dur-l) * .45) var(--m-accel),
     opacity   calc(var(--m-dur-l) * .45) var(--m-fade-out);

@@ -186,7 +186,7 @@ function rig(opts) {
   check('css: only transform and opacity transition', props(rest).join() === 'transform,opacity' && props(away).join() === 'transform,opacity', [props(rest), props(away)]);
   check('css: IN = --m-spring over --m-dur-l, fade over 40 % on --m-fade-in', /transform var\(--m-dur-l\) var\(--m-spring\)/.test(rest) && /opacity\s+calc\(var\(--m-dur-l\) \* \.4\) var\(--m-fade-in\)/.test(rest), rest);
   check('css: OUT = --m-accel and --m-fade-out over 45 %', /transform calc\(var\(--m-dur-l\) \* \.45\) var\(--m-accel\)/.test(away) && /opacity\s+calc\(var\(--m-dur-l\) \* \.45\) var\(--m-fade-out\)/.test(away), away);
-  check('css: away = up off the top edge and clear, no clicks', /transform: translateY\(-100%\)/.test(away) && /opacity: 0/.test(away) && /pointer-events: none/.test(away));
+  check('css: away = up off the top edge and clear, no clicks', /transform: translateY\(calc\(-1 \* var\(--tb-h\)\)\)/.test(away) && /opacity: 0/.test(away) && /pointer-events: none/.test(away));
   check('css: at rest no transform / opacity / will-change on #stage (the glass is as before)', !/(^|\s)transform:|opacity:\s*[\d.]|will-change/.test(rest.replace(/transition:[^;]+;/, '')), rest);
   const red = css.slice(css.indexOf('@media (prefers-reduced-motion: reduce)', motionAt));
   check('css: reduced motion = opacity only, 120 ms, no transform away', /#stage, body\.away #stage \{ transition: opacity 120ms linear; \}/.test(red) && /body\.away #stage \{ transform: none; \}/.test(red));

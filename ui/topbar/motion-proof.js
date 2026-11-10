@@ -92,24 +92,32 @@ async function openCase(browser, scene, dark, reduced) {
 const LEAVE = () => {
   const stage = document.getElementById('stage');
   window.mantle.emit('topbar.close', {});
-  const mw = document.getElementById('mock-maxwin'); if (mw) mw.style.top = '0px';   // the window went full screen
   window.mantle.emit('topbar.motion', { phase: 'leave', ms: 260, kind: 'video' });
   const nat = document.getElementById('mock-native');
   if (nat) { nat.remove(); window.mantle.emit('topbar.under', Object.assign({}, window.__under, { native: false })); }   // the handoff
   getComputedStyle(stage).transform;
   const a = stage.getAnimations();
   a.forEach((x) => { x.pause(); x.currentTime = 0; });
-  return a.map((x) => ({ p: x.transitionProperty, d: x.effect.getTiming().duration }));
+  // a new desktop picture right after the leave's start (phase 'leaving'): it must be held
+  let probe = null;
+  if (window.__probe) {
+    const before = document.getElementById('bdrop').style.backgroundImage;
+    const c = document.createElement('canvas'); c.width = 384; c.height = 7; const g = c.getContext('2d'); g.fillStyle = '#ff00ff'; g.fillRect(0, 0, 384, 7);
+    window.mantle.emit('topbar.backdrop', { png: c.toDataURL('image/png'), ms: 0 });
+    probe = { same: document.getElementById('bdrop').style.backgroundImage === before, held: window.__topbarMotion.view().held, phase: window.__topbarMotion.phase() };
+    window.__probe = false;
+  }
+  return { probe, a: a.map((x) => ({ p: x.transitionProperty, d: Math.round(x.effect.getTiming().duration) })) };
 };
+const FULL = (on) => { const mw = document.getElementById('mock-maxwin'); if (mw) mw.style.top = on ? '0px' : '28px'; };   // the window under the bar goes full screen / back
 const ARRIVE = (turn) => {
   const stage = document.getElementById('stage');
-  if (!turn) { const mw = document.getElementById('mock-maxwin'); if (mw) mw.style.top = '28px'; }   // full screen is over
   window.mantle.emit('topbar.motion', { phase: 'arrive', why: turn ? 'back while it was leaving' : 'shown' });
   if (window.__under) window.mantle.emit('topbar.under', Object.assign({}, window.__under, { native: false }));   // the first read after the show
   getComputedStyle(stage).transform;
   const a = stage.getAnimations().filter((x) => x.playState !== 'finished');
   a.forEach((x) => { x.pause(); x.currentTime = 0; });
-  return a.map((x) => ({ p: x.transitionProperty, d: x.effect.getTiming().duration }));
+  return a.map((x) => ({ p: x.transitionProperty, d: Math.round(x.effect.getTiming().duration) }));
 };
 /* every paused transition on #stage at `ms` (capped at its own duration) */
 const AT = (ms) => {
@@ -129,13 +137,13 @@ async function diff(lab, a, b) {
     const [ia, ib] = [await img(a), await img(b)];
     const px = (i) => { const c = document.createElement('canvas'); c.width = i.width; c.height = i.height; const g = c.getContext('2d'); g.drawImage(i, 0, 0); return g.getImageData(0, 0, i.width, i.height).data; };
     const da = px(ia), db = px(ib);
-    let max = 0, over = 0;
+    let max = 0, over = 0, x0 = 1e9, x1 = -1, y0 = 1e9, y1 = -1;
     for (let k = 0; k < da.length; k += 4) {
       const m = Math.max(Math.abs(da[k] - db[k]), Math.abs(da[k + 1] - db[k + 1]), Math.abs(da[k + 2] - db[k + 2]));
       if (m > max) max = m;
-      if (m > 2) over++;
+      if (m > 2) { over++; const i = k / 4, x = i % ia.width, y = (i / ia.width) | 0; x0 = Math.min(x0, x); x1 = Math.max(x1, x); y0 = Math.min(y0, y); y1 = Math.max(y1, y); }
     }
-    return { max, share: Math.round((over / (da.length / 4)) * 10000) / 10000 };
+    return { max, share: Math.round((over / (da.length / 4)) * 10000) / 10000, box: over ? [x0, y0, x1, y1] : null };
   }, { a: a.toString('base64'), b: b.toString('base64') });
 }
 
@@ -170,12 +178,18 @@ async function frames(browser, lab, scene, dark, reduced) {
   const R = { name, frames: {} };
   const p = await openCase(browser, scene, dark, reduced);
   const rows = [];
-  const rest = await shot(p);
-  rows.push({ label: 'rest (before)', png: rest });
+  const restMax = await shot(p);   // the bar over a maximised window (before, and where the arrive must land)
+  rows.push({ label: 'rest, a maximised window under', png: restMax });
+  await p.evaluate(FULL, true);
+  const rest = await shot(p);      // the window went full screen; main asks the bar to leave
+  rows.push({ label: 'rest, it went full screen', png: rest });
   if (dark) check(`${name}: (set-up) the colour under is native at rest`, await p.evaluate(() => document.body.classList.contains('native')));
   // THE LEAVE
-  const lv = await p.evaluate(LEAVE);
+  if (dark) await p.evaluate(() => { window.__probe = true; });
+  const L0 = await p.evaluate(LEAVE);
+  const lv = L0.a;
   R.leaveTransitions = lv;
+  if (dark) check(`${name}: a new desktop picture while leaving is held (the bar leaves in the look it had)`, L0.probe && L0.probe.same && L0.probe.held.includes('backdrop') && L0.probe.phase === 'leaving', L0.probe);
   const D_OUT = Math.max(...lv.map((x) => x.d));
   check(`${name}: the leave transitions only transform/opacity, ${reduced ? '120' : '252'} ms`,
     lv.length > 0 && lv.every((x) => (reduced ? x.p === 'opacity' : /^(transform|opacity)$/.test(x.p))) && D_OUT === (reduced ? 120 : 252), lv);
@@ -203,27 +217,19 @@ async function frames(browser, lab, scene, dark, reduced) {
   check(`${name}: the leave fades monotonically to 0`, ops.every((v, i) => i === 0 || v <= ops[i - 1] + 1e-6) && ops[4] === 0 && ops[0] === 1, ops);
   check(`${name}: ${reduced ? 'reduced motion never moves' : 'the leave slides up monotonically to -28 px'}`,
     reduced ? ys.every((v) => v === 0) : ys.every((v, i) => i === 0 || v <= ys[i - 1] + 1e-6) && Math.abs(ys[4] + 28) < 0.01 && ys[0] === 0, ys);
-  // a look push while leaving is held, applied once the bar is gone
-  if (dark) {
-    const held = await p.evaluate(() => {
-      const before = document.getElementById('bdrop').style.backgroundImage;
-      const c = document.createElement('canvas'); c.width = 384; c.height = 7; const g = c.getContext('2d'); g.fillStyle = '#ff00ff'; g.fillRect(0, 0, 384, 7);
-      window.mantle.emit('topbar.backdrop', { png: c.toDataURL('image/png'), ms: 0 });
-      return { same: document.getElementById('bdrop').style.backgroundImage === before, held: window.__topbarMotion.view().held };
-    });
-    check(`${name}: a new desktop picture while leaving is held (the bar leaves in the look it had)`, held.same && held.held.includes('backdrop'), held);
-  }
+  check(`${name}: the leave's last frame is fully clear (opacity 0)`, ops[4] === 0);
   // away: the leave's end, the phase timer, the held picture applied (invisible)
   await p.evaluate(END);
   await p.waitForFunction(() => window.__topbarMotion.phase() === 'away', null, { timeout: 2000 }).catch(() => {});
   check(`${name}: away after the leave`, await p.evaluate(() => window.__topbarMotion.phase() === 'away' && document.body.classList.contains('away')));
   if (dark) {
-    check(`${name}: away -> the held picture is applied (invisibly)`, await p.evaluate(() => /data:image/.test(document.getElementById('bdrop').style.backgroundImage) && window.__topbarMotion.view().held.length === 0));
+    check(`${name}: away -> the held picture is applied (invisibly)`, await p.evaluate(() => /data:image/.test(document.getElementById('bdrop').style.backgroundImage) && window.__topbarMotion.view().held.length === 0 && window.__topbarGlass.png && window.__topbarGlass.png.length < 2000));
     await p.close();   // the arrive starts from a fresh page with the scene's own strip (the magenta one was a probe)
   }
   // THE ARRIVE (fresh page for dark: the strip and the native set-up as at rest, then a real leave to away)
   const q = dark ? await openCase(browser, scene, dark, reduced) : p;
-  if (dark) { await q.evaluate(LEAVE); await q.evaluate(END); await q.waitForFunction(() => window.__topbarMotion.phase() === 'away', null, { timeout: 2000 }).catch(() => {}); }
+  if (dark) { await q.evaluate(FULL, true); await q.evaluate(LEAVE); await q.evaluate(END); await q.waitForFunction(() => window.__topbarMotion.phase() === 'away', null, { timeout: 2000 }).catch(() => {}); }
+  await q.evaluate(FULL, false);   // full screen is over; main shows the window (still in its away frame) and says arrive
   const av = await q.evaluate(ARRIVE, false);
   R.arriveTransitions = av;
   const D_IN = Math.max(...av.map((x) => x.d));
@@ -247,7 +253,7 @@ async function frames(browser, lab, scene, dark, reduced) {
   check(`${name}: arrive 0 % == the screen with no bar (the first frame shown is the empty one)`, dA0b.max <= 2, dA0b);
   await q.evaluate(END);
   const after = await shot(q);
-  const dA = await diff(lab, rest, arrive[4].png);
+  const dA = await diff(lab, restMax, arrive[4].png);
   R.restVsArrive100 = dA;
   check(`${name}: arrive 100 % == rest (it lands exactly where it was, no pop at the end)`, dA.max <= 3, dA);
   const dAfter = await diff(lab, arrive[4].png, after);
@@ -256,7 +262,7 @@ async function frames(browser, lab, scene, dark, reduced) {
   check(`${name}: the arrive fades in to 1`, aops[0] === 0 && aops[4] === 1 && aops.every((v, i) => i === 0 || v >= aops[i - 1] - 1e-6), aops);
   // THE TURN-ROUND: an arrive at 50 % of the leave, the window never hidden
   await q.waitForTimeout(reduced ? 200 : 700);
-  await q.evaluate(LEAVE);
+  await q.evaluate(LEAVE);   // (over the maximised window: a leave that turns round before it is done)
   const mid = await q.evaluate(AT, 0.5 * D_OUT);
   const midPng = await shot(q);
   rows.push({ label: `turn-round: leave 50% o=${mid.opacity.toFixed(2)} y=${ty(mid.transform).toFixed(1)}`, png: midPng, sep: true });
