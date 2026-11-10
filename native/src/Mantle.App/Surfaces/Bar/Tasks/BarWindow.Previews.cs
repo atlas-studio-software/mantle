@@ -203,7 +203,7 @@ public sealed partial class BarWindow
 
     UIElement FlyHoverRoot(UIElement inner, Fly f)
     {
-        var root = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+        var root = (Grid)XamlReader.Load("<Grid " + WlNs + " Background='Transparent'/>");   // hit-testable everywhere
         root.Children.Add(inner);
         root.PointerEntered += (_, _) => { if (_fly == f) StopTimer(_flyLeave); };
         root.PointerExited += (_, e) => {
@@ -356,7 +356,8 @@ public sealed partial class BarWindow
     {
         c.Why.Text = words;
         c.Why.Foreground = (Brush)Res(warn ? "LgWarn" : "LgInk3");
-        c.Why.Visibility = status.StartsWith("live", StringComparison.Ordinal) ? Visibility.Collapsed : Visibility.Visible;
+        // hidden, not collapsed (bar.css .card.live .card-why: visibility hidden): it stays in the UI Automation tree
+        c.Why.Opacity = status.StartsWith("live", StringComparison.Ordinal) ? 0 : 1;
         c.Live = status.StartsWith("live", StringComparison.Ordinal);
         AutomationProperties.SetName(c.Why, words.Length > 0 ? words : "live picture");
         AutomationProperties.SetItemStatus(c.Why, status);

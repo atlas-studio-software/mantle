@@ -69,7 +69,24 @@ public partial class StripTests
         return (b / n, g / n, rr / n);
     }
 
-    static void MoveTo(Point p) { Mouse.MoveTo(p); }
+    [StructLayout(LayoutKind.Sequential)] struct MOUSEINPUT { public int dx, dy; public uint mouseData, dwFlags, time; public IntPtr extra; }
+    [StructLayout(LayoutKind.Sequential)] struct INPUT { public uint type; public MOUSEINPUT mi; }
+    [DllImport("user32.dll")] static extern uint SendInput(uint n, INPUT[] inputs, int size);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out Point p);
+
+    /// A REAL pointer move (SendInput, absolute), in 10 steps 15 ms apart: WinUI hears pointer enter and exit only
+    /// from real input; a SetCursorPos jump (FlaUI's Mouse.MoveTo) reaches the window as no pointer event at all.
+    static void MoveTo(Point p)
+    {
+        GetCursorPos(out var from);
+        int sw = FrameProbe.ScreenW, sh = FrameProbe.ScreenH;
+        for (int i = 1; i <= 10; i++) {
+            int x = from.X + (p.X - from.X) * i / 10, y = from.Y + (p.Y - from.Y) * i / 10;
+            var inp = new[] { new INPUT { type = 0, mi = new MOUSEINPUT { dx = x * 65535 / (sw - 1), dy = y * 65535 / (sh - 1), dwFlags = 0x0001 | 0x8000 } } };
+            SendInput(1, inp, Marshal.SizeOf<INPUT>());
+            Thread.Sleep(15);
+        }
+    }
     static Point Centre(Rectangle r) => new(r.X + r.Width / 2, r.Y + r.Height / 2);
 
     [TestMethod]
