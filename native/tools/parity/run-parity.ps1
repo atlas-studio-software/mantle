@@ -29,7 +29,10 @@ param(
   [string]$Exe,
   # display scales to run, in %: each one sets the runner's primary display (DisplayConfigSetDeviceInfo) and
   # writes <Out>/<theme>[-<pct>]/ (100 % keeps the plain <theme> folder); the scale is put back to 100 % after
-  [string]$Scales = '100,150'
+  [string]$Scales = '100,150',
+  # a shot whose crop differs from the screen before the app started by less than this (mean abs, 0-255) holds no
+  # bar and is taken again (Shoot)
+  [double]$MinVsEmpty = 4
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -162,18 +165,26 @@ function Wait-Still([string]$tag, [int[]]$app) {
 # The crop and the whole screen, each a clean grab (ParityNative.CleanGrab: never while the app's glass has the bar
 # excluded from capture), and the crop must match the same rect of the whole-screen shot taken right after it (the
 # clock may tick: under 3 of 255 on average): else the screen changed under the shot, and it is taken again.
-function Shoot([string]$dir, [string]$name, [int[]]$app) {
+# It is also taken again while the crop still matches $bg, the whole screen grabbed before that app started (the
+# guard of launcher/run-launcher.ps1): on 11-10 two runs scored one theme 0.72-0.75 with an Electron shot that held
+# no bar at all, clean grab or not, while the other themes read 0.98+. A bar over the crop moves it far more than
+# $MinVsEmpty (4 of 255 on average); the empty screen under it reads ~0.
+function Shoot([string]$dir, [string]$name, [int[]]$app, [byte[]]$bg) {
   $ok = $false; $what = "$name $tag"
-  for ($try = 1; $try -le 4 -and -not $ok; $try++) {
+  for ($try = 1; $try -le 6 -and -not $ok; $try++) {
     $c = [ParityNative]::CleanGrab($app, $crop.x, $crop.y, $crop.w, $crop.h, 60, 5000)
     $f = [ParityNative]::CleanGrab($app, 0, 0, $W, $H, 60, 5000)
     $same = [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $f.Px, $W, $crop.x, $crop.y)
-    $ok = $c.Clean -and $f.Clean -and $same -lt 3
-    Say ("{0}: shot {1}: crop clean={2} ({3} window(s), {4} ms, {5} grab(s)), full clean={6} ({7} ms), crop vs full {8:N2}{9}" -f $what, $try,
-      $c.Clean, $c.Windows, $c.WaitedMs, $c.Tries, $f.Clean, $f.WaitedMs, $same, $(if ($ok) { '' } else { ': taken again' }))
-    if (-not $ok) { Start-Sleep -Milliseconds 400 }
+    $vsBg = if ($bg) { [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $bg, $W, $crop.x, $crop.y) } else { 999 }
+    $ok = $c.Clean -and $f.Clean -and $same -lt 3 -and $vsBg -ge $MinVsEmpty
+    Say ("{0}: shot {1}: crop clean={2} ({3} window(s), {4} ms, {5} grab(s)), full clean={6} ({7} ms), crop vs full {8:N2}, vs the screen before the app {9:N2}{10}" -f $what, $try,
+      $c.Clean, $c.Windows, $c.WaitedMs, $c.Tries, $f.Clean, $f.WaitedMs, $same, $vsBg, $(if ($ok) { '' } else { ': taken again' }))
+    if (-not $ok) { Start-Sleep -Milliseconds 600 }
   }
-  if (-not $ok) { Problem ("{0}: no steady shot in 4 tries (the last one is saved; see the shot lines in the log)" -f $tag) }
+  if (-not $ok) {
+    if ($vsBg -lt $MinVsEmpty) { Problem ("{0}: no shot with the bar in it in 6 tries (the crop still matches the screen from before the app, {1:N2}; the last one is saved)" -f $what, $vsBg) }
+    else { Problem ("{0}: no steady shot in 6 tries (the last one is saved; see the shot lines in the log)" -f $what) }
+  }
   Save-Bgra $c.Px $crop.w $crop.h (Join-Path $dir "$name.png")
   Save-Bgra $f.Px $W $H (Join-Path $dir "$name-full.png")
   [ParityNative]::VisibleWindows() | Set-Content -Encoding utf8 (Join-Path $dir "$name-windows.txt")
@@ -238,6 +249,7 @@ foreach ($pct in $scaleList) {
 
     # Electron Mantle (--test instance, made visible)
     $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
+    $bgE = [ParityNative]::Grab(0, 0, $W, $H)   # the screen before Electron starts (Shoot's no-bar guard)
     $node = Start-Process node -ArgumentList (Join-Path $PSScriptRoot 'electron-bar.mjs'), "--root=$root", "--theme=$t", "--out=$ej", '--hold=240' `
       -WorkingDirectory $root -PassThru -RedirectStandardOutput (Join-Path $dir 'electron-bar.out.txt') -RedirectStandardError (Join-Path $dir 'electron-bar.err.txt')
     $end = (Get-Date).AddSeconds(180)
@@ -245,9 +257,14 @@ foreach ($pct in $scaleList) {
     Start-Sleep -Milliseconds 300
     $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
     if ($e -and $e.ok) {
+      # electron-bar.mjs reports only once the tray cluster has its readings (network read, no battery dash, held
+      # 1.5 s; max 30 s). Native draws its cluster from the first frame (BarWindow.xaml.cs BuildGlyphs): nothing to wait for.
+      $rd = $e.readings
+      if ($rd) { Say ("electron {0}: tray readings net={1} battery={2} after {3} ms{4}" -f $t, $rd.net, $rd.battery, $rd.waitedMs, $(if ($rd.ready) { '' } else { ': NOT settled' })) }
+      if (-not $rd -or -not $rd.ready) { Problem ("electron {0}: the tray cluster had no readings in 30 s (net={1}, battery={2}); its shot holds the not-read-yet glyphs" -f $t, $rd.net, $rd.battery) }
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
       $app = @(Get-Tree $e.pid); $keep = $app + @($fixture.Id)
-      if ((Clear-Taskbar "electron $tag") -and (Clear-Crop "electron $tag" $keep)) { $r.electronMotion = Wait-Still "electron $tag" $app; $ePx = Shoot $dir 'electron' $app }
+      if ((Clear-Taskbar "electron $tag") -and (Clear-Crop "electron $tag" $keep)) { $r.electronMotion = Wait-Still "electron $tag" $app; $ePx = Shoot $dir 'electron' $app $bgE }
       $r.electron = $e
       Say ("electron {0}: pill {1} clock {2}" -f $t, ($e.pillDip -join ','), ($e.clockDip -join ','))
       $q = Start-Process $e.electronExe -ArgumentList '.', '--quit', '--test', "--profile-name=parity-$t" -WorkingDirectory $root -PassThru -WindowStyle Hidden
@@ -262,6 +279,7 @@ foreach ($pct in $scaleList) {
     # the native app
     $nd = Join-Path $dir 'native-bench'; New-Item -ItemType Directory -Force -Path $nd | Out-Null
     $ud = Join-Path ([IO.Path]::GetTempPath()) "mantle-native-parity-$t"; New-Item -ItemType Directory -Force -Path $ud | Out-Null
+    $bgN = [ParityNative]::Grab(0, 0, $W, $H)   # the screen before the native app starts (Shoot's no-bar guard)
     $np = Start-Process -FilePath $Exe -ArgumentList '--test', "--profile-name=parity-$t", "--user-data=$ud", "--theme=$t", "--bench-out=$nd" -PassThru
     $end = (Get-Date).AddSeconds(45)
     while ((Get-Date) -lt $end -and -not (Test-Path (Join-Path $nd 'ready.json')) -and -not $np.HasExited) { Start-Sleep -Milliseconds 250 }
@@ -269,7 +287,7 @@ foreach ($pct in $scaleList) {
       Start-Sleep -Milliseconds 800
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
       $app = @(Get-Tree $np.Id); $keep = $app + @($fixture.Id)
-      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $dir 'native' $app }
+      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $dir 'native' $app $bgN }
       $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
       $nc = Native-ClockRect $np.Id
       if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }

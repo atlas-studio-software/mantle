@@ -23,6 +23,10 @@
     launcher tools/parity/launcher/run-launcher.ps1 (Electron's launcher vs native, light and dark), gated on its floors
     osd      tools/parity/osd-toasts/run-osd-parity.ps1 (the volume pop-up's states, light and dark), gated on its floor
     strip    tools/parity/bar-tasks/run-strip-parity.ps1 (the bar's apps strip, light and dark), gated on its floor
+    qs       tools/parity/quick-settings/run-qs-parity.ps1 (the quick-settings pop-up, light and dark), gated on
+             "QS-PARITY summary: 2 scored of 2" and its floors
+    previews tools/parity/bar-tasks/run-preview-parity.ps1 (the bar's window flyout with live previews, light and dark),
+             gated on its floors
              (the floors and why: tools/parity/README.md "CI floors"; the lanes' scripts are called, never edited here)
     unit     also runs node tools/parity/launcher/make-golden.cjs --check (Electron's ranking vs the checked-in golden)
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
@@ -39,7 +43,7 @@
   in <Out>/logs/<stage>.log.
 #>
 param(
-  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'sidecar'),
+  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
@@ -49,7 +53,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'sidecar')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar')
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -400,10 +404,16 @@ function Stage-script([string]$name, [string]$script, [string[]]$argv) {
 # still closing are printed, never failed on); tools/parity/README.md "CI floors" says where each number comes from.
 # A floor only moves up, in the same commit as the fix that earns it.
 $Floors = [ordered]@{
-  'launcher light' = 0.78   # 0.8295 (run 42388736155)
-  'launcher dark'  = 0.55   # 0.5864: the --test Electron launcher is a framed opaque window (docs/lanes/launcher.md)
+  'launcher light' = 0.84   # 0.8586, 0.8581 (runs 42786941393, 42789738354; also 0.8581-0.8586 in 4 runs before)
+  'launcher dark'  = 0.80   # 0.8175, 0.8170 (same runs); the --test Electron launcher is a framed window (docs/lanes/launcher.md)
   'osd'            = 0.55   # lowest state: vol-dead (unavailable) 0.58, the why line wraps differently (docs/lanes/osd-toasts.md)
-  'strip'          = 0.88   # dark 0.9091, light 0.9258 (run 42770119126, the first gated run)
+  'strip'          = 0.90   # dark 0.9091 / 0.9091, light 0.9258 / 0.9580 (runs 42786941393, 42789738354)
+  # qs: native part 1's pop-up is ~44 px taller (row spacing) and 20 px wider than Electron's and words the power
+  # plan and battery differently, so the bottom-aligned pair scores low; a regression still moves it (lane notes)
+  'qs light'       = 0.36   # 0.3872 (run 42789738354, the first with the Wi-Fi and Bluetooth tiles kept)
+  'qs dark'        = 0.43   # 0.4519 (same run)
+  'previews light' = 0.92   # 0.9545 / 0.9545 / 0.9418 (runs 42786941393, 42789738354, 42792223889; live DWM pictures)
+  'previews dark'  = 0.94   # 0.9746 / 0.9746 / 0.9599 (same runs)
 }
 
 function Scores([string]$log, [string]$pattern) {
@@ -483,6 +493,52 @@ function Stage-strip {
   return ("ok (ssim {0}; floor {1})" -f (($rows | ForEach-Object { "{0} {1:N4}" -f $_.Tag, $_.Ssim }) -join ', '), $f)
 }
 
+function Stage-qs {
+  $out = Join-Path $Out 'parity\qs'
+  $code = Lane-Script 'qs' 'tools\parity\quick-settings\run-qs-parity.ps1' @('-Exe', $exe, '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/quick-settings/run-qs-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'qs.log'
+  $rows = Scores $log '^QS-PARITY qs-(\w+) \(\w+\): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^QS-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^QS-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if (-not $sum.Count) { return "FAILED (no QS-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
+  $bad = @(); $got = @()
+  $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
+  if ($scored -lt 2 -or $of -ne 2) { $bad += "$scored of $of pop-ups scored" }
+  foreach ($t in 'light', 'dark') {
+    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["qs $t"]
+    if (-not $r.Count) { $bad += "$t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
+  }
+  if ($code -ne 0) { $bad += "exit $code" }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok ($scored of $of scored, ssim $($got -join ', '))"
+}
+
+function Stage-previews {
+  $out = Join-Path $Out 'parity\previews'
+  $code = Lane-Script 'previews' 'tools\parity\bar-tasks\run-preview-parity.ps1' @('-Exe', $exe, '-Theme', 'both', '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/bar-tasks/run-preview-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'previews.log'
+  $rows = Scores $log '^PREVIEW-PARITY (\w+): ssim ([\d.]+)'
+  Select-String -Path $log -Pattern '^PREVIEW-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $bad = @(); $got = @()
+  foreach ($t in 'light', 'dark') {
+    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["previews $t"]
+    if (-not $r.Count) { $bad += "$t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
+  }
+  $fail = @(Select-String -Path $log -Pattern '^PREVIEW-PARITY: FAILED (.*)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if ($fail.Count) { $bad += (Short $fail[0].Matches[0].Groups[1].Value) }
+  elseif ($code -ne 0) { $bad += "exit $code" }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok (ssim $($got -join ', '))"
+}
+
 function Stage-sidecar {
   $proj = @(Get-ChildItem -Path (Join-Path $native 'src\Mantle.Sidecar') -Filter *.csproj -ErrorAction SilentlyContinue)
   if ($proj.Count -eq 0) { return 'skipped (no src/Mantle.Sidecar/*.csproj)' }
@@ -503,7 +559,7 @@ function Stage-sidecar {
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -550,6 +606,8 @@ foreach ($s in $Stages) {
       'launcher' { Stage-launcher }
       'osd'     { Stage-osd }
       'strip'   { Stage-strip }
+      'qs'      { Stage-qs }
+      'previews' { Stage-previews }
       'sidecar' { Stage-sidecar }
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result

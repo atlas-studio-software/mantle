@@ -31,8 +31,11 @@ const PART2_OUT = `(() => {
   for (const c of Array.from(pop.children)) if (![...c.classList].some((k) => keep.has(k))) { c.remove(); gone++; }
   const grid = pop.querySelector('.qsgrid');
   if (grid) Array.from(grid.children).slice(4).forEach((c) => { c.remove(); gone++; });
-  // the ">" buttons qs-more.js adds beside the Wi-Fi and Bluetooth tiles and the volume line
-  pop.querySelectorAll('.qsgrid > * > button, .qsline > button:not(.qsmute)').forEach((b) => { b.remove(); gone++; });
+  // the ">" buttons qs-more.js adds beside the Wi-Fi and Bluetooth tiles (each tile wrapped with its chevron in a
+  // .qsx-split: unwrapped here, so the tile keeps its own width, as native draws it) and after the mute button
+  // (class "qsmute qsx-more"). The first CI run (42786941393) removed the tiles themselves with ".qsgrid > * > button".
+  pop.querySelectorAll('.qsx-chev, .qsx-more').forEach((b) => { b.remove(); gone++; });
+  pop.querySelectorAll('.qsx-split').forEach((s) => { while (s.firstChild) s.parentNode.insertBefore(s.firstChild, s); s.remove(); });
   pop.querySelectorAll('.pmplans, .pmplantoggle').forEach((b) => { b.remove(); gone++; });
   return 'removed ' + gone;
 })()`;

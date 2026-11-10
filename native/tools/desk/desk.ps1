@@ -3,7 +3,7 @@
 
     pwsh -NoProfile -File native/tools/desk/desk.ps1 -Reset -Tag <stage> [-Keep <pid,...>]
         prints "DESK <tag> before: <snapshot>", puts the desktop back (leftover test apps closed, taskbar on
-        auto-hide and out of the way, every app window minimized, the foreground on the desktop, the cursor
+        auto-hide and out of the way, a "System Properties" dialog closed, every app window minimized, the foreground on the desktop, the cursor
         mid-screen) and prints "DESK <tag> reset: <what it did>" and "DESK <tag> after: <snapshot>".
     pwsh -NoProfile -File native/tools/desk/desk.ps1 -Snapshot -Tag <t>     one "DESK <t>: <snapshot>" line
     pwsh -NoProfile -File native/tools/desk/desk.ps1 -Watch -Log <file>     runs until killed: one line per
@@ -35,7 +35,11 @@ if ($Reset) {
   Write-Host "DESK $Tag before: $([Desk]::Snapshot())"
   $did = @()
   # Leftover test apps and fixtures of an earlier stage (by name: none of these is the runner's own).
-  $names = 'notepad', 'charmap', 'MantleNative', 'WerFault', 'WerFaultSecure'
+  # The SystemProperties* tools are the "System Properties" dialog (one is sometimes left open on the runner;
+  # Desk.Reset also closes that dialog by its title, whatever process hosts it).
+  $names = 'notepad', 'charmap', 'MantleNative', 'WerFault', 'WerFaultSecure',
+    'SystemPropertiesAdvanced', 'SystemPropertiesComputerName', 'SystemPropertiesPerformance', 'SystemPropertiesProtection',
+    'SystemPropertiesRemote', 'SystemPropertiesHardware', 'SystemPropertiesDataExecutionPrevention'
   $left = @(Get-Process -Name $names -ErrorAction SilentlyContinue | Where-Object { $Keep -notcontains $_.Id })
   foreach ($p in $left) { try { Stop-Process -Id $p.Id -Force -ErrorAction Stop } catch { } }
   if ($left.Count) { $did += 'stopped ' + (($left | ForEach-Object { "$($_.ProcessName) $($_.Id)" }) -join ', ') }

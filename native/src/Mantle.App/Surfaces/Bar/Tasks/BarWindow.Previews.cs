@@ -121,6 +121,8 @@ public sealed partial class BarWindow
 
     void FlyCellEnter(CellVm vm, Button b)
     {
+        // nothing opens during a drag, nor on the icon just dropped until the pointer leaves it (BarWindow.Drag.cs)
+        if (DragQuietEnter(vm)) return;
         _flyHover = vm;
         FlyCancelLeave();
         StopTimer(_flyDwell);

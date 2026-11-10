@@ -31,10 +31,12 @@ public sealed partial class CellVm : INotifyPropertyChanged
     public string Letter { get; private set; } = "?";
     public string ExeName { get; private set; } = "";
     string _tip = "";
-    bool _flying;
+    bool _flying, _quiet;
     /// The tooltip; none while this app's previews are up (bar.js flyBuild: no tooltip window over the pictures).
-    public string? Tip => _flying ? null : _tip;
+    public string? Tip => _flying || _quiet ? null : _tip;
     internal bool Flying { set { if (_flying == value) return; _flying = value; Changed(nameof(Tip)); } }
+    /// No tooltip while an icon is dragged, and until the pointer leaves the icon it was dropped on (bar.js dragQuietOn).
+    internal bool Quiet { set { if (_quiet == value) return; _quiet = value; Changed(nameof(Tip)); } }
     string _title = "";
     public string Title => _title;
     ImageSource? _icon;
@@ -116,6 +118,7 @@ public sealed partial class BarWindow
         // cells.json once the strip is laid out: a cell inserted or moved has no container until the next layout
         // pass, and an icon lands after its sync (it decodes asynchronously)
         Dock.LayoutUpdated += (_, _) => { if (_cellsDirty && _benchOut != null) WriteCells(); };
+        HookDrag();   // drag to reorder (BarWindow.Drag.cs)
         if (Host.Args.Test) StartUiBeat();
     }
 
@@ -157,7 +160,10 @@ public sealed partial class BarWindow
     void SyncCells()
     {
         if (_tasks == null) return;
-        var list = _tasks.Last;
+        // a push mid-drag waits for the drop (bar.js dragPending); a just-dropped order outranks older lists (orderKept)
+        if (DragBusy) { _dragPending = true; return; }
+        _dragPending = false;
+        var list = _orderHold.Apply(_tasks.Last, Environment.TickCount64);
         RenderStripProblem(list, _tasks.WindowsProblem);
         var want = new List<TaskItem>();
         var seen = new HashSet<string>(StringComparer.Ordinal);
@@ -231,6 +237,7 @@ public sealed partial class BarWindow
     {
         TestLine("click", sender);
         if (sender is not Button b || b.Tag is not CellVm vm) return;
+        if (DragSwallows()) return;   // the click that ends a drag opens nothing (bar.js dragSwallow)
         if (FlyClick(vm)) return;   // the flyout answered it (bar.js el.dock click)
         OpenCell(vm, fresh: false, b);
     }
@@ -261,7 +268,7 @@ public sealed partial class BarWindow
     {
         if (sender is not Button b || b.Tag is not CellVm vm) return;
         var pt = e.GetCurrentPoint(b);
-        if (pt.Properties.PointerUpdateKind != PointerUpdateKind.MiddleButtonReleased) return;
+        if (pt.Properties.PointerUpdateKind != PointerUpdateKind.MiddleButtonReleased || DragBusy) return;
         e.Handled = true;
         OpenCell(vm, fresh: true);
     }
