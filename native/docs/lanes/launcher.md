@@ -93,13 +93,50 @@ black and, in dark, its pane sits over black ("The see-through effect is off: Ma
 behind this window" in its footer); native's pane is see-through over the wallpaper. A fair next step: a second pass
 over a solid black desktop.
 
-## Part 3 starts here
+## Part 4 (lane native-r4-launcher)
 
-Known gaps from the pairs (not masked): Electron shows a **Files** group (Windows Search off on the runner: a warning
-line) and **icons** (a generic file glyph for a `.lnk` with no target, a search glyph on the web row); native has
-neither yet. The backdrop picture (Electron's blurred photo of what is behind) is not built: native's pane is the same
-token stack over the unblurred desktop. The light drop shadow (`--lg-shadow`) is not drawn.
-Then, in order: the backdrop picture and the unfold/fold, query memory (90 s), search/run/quick modes, power rows with
-confirm, file rows (sidecar `search.files`), calculator, icons (sidecar resolver), keyboard-refused note, blur-closes,
-profile command launch in Windows Terminal (ported, untested), URL launch through Quartz; UI tests for PageUp/PageDown,
-Tab, a held Enter, scroll-into-view.
+- **Keystroke latency.** Before (run 42388736155 era, 2026-11-07): light native 26.9 / 28.0 / 31.8 / 10.8 / 29.0 ms per
+  keystroke (median 28.0) vs Electron 18.7; dark 16.5 / 14.1 / 15.6 / 9.1 / 29.5 (15.6) vs 17.4. The split (~10 vs ~28)
+  was one frame: TextChanged is posted after the edit, then `apps.search` hopped to the host thread and back, then every
+  row was made anew (~100 elements and ~10 brushes a row). Now: the search starts in **TextChanging** (synchronous with
+  the edit); the host's index is searched on the UI thread (`LauncherSurface.Service`, set in the host's launcher block:
+  `LauncherService.Search` reads one immutable snapshot, thread-safe; the bus stays the fallback before the index exists);
+  rows and headings are **pooled** and refilled in place; token brushes are cached. After (run 42770736122): light
+  16.4 / 5.6 / 5.7 / 5.3 / 2.9 (median 5.6) vs Electron 22.1 / 19.4 / 19.7 / 16.9 / 15.7 (19.4); dark 16.9 / 5.8 / 5.9 / 5.6 /
+  3.2 (5.8) vs 21.6 / 18.3 / 17.3 / 16.1 / 15.7 (17.3). Native's clock now starts at TextChanging (earlier than before).
+  The test log line adds `(search N ms, rows N ms)`.
+- **The intermittent "Down did not move to row 2"** (run 42767060451): a second search for the same text (a burst's
+  first key searched at once and read the whole text; the debounce then searched it again) landed after the arrow and
+  reset the selection. Now a repeat of the queued text is not searched, an answer for the query already on screen keeps
+  the selected row, and an arrow / Tab / Enter first runs any search the debounce holds. UI test
+  `A_key_right_after_typing_acts_on_the_rows_for_what_was_typed` (5 rounds, Down with no wait after the last letter);
+  `tools/parity/launcher/repeat-keys.ps1 -Times 5` ran both keyboard tests 5 times: 5 of 5 (run 42770736122).
+- **Icons and glyphs.** `LauncherService.IconSource` (host block: an `IconResolver` on the sidecar's `icon` / `app`, its own
+  cache) fills every non-Mantle app row 8 at a time after the index is published; rows never wait for icons (better:
+  Electron's build waits up to 4 s), an open re-asks rows still without one, and the apps source says
+  "icons unavailable: ..." only when the sidecar could not be asked. Store icons are asked like the rest (Electron probes
+  one first: not ported). `LauncherGlyphs` draws Electron's GLYPH table from its own SVG path data (a small SVG path
+  parser into PathGeometry) and the footer's warning triangle. Decoded pictures are cached per data URL.
+- **Glass.** `LauncherLook`: light = the screen behind the pane captured before show (`Native/Backdrop.Grab`), blurred
+  12 px + saturate 1.5 off the UI thread, faded in over 150 ms; dark = the Windows wallpaper (SPI_GETDESKWALLPAPER) decoded
+  once per file and display, cut as Fill, blurred 5 px, dimmed a fifth; no picture = the footer line "The see-through
+  effect is off: ..." with the reason as its tooltip. The light `--lg-shadow` is one bitmap per size (three Gaussian
+  layers, empty under the pane). Unfold on open (left half to whole from the centre hinge, 289 ms on
+  cubic-bezier(.4,0,.1,1), a dim on the leaf fading over the last 15 %), fold on close (340 ms on (.9,0,.6,1), then the
+  hide; a 490 ms timer if no frame lands); Windows' "Animation effects" off = 120 ms cross-fades. Not drawn: the leaf blur.
+- **Focus line** sits on the divider's own row (it was 1 px below) and shows while the query has focus (Electron's
+  inactive --test window shows it too).
+- **Parity.** The dark pass now runs over a solid black desktop (`-DarkDesktop solid`, default; `wallpaper` for the old
+  pass): the fair pass. The script resets the runner desktop (tools/desk/desk.ps1 -Reset) before each theme (run
+  42769793275 had the runner's own console over both launchers) and reads run-ui's `UITEST:` line. Run 42770736122:
+  SSIM light 0.8359, dark 0.7935 (pairs looked at: the Files group is the main gap in both; the native caret shows in dark).
+  Open-to-first-frame median native 24.1 / 3.9 ms vs Electron 45.6 / 29.1 (light now includes the screen capture).
+
+## Part 5 starts here
+
+Gaps (not masked): the **Files** group (Electron shows it with "Windows Search is turned off..." on the runner: needs the
+sidecar `search.files` and the group status lines, LAU-069/070); the leaf blur of the unfold; the light picture's ~4 fps
+refresh while open; the dark readability guard (LAU-035); click-through during the fold and the keyboard hand-back
+(LAU-026/029). Then: query memory (90 s), search/run/quick modes, power rows with confirm, file rows, calculator,
+keyboard-refused note, blur-closes, profile command launch in Windows Terminal, URL launch through Quartz; UI tests for
+PageUp/PageDown, Tab, a held Enter, scroll-into-view, reduced motion.

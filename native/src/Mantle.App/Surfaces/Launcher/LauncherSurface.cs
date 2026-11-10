@@ -85,7 +85,6 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
     readonly List<TextBlock> _heads = [];                                 // group headings, pooled the same way
     readonly List<UIElement> _want = [];
     readonly Dictionary<string, Microsoft.UI.Xaml.Media.Imaging.BitmapImage?> _pics = new(StringComparer.Ordinal);
-    bool _winActive;
     LauncherLook? _look;
 
     public bool Shown => _shown;
@@ -134,8 +133,6 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         _q.Loaded += (_, _) => HideClearButton();
         _win.Activated += (_, e) =>
         {
-            _winActive = e.WindowActivationState != WindowActivationState.Deactivated;
-            FocusLine();
             // LAU-025: focus lost to another window closes it (live only; a --test launcher is never active)
             if (e.WindowActivationState == WindowActivationState.Deactivated && _shown && !_ctx.Test) Hide("blur");
         };
@@ -152,9 +149,9 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     StackPanel? _hintEnd;
 
-    /// The accent line under the query: only while the query has the keyboard in an ACTIVE window (a page's
-    /// :focus-within is off while its window is not focused; a --test launcher is never active, so it has none).
-    void FocusLine() => _focusLine.Opacity = _winActive && Win32.GetForegroundWindow() == _hwnd && _q.FocusState != FocusState.Unfocused ? 1 : 0;
+    /// The accent line under the query (.slot:focus-within::after): while the query has focus, whether or not the window is
+    /// active (Chromium keeps :focus-within in an inactive window; the parity pairs show Electron's --test launcher with it).
+    void FocusLine() => _focusLine.Opacity = _q.FocusState != FocusState.Unfocused ? 1 : 0;
 
     // ------------------------------------------------------------------ the tree (ui/launcher/index.html + launcher.css)
 
@@ -179,7 +176,8 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         try { _q.Resources["TextControlBorderThemeThicknessFocused"] = new Thickness(0); }
         catch (Exception e) { _ctx.Log.Line("the search line's focus border could not be turned off (" + e.Message + "); it may draw a line under the text"); }
 
-        _focusLine = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(0, 0, 0, -1), Opacity = 0, IsHitTestVisible = false };
+        // bottom: -1px of the slot's padding box = ON the divider's own row (the pane does not change height), not below it
+        _focusLine = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Opacity = 0, IsHitTestVisible = false };
         var slotGrid = new Grid();
         _slot = new Border { Height = 58, Padding = new Thickness(16, 0, 16, 0), BorderThickness = new Thickness(0, 0, 0, 1), Child = _q };
         slotGrid.Children.Add(_slot);
