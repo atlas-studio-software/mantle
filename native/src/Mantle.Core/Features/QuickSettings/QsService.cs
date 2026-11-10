@@ -42,7 +42,7 @@ public sealed class QsOptions
 /// have sent, never sent, and the part then reads the asked value marked <c>dryRun</c> (so a panel under test moves),
 /// while Windows is not touched. Host thread only.
 /// </summary>
-public sealed class QsService
+public sealed partial class QsService
 {
     public const string Event = "qs";
     public const int PartMs = 4000, AudioMs = 6000, LeaseMs = 60000, RenewMs = 20000, PollMs = 2000;
@@ -73,6 +73,7 @@ public sealed class QsService
             // the sidecar's own watch pushes {ev:"qs", part, state}; its CoreAudio listener pushes {ev:"volume", level, muted}
             o.Platform.On("qs", e => OnPush(e.Body));
             o.Platform.On("volume", e => { if (e.Body.ValueKind == JsonValueKind.Object) Store("volume", QsParts.Normalize(Detach(e.Body, "ev"), "the volume"), _o.Host.NowMs, publish: true); });
+            o.Platform.On("btdevices", e => OnBtPush(e.Body));
         }
     }
 

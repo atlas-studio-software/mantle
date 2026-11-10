@@ -55,6 +55,85 @@ internal sealed class PopupHost
     public string? OpenKey => _st == St.Hidden ? null : _kind?.Key;
     public string State => _st.ToString().ToLowerInvariant();
 
+    /// A pop-up closed, however it closed (its button, an outside click, Esc, another pop-up, the bar hiding):
+    /// (key, why). Raised once per open, after the state is hidden (quick settings lets its watches go here).
+    public event Action<string, string>? Closed;
+
+    /// The open no-focus pop-up that holds the keyboard on its own ask lost it to another window: its key.
+    public event Action<string>? KeyboardLost;
+
+    FrameworkElement? _anchor;
+    PopupWindow? _kbWin;
+    IntPtr _kbPrev;
+
+    /// Electron's `bar.popover {height}` re-ask: the open pop-up of <paramref name="key"/> takes a new height, its
+    /// bottom kept 7 DIP above the pill (a view that changes, a note that arrives late). False when it is not open.
+    public bool Resize(string key, double heightDip)
+    {
+        if (_st == St.Hidden || _win == null || _kind == null || _kind.Key != key || _anchor == null) return false;
+        if (Math.Abs(_kind.HeightDip - heightDip) < 0.5) return true;
+        _kind = _kind with { HeightDip = heightDip };
+        _win.Place(Place(_kind, _anchor), _bar.Geometry.Scale);
+        Host.Log.Line($"pop-up {_kind.Name}: resized to {Math.Round(heightDip)} DIP high");
+        return true;
+    }
+
+    /// <summary>
+    /// Q-W6: a no-focus pop-up that needs typing (the Wi-Fi password) takes the keyboard ON ITS OWN ASK, only while
+    /// the field is in use: WS_EX_NOACTIVATE comes off, the window in front is remembered and the pop-up is raised
+    /// (WIN-015's ladder). <see cref="GiveBackKeyboard"/> (or the close) puts NOACTIVATE back and, if the pop-up still
+    /// holds the foreground, hands it to the remembered window. Another window taking focus meanwhile raises
+    /// <see cref="KeyboardLost"/> and focus is NOT dragged back (the user went there on purpose).
+    /// </summary>
+    public (bool Ok, string Words) TakeKeyboard(string key)
+    {
+        if (_st != St.Shown || _win == null || _kind?.Key != key) return (false, "the pop-up is not open");
+        if (Host.Quiet) return (false, "a quiet test window never takes the keyboard from whoever is at the machine");
+        var w = _win;
+        if (_kbWin == w && Win32.GetForegroundWindow() == w.Hwnd) return (true, "it already has the keyboard");
+        IntPtr fg = Win32.GetForegroundWindow();
+        _kbPrev = fg != w.Hwnd ? fg : IntPtr.Zero;
+        NoActivate(w, false);
+        string r = Focus.Raise(w.Hwnd);
+        if (Win32.GetForegroundWindow() != w.Hwnd) {
+            NoActivate(w, true);
+            Host.Log.Line($"pop-up {w.Name}: could not take the keyboard ({r})");
+            return (false, "Windows did not let the pop-up take the keyboard (" + r + ")");
+        }
+        _kbWin = w;
+        Host.Log.Line($"pop-up {w.Name}: took the keyboard on its own ask ({r}); the window in front is handed it back afterwards");
+        return (true, r);
+    }
+
+    public void GiveBackKeyboard(string why)
+    {
+        var w = _kbWin;
+        if (w == null) return;
+        _kbWin = null;
+        NoActivate(w, true);
+        bool held = Win32.GetForegroundWindow() == w.Hwnd;
+        bool back = held && _kbPrev != IntPtr.Zero && Win32.IsWindow(_kbPrev) && Win32.SetForegroundWindow(_kbPrev);
+        Host.Log.Line($"pop-up {w.Name}: gave the keyboard back ({why}){(back ? ", to the window that had it" : held ? "; the window that had it could not be raised" : "; another window already had it")}");
+        _kbPrev = IntPtr.Zero;
+    }
+
+    static void NoActivate(PopupWindow w, bool on)
+    {
+        long ex = Win32.GetWindowLongPtr(w.Hwnd, Win32.GWL_EXSTYLE).ToInt64();
+        ex = on ? ex | Win32.WS_EX_NOACTIVATE : ex & ~(long)Win32.WS_EX_NOACTIVATE;
+        Win32.SetWindowLongPtr(w.Hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
+    }
+
+    void OnActivated(PopupWindow w, WindowActivatedEventArgs e)
+    {
+        if (_kbWin != w || e.WindowActivationState != WindowActivationState.Deactivated) return;
+        _kbWin = null;
+        _kbPrev = IntPtr.Zero;
+        NoActivate(w, true);
+        Host.Log.Line($"pop-up {w.Name}: another window took the keyboard; it is not dragged back");
+        KeyboardLost?.Invoke(w.Key);
+    }
+
     public void Toggle(PopupKind kind, FrameworkElement anchor)
     {
         if (_st != St.Hidden && _kind?.Key == kind.Key) { Close("its button was clicked again"); return; }
@@ -82,7 +161,10 @@ internal sealed class PopupHost
             w = new PopupWindow(kind.Key, kind.Name, kind.Focusable, kind.Instant, _bar.Dark, kind.Body());
             if (kind.Focusable) w.Root.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Escape) { e.Handled = true; Close("Esc"); } };   // BAR-393
             if (kind.Instant) _parked[kind.Key] = w;
+            var made = w;
+            made.Win.Activated += (_, e) => OnActivated(made, e);
         }
+        _anchor = anchor;
         _win = w;
         w.Root.RequestedTheme = _bar.Dark ? ElementTheme.Dark : ElementTheme.Light;
         w.Place(Place(kind, anchor), _bar.Geometry.Scale);
@@ -148,6 +230,7 @@ internal sealed class PopupHost
         var w = _win; var k = _kind;
         bool painted = _st == St.Shown || (w?.Painted == true && _st == St.Opening);
         _st = St.Hidden; _seq++; _win = null;
+        if (_kbWin != null) GiveBackKeyboard("the pop-up closed");
         _watch?.Disarm();
         DisarmAway();
         string fate = w?.Instant == true ? "parked" : "closed", end = fate;
@@ -163,6 +246,7 @@ internal sealed class PopupHost
             }
         }
         Host.Log.Line($"pop-up {k?.Name ?? "?"}: closed ({why}), {end}");
+        if (k != null) Closed?.Invoke(k.Key, why);
     }
 
     /// The bar's own presses (BAR-392): one inside the bar but outside the pop-up's anchor closes it.

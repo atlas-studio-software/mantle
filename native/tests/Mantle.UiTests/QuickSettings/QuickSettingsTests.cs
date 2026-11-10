@@ -96,7 +96,7 @@ public class QuickSettingsTests
         ClickEl(app.Find("bar.volume"));
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), "quick settings did not close on its own button");
-        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the panel closed; its watch is let go", 2000), "no closed line. Log:\n" + Tail(dir));
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the panel closed (its button was clicked again); its watch is let go", 2000), "no closed line. Log:\n" + Tail(dir));
         Assert.IsFalse(FrameProbe.Log(dir).Contains("NOT DONE"), "a set failed:\n" + Tail(dir));
     }
 

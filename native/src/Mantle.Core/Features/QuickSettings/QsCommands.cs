@@ -57,6 +57,48 @@ public sealed class QsCommands
         return QsParts.IsOk(r) ? CommandResult.Success(QsService.El(r)) : CommandResult.Fail(QsParts.Str(r["reason"]) ?? "the apps playing sound cannot be read");
     }
 
+    // ---- one level down (main.js qsMore): the answer is always {ok, reason, ...} with the sidecar's own ok/reason, never
+    // a Fail, so the bus's failure log never holds a call's arguments (qs.wifi.connect's carry the password)
+
+    static CommandResult Reply(JsonObject r) => CommandResult.Success(QsService.El(r));
+
+    /// qs.wifi.list: the networks Windows knows of, saved first, then by signal.
+    [Command("qs.wifi.list")]
+    public async ValueTask<CommandResult> WifiList(CommandCall call) => Reply(await _svc.WifiListAsync().ConfigureAwait(true));
+
+    /// qs.wifi.scan: a fresh scan, then the list.
+    [Command("qs.wifi.scan")]
+    public async ValueTask<CommandResult> WifiScan(CommandCall call) => Reply(await _svc.WifiScanAsync().ConfigureAwait(true));
+
+    /// qs.wifi.connect {ssid | hex, password?, auto}: a dry run in --test; the password is never logged or kept.
+    [Command("qs.wifi.connect")]
+    public async ValueTask<CommandResult> WifiConnect(CommandCall call) => Reply(await _svc.WifiConnectAsync(call.Args).ConfigureAwait(true));
+
+    [Command("qs.wifi.disconnect")]
+    public async ValueTask<CommandResult> WifiDisconnect(CommandCall call) => Reply(await _svc.WifiDisconnectAsync().ConfigureAwait(true));
+
+    /// qs.audio.devices: the active playback devices, the default one checked.
+    [Command("qs.audio.devices")]
+    public async ValueTask<CommandResult> AudioDevices(CommandCall call) => Reply(await _svc.AudioDevicesAsync().ConfigureAwait(true));
+
+    /// qs.audio.default {device}: the output for all three roles (a dry run in --test).
+    [Command("qs.audio.default")]
+    public async ValueTask<CommandResult> AudioDefault(CommandCall call) => Reply(await _svc.AudioDefaultAsync(call.Args).ConfigureAwait(true));
+
+    /// qs.bt.list: the paired devices.
+    [Command("qs.bt.list")]
+    public async ValueTask<CommandResult> BtList(CommandCall call) => Reply(await _svc.BtListAsync().ConfigureAwait(true));
+
+    /// qs.bt.watch {on}: the sidecar's device watch while the Bluetooth view is open (pushes: "qs.btdevices").
+    [Command("qs.bt.watch")]
+    public async ValueTask<CommandResult> BtWatch(CommandCall call) => Reply(await _svc.BtWatchAsync(Prop(call.Args, "on").ValueKind == JsonValueKind.True).ConfigureAwait(true));
+
+    [Command("qs.bt.connect")]
+    public async ValueTask<CommandResult> BtConnect(CommandCall call) => Reply(await _svc.BtToggleAsync("connect", call.Args).ConfigureAwait(true));
+
+    [Command("qs.bt.disconnect")]
+    public async ValueTask<CommandResult> BtDisconnect(CommandCall call) => Reply(await _svc.BtToggleAsync("disconnect", call.Args).ConfigureAwait(true));
+
     /// qs.audio.session {key, level?, muted?}: one app's volume (a dry run in --test: logged, never sent).
     [Command("qs.audio.session")]
     public async ValueTask<CommandResult> Session(CommandCall call)

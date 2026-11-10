@@ -22,10 +22,9 @@ namespace Mantle.App.Surfaces.Bar.QuickSettings;
 /// powermode.get, powermode.set) over a <see cref="SurfaceLink"/> (caller "bar"), and hears the "qs" and
 /// "powermode.state" events. A click changes the tile at once (pending) and the read-back has the last word; a switch
 /// that did not take springs back with its reason as a note. UI thread only. Ids: docs/lanes/quick-settings.md.
-/// Part 2 (not here): the three "&gt;" views (Wi-Fi networks + password, Bluetooth devices, sound output + per-app
-/// rows), the qs-tiles row (airplane, do not disturb, focus, project, cast), game mode, top bar and hot corners rows.
+/// The three "›" views (Wi-Fi networks + password, Bluetooth devices, sound output + per-app rows): QsPanel.More.cs.
 /// </summary>
-internal sealed class QsPanel
+internal sealed partial class QsPanel
 {
     public const double WidthDip = 340, PadX = 12, PadY = 11;
     const string Ns = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
@@ -46,7 +45,7 @@ internal sealed class QsPanel
     readonly StackPanel _stack, _notes;
     readonly Dictionary<string, Tile> _tiles = new(StringComparer.Ordinal);
     readonly SliderRow _bright, _vol;
-    readonly Button _mute;
+    readonly Button _mute, _soundMore;
     readonly Canvas _muteGlyph = new() { Width = 16, Height = 16 }, _gearGlyph = new() { Width = 16, Height = 16 };
     readonly Grid _pmSeg;
     readonly StackPanel _pmRow;
@@ -56,19 +55,21 @@ internal sealed class QsPanel
     readonly Button _toWin, _gear;
     readonly Border _foot;
 
-    sealed class Tile { public Button B = null!; public Canvas Ico = null!; public TextBlock Lbl = null!, Sub = null!; public QsTileView? View; }
+    sealed class Tile { public Button B = null!; public Button? Chev; public Canvas Ico = null!; public TextBlock Lbl = null!, Sub = null!; public QsTileView? View; }
     sealed class SliderRow
     {
         public StackPanel Wrap = null!; public TextBlock Name = null!, Val = null!; public Slider Range = null!; public Grid Line = null!;
         public bool Dragging; public bool InFlight; public double? Waiting;
     }
 
-    public QsPanel(Action<string> log, bool test)
+    public QsPanel(Action<string> log, bool test, Room room)
     {
-        _log = log; _test = test;
+        _log = log; _test = test; _room = room;
         _stack = new StackPanel { Padding = new Thickness(PadX, PadY, PadX, PadY) };
         Root = new Grid { Width = WidthDip - 2 };
         Root.Children.Add(_stack);
+        _sub = BuildSub();
+        Root.Children.Add(_sub);
         Uia(Root, "qs.panel", "Quick settings");
 
         // ---- the tile grid: 2 columns, gap 6, 10 below (.qsgrid)
@@ -80,8 +81,21 @@ internal sealed class QsPanel
         int i = 0;
         foreach (var (key, label) in new[] { ("wifi", "Wi-Fi"), ("bluetooth", "Bluetooth"), ("nightlight", "Night light"), ("saver", "Energy saver") }) {
             var t = MakeTile(key, label);
-            Grid.SetColumn(t.B, i % 2); Grid.SetRow(t.B, i / 2);
-            grid.Children.Add(t.B);
+            FrameworkElement cell = t.B;
+            if (key is "wifi" or "bluetooth") {
+                // Windows 11's split tile: the tile switches the radio, its "›" always opens the list (BAR-608, BAR-630)
+                var split = new Grid { ColumnSpacing = 1 };
+                split.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+                split.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+                t.Chev = Chevron("qs.more." + key, key == "wifi" ? "Show Wi-Fi networks" : "Show Bluetooth devices");
+                Grid.SetColumn(t.Chev, 1);
+                string view = key == "wifi" ? "wifi" : "bt";
+                t.Chev.Click += (_, _) => Enter(view);
+                split.Children.Add(t.B); split.Children.Add(t.Chev);
+                cell = split;
+            }
+            Grid.SetColumn(cell, i % 2); Grid.SetRow(cell, i / 2);
+            grid.Children.Add(cell);
             _tiles[key] = t; i++;
         }
         _stack.Children.Add(grid);
@@ -98,6 +112,12 @@ internal sealed class QsPanel
         _mute.Margin = new Thickness(8, 0, 0, 0);
         Grid.SetColumn(_mute, 1);
         _vol.Line.Children.Add(_mute);
+        _vol.Line.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
+        _soundMore = Chevron("qs.more.sound", "Sound output and volume mixer");
+        _soundMore.Height = 28; _soundMore.Margin = new Thickness(4, 0, 0, 0);
+        Grid.SetColumn(_soundMore, 2);
+        _soundMore.Click += (_, _) => Enter("sound");
+        _vol.Line.Children.Add(_soundMore);
         _mute.Click += (_, _) => {
             if (_busy.ContainsKey("mute")) return;
             bool want = !QsParts.IsTrue(Part("volume")?["muted"]);
@@ -168,6 +188,7 @@ internal sealed class QsPanel
         _link = link;
         _subs.Add(link.On<QsSnapshot>(QsService.Event, s => { Take(s.Body); if (Open) Paint(); }));
         _subs.Add(link.On<JsonElement>("powermode.state", e => { _pm = Obj(e); if (Open) Paint(); }));
+        _subs.Add(link.On<JsonElement>(QsService.BtEvent, OnBtPush));
         _ = Snapshot();      // warmed at start, so the first open draws real values in its first frame
         _ = ReadPowerMode();
     }
@@ -181,9 +202,7 @@ internal sealed class QsPanel
         _dark = dark;
         Root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         Paint();
-        Root.Measure(new Windows.Foundation.Size(WidthDip - 2, double.PositiveInfinity));
-        double h = Math.Ceiling(Root.DesiredSize.Height) + 2;
-        return h < 120 ? 460 : Math.Min(h, 640);
+        return _fitted = Need();
     }
 
     public void Opened()
@@ -198,6 +217,7 @@ internal sealed class QsPanel
     public void Closed()
     {
         Open = false;
+        Back("the panel closed", closing: true);
         if (_link != null) _ = _link.CallAsync("qs.watch", new JsonObject { ["on"] = false });
     }
 
@@ -340,6 +360,9 @@ internal sealed class QsPanel
             PaintNotes(QsView.Problems(_parts, notes));
             foreach (var t in new[] { _toWin, _gear }) t.Foreground = B("LgInk2");
             Fill(_gearGlyph, GearPaths, "LgInk2");
+            _soundMore.Background = B("LgTile");
+            PaintChevron(_soundMore, "LgInk");
+            PaintFrame();
         } finally { _painting = false; }
     }
 
@@ -356,6 +379,7 @@ internal sealed class QsPanel
         t.Sub.Foreground = v.On ? B("LgAccOn") : B("LgInk3");
         t.Sub.Opacity = v.On ? .82 : 1;
         Fill(t.Ico, paths, inkKey);
+        if (t.Chev != null) { t.Chev.Background = t.B.Background; PaintChevron(t.Chev, inkKey); }
         t.Ico.Opacity = v.Dead ? .55 : 1;
         t.B.Opacity = pending ? .6 : 1;
         ToolTipService.SetToolTip(t.B, v.Tip);
@@ -416,7 +440,9 @@ internal sealed class QsPanel
             _notes.Children.Add(t);
         }
         _notes.Visibility = lines.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        if (lines.Count != _notesShown) { _notesShown = lines.Count; if (Open && _view == null) Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread()?.TryEnqueue(() => Fit()); }   // a late note is not cut off
     }
+    int _notesShown;
 
     // ------------------------------------------------------------------ parts of the UI
 
