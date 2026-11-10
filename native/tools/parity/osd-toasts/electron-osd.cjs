@@ -16,6 +16,10 @@ const PAGE = path.join(REPO, 'ui', 'osd', 'index.html');
 const args = process.argv.slice(process.argv.indexOf(__filename) + 1);
 const [out, bg, ...specs] = args;
 app.commandLine.appendSwitch('force-device-scale-factor', '1');
+// grayscale text, as Mantle's real pop-up gets it: its window is TRANSPARENT, where Chromium never uses LCD (ClearType)
+// text. Shot over an opaque colour it would, and the pairs would score the colour fringes (run 42767286777: the number
+// '62' in red/blue fringes, the native window grayscale like the live Electron one).
+app.commandLine.appendSwitch('disable-lcd-text');
 app.disableHardwareAcceleration();
 app.on('window-all-closed', () => { /* one window per shot: never quit between them */ });
 

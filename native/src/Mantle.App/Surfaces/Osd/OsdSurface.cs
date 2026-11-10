@@ -50,7 +50,8 @@ internal sealed class OsdSurface : ISurface
     Border _pane = null!, _lip = null!, _fill = null!, _track = null!, _pillLine = null!;
     Button _glyph = null!, _more = null!;
     Ellipse _knob = null!;
-    StackPanel _stack = null!, _panel = null!, _apps = null!, _why = null!;
+    StackPanel _stack = null!, _panel = null!, _apps = null!;
+    Grid _why = null!;   // glyph | words: a Grid, so the words get the pane's width and wrap (a horizontal StackPanel measures them unbounded: one line, clipped)
     TextBlock _num = null!, _whyText = null!, _dev = null!;
     Viewbox _glyphBox = null!, _chev = null!;
     readonly List<IDisposable> _subs = new();
@@ -136,9 +137,12 @@ internal sealed class OsdSurface : ISurface
         _pillLine = new Border { Child = _pill };
 
         // the why line: a small warn glyph and the words in --lg-warn (margin -3px 14px 9px)
-        _whyText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 16.8 };
+        _whyText = new TextBlock { FontSize = 12, TextWrapping = TextWrapping.Wrap, LineHeight = 16.8, LineStackingStrategy = LineStackingStrategy.BlockLineHeight };   // line-height 1.4, exactly
         AutomationProperties.SetAutomationId(_whyText, "why");
-        _why = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(14, -3, 14, 9), Visibility = Visibility.Collapsed };
+        _why = new Grid { ColumnSpacing = 6, Margin = new Thickness(14, -3, 14, 9), Visibility = Visibility.Collapsed };
+        _why.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(12) });
+        _why.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        Grid.SetColumn(_whyText, 1);
 
         // the panel (padding 10px 12px 4px): "Sound" + the device, then the apps (or a state block)
         _dev = new TextBlock { TextTrimming = TextTrimming.CharacterEllipsis, HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Bottom };
@@ -151,13 +155,14 @@ internal sealed class OsdSurface : ISurface
         _lip = new Border { IsHitTestVisible = false, BorderThickness = new Thickness(0, 1, 0, 0) };
         var inner = new Grid();
         inner.Children.Add(_stack); inner.Children.Add(_lip);
-        _pane = new Border { BorderThickness = new Thickness(1), Child = inner, Width = PillW, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(M) };
+        _pane = new Border { BorderThickness = new Thickness(1), BackgroundSizing = BackgroundSizing.OuterBorderEdge, Child = inner, Width = PillW, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(M) };
         AutomationProperties.SetAutomationId(_pane, "osd");
         _pane.PointerEntered += (_, _) => _fader.Hover(true);
         _pane.PointerExited += (_, _) => _fader.Hover(false);
         _pane.PointerPressed += (_, e) => { _fader.Poke(); if (_ctx.Test) _ctx.Log.Line($"pointer pressed at {e.GetCurrentPoint(_pane).Position.X:0},{e.GetCurrentPoint(_pane).Position.Y:0} DIP on the pane"); };
         _pane.PointerWheelChanged += OnWheel;
         _pane.SizeChanged += (_, _) => { Report(); Shadow(); };
+        _root.SizeChanged += (_, _) => Shadow();
         _root.Children.Add(_pane);
         Arrange();
     }
@@ -633,42 +638,23 @@ internal sealed class OsdSurface : ISurface
 
     // ------------------------------------------------------------------ the light drop shadow (--lg-shadow; dark has none)
 
+    /// The light drop shadow: --lg-shadow drawn by CssShadow (the CSS formula into a bitmap) behind the pane, nothing in dark
+    /// (the lip only). Composition's DropShadow drew it as a hard dark band (see CssShadow), so it is not used here.
+    string _shadowKey = "";
     void Shadow()
     {
-        var host = Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.GetElementVisual(_shadowHost).Compositor;
-        if (_dark || _pane.ActualWidth <= 0) { Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(_shadowHost, null); return; }
-        var c = host;
-        var box = c.CreateContainerVisual();
-        double pw = _pane.ActualWidth, ph = _pane.ActualHeight, rad = _pane.CornerRadius.TopLeft;
+        if (_dark || _pane.ActualWidth <= 0 || _root.ActualWidth <= 0) { _shadowHost.Children.Clear(); _shadowKey = ""; return; }
+        double scale = _root.XamlRoot?.RasterizationScale ?? 1;
         var o = _pane.TransformToVisual(_root).TransformPoint(new global::Windows.Foundation.Point(0, 0));
-        // the shadow ink: --lg-shadow is rgba(14,18,38,a); with no shadow token yet this is the light --lg-ink, the
-        // nearest token (a request for a shadow token is in docs/lanes/osd-toasts.md)
-        var ink = ((SolidColorBrush)B("LgInk")).Color;
-        void Layer(double dy, double blur, double spread, byte alpha)
-        {
-            float w = (float)(pw + 2 * spread), h = (float)(ph + 2 * spread);
-            if (w <= 0 || h <= 0) return;
-            float r = (float)Math.Max(0, rad + spread);
-            var geo = c.CreateRoundedRectangleGeometry(); geo.Size = new System.Numerics.Vector2(w, h); geo.CornerRadius = new System.Numerics.Vector2(r, r);
-            var shape = c.CreateSpriteShape(geo); shape.FillBrush = c.CreateColorBrush(ink);   // a mask: only its alpha is used
-            var sv = c.CreateShapeVisual(); sv.Size = new System.Numerics.Vector2(w, h); sv.Shapes.Add(shape);
-            var surf = c.CreateVisualSurface(); surf.SourceVisual = sv; surf.SourceSize = new System.Numerics.Vector2(w, h);
-            var sprite = c.CreateSpriteVisual();
-            sprite.Size = new System.Numerics.Vector2(w, h);
-            sprite.Offset = new System.Numerics.Vector3((float)(o.X - spread), (float)(o.Y - spread), 0);
-            var ds = c.CreateDropShadow();
-            ds.Mask = c.CreateSurfaceBrush(surf);
-            ds.BlurRadius = (float)blur;
-            ds.Offset = new System.Numerics.Vector3(0, (float)dy, 0);
-            var col = ink; col.A = alpha; ds.Color = col;
-            sprite.Shadow = ds;
-            box.Children.InsertAtTop(sprite);
-        }
-        // 0 1px 1px rgba(14,18,38,.05), 0 10px 28px -12px rgba(14,18,38,.22), 0 26px 56px -28px rgba(14,18,38,.30)
-        Layer(1, 1, 0, 13);
-        Layer(10, 28, -12, 56);
-        Layer(26, 56, -28, 77);
-        Microsoft.UI.Xaml.Hosting.ElementCompositionPreview.SetElementChildVisual(_shadowHost, box);
+        int w = (int)Math.Ceiling(_root.ActualWidth * scale), h = (int)Math.Ceiling(_root.ActualHeight * scale);
+        var box = new CssShadow.Box(o.X, o.Y, _pane.ActualWidth, _pane.ActualHeight, _pane.CornerRadius.TopLeft);
+        string key = FormattableString.Invariant($"{w}x{h}@{scale}:{box}");
+        if (key == _shadowKey) return;
+        _shadowKey = key;
+        var img = new Image { Source = CssShadow.Bitmap(w, h, scale, new[] { box }, CssShadow.LightLg), Width = w / scale, Height = h / scale,
+            Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
+        _shadowHost.Children.Clear();
+        _shadowHost.Children.Add(img);
     }
 
     // ------------------------------------------------------------------ ISurface
