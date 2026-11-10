@@ -55,7 +55,7 @@ public sealed class SessionEnd
 }
 
 /// <summary>What a second launch asks of the running instance (main.js app.on('second-instance')).</summary>
-public enum SecondAsk { Plain, Quit, Open, Click, Memory, Report, Tray, Crash, Unload, Chord, Key, Surface, Theme, Rest }
+public enum SecondAsk { Plain, Quit, Open, Click, Memory, Report, Tray, Crash, Unload, Chord, Key, Surface, Theme, Rest, Gc }
 
 /// <summary>
 /// The second-launch router (CORE-007/009/010): <c>--quit</c> and <c>--open=</c> always; the test probes
@@ -81,6 +81,7 @@ public static class SecondLaunch
         if (With("--test-surface=") is { } surface) return (SecondAsk.Surface, surface);
         if (With("--test-theme=") is { } theme) return (SecondAsk.Theme, theme);   // theme.set {mode} as a page calls it
         if (With("--test-rest=") is { } rest) return (SecondAsk.Rest, rest);   // <on|off>[:<why>]: host.rest(on, why) as game mode asks it
+        if (Has("--test-gc")) return (SecondAsk.Gc, null);   // a full blocking GC in the running instance (the GC-then-theme test)
         foreach (var a in argv) {
             if (a == null) continue;
             if (a.StartsWith("--test-chord=", StringComparison.Ordinal)) return (SecondAsk.Chord, a.Substring(13));

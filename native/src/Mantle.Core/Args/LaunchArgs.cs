@@ -53,6 +53,7 @@ public sealed class LaunchArgs
         "test-popwatch", "test-popwatch-away",   // lib/popwatch.js: a --test run watches nothing real unless asked
         "test-surface", "test-theme",   // native: a second start's surface.<verb> (<verb>:<name>) and theme.set (<mode>), for UI tests
         "test-rest",                    // native: a second start's host.rest (<on|off>[:<why>]), for UI tests
+        "test-gc",                      // native: a second start's full blocking GC, for the GC-then-theme UI test
     };
 
     public string? Theme { get; private set; }
