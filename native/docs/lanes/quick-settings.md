@@ -89,6 +89,8 @@ go`, the dry-run lines above, `mantle: qs.set <part>=<value> -> ok, reads <v> (<
   `Typing_shows_the_fixture_rows_and_the_arrows_Enter_and_Esc_work` ("Down on the last row did not wrap", LAU-048),
   not in this lane's files; both QuickSettings UI tests and the bar/rest tests passed. Whether it is a flake or caused
   by this branch is NOT established.
+- Run 42781742692 (8ff3d81, the full recipe): `NATIVE-CI: ok (10 ok, 0 skipped)`; ui 35 of 35 (the launcher test
+  above passed, so it was a flake there); unit 556 of 556; bar parity unchanged (light 0.9966, dark 0.9916).
 - bar.md: 23 rows `tested:` and 30 rows `ported:83b9283` (53 rows of the 221). Not done: holders (677-679), restart
   re-take (683), net fast re-check (682), and everything listed in part 2.
 - The screenshot pair has not been run yet.
