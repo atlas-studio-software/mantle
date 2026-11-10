@@ -44,7 +44,16 @@ internal sealed class LauncherTokens
         return c;
     }
 
-    public SolidColorBrush Brush(string key, bool dark) => new(Of(key, dark));
+    readonly Dictionary<string, SolidColorBrush> _brushLight = new(), _brushDark = new();
+
+    /// One shared brush per token and theme: a row re-render hands out the same objects instead of making ~10 brushes
+    /// a row (the keystroke-to-rows path). Never mutate a brush from here; make your own for that.
+    public SolidColorBrush Brush(string key, bool dark)
+    {
+        var cache = dark ? _brushDark : _brushLight;
+        if (!cache.TryGetValue(key, out var b)) cache[key] = b = new SolidColorBrush(Of(key, dark));
+        return b;
+    }
 
     static object? Find(ResourceDictionary d, string theme, string key, int depth)
     {

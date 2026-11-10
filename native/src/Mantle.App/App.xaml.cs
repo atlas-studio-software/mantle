@@ -252,6 +252,13 @@ public partial class MantleApp : Application
         if (test) log("launcher: " + launcherWhy);
         var launcher = new Mantle.Core.Features.Run.LauncherService(launcherInputs, test, Host.Log);
         _offs.Add(Mantle.Core.Features.Run.LauncherCommands.Register(_bus, new Mantle.Core.Features.Run.LauncherCommands(launcher)));
+        // the rows' icons: the sidecar's "icon" / "app" through the shared IconResolver (main.js makeIconResolver); its own cache
+        var launcherPlatform = _platform;
+        var launcherIcons = new Mantle.Core.Features.Icons.IconResolver(Mantle.Core.Features.Run.LauncherService.SidecarOf(launcherPlatform), () => loop.NowMs,
+            () => launcherPlatform.Status.Ready ? null : (launcherPlatform.Status.Reason.Length > 0 ? launcherPlatform.Status.Reason : "it is not running"));
+        launcher.IconSource = path => launcherIcons.ForAsync(new[] { path });
+        // the launcher searches the host's snapshot on its own thread (no bus hop per keystroke: LAU-016 latency)
+        Mantle.App.Surfaces.Launcher.LauncherSurface.Service = launcher;
         _ = launcher.IndexAsync();
         // ---- end launcher wiring
         StartSurfaces(log);
