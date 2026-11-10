@@ -275,6 +275,20 @@ public partial class MantleApp : Application
         _ = launcher.IndexAsync();
         // ---- end launcher wiring
         StartSurfaces(log);
+        // ---- quick settings wiring (lane native-bar-qs): qs.get / qs.set / qs.watch / qs.audio.sessions / qs.audio.session
+        // from the generated catalog, on the sidecar's own verbs; a --test run's sets are dry runs (QsService), and
+        // MANTLE_TEST_QS (test only) replaces the sidecar's readings with made-up ones. The bar's panel reaches them through
+        // its own SurfaceLink (caller "bar"), handed to the UI thread. The power mode row is [Feature("powermode")].
+        var qs = new Mantle.Core.Features.QuickSettings.QsService(new Mantle.Core.Features.QuickSettings.QsOptions {
+            Platform = _platform, Events = _events, Host = loop, Test = test, Log = log, Fixture = test ? Host.Env("MANTLE_TEST_QS") : null,
+        });
+        _offs.Add(Mantle.Core.Features.QuickSettings.QsCommands.Register(_bus, new Mantle.Core.Features.QuickSettings.QsCommands(qs)));
+        {
+            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            var qsLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
+            if (!postUi(() => _window?.AttachQuickSettings(qsLink))) log("qs: the UI thread is gone, so the bar's panel was not attached");
+        }
+        // ---- end quick settings wiring
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
         // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
         // are kept, as Electron keeps them.
