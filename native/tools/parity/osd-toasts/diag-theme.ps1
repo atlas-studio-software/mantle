@@ -6,7 +6,7 @@ $repo = (Resolve-Path (Join-Path $PSScriptRoot '..\..\..\..')).Path
 $out = Join-Path $repo 'native\out\ui\diag'
 New-Item -ItemType Directory -Force -Path $out | Out-Null
 $proj = Join-Path $repo 'native\tests\Mantle.UiTests\Mantle.UiTests.csproj'
-$vars = 'MANTLE_DIAG_NO_SHADOW', 'MANTLE_DIAG_SHADOW', 'MANTLE_DIAG_NO_TOASTS_SURFACE', 'MANTLE_DIAG_NO_TOASTS_FEATURE', 'DOTNET_GCgen0size'
+$vars = 'MANTLE_DIAG_GC', 'MANTLE_DIAG_SLEEP', 'MANTLE_DIAG_NO_SHADOW', 'MANTLE_DIAG_SHADOW', 'MANTLE_DIAG_NO_TOASTS_SURFACE', 'MANTLE_DIAG_NO_TOASTS_FEATURE', 'DOTNET_GCgen0size'
 function Pass([string]$tag, [hashtable]$set, [int]$times = 2) {
   foreach ($v in $vars) { Remove-Item "env:$v" -ErrorAction SilentlyContinue }
   foreach ($k in $set.Keys) { Set-Item "env:$k" $set[$k] }
@@ -25,10 +25,8 @@ function Pass([string]$tag, [hashtable]$set, [int]$times = 2) {
   $env:MANTLE_TEST_VISIBLE = $null
   Write-Host "DIAG $tag : $crash of $logs app logs crashed | $($res -join ' / ')"
 }
-Pass 'base' @{}
 Pass 'no-shadow' @{ MANTLE_DIAG_NO_SHADOW = '1' }
-Pass 'shadow-hide' @{ MANTLE_DIAG_SHADOW = 'hide' }
-Pass 'shadow-sbs' @{ MANTLE_DIAG_SHADOW = 'sbs' }
-Pass 'shadow-nocopy' @{ MANTLE_DIAG_SHADOW = 'nocopy' }
-Pass 'shadow-noimg' @{ MANTLE_DIAG_SHADOW = 'noimg' }
+Pass 'gc-only' @{ MANTLE_DIAG_NO_SHADOW = '1'; MANTLE_DIAG_GC = '1' }
+Pass 'sleep-only' @{ MANTLE_DIAG_NO_SHADOW = '1'; MANTLE_DIAG_SLEEP = '1' }
+Pass 'base' @{}
 Write-Host 'DIAG: done'

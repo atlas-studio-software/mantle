@@ -648,8 +648,11 @@ internal sealed class OsdSurface : ISurface
     /// (the lip only). Composition's DropShadow drew it as a hard dark band (see CssShadow), so it is not used here.
     string _shadowKey = "";
     object? _diagKeep;   // DIAG (temporary)
+    bool _diagOnce;      // DIAG (temporary)
     void Shadow()
     {
+        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_GC") == "1" && !_diagOnce) { _diagOnce = true; GC.Collect(2, GCCollectionMode.Forced, true, true); GC.WaitForPendingFinalizers(); GC.Collect(); _ctx.Log.Line("DIAG: full GC forced"); }   // DIAG (temporary)
+        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_SLEEP") == "1" && !_diagOnce) { _diagOnce = true; System.Threading.Thread.Sleep(400); _ctx.Log.Line("DIAG: UI thread held 400 ms"); }   // DIAG (temporary)
         if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_SHADOW") == "1") return;   // DIAG (temporary)
         string diag = Environment.GetEnvironmentVariable("MANTLE_DIAG_SHADOW") ?? "";       // DIAG (temporary)
         if (diag == "hide") _shadowHost.Visibility = _dark ? Visibility.Collapsed : Visibility.Visible;
