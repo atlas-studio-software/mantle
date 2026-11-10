@@ -19,7 +19,11 @@ public class QuickSettingsTests
         "\"brightness\":{\"ok\":true,\"present\":true,\"level\":70}," +
         "\"nightlight\":{\"ok\":true,\"present\":true,\"on\":false}," +
         "\"power\":{\"ok\":true,\"present\":true,\"saver\":false,\"percent\":72,\"ac\":true,\"charging\":true}," +
-        "\"powermode\":{\"ok\":true,\"mode\":\"balanced\",\"inForce\":\"balanced\",\"available\":true,\"settable\":true,\"source\":\"ac\",\"saver\":false,\"reason\":null}}";
+        "\"powermode\":{\"ok\":true,\"mode\":\"balanced\",\"inForce\":\"balanced\",\"available\":true,\"settable\":true,\"source\":\"ac\",\"saver\":false,\"reason\":null}," +
+        // the second tile row (Electron's mock: ui/bar/mock-mantle.js qxState / pjState)
+        "\"qstiles\":{\"on\":true,\"dnd\":{\"ok\":true,\"on\":false,\"writable\":true,\"reason\":null,\"rule\":null}," +
+        "\"airplane\":{\"ok\":true,\"on\":false,\"canSet\":true,\"reason\":null},\"focus\":null,\"timer\":{\"ok\":true,\"reason\":null}}," +
+        "\"project\":{\"on\":true,\"read\":{\"current\":\"extend\",\"available\":[\"internal\",\"clone\",\"extend\",\"external\"],\"unavailable\":{},\"connected\":2}}}";
 
     static void ClickEl(AutomationElement e) { var r = e.BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(350); }
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 30))); }
@@ -110,7 +114,8 @@ public class QuickSettingsTests
         var w = Panel(app, dir);
         Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the panel opened from bar.network", 2000), "no opened line. Log:\n" + Tail(dir));
         // the runner's own readings (read only): every tile says something, never a blank
-        foreach (var id in new[] { "qs.tile.wifi", "qs.tile.bluetooth", "qs.tile.nightlight", "qs.tile.saver" })
+        foreach (var id in new[] { "qs.tile.wifi", "qs.tile.bluetooth", "qs.tile.nightlight", "qs.tile.saver",
+                                  "qs.tile.airplane", "qs.tile.dnd", "qs.tile.focus", "qs.tile.project", "qs.tile.cast" })
             Assert.IsTrue(Host.Until(() => Help(El(w, id)).Length > 0, 3000), id + " has no words");
         Assert.IsTrue(El(w, "qs.power").Name.Length > 0, "the footer has no battery line");
         Host.Screenshot("qs-open-dark-runner");

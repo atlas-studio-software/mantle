@@ -6,10 +6,11 @@
  *
  *   node_modules/.bin/electron native/tools/parity/quick-settings/electron-qs.cjs <out-dir> <bg #rrggbb> [part1|full]
  *
- * part1 (default): the rows native part 1 does not draw yet are taken out of Electron's panel before the shot (the
- * qs-tiles row, game mode, top bar, hot corners and the power plan toggle), so the pair compares like with like; full:
- * the whole panel, for the eye. Writes <out>/qs-state.json: the mock's qs.get and powermode.get answers, which the native
- * side takes as MANTLE_TEST_QS so both apps draw the same readings.
+ * part1 (default): the rows native does not draw yet are taken out of Electron's panel before the shot (game mode, top
+ * bar, hot corners and the power plan toggle; the qs-tiles row stays since quick settings part 4), so the pair compares
+ * like with like; full: the whole panel, for the eye. Writes <out>/qs-state.json: the mock's qs.get, powermode.get,
+ * qstiles.state and project.state answers, which the native side takes as MANTLE_TEST_QS so both apps draw the same
+ * readings.
  * Prints: ELECTRON-QS <theme> <w>x<h> <file>, and ELECTRON-QS-STATE <file>.
  */
 const path = require('path');
@@ -29,8 +30,7 @@ const PART2_OUT = `(() => {
   const keep = new Set(['qsgrid', 'qsrow', 'qsnotes', 'pmrow', 'qsfoot']);
   let gone = 0;
   for (const c of Array.from(pop.children)) if (![...c.classList].some((k) => keep.has(k))) { c.remove(); gone++; }
-  const grid = pop.querySelector('.qsgrid');
-  if (grid) Array.from(grid.children).slice(4).forEach((c) => { c.remove(); gone++; });
+  // the grid keeps all nine tiles (qs-tiles.js's five after the first four): native draws them since part 4
   // the ">" buttons qs-more.js adds (the split Wi-Fi and Bluetooth tiles, the one after the mute button) stay: native
   // draws them since quick settings part 2. The power plan list and its toggle go (not drawn natively yet).
   pop.querySelectorAll('.pmplans, .pmplantoggle').forEach((b) => { b.remove(); gone++; });
@@ -46,11 +46,12 @@ app.whenReady().then(async () => {
     await win.webContents.executeJavaScript(`document.documentElement.setAttribute('data-theme', ${JSON.stringify(theme)}); document.documentElement.style.background = ${JSON.stringify(bg)}; document.body.style.background = 'transparent'; true`);
     await new Promise((r) => setTimeout(r, 900));
     if (theme === 'light') {
-      const st = await win.webContents.executeJavaScript(`Promise.all([window.mantle.call('qs.get'), window.mantle.call('powermode.get')]).then(([q, p]) => {
+      const st = await win.webContents.executeJavaScript(`Promise.all([window.mantle.call('qs.get'), window.mantle.call('powermode.get'), window.mantle.call('qstiles.state'), window.mantle.call('project.state')]).then(([q, p, x, j]) => {
         const d = (x) => (x && x.ok !== undefined && x.result !== undefined ? x.result : x);
         const qs = d(q), pm = d(p), o = {};
         for (const k of ['volume', 'wifi', 'bluetooth', 'brightness', 'nightlight', 'power']) if (qs && qs[k]) o[k] = qs[k];
         o.powermode = pm;
+        o.qstiles = d(x); o.project = d(j);
         return JSON.stringify(o);
       })`);
       const f = path.join(out, 'qs-state.json');

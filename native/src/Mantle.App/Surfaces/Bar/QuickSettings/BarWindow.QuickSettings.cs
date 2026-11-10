@@ -32,7 +32,8 @@ public sealed partial class BarWindow
             Resize: (h, w) => popups.Resize("qs", h, w),
             TakeKeys: () => keys ? popups.TakeKeyboard("qs")
                 : (false, "a test instance never takes the keyboard from whoever is at the machine, so a password cannot be typed here"),
-            GiveKeys: why => popups.GiveBackKeyboard(why)));
+            GiveKeys: why => popups.GiveBackKeyboard(why),
+            Close: why => { if (popups.OpenKey == "qs") popups.Close(why); }));
         if (Host.Args.Test && keys) Host.Log.Line($"qs: {QsKeysEnv}=1: this test panel may take the keyboard for the password field");
         foreach (var b in new[] { VolumeBtn, NetworkBtn, BatteryBtn }) {
             var anchor = b;

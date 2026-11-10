@@ -6,7 +6,7 @@ namespace Mantle.Core.Features.QuickSettings;
 
 /// <summary>How one tile is drawn: its words, its tooltip, on/dead, and (for Bluetooth) the Settings page a click opens
 /// when Mantle cannot switch it.</summary>
-public sealed record QsTileView(string Key, string Label, string Sub, string Tip, bool On, bool Dead, int Bars = 0, string? Opens = null, string? OpensWhat = null, bool Live = true);
+public sealed record QsTileView(string Key, string Label, string Sub, string Tip, bool On, bool Dead, int Bars = 0, string? Opens = null, string? OpensWhat = null, bool Live = true, bool Reading = false);
 
 /// <summary>How a slider row is drawn.</summary>
 public sealed record QsSliderView(bool Live, double? Level, string Value, string Why);

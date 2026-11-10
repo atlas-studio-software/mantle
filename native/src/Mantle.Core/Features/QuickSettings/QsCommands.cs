@@ -100,6 +100,26 @@ public sealed class QsCommands
     [Command("qs.bt.disconnect")]
     public async ValueTask<CommandResult> BtDisconnect(CommandCall call) => Reply(await _svc.BtToggleAsync("disconnect", call.Args).ConfigureAwait(true));
 
+    // ---- the second tile row (lib/features/qstiles.js qstiles.state / .refresh / .set, project.js project.open / .cast;
+    // Electron's names are qstiles.* and project.*, native keeps them under qs.tiles.*: one state, one service)
+
+    /// qs.tiles.state: the row's state as held (no read).
+    [Command("qs.tiles.state")]
+    public ValueTask<CommandResult> TilesState(CommandCall call) => ValueTask.FromResult(Reply(_svc.TilesState()));
+
+    /// qs.tiles.refresh: Do not disturb, airplane mode, the quiet profile and the display layout read again.
+    [Command("qs.tiles.refresh")]
+    public async ValueTask<CommandResult> TilesRefresh(CommandCall call) => Reply(await _svc.TilesRefreshAsync($"{call.Caller} opened the panel").ConfigureAwait(true));
+
+    /// qs.tiles.set {tile: dnd|airplane|focus, on}: a dry run in --test.
+    [Command("qs.tiles.set")]
+    public async ValueTask<CommandResult> TilesSet(CommandCall call)
+        => Reply(await _svc.TilesSetAsync(Str(call.Args, "tile") ?? "", Prop(call.Args, "on").ValueKind == JsonValueKind.True).ConfigureAwait(true));
+
+    /// qs.tiles.open {tile: project|cast}: Windows' Project choices or Cast panel; opens nothing in --test.
+    [Command("qs.tiles.open")]
+    public async ValueTask<CommandResult> TilesOpen(CommandCall call) => Reply(await _svc.TilesOpenAsync(Str(call.Args, "tile") ?? "").ConfigureAwait(true));
+
     /// qs.audio.session {key, level?, muted?}: one app's volume (a dry run in --test: logged, never sent).
     [Command("qs.audio.session")]
     public async ValueTask<CommandResult> Session(CommandCall call)

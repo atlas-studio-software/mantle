@@ -25,8 +25,9 @@ namespace Mantle.App.Surfaces.Bar.QuickSettings;
 /// </summary>
 internal sealed partial class QsPanel
 {
-    /// The pop-up's room: its height re-asked, and the keyboard taken and given back for the password field.
-    public sealed record Room(Func<double, double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys);
+    /// The pop-up's room: its height re-asked, the keyboard taken and given back for the password field, and the close
+    /// (a way out that opened Windows' own panel closes quick settings, as qs-tiles.js's ctx.close does).
+    public sealed record Room(Func<double, double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys, Action<string>? Close = null);
 
     public const double SubHeightDip = QsMoreView.ViewHeightDip + 2 * PadY + 2;
 

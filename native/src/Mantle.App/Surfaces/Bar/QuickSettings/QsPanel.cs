@@ -112,7 +112,9 @@ internal sealed partial class QsPanel
             grid.Children.Add(cell);
             _tiles[key] = t; i++;
         }
+        BuildTiles(grid, i);   // the second row: Airplane mode, Do not disturb, Focus, Project, Cast (QsPanel.Tiles.cs)
         _stack.Children.Add(grid);
+        _stack.Children.Add(_xNotes);
         _tiles["wifi"].B.Click += (_, _) => Toggle("wifi");
         _tiles["bluetooth"].B.Click += (_, _) => BluetoothClick();
         _tiles["nightlight"].B.Click += (_, _) => Toggle("nightlight");
@@ -208,6 +210,8 @@ internal sealed partial class QsPanel
         _subs.Add(link.On<QsSnapshot>(QsService.Event, s => { Take(s.Body); if (Open) Paint(); }));
         _subs.Add(link.On<JsonElement>("powermode.state", e => { _pm = Obj(e); if (Open) Paint(); }));
         _subs.Add(link.On<JsonElement>(QsService.BtEvent, OnBtPush));
+        _subs.Add(link.On<JsonElement>(QsService.TilesEvent, e => { if (Obj(e) is JsonObject s) { _xState = s; if (Open) Paint(); } }));
+        _ = TilesRefresh();  // warmed at start (lib/features/qstiles.js reads 3 s after the helper is up)
         _ = Snapshot();      // warmed at start, so the first open draws real values in its first frame
         _ = ReadPowerMode();
     }
@@ -230,12 +234,14 @@ internal sealed partial class QsPanel
         Paint();
         _ = Snapshot();
         _ = ReadPowerMode();
+        TilesOpened();
         if (_link != null) _ = _link.CallAsync("qs.watch", new JsonObject { ["on"] = true });
     }
 
     public void Closed()
     {
         Open = false;
+        TilesClosed();
         Back("the panel closed", closing: true);
         if (_link != null) _ = _link.CallAsync("qs.watch", new JsonObject { ["on"] = false });
     }
@@ -358,6 +364,7 @@ internal sealed partial class QsPanel
             PaintTile(bt, QsParts.IsFalse(Part("bluetooth")?["present"]) ? NoBtPaths : BtPaths);
             PaintTile(QsView.NightLight(Part("nightlight")), MoonPaths);
             PaintTile(QsView.Saver(Part("power")), SaverPaths);
+            PaintTiles();
             PaintSlider(_bright, QsView.Slider(Part("brightness"), true), "brightness");
             PaintSlider(_vol, QsView.Slider(Part("volume"), false), "volume");
             var v = Part("volume");
@@ -389,11 +396,11 @@ internal sealed partial class QsPanel
         } finally { _painting = false; }
     }
 
-    void PaintTile(QsTileView v, string[] paths)
+    void PaintTile(QsTileView v, string[] paths, bool pending = false)
     {
         var t = _tiles[v.Key];
         t.View = v;
-        bool pending = _busy.ContainsKey(v.Key);
+        pending = pending || _busy.ContainsKey(v.Key);
         // dark (bar.css, Helm's look): a dead tile is a card, not the input well
         t.B.Background = v.On ? B("LgAcc") : v.Dead ? (_dark ? B("LgCard") : B("LgSunk")) : B("LgTile");
         string inkKey = v.On ? "LgAccOn" : v.Dead ? "LgInk3" : "LgInk";
@@ -699,6 +706,7 @@ internal sealed partial class QsPanel
             tile = Math.Max(tile, 9 + 22 + 8 + Math.Max(TextW(t.Lbl.Text, Fs), TextW(t.Sub.Text, SubFs)) + 9 + (t.Chev != null ? ChevW : 0));
         double need = 2 * tile + 6;
         foreach (var n in _notes.Children) if (n is TextBlock nt) need = Math.Max(need, TextW(nt.Text, Fs));
+        foreach (var n in _xNotes.Children) if (n is TextBlock nt) need = Math.Max(need, TextW(nt.Text, Fs));
         need = Math.Max(need, TextW(_pmHead.Text, Fs) + TextW(_pmSub.Text, Fs));
         double seg = 0;
         foreach (var (_, label, _) in PowerModeView.Modes) seg = Math.Max(seg, TextW(label, 12, _dark ? FontWeights.Medium : FontWeights.Normal) + 8);
