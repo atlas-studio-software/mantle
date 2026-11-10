@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using Microsoft.UI.Xaml.Media.Imaging;
 
@@ -33,59 +34,82 @@ internal static class CssShadow
         new(0, 26, 56, -28, 14, 18, 38, .30),
     };
 
-    /// The premultiplied BGRA pixels (w x h physical px) of the layers round every box, at <paramref name="scale"/> px per DIP.
-    public static byte[] Pixels(int w, int h, double scale, IReadOnlyList<Box> boxes, IReadOnlyList<Layer> layers)
-    {
-        var px = new byte[w * h * 4];
-        if (w <= 0 || h <= 0) return px;
-        // the stack: alpha and premultiplied colour, drawn bottom layer first (CSS paints the first layer on top)
-        var a = new double[w * h]; var r = new double[w * h]; var g = new double[w * h]; var b = new double[w * h];
-        for (int li = layers.Count - 1; li >= 0; li--)
-        {
-            var L = layers[li];
-            var m = new double[w * h];
-            bool any = false;
-            foreach (var bx in boxes)
-            {
-                double sw = bx.W + 2 * L.Spread, sh = bx.H + 2 * L.Spread;
-                if (sw <= 0 || sh <= 0) continue;   // a spread that eats the shape leaves no shadow (CSS)
-                double rad = Math.Max(0, Math.Min(Math.Min(bx.Radius, Math.Min(bx.W, bx.H) / 2) + L.Spread, Math.Min(sw, sh) / 2));
-                Fill(m, w, h, (bx.X - L.Spread + L.Dx) * scale, (bx.Y - L.Spread + L.Dy) * scale, sw * scale, sh * scale, rad * scale);
-                any = true;
-            }
-            if (!any) continue;
-            Blur(m, w, h, L.Blur / 2 * scale);
-            for (int i = 0; i < m.Length; i++)
-            {
-                double s = m[i] * L.A;
-                if (s <= 0) continue;
-                a[i] = s + a[i] * (1 - s);
-                r[i] = L.R / 255.0 * s + r[i] * (1 - s); g[i] = L.G / 255.0 * s + g[i] * (1 - s); b[i] = L.B / 255.0 * s + b[i] * (1 - s);
-            }
-        }
-        // nothing under the elements themselves
-        var inside = new double[w * h];
-        foreach (var bx in boxes) Fill(inside, w, h, bx.X * scale, bx.Y * scale, bx.W * scale, bx.H * scale, Math.Min(bx.Radius, Math.Min(bx.W, bx.H) / 2) * scale);
-        for (int i = 0; i < a.Length; i++)
-        {
-            double k = 1 - Math.Min(1, inside[i]);
-            px[i * 4 + 0] = B255(b[i] * k); px[i * 4 + 1] = B255(g[i] * k); px[i * 4 + 2] = B255(r[i] * k); px[i * 4 + 3] = B255(a[i] * k);
-        }
-        return px;
-    }
-
+    /// The bitmap (w x h physical px) of the layers round every box, at <paramref name="scale"/> px per DIP.
+    /// <remarks>
+    /// No garbage: the working planes are unmanaged memory, freed before return, and the BGRA bytes go through one
+    /// reused buffer. The first version allocated ~90 bytes per pixel on the managed heap (about 9 MB per OSD size, more
+    /// per toast card), which brought the first full garbage collection to the first seconds of a run; after a full
+    /// collection a theme change stopped Mantle (see SeeThroughBackdrop: the windows' backdrop handler is then called
+    /// with no target; CI run 42777700651 forced one collection with no shadow code and crashed 4 of 4).
+    /// </remarks>
     public static WriteableBitmap Bitmap(int w, int h, double scale, IReadOnlyList<Box> boxes, IReadOnlyList<Layer> layers)
     {
-        var bmp = new WriteableBitmap(Math.Max(1, w), Math.Max(1, h));
-        Pixels(Math.Max(1, w), Math.Max(1, h), scale, boxes, layers).CopyTo(bmp.PixelBuffer);
+        w = Math.Max(1, w); h = Math.Max(1, h);
+        var bmp = new WriteableBitmap(w, h);
+        lock (Gate)
+        {
+            int bytes = w * h * 4;
+            if (s_px.Length < bytes) s_px = new byte[bytes];
+            Pixels(w, h, scale, boxes, layers, s_px.AsSpan(0, bytes));
+            s_px.CopyTo(0, bmp.PixelBuffer, 0, bytes);
+        }
         bmp.Invalidate();
         return bmp;
+    }
+
+    static readonly object Gate = new();
+    static byte[] s_px = Array.Empty<byte>();   // the BGRA bytes, reused (grown to the largest size asked for)
+
+    /// The premultiplied BGRA pixels (w x h) into px: the planes live in one unmanaged block.
+    static unsafe void Pixels(int w, int h, double scale, IReadOnlyList<Box> boxes, IReadOnlyList<Layer> layers, Span<byte> px)
+    {
+        int n = w * h;
+        const int Planes = 7;   // a r g b (the stack), m (a layer), t (the blur's pass), inside
+        double* block = (double*)NativeMemory.AllocZeroed((nuint)n * Planes, (nuint)sizeof(double));
+        try
+        {
+            var a = new Span<double>(block, n); var r = new Span<double>(block + n, n); var g = new Span<double>(block + 2 * n, n);
+            var b = new Span<double>(block + 3 * n, n); var m = new Span<double>(block + 4 * n, n); var t = new Span<double>(block + 5 * n, n);
+            var inside = new Span<double>(block + 6 * n, n);
+            // the stack: alpha and premultiplied colour, drawn bottom layer first (CSS paints the first layer on top)
+            for (int li = layers.Count - 1; li >= 0; li--)
+            {
+                var L = layers[li];
+                m.Clear();
+                bool any = false;
+                foreach (var bx in boxes)
+                {
+                    double sw = bx.W + 2 * L.Spread, sh = bx.H + 2 * L.Spread;
+                    if (sw <= 0 || sh <= 0) continue;   // a spread that eats the shape leaves no shadow (CSS)
+                    double rad = Math.Max(0, Math.Min(Math.Min(bx.Radius, Math.Min(bx.W, bx.H) / 2) + L.Spread, Math.Min(sw, sh) / 2));
+                    Fill(m, w, h, (bx.X - L.Spread + L.Dx) * scale, (bx.Y - L.Spread + L.Dy) * scale, sw * scale, sh * scale, rad * scale);
+                    any = true;
+                }
+                if (!any) continue;
+                Blur(m, t, w, h, L.Blur / 2 * scale);
+                for (int i = 0; i < n; i++)
+                {
+                    double s = m[i] * L.A;
+                    if (s <= 0) continue;
+                    a[i] = s + a[i] * (1 - s);
+                    r[i] = L.R / 255.0 * s + r[i] * (1 - s); g[i] = L.G / 255.0 * s + g[i] * (1 - s); b[i] = L.B / 255.0 * s + b[i] * (1 - s);
+                }
+            }
+            // nothing under the elements themselves
+            foreach (var bx in boxes) Fill(inside, w, h, bx.X * scale, bx.Y * scale, bx.W * scale, bx.H * scale, Math.Min(bx.Radius, Math.Min(bx.W, bx.H) / 2) * scale);
+            for (int i = 0; i < n; i++)
+            {
+                double k = 1 - Math.Min(1, inside[i]);
+                px[i * 4 + 0] = B255(b[i] * k); px[i * 4 + 1] = B255(g[i] * k); px[i * 4 + 2] = B255(r[i] * k); px[i * 4 + 3] = B255(a[i] * k);
+            }
+        }
+        finally { NativeMemory.Free(block); }
     }
 
     static byte B255(double v) => (byte)Math.Max(0, Math.Min(255, Math.Round(v * 255)));
 
     /// Coverage of a rounded rectangle (anti-aliased by its signed distance), max-ed into m.
-    static void Fill(double[] m, int w, int h, double x, double y, double rw, double rh, double rad)
+    static void Fill(Span<double> m, int w, int h, double x, double y, double rw, double rh, double rad)
     {
         double cx = x + rw / 2, cy = y + rh / 2, hx = rw / 2 - rad, hy = rh / 2 - rad;
         int x0 = Math.Max(0, (int)Math.Floor(x - 1)), x1 = Math.Min(w - 1, (int)Math.Ceiling(x + rw + 1));
@@ -100,15 +124,15 @@ internal static class CssShadow
             }
     }
 
-    /// A separable Gaussian (sigma in px); sigma under .2 px is no blur.
-    static void Blur(double[] m, int w, int h, double sigma)
+    /// A separable Gaussian (sigma in px) of m, with t as the between-passes plane; sigma under .2 px is no blur.
+    static void Blur(Span<double> m, Span<double> t, int w, int h, double sigma)
     {
         if (sigma < .2) return;
         int rad = (int)Math.Ceiling(sigma * 3);
-        var k = new double[2 * rad + 1]; double sum = 0;
+        Span<double> k = 2 * rad + 1 <= 512 ? stackalloc double[2 * rad + 1] : new double[2 * rad + 1];
+        double sum = 0;
         for (int i = -rad; i <= rad; i++) { k[i + rad] = Math.Exp(-(i * i) / (2 * sigma * sigma)); sum += k[i + rad]; }
         for (int i = 0; i < k.Length; i++) k[i] /= sum;
-        var t = new double[w * h];
         for (int j = 0; j < h; j++)
             for (int i = 0; i < w; i++)
             {

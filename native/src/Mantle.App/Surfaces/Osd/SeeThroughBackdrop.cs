@@ -1,9 +1,13 @@
 // SeeThroughBackdrop.cs - the OSD's and the toasts' window background: Native/TransparentBackdrop's fully clear
 // system-compositor brush (the window is bigger than what it draws: room for the light shadow and the lift), with
-// the one difference that a change of the default backdrop configuration (theme, activation, high contrast) is
-// answered here and never passed to SystemBackdrop's own handler. A clear brush follows no configuration, and that
-// handler threw "The parameter is incorrect: target" on the theme change in every --test run of this branch
-// (CI run 42771856358: an unhandled error that stopped Mantle 6 ms after "the bar now shows dark").
+// one difference: a change of the default backdrop configuration (theme, activation, high contrast) is answered here
+// and never passed on to SystemBackdrop's own handler. A clear brush follows no configuration, and after a full
+// garbage collection WinUI calls that handler with no target on the next theme change; the base handler then throws
+// "The parameter is incorrect: target", an unhandled error that stops Mantle. Measured on the CI runner (run
+// 42777700651, the theme.set and look.json UI tests, 2 runs each): one forced full collection after start and
+// then a theme change crashed 4 of 4 app logs, with no OSD shadow and no toasts code involved; without the forced
+// collection, 0 of 4. TransparentBackdrop (the bar's, the pop-ups', the launcher's) still passes it on: the same
+// override there is the native-windows lane's (docs/lanes/osd-toasts.md, part 4).
 using System;
 using System.Runtime.InteropServices;
 using Microsoft.UI.Composition;

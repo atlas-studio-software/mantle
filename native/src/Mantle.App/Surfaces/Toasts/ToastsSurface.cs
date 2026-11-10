@@ -88,7 +88,6 @@ internal sealed class ToastsSurface : ISurface
     public void Create(ISurfaceContext ctx)
     {
         _ctx = ctx;
-        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_TOASTS_SURFACE") == "1") { ctx.Log.Line("DIAG: toasts surface left empty"); return; }   // DIAG (temporary)
         _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.View.Theme == "dark"; foreach (var it in _items) Paint(it); PaintMore(); }));
         _subs.Add(ctx.On<ToastsShow>("toasts.show", s => Add(s.Banners)));
         _subs.Add(ctx.On<ToastsIds>("toasts.ids", s => Keep(s.Ids)));

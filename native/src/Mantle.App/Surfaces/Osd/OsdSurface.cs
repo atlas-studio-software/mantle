@@ -1,5 +1,4 @@
 using System;
-using System.Runtime.InteropServices.WindowsRuntime;   // DIAG (temporary)
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text.Json;
@@ -647,16 +646,8 @@ internal sealed class OsdSurface : ISurface
     /// The light drop shadow: --lg-shadow drawn by CssShadow (the CSS formula into a bitmap) behind the pane, nothing in dark
     /// (the lip only). Composition's DropShadow drew it as a hard dark band (see CssShadow), so it is not used here.
     string _shadowKey = "";
-    object? _diagKeep;   // DIAG (temporary)
-    bool _diagOnce;      // DIAG (temporary)
     void Shadow()
     {
-        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_GC") == "1" && !_diagOnce) { _diagOnce = true; GC.Collect(2, GCCollectionMode.Forced, true, true); GC.WaitForPendingFinalizers(); GC.Collect(); _ctx.Log.Line("DIAG: full GC forced"); }   // DIAG (temporary)
-        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_SLEEP") == "1" && !_diagOnce) { _diagOnce = true; System.Threading.Thread.Sleep(400); _ctx.Log.Line("DIAG: UI thread held 400 ms"); }   // DIAG (temporary)
-        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_SHADOW") == "1") return;   // DIAG (temporary)
-        string diag = Environment.GetEnvironmentVariable("MANTLE_DIAG_SHADOW") ?? "";       // DIAG (temporary)
-        if (diag == "hide") _shadowHost.Visibility = _dark ? Visibility.Collapsed : Visibility.Visible;
-        if (diag == "hide" && _dark) return;
         if (_dark || _pane.ActualWidth <= 0 || _root.ActualWidth <= 0) { _shadowHost.Children.Clear(); _shadowKey = ""; return; }
         double scale = _root.XamlRoot?.RasterizationScale ?? 1;
         var o = _pane.TransformToVisual(_root).TransformPoint(new global::Windows.Foundation.Point(0, 0));
@@ -665,17 +656,7 @@ internal sealed class OsdSurface : ISurface
         string key = FormattableString.Invariant($"{w}x{h}@{scale}:{box}");
         if (key == _shadowKey) return;
         _shadowKey = key;
-        ImageSource src;
-        if (diag == "sbs")
-        {
-            var sb = global::Windows.Graphics.Imaging.SoftwareBitmap.CreateCopyFromBuffer(CssShadow.Pixels(Math.Max(1, w), Math.Max(1, h), scale, new[] { box }, CssShadow.LightLg).AsBuffer(),
-                global::Windows.Graphics.Imaging.BitmapPixelFormat.Bgra8, Math.Max(1, w), Math.Max(1, h), global::Windows.Graphics.Imaging.BitmapAlphaMode.Premultiplied);
-            var sbs = new Microsoft.UI.Xaml.Media.Imaging.SoftwareBitmapSource(); _ = sbs.SetBitmapAsync(sb); src = sbs;
-        }
-        else if (diag == "nocopy") src = new Microsoft.UI.Xaml.Media.Imaging.WriteableBitmap(Math.Max(1, w), Math.Max(1, h));
-        else src = CssShadow.Bitmap(w, h, scale, new[] { box }, CssShadow.LightLg);
-        if (diag == "noimg") { _diagKeep = src; _ctx.Log.Line("DIAG: shadow bitmap made, not shown (" + _diagKeep.GetType().Name + ")"); return; }
-        var img = new Image { Source = src, Width = w / scale, Height = h / scale,
+        var img = new Image { Source = CssShadow.Bitmap(w, h, scale, new[] { box }, CssShadow.LightLg), Width = w / scale, Height = h / scale,
             Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
         _shadowHost.Children.Clear();
         _shadowHost.Children.Add(img);
