@@ -777,6 +777,17 @@ namespace Mantle {
           // runs in passive because looking at the desktop changes nothing -
           // and the bar's "a game is full-screen, get out of the way" decision
           // is exactly the thing a test needs to be able to exercise.
+          // With `judge` {zoomed, style, rect, monitor}: the full-screen rule on those numbers
+          // only, no window read (test seam: maximised vs Chromium's borderless full screen).
+          {
+            object judge;
+            if (Json.TryGet(req, "judge", out judge)) {
+              var jd = judge as IDictionary;
+              if (jd == null) return "foreground: judge must be an object {zoomed, style, rect, monitor}";
+              result = Foreground.Judge(jd);
+              return null;
+            }
+          }
           result = Foreground.Read();
           return null;
 
