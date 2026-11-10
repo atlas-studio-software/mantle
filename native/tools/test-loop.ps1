@@ -38,6 +38,10 @@ try {
   }
   $clean = 0
   $fails = [ordered]@{}
+  # the look tests stamp each 1 s promise they time (MANTLE_TEST_TIMINGS: "<promise>\t<ms>" per line); summed at the end
+  $timings = Join-Path $dir 'timings.tsv'
+  Remove-Item -Force -ErrorAction SilentlyContinue $timings
+  $env:MANTLE_TEST_TIMINGS = $timings
   for ($i = 1; $i -le $Runs; $i++) {
     $trx = "run-$i.trx"
     $argv = @('test', $proj, '-c', 'Release', '--no-build', '-nologo', '--logger', "trx;LogFileName=$trx", '--results-directory', $dir)
@@ -62,7 +66,15 @@ try {
       ($msg -split "`n" | Select-Object -First 60) | ForEach-Object { Write-Host "    | $($_.TrimEnd())" }
     }
   }
-} finally { Pop-Location }
+} finally { Pop-Location; $env:MANTLE_TEST_TIMINGS = $null }
+
+if (Test-Path $timings) {
+  $groups = Get-Content $timings | Where-Object { $_ -match "`t" } | ForEach-Object { $p = $_ -split "`t"; [pscustomobject]@{ What = $p[0]; Ms = [int]$p[1] } } | Group-Object What
+  foreach ($g in $groups) {
+    $ms = @($g.Group.Ms | Sort-Object)
+    Write-Host ("TIMING {0}: n={1}, median {2} ms, p95 {3} ms, max {4} ms" -f $g.Name, $ms.Count, $ms[[int][math]::Floor(($ms.Count - 1) / 2)], $ms[[int][math]::Floor(($ms.Count - 1) * 0.95)], $ms[-1])
+  }
+}
 
 $list = if ($fails.Count) { ($fails.GetEnumerator() | ForEach-Object { "$($_.Key) x$($_.Value)" }) -join ', ' } else { 'none' }
 Write-Host "TEST-LOOP: $clean of $Runs runs clean ($what); failures: $list"

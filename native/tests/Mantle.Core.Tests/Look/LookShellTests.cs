@@ -95,8 +95,17 @@ public class LookShellTests
         if (await Task.WhenAny(t, Task.Delay(10000)) != t) throw new Xunit.Sdk.XunitException($"{what} never came (waited 10 s)" + Environment.NewLine + r.Log.All);
         var seen = await t;
         long took = seen.At - from;
+        Stamp(what, took);
         if (took >= ms) throw new Xunit.Sdk.XunitException($"{what} fired {took} ms after the change (over {ms} ms)" + Environment.NewLine + r.Log.All);
         return seen.P;
+    }
+
+    static readonly object StampLock = new();
+    /// tools/test-loop.ps1 sets MANTLE_TEST_TIMINGS to a file and sums every promise timed here (TIMING lines).
+    static void Stamp(string what, long ms)
+    {
+        if (Environment.GetEnvironmentVariable("MANTLE_TEST_TIMINGS") is not { Length: > 0 } f) return;
+        try { lock (StampLock) File.AppendAllText(f, what + "\t" + ms + Environment.NewLine); } catch (IOException) { }
     }
 
     static string? ThemeOf(JsonObject? doc) => doc?["look"]?["theme"]?["v"]?.GetValue<string>();
