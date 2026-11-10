@@ -76,6 +76,21 @@ go`, the dry-run lines above, `mantle: qs.set <part>=<value> -> ok, reads <v> (<
 
 - (none claimed yet)
 
+## Screenshot pair
+
+`native/tools/parity/quick-settings/run-qs-parity.ps1` (+ `electron-qs.cjs`): see its header. Not run yet at handoff.
+
+## State at the part-1 handoff (context ceiling reached)
+
+- Commit 1d9344e (code + tests) pushed; the parity scripts and this doc in the commit after it.
+- First cloud run (build,unit,ui) was still running at handoff: its result decides whether anything above compiles.
+- bar.md status column NOT updated yet: mark rows only after a green run. Planned mapping (tests in brackets):
+  tested: BAR-548, 560, 568, 640, 656, 657, 658, 659, 661, 667, 668, 669, 670, 671, 673, 676, 680
+  [Mantle.Core.Tests/QuickSettings/QsTests.cs], BAR-746, 748 [Mantle.Core.Tests/PowerMode/PowerModeTests.cs],
+  BAR-534, 567, 732, 733 [Mantle.UiTests/QuickSettings/QuickSettingsTests.cs]; ported: BAR-540, 546 (left click
+  only), 553, 554, 555, 557, 558, 559, 562, 563, 564, 565, 569, 570, 571, 652, 660, 663, 672, 675, 684, 690 (no icons),
+  691, 735-737, 743, 747, 749, 750. Not done: holders (677-679), restart re-take (683), net fast re-check (682).
+
 ## Part 2 starts here
 
 1. The three "&gt;" views (ui/bar/qs-more.js): the Wi-Fi network list + scan + connect, with the password field in a
