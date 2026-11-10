@@ -257,6 +257,11 @@ foreach ($pct in $scaleList) {
     Start-Sleep -Milliseconds 300
     $e = if (Test-Path $ej) { Get-Content $ej -Raw | ConvertFrom-Json } else { $null }
     if ($e -and $e.ok) {
+      # electron-bar.mjs reports only once the tray cluster has its readings (network read, no battery dash, held
+      # 1.5 s; max 30 s). Native draws its cluster from the first frame (BarWindow.xaml.cs BuildGlyphs): nothing to wait for.
+      $rd = $e.readings
+      if ($rd) { Say ("electron {0}: tray readings net={1} battery={2} after {3} ms{4}" -f $t, $rd.net, $rd.battery, $rd.waitedMs, $(if ($rd.ready) { '' } else { ': NOT settled' })) }
+      if (-not $rd -or -not $rd.ready) { Problem ("electron {0}: the tray cluster had no readings in 30 s (net={1}, battery={2}); its shot holds the not-read-yet glyphs" -f $t, $rd.net, $rd.battery) }
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
       $app = @(Get-Tree $e.pid); $keep = $app + @($fixture.Id)
       if ((Clear-Taskbar "electron $tag") -and (Clear-Crop "electron $tag" $keep)) { $r.electronMotion = Wait-Still "electron $tag" $app; $ePx = Shoot $dir 'electron' $app $bgE }

@@ -100,6 +100,32 @@ const state = await until(async () => {
   const s = await call('bar.testCursor', {});
   return s && s.ok && s.rect ? s : null;
 }, 15000, 'bar.testCursor to report the bar rect');
+// The tray readings. bar.js draws "not read yet" first (#network data-state "unknown": a dimmed globe; #battery
+// data-state "loading": a dash) and the sidecar's first 'net' / 'battery' pushes replace it. A shot before them
+// holds the globe and the dash where native (whose wired glyph and battery slot are drawn from the first frame,
+// BarWindow.xaml.cs BuildGlyphs) has its real cluster ~30 px further right: staging run 42785589408, bar light
+// 0.9784 vs 0.9966 when both had readings. So wait, max 30 s, until the network has a reading (any state but
+// "unknown", error included), the battery shows no loading dash (#battery starts hidden and a machine with no
+// battery hides it again, so hidden alone cannot say it was read), and that cluster has then held for 1.5 s.
+const readState = () => ev(`(() => {
+  const n = document.getElementById('network'), b = document.getElementById('battery');
+  return { net: n ? n.getAttribute('data-state') : null, battery: !b ? null : b.hidden ? 'hidden' : b.getAttribute('data-state'),
+    key: [n && n.getAttribute('data-state'), n && n.innerHTML.length, b && b.hidden, b && b.getAttribute('data-state'), b && b.textContent].join('|') };
+})()`);
+const settled = (r) => r.net !== null && r.net !== 'unknown' && r.battery !== null && r.battery !== 'loading';
+const readT0 = Date.now();
+let readings = await readState(), heldSince = settled(readings) ? Date.now() : 0;
+while (!exited && Date.now() - readT0 < 30000 && !(heldSince && Date.now() - heldSince >= 1500)) {
+  await sleep(250);
+  const r = await readState();
+  if (!settled(r)) heldSince = 0;
+  else if (!heldSince || r.key !== readings.key) heldSince = Date.now();
+  readings = r;
+}
+readings.ready = settled(readings) && !!heldSince && Date.now() - heldSince >= 1500;
+readings.waitedMs = Date.now() - readT0;
+delete readings.key;
+say(`tray readings: ${JSON.stringify(readings)}`);
 const geo = await ev(`(() => {
   const r = (el) => { if (!el) return null; const b = el.getBoundingClientRect(); return [b.left, b.top, b.width, b.height]; };
   return { dpr: window.devicePixelRatio, inner: [innerWidth, innerHeight], pill: r(document.getElementById('bar')),
@@ -112,7 +138,7 @@ const report = {
   ok: true, pid: child.pid, profile, theme, electronExe, argv, userData,
   windowRect: state.rect, rest: state.rest, up: state.up, revealed: state.revealed, screen: state.screen,
   dpr: geo.dpr, pageInner: geo.inner, html: geo.html, dataset: geo.theme,
-  pillDip: toScreen(geo.pill), clockDip: toScreen(geo.clock),
+  pillDip: toScreen(geo.pill), clockDip: toScreen(geo.clock), readings,
 };
 fs.writeFileSync(out, JSON.stringify(report, null, 2));
 say(`reported: pill ${JSON.stringify(report.pillDip)} clock ${JSON.stringify(report.clockDip)} dpr ${geo.dpr}`);
