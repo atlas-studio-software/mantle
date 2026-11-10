@@ -52,6 +52,7 @@ public sealed class LaunchArgs
         "test-memory", "test-report", "test-tray", "test-crash", "test-unload", "test-chord", "test-key",
         "test-popwatch", "test-popwatch-away",   // lib/popwatch.js: a --test run watches nothing real unless asked
         "test-surface", "test-theme",   // native: a second start's surface.<verb> (<verb>:<name>) and theme.set (<mode>), for UI tests
+        "test-rest",                    // native: a second start's host.rest (<on|off>[:<why>]), for UI tests
     };
 
     public string? Theme { get; private set; }

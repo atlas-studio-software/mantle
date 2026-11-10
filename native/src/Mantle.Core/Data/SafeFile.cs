@@ -18,6 +18,13 @@ public sealed class SafeFile
 
     public SafeFile(WriteGate gate) => Gate = gate ?? throw new ArgumentNullException(nameof(gate));
 
+    /// <summary>Mantle's own writes flush the new copy to disk (FlushFileBuffers) before the rename, so a power cut leaves
+    /// the old file or the new one, never a torn one (Electron's writeFileSync never does). Only a test's stand-in for an
+    /// Electron app (Helm, Quartz) turns it off, to write as that app does.</summary>
+    public SafeFile(WriteGate gate, bool flushToDisk) : this(gate) => FlushToDisk = flushToDisk;
+
+    public bool FlushToDisk { get; } = true;
+
     /// Node's error code for an exception (ENOENT, EPERM, EBUSY, ...), for messages that must read like Electron's.
     internal static string Code(Exception e) => e switch {
         FileNotFoundException => "ENOENT",
@@ -48,7 +55,7 @@ public sealed class SafeFile
             if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
             using (var fs = new FileStream(tmpPath, FileMode.Create, FileAccess.Write, FileShare.None)) {
                 fs.Write(bytes);
-                fs.Flush(true);
+                if (FlushToDisk) fs.Flush(true);   // durable before the rename (see FlushToDisk)
             }
         } catch (Exception e) {
             TryRemove(tmpPath);
