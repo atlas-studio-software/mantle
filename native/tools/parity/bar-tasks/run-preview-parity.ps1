@@ -19,8 +19,9 @@
      (bar.css: 200x112 box, 6 px card padding, 24 px head, 8 px pop padding + border; scale 1 on the runner), and
      that rectangle plus -Margin px is cropped out of both: native/out/parity/bar-tasks/preview/<theme>/
      electron-preview.png, native-preview.png, preview-pair.png (Electron above, native below), plus both full
-     screens. One PREVIEW-PARITY line per theme (SSIM, diff px) and a summary line. No gate yet: the numbers are
-     reported, and a missing capture is the only FAILED.
+     screens. One PREVIEW-PARITY line per theme (SSIM, diff px) and a summary line; a missing capture is the
+     only FAILED here. ci.ps1 stage previews runs it with -Exe and -Out native/out/parity/previews and gates each
+     theme on its floor.
 
   Runner only (CI / GITHUB_ACTIONS, or MANTLE_PARITY_LOCAL=1 on a machine nobody is using): it changes the
   wallpaper, theme and taskbar, and shows both apps and the fixture windows.
