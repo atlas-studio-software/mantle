@@ -57,6 +57,7 @@ internal sealed partial class QsPanel
     readonly Grid _pmSeg;
     readonly StackPanel _pmRow;
     readonly TextBlock _pmHead, _pmSub, _pmWhy, _pmNote;
+    readonly Grid _pmHeadRow;
     readonly Dictionary<string, Button> _pmBtns = new(StringComparer.Ordinal);
     readonly TextBlock _power;
     readonly Button _toWin, _gear;
@@ -65,7 +66,7 @@ internal sealed partial class QsPanel
     sealed class Tile { public Button B = null!; public Button? Chev; public Canvas Ico = null!; public TextBlock Lbl = null!, Sub = null!; public QsTileView? View; }
     sealed class SliderRow
     {
-        public StackPanel Wrap = null!; public TextBlock Name = null!, Val = null!; public Slider Range = null!; public Grid Line = null!; public Border Track = null!;
+        public StackPanel Wrap = null!; public TextBlock Name = null!, Val = null!; public Slider Range = null!; public Grid Line = null!, Head = null!; public Border Track = null!;
         public bool Dragging; public bool InFlight; public double? Waiting;
     }
 
@@ -145,7 +146,7 @@ internal sealed partial class QsPanel
         // ---- power mode (ui/bar/powermode.js: .pmrow / .pmseg / .pmbtn; its top margin is 2 and collapses into the
         // volume row's 9 unless a note sits between them, PaintNotes)
         _pmRow = new StackPanel { Margin = new Thickness(0, 0, 0, 9) };
-        var pmHead = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        var pmHead = _pmHeadRow = new Grid { Margin = new Thickness(0, 0, 0, 4) };
         _pmHead = Text("Power mode", 12.5); _pmSub = Text("", 12.5);
         _pmSub.HorizontalAlignment = HorizontalAlignment.Right; _pmSub.TextTrimming = TextTrimming.CharacterEllipsis;
         pmHead.Children.Add(_pmHead); pmHead.Children.Add(_pmSub);
@@ -422,7 +423,7 @@ internal sealed partial class QsPanel
         s.Range.IsEnabled = v.Live;
         s.Wrap.Opacity = v.Live ? 1 : _dark ? .45 : .55;
         Type(s.Name, Fs, 1); Type(s.Val, Fs, 1);
-        ((FrameworkElement)s.Name.Parent).Margin = new Thickness(0, 0, 0, HeadGap(s == _bright ? 0 : 1));
+        s.Head.Margin = new Thickness(0, 0, 0, HeadGap(s == _bright ? 0 : 1));
         // Chromium's own range track (not a token in Electron either): light #efefef ringed #b2b2b2, dark #3b3b3b
         // ringed #858585; drawn from the nearest tokens
         s.Track.Background = _dark ? B("LgEdgeOut") : B("LgFill0");
@@ -441,7 +442,7 @@ internal sealed partial class QsPanel
     {
         var v = PowerModeView.View(_pm, _pmPending, _pmErr);
         Type(_pmHead, Fs, 1); Type(_pmSub, Fs, 1);
-        ((FrameworkElement)_pmHead.Parent).Margin = new Thickness(0, 0, 0, HeadGap(2));
+        _pmHeadRow.Margin = new Thickness(0, 0, 0, HeadGap(2));
         _pmHead.Foreground = B("LgInk2"); _pmSub.Foreground = B("LgInk3");
         _pmSub.Text = v.Sub;
         _pmSub.MaxWidth = (_width - 2 - 2 * PadX) * 0.62;
@@ -523,6 +524,7 @@ internal sealed partial class QsPanel
     {
         var s = new SliderRow { Wrap = new StackPanel { Margin = new Thickness(0, 0, 0, 9) } };
         var head = new Grid { Margin = new Thickness(0, 0, 0, 4) };
+        s.Head = head;
         s.Name = Text(label, 12.5); s.Val = Text("—", 12.5); s.Val.HorizontalAlignment = HorizontalAlignment.Right;
         AutomationProperties.SetAutomationId(s.Val, "qs." + key + ".value");
         head.Children.Add(s.Name); head.Children.Add(s.Val);
