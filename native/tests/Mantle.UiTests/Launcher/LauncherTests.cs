@@ -164,8 +164,7 @@ public class LauncherTests
         Keyboard.Type("zephyr");
         // the rows for the WHOLE word: a prefix's rows ("ze") can already hold the 3 apps, and reading them while the last
         // letters are still being searched mixed two answers (run 42772697675: a "Search the web for “ze”" row read late)
-        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: typed \"zephyr\": 4 row(s) on screen "), 5000), "no keystroke-to-rows line for \"zephyr\":
-" + Tail(app.Log));
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: typed \"zephyr\": 4 row(s) on screen "), 5000), "no keystroke-to-rows line for \"zephyr\":\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => Rows(win).Count(r => r.Name.StartsWith("Zephyr ")) == 3, 5000), "typing \"zephyr\" did not list the 3 fixture apps; rows: " +
             string.Join(", ", Rows(win).Select(r => r.Name)) + "\n" + Tail(app.Log));
         var names = Rows(win).Select(r => r.Name).ToList();
@@ -220,8 +219,7 @@ public class LauncherTests
             Keyboard.Type("zephyr");
             int said = Count(app.Log, "launcher: typed \"zephyr\": 4 row(s)");
             Keyboard.Type(VirtualKeyShort.DOWN);                               // no wait between the last letter and the arrow
-            Assert.IsTrue(Host.Until(() => Count(app.Log, "launcher: typed \"zephyr\": 4 row(s)") > said, 5000), $"round {round}: no rows for the whole word
-" + Tail(app.Log));
+            Assert.IsTrue(Host.Until(() => Count(app.Log, "launcher: typed \"zephyr\": 4 row(s)") > said, 5000), $"round {round}: no rows for the whole word\n" + Tail(app.Log));
             Assert.IsTrue(Host.Until(() => Rows(win).Count == 4, 5000), $"round {round}: \"zephyr\" did not list its 4 rows: " + string.Join(", ", Rows(win).Select(r => r.Name)));
             var names = Rows(win).Select(r => r.Name).ToList();
             Assert.IsTrue(Host.Until(() => Selected(win) == names[1], 3000), $"round {round}: Down did not move to row 2 (selected: {Selected(win)})\n" + Tail(app.Log));
