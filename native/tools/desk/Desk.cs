@@ -181,6 +181,16 @@ public static class Desk
         return n;
     }
 
+    /// Closes (WM_CLOSE, which a property sheet takes as Cancel) every top-level dialog (#32770) whose title is
+    /// one of titles: a "System Properties" left open on the runner takes the foreground and the taskbar's attention.
+    public static int CloseDialogs(string[] titles)
+    {
+        int n = 0;
+        foreach (var h in TopWindows(false))
+            if (ClassOf(h) == "#32770" && Array.IndexOf(titles, TitleOf(h)) >= 0) { PostMessageW(h, 0x10, IntPtr.Zero, IntPtr.Zero); n++; }
+        return n;
+    }
+
     /// True when window a is above window b in the z-order (both top-level). Walks down from a.
     public static bool IsAbove(IntPtr a, IntPtr b)
     {
@@ -243,6 +253,8 @@ public static class Desk
     {
         var did = new List<string>();
         int folders = CloseFolderWindows(); if (folders > 0) did.Add("closed " + folders + " folder window(s)");
+        int dialogs = CloseDialogs(new[] { "System Properties" });
+        if (dialogs > 0) { did.Add("closed " + dialogs + " System Properties dialog(s)"); Thread.Sleep(300); }
         IntPtr fg = GetForegroundWindow(); string fgc = ClassOf(fg);
         if (fgc == "Windows.UI.Core.CoreWindow" || fgc == "Shell_TrayWnd" || fgc == "XamlExplorerHostIslandWindow") { Key(0x1B); Thread.Sleep(300); did.Add("Esc (a shell surface was in front: " + fgc + ")"); }
         TaskbarAutoHide(true);
