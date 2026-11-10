@@ -614,7 +614,7 @@ internal sealed class OsdSurface : ISurface
 
     /// The bar's pill in physical px: the bar window ("Mantle bar", this process) less its shadow room
     /// (BarWindow ShadowTop 56 / ShadowSide 28 DIP). Null when the bar is not on screen.
-    static OsdRect? BarPill()
+    internal static OsdRect? BarPill()
     {
         uint me = (uint)Environment.ProcessId;
         IntPtr h = IntPtr.Zero;

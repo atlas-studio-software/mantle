@@ -197,6 +197,11 @@ public partial class MantleApp : Application
             // TODO(native-windows): the app bar (--dock) and the desktop layer add their releases here
         });
 
+        // ---- toasts wiring (lane native-osd-toasts): where a --live run keeps the banner record (notif-banners.json, through
+        // the ONE write gate) and finds tools/restore-banners.ps1. ToastsFeature makes its owner only in a --live run.
+        Mantle.Core.Features.Toasts.ToastsFeature.Configure(new(Host.Paths.DataRoot, Host.Files,
+            System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "restore-banners.ps1")));
+
         // the feature host on the ONE write gate's stores
         _stores = Stores.For(Host.Paths, Host.Gate, Host.Log);
         var clock = new HostClock(null, loop);

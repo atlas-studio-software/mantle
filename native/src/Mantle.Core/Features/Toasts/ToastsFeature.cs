@@ -121,12 +121,12 @@ public sealed class ToastsFeature : IFeature
         bool test = ctx.Flags.Test;
         _live = ctx.Flags.Live && !test;
         if (_live) MakeOwner();
-        else ctx.Log("toasts: not a --live run, so Windows' own banners are never taken here (only test and Mantle's own banners show)");
+        else ctx.Log("not a --live run, so Windows' own banners are never taken here (only test and Mantle's own banners show)");
 
         ctx.Command("layout", Layout);
         ctx.Command("ready", _ => new(Ok(new JsonObject { ["ok"] = true, ["test"] = test })));
         ctx.Command("click", Click);
-        ctx.Command("more", _ => { _ctx.Log("toasts: \"+N more\": the bell's list has no native owner yet, so nothing opened"); return new(CommandResult.Fail("the notification list is not drawn by this build yet")); });
+        ctx.Command("more", _ => { _ctx.Log("\"+N more\": the bell's list has no native owner yet, so nothing opened"); return new(CommandResult.Fail("the notification list is not drawn by this build yet")); });
         ctx.Command("action", Action);
         ctx.Command("copy", Copy);
         ctx.Command("state", _ => new(Ok(StateJson())));
@@ -160,7 +160,7 @@ public sealed class ToastsFeature : IFeature
                 string? ptext = Str(c.Args, "progress", 160);
                 long id = _own.Post(key, new OwnBannerPost(Str(c.Args, "title", 200), Str(c.Args, "body", 600), Str(c.Args, "detail", 4000), null,
                     Str(c.Args, "tone", 10), ptext != null ? new OwnProgressPost(ptext, pct) : null, acts),
-                    async act => { _ctx.Log($"toasts: test own banner \"{key}\": \"{act}\" pressed"); await Task.Yield(); return new OwnAnswer(Keep: act != "close" && act != "dismiss"); });
+                    async act => { _ctx.Log($"test own banner \"{key}\": \"{act}\" pressed"); await Task.Yield(); return new OwnAnswer(Keep: act != "close" && act != "dismiss"); });
                 return new(Ok(new JsonObject { ["ok"] = true, ["id"] = id }));
             });
             ctx.Command("testIds", c => {
@@ -174,7 +174,7 @@ public sealed class ToastsFeature : IFeature
             });
         }
 
-        _feed = new NotificationFeed(ctx.Platform, OnList, l => ctx.Log("toasts: " + l));
+        _feed = new NotificationFeed(ctx.Platform, OnList, l => ctx.Log("" + l));
         _feed.Start();
         _offs.Add(_own.OnChange(OnOwn));
         if (_own.List().Count > 0) OwnSoon("Mantle started");
@@ -222,11 +222,11 @@ public sealed class ToastsFeature : IFeature
         }
         if (reg == null || store == null || run == null || sync == null)
         {
-            _ctx.Log("toasts: this Mantle did not say where the banner record lives, so Windows' own banners are left alone");
+            _ctx.Log("this Mantle did not say where the banner record lives, so Windows' own banners are left alone");
             return;
         }
-        _owner = new BannerOwner(reg, store, l => _ctx.Log("toasts: " + l), test: false, now: () => _clock.NowMs);
-        _safety = new BannerSafety(() => _owner.Counts().Owned, run, sync, _clock, l => _ctx.Log("toasts: " + l), Judge);
+        _owner = new BannerOwner(reg, store, l => _ctx.Log("" + l), test: false, now: () => _clock.NowMs);
+        _safety = new BannerSafety(() => _owner.Counts().Owned, run, sync, _clock, l => _ctx.Log("" + l), Judge);
     }
 
     public async ValueTask StopAsync(FeatureStop stop)
@@ -279,7 +279,7 @@ public sealed class ToastsFeature : IFeature
     {
         if (_owner == null) return null;
         var r = await _owner.RestoreAsync(why, keepReleased);
-        if (!r.Ok) _ctx.Log($"toasts: put back: {r.Reason}");
+        if (!r.Ok) _ctx.Log($"put back: {r.Reason}");
         return r;
     }
 
@@ -294,7 +294,7 @@ public sealed class ToastsFeature : IFeature
         else if (_accessWhy != null) _accessOk = false;
         if (_accessWhy != null && _accessWhy != was)
         {
-            _ctx.Log($"toasts: no banners: {_accessWhy}");
+            _ctx.Log($"no banners: {_accessWhy}");
             if (_owner?.Counts().Owned > 0) _ = Restore("notifications cannot be read", keepReleased: true);
         }
         else if (_accessOk && !wasOk) _ = Apply(was != null ? "notifications can be read again" : "notifications can be read");
@@ -327,7 +327,7 @@ public sealed class ToastsFeature : IFeature
         _quiet = why;
         if (why != null)
         {
-            if (_quietLogged != why) { _quietLogged = why; _ctx.Log($"toasts: no banner while {why}; {mine.Count} new in the list"); }
+            if (_quietLogged != why) { _quietLogged = why; _ctx.Log($"no banner while {why}; {mine.Count} new in the list"); }
             return;
         }
         _quietLogged = null;
@@ -341,7 +341,7 @@ public sealed class ToastsFeature : IFeature
         var r = await _ctx.Platform.CallAsync("toasts.quiet", new JsonObject(), TimeSpan.FromSeconds(2));
         if (!r.Ok || r.Result.ValueKind != JsonValueKind.Object)
         {
-            _ctx.Log($"toasts: quiet check failed ({r.Error ?? "no answer"}); showing {what} anyway");
+            _ctx.Log($"quiet check failed ({r.Error ?? "no answer"}); showing {what} anyway");
             return null;
         }
         int? I(string k) => r.Result.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : null;
@@ -355,14 +355,14 @@ public sealed class ToastsFeature : IFeature
     {
         if (cards.Count == 0) return;
         _ctx.Broadcast("toasts.show", new ToastsShow(cards, null));
-        if (_ctx.Flags.Test) _ctx.Log($"toasts: show {cards.Count}: {string.Join(", ", cards.Select(c => c.Id))}");
+        if (_ctx.Flags.Test) _ctx.Log($"show {cards.Count}: {string.Join(", ", cards.Select(c => c.Id))}");
     }
 
     void DropApps(string why)
     {
         _testIds.Clear();
         _ctx.Broadcast("toasts.ids", new ToastsIds(_own.List().Select(b => b.Id).ToArray()));
-        _ctx.Log($"toasts: the apps' banners went ({why}); Mantle's own stay");
+        _ctx.Log($"the apps' banners went ({why}); Mantle's own stay");
     }
 
     // ------------------------------------------------------------------ Mantle's own banners
@@ -383,14 +383,14 @@ public sealed class ToastsFeature : IFeature
         var fresh = OwnWaiting();
         if (fresh.Count > 0 && quiet != null)
         {
-            if (_ownHeldWhy != quiet) _ctx.Log($"toasts: Mantle's own banner held while {quiet} ({why}); it is tried again every {OwnRetryMs / 1000} s");
+            if (_ownHeldWhy != quiet) _ctx.Log($"Mantle's own banner held while {quiet} ({why}); it is tried again every {OwnRetryMs / 1000} s");
             _ownHeldWhy = quiet;
             _ownRetryT?.Dispose();
             _ownRetryT = _clock.Later(OwnRetryMs, () => { _ownRetryT = null; OwnSoon($"tried again after {OwnRetryMs / 1000} s"); });
         }
         else if (fresh.Count > 0)
         {
-            if (_ownHeldWhy != null) _ctx.Log($"toasts: Mantle's own banner shown (it was held while {_ownHeldWhy})");
+            if (_ownHeldWhy != null) _ctx.Log($"Mantle's own banner shown (it was held while {_ownHeldWhy})");
             _ownHeldWhy = null;
             _ownRetryT?.Dispose(); _ownRetryT = null;
             foreach (var b in fresh) _ownOnPage.Add(b.Id);
@@ -419,7 +419,7 @@ public sealed class ToastsFeature : IFeature
     {
         _layout = (Num(c.Args, "h") ?? 0, (int)Math.Max(0, Num(c.Args, "count") ?? 0));
         if (_layout.Count == 0) _ownOnPage.Clear();   // the page is empty: Mantle's own come back on their next post
-        if (_ctx.Flags.Test) _ctx.Log($"toasts: page drew {_layout.Count} card(s), {_layout.H:0} DIP");
+        if (_ctx.Flags.Test) _ctx.Log($"page drew {_layout.Count} card(s), {_layout.H:0} DIP");
         return new(Ok(new JsonObject { ["ok"] = true }));
     }
 
@@ -428,12 +428,12 @@ public sealed class ToastsFeature : IFeature
         long id = (long)(Num(c.Args, "id") ?? 0);
         if (id == 0) return CommandResult.Fail("that banner is not known");
         if (id < 0) return CommandResult.Fail("a click on Mantle's own banner opens nothing; its buttons do");
-        if (_testIds.Contains(id)) { _ctx.Log($"toasts: test banner {id} clicked"); return Ok(new JsonObject { ["ok"] = true, ["act"] = "test" }); }
+        if (_testIds.Contains(id)) { _ctx.Log($"test banner {id} clicked"); return Ok(new JsonObject { ["ok"] = true, ["act"] = "test" }); }
         // what clicking it in Windows would do, as far as Windows lets another app (the sidecar's open)
         var r = await _ctx.Platform.CallAsync("notifications", new JsonObject { ["op"] = "open", ["toast"] = id }, TimeSpan.FromSeconds(6));
         bool ok = r.Ok && !(r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("ok", out var o) && o.ValueKind == JsonValueKind.False);
         string? why = ok ? null : r.Error ?? (r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("reason", out var re) ? re.GetString() : null) ?? "no reason";
-        if (!ok) _ctx.Log($"toasts: click: the notification did not open ({why})");
+        if (!ok) _ctx.Log($"click: the notification did not open ({why})");
         return ok ? Ok(new JsonObject { ["ok"] = true, ["act"] = "open" }) : CommandResult.Fail($"it did not open: {why}");
     }
 

@@ -59,7 +59,7 @@ public sealed class NotificationFeed : IDisposable
 
     public void Start()
     {
-        _offs.Add(_platform.On("notifications", _ => _ = ReadAsync("the watch saw a change")));
+        _offs.Add(_platform.On("notifications", ev => _ = ReadAsync("the watch saw a change")));
         _offs.Add(_platform.OnReady(() => _ = ArmAsync()));
     }
 
