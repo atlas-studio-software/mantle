@@ -23,6 +23,10 @@ internal sealed class LauncherTokens
     /// No fill at all (alpha 0): not a colour, so not a token.
     public static readonly Color None = default;
 
+    /// The unfold's dim on the moving leaf (ui/shared/unfold-live.js: "a NEUTRAL black multiply, no hue"), at an alpha:
+    /// not a theme colour (it is the same in both themes and only darkens), so not a token in Tokens.xaml.
+    public static Color Dim(byte alpha) => new() { A = alpha, R = 0, G = 0, B = 0 };
+
     public LauncherTokens(ILogSink log) { _log = log; }
 
     /// A token's colour in the given theme (transparent, with one log line, when Tokens.xaml has no such key).
@@ -44,7 +48,16 @@ internal sealed class LauncherTokens
         return c;
     }
 
-    public SolidColorBrush Brush(string key, bool dark) => new(Of(key, dark));
+    readonly Dictionary<string, SolidColorBrush> _brushLight = new(), _brushDark = new();
+
+    /// One shared brush per token and theme: a row re-render hands out the same objects instead of making ~10 brushes
+    /// a row (the keystroke-to-rows path). Never mutate a brush from here; make your own for that.
+    public SolidColorBrush Brush(string key, bool dark)
+    {
+        var cache = dark ? _brushDark : _brushLight;
+        if (!cache.TryGetValue(key, out var b)) cache[key] = b = new SolidColorBrush(Of(key, dark));
+        return b;
+    }
 
     static object? Find(ResourceDictionary d, string theme, string key, int depth)
     {

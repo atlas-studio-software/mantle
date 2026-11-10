@@ -162,6 +162,9 @@ public class LauncherTests
         Thread.Sleep(300);
 
         Keyboard.Type("zephyr");
+        // the rows for the WHOLE word: a prefix's rows ("ze") can already hold the 3 apps, and reading them while the last
+        // letters are still being searched mixed two answers (run 42772697675: a "Search the web for “ze”" row read late)
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: typed \"zephyr\": 4 row(s) on screen "), 5000), "no keystroke-to-rows line for \"zephyr\":\n" + Tail(app.Log));
         Assert.IsTrue(Host.Until(() => Rows(win).Count(r => r.Name.StartsWith("Zephyr ")) == 3, 5000), "typing \"zephyr\" did not list the 3 fixture apps; rows: " +
             string.Join(", ", Rows(win).Select(r => r.Name)) + "\n" + Tail(app.Log));
         var names = Rows(win).Select(r => r.Name).ToList();
@@ -194,6 +197,60 @@ public class LauncherTests
         Thread.Sleep(300);
         Keyboard.Type(VirtualKeyShort.ESCAPE);
         Assert.IsTrue(Host.Until(() => !Win32.IsWindowVisible(h) && app.Log.Contains("launcher: hidden (Esc)"), 5000), "Esc did not close the launcher:\n" + Tail(app.Log));
+    }
+
+    /// The intermittent "Down did not move to row 2": a second answer for the same text landed after the arrow and put the
+    /// selection back on row 1. Typed fast and then Down at once, five times over: Down must act on the rows for what was
+    /// typed, and stay there (no late answer may move it).
+    [TestMethod]
+    public void A_key_right_after_typing_acts_on_the_rows_for_what_was_typed()
+    {
+        using var app = Launch("uitest-launcher-race", keys: true);
+        var h = LauncherHwnd(app);
+        Open(app, h);
+        var win = Host.Uia.FromHandle(h);
+        var q = Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId("q")), 5000);
+        Assert.IsNotNull(q, "no search line (q)");
+        Mouse.Click(Mid(q!));
+        Thread.Sleep(300);
+        for (int round = 1; round <= 5; round++)
+        {
+            Keyboard.TypeSimultaneously(VirtualKeyShort.CONTROL, VirtualKeyShort.KEY_A);
+            Keyboard.Type("zephyr");
+            int said = Count(app.Log, "launcher: typed \"zephyr\": 4 row(s)");
+            Keyboard.Type(VirtualKeyShort.DOWN);                               // no wait between the last letter and the arrow
+            Assert.IsTrue(Host.Until(() => Count(app.Log, "launcher: typed \"zephyr\": 4 row(s)") > said, 5000), $"round {round}: no rows for the whole word\n" + Tail(app.Log));
+            Assert.IsTrue(Host.Until(() => Rows(win).Count == 4, 5000), $"round {round}: \"zephyr\" did not list its 4 rows: " + string.Join(", ", Rows(win).Select(r => r.Name)));
+            var names = Rows(win).Select(r => r.Name).ToList();
+            Assert.IsTrue(Host.Until(() => Selected(win) == names[1], 3000), $"round {round}: Down did not move to row 2 (selected: {Selected(win)})\n" + Tail(app.Log));
+            Thread.Sleep(400);                                                  // a late answer would have landed by now
+            Assert.AreEqual(names[1], Selected(win), $"round {round}: the selection moved back after Down\n" + Tail(app.Log));
+        }
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Assert.IsTrue(Host.Until(() => !Win32.IsWindowVisible(h) && app.Log.Contains("launcher: hidden (Esc)"), 5000), "Esc did not close the launcher:\n" + Tail(app.Log));
+    }
+
+    /// Icons and glyphs (launcher.js iconCell): the web row draws its search glyph, never a letter tile; and the log says
+    /// how many app rows got a picture from the sidecar (the fixture's bare shortcuts get Windows' generic file icon).
+    [TestMethod]
+    public void The_web_row_draws_a_glyph_and_the_app_icons_are_asked()
+    {
+        using var app = Launch("uitest-launcher-icons", keys: true);
+        var h = LauncherHwnd(app);
+        Open(app, h);
+        var win = Host.Uia.FromHandle(h);
+        var q = Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId("q")), 5000);
+        Assert.IsNotNull(q, "no search line (q)");
+        Mouse.Click(Mid(q!));
+        Thread.Sleep(300);
+        Keyboard.Type("zephyr");
+        Assert.IsTrue(Host.Until(() => Rows(win).Count == 4, 5000), "\"zephyr\" did not list its 4 rows");
+        var web = Rows(win).Last();
+        StringAssert.StartsWith(web.Name, "Search the web for");
+        // the row's icon cell: a glyph is a Path (no Text element showing the letter "S")
+        var letters = web.FindAllDescendants(cf => cf.ByControlType(ControlType.Text)).Select(t => t.Name).ToList();
+        CollectionAssert.DoesNotContain(letters, "S", "the web row shows a letter tile instead of its search glyph: " + string.Join(" | ", letters));
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("launcher: icons for "), 15000), "the index never said how its icons went:\n" + Tail(app.Log));
     }
 
     static System.Drawing.Point Mid(AutomationElement e) { var r = e.BoundingRectangle; return new(r.X + r.Width / 2, r.Y + r.Height / 2); }
