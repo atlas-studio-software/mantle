@@ -10,8 +10,9 @@ namespace Mantle.Core.Features.Pinned;
 /// <summary>
 /// Mantle's own Pin/Unpin overlay, the read side (lib/features/_jumplist-pins.js read/norm/apply/byOrder and the
 /// session's running order, BAR-280..284, BAR-289). It lives in &lt;userData&gt;\features\jumplist.json under
-/// "pins": {hide:[...], add:[...], order:[ids]}; Windows' pins are never touched. Writing it (pin, unpin, undo,
-/// a dragged order) is part 2 of this lane; this side reads it unchanged, so Electron's file works as it is.
+/// "pins": {hide:[...], add:[...], order:[ids]}; Windows' pins are never touched. A dragged order is written by
+/// <see cref="Mantle.Core.Features.WindowList.OrderSave"/> (round 5); pin, unpin and undo are still to come. This side
+/// reads it unchanged, so Electron's file works as it is.
 /// </summary>
 public sealed class PinOverlay
 {
@@ -110,6 +111,26 @@ public sealed class PinOverlay
         int n = rank.Count;
         return list.Select((v, i) => (v, r: rank.TryGetValue(keyOf(v), out int r) ? r : n + i, i))
             .OrderBy(x => x.r).ThenBy(x => x.i).Select(x => x.v).ToList();
+    }
+
+    /// <summary>
+    /// The order to keep after a drag (_jumplist-pins.js#mergeOrder, BAR-252): <paramref name="shown"/> (the bar's pinned
+    /// ids in their new order) plus every id the old list had that is not on the bar right now (a pin a partial read left
+    /// out), each put back right after the id it followed, so a drag made while one pin was missing keeps its place.
+    /// </summary>
+    public static List<string> MergeOrder(IEnumerable<string?> stored, IEnumerable<string?> shown)
+    {
+        var s = CleanIds(shown);
+        var inShown = new HashSet<string>(s, StringComparer.Ordinal);
+        var outList = new List<string>(s);
+        string? prev = null;
+        foreach (var k in CleanIds(stored)) {
+            if (inShown.Contains(k)) { prev = k; continue; }
+            outList.Insert(prev == null ? 0 : outList.IndexOf(prev) + 1, k);
+            prev = k;
+        }
+        for (int i = outList.Count - 1; outList.Count > OrderMax && i >= 0; i--) if (!inShown.Contains(outList[i])) outList.RemoveAt(i);
+        return outList.Count > OrderMax ? outList.GetRange(0, OrderMax) : outList;
     }
 
     static string KeyOf(Pin p) => !string.IsNullOrEmpty(p.Id) ? p.Id : (p.LnkPath ?? p.Name);

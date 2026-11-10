@@ -18,8 +18,15 @@ public sealed class TaskStripOptions
     public string? PinsNote;
     /// The Taskband Favorites value (throws with plain words); null = not read.
     public Func<byte[]>? ReadFavorites;
-    /// Mantle's data folder (features\jumplist.json, Mantle's own pin overlay; read, never written here).
+    /// Mantle's data folder (features\jumplist.json, Mantle's own pin overlay, read on every build).
     public string UserData = "";
+    /// features\jumplist.json's store (through the ONE write gate): a dragged pin order is saved here (jumplist.order).
+    /// Null = a drag of a pin is refused in words.
+    public Mantle.Core.Data.IStore? Overlay;
+    /// A --test run: the order's log line says "(in this test profile)".
+    public bool Test;
+    /// A --test run's MANTLE_TEST_ORDER_FAIL: every pin order save fails with these words (the spring-back test).
+    public string? OrderFailForTest;
     /// The new strip, on the host thread (the bar marshals it to its UI thread).
     public Action<TaskList> Publish = _ => { };
     /// A windows push that is not a list (BAR-259), or null when a good one clears it.
@@ -196,6 +203,20 @@ public sealed class TaskStripService : IDisposable
     {
         if (_o.Actions == null) return new TaskOpenResult(false, "the bar's app actions are not connected");
         return await TaskOpen.WindowAsync(Last, hwnd, action, _o.Actions).ConfigureAwait(true);
+    }
+
+    // ---------------------------------------------------------------- drag to reorder (jumplist.order, BAR-243, BAR-252..254)
+    /// One group's ids in their new order: pins saved in Mantle's own pin list, running-only apps for this session. The
+    /// strip is rebuilt from the host's list straight after, saved or not (bar.js orderRefresh), so a failed save puts
+    /// the icons back where the host has them.
+    public async ValueTask<OrderSaved> OrderAsync(string? group, IReadOnlyList<string?>? ids, int from, int to)
+    {
+        var r = await OrderSave.SaveAsync(group, ids, from, to, _o.Overlay, _runOrder, _o.Log, _o.Test, _o.OrderFailForTest).ConfigureAwait(true);
+        if (_disposed) return r;
+        // a push already waiting is replaced by one for the order: it still keeps to once a second
+        _pushTimer?.Dispose(); _pushTimer = null;
+        Schedule("the order changed");
+        return r;
     }
 
     // ---------------------------------------------------------------- the pins folder watch (lib/pinned.js watchPins)

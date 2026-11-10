@@ -1,5 +1,7 @@
 using System;
+using System.Collections.Generic;
 using System.Diagnostics;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
@@ -26,6 +28,7 @@ internal sealed partial class BarTasksHost : IDisposable
     readonly Action<string> _log;
     TaskStripService? _svc;
     IHostScheduler? _host;
+    Mantle.Core.Data.Stores? _stores;
 
     public BarTasksHost(DispatcherQueue ui, Action<string> log) { _ui = ui; _log = log; }
 
@@ -63,8 +66,18 @@ internal sealed partial class BarTasksHost : IDisposable
         if (_svc != null) return;
         _host = host;
         var (dir, note, fav) = PinsSource(Host.Args, Host.Env);
+        // Mantle's own pin list (features\jumplist.json) for a dragged order, through the ONE write gate (a test or scratch
+        // profile writes its own; the user's own only in a --live run that is the only shell). Its own Stores: the
+        // feature host's are made later in HostStart, and no native feature opens jumplist.json yet.
+        Mantle.Core.Data.IStore? overlay = null;
+        string? overlayWhy = null;
+        try { _stores = Mantle.Core.Data.Stores.For(Host.Paths, Host.Gate, Host.Log); overlay = _stores.Open(@"features\jumplist.json"); }
+        catch (Exception e) { overlayWhy = e.Message; }
+        string? orderFail = Host.Args.Test && Host.Env("MANTLE_TEST_ORDER_FAIL") is { Length: > 0 } f ? "a test asked every pin order save to fail (MANTLE_TEST_ORDER_FAIL: " + f + ")" : null;
+        if (overlayWhy != null) _log("bar tasks: Mantle's own pin list could not be opened, so a dragged pin order is not saved: " + overlayWhy);
         _svc = new TaskStripService(new TaskStripOptions {
             Platform = platform, Host = host, PinsDir = dir, PinsNote = note, ReadFavorites = fav, UserData = Host.Paths.DataRoot,
+            Overlay = overlay, Test = Host.Args.Test, OrderFailForTest = orderFail,
             Log = _log, Actions = new BarTaskActions(platform, _ui, Host.Args.Kind == RunKind.Live, _log),
             Publish = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
             Marks = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
@@ -100,10 +113,26 @@ internal sealed partial class BarTasksHost : IDisposable
         });
     }
 
+    /// A drop (jumplist.order {group, ids, from, to}): the answer comes back on the UI thread.
+    public void Order(string group, IReadOnlyList<string> ids, int from, int to, Action<OrderSaved> done)
+    {
+        if (_svc == null || _host == null) { done(new OrderSaved(false, "the new order was not saved: the bar is not connected to Mantle's host yet")); return; }
+        var svc = _svc;
+        var copy = ids.ToArray();
+        _host.Post(async () => {
+            OrderSaved r;
+            try { r = await svc.OrderAsync(group, copy, from, to).ConfigureAwait(true); }
+            catch (Exception e) { r = new OrderSaved(false, "the new order was not saved: " + e.Message); }
+            _ui.TryEnqueue(() => done(r));
+        });
+    }
+
     public void Dispose()
     {
         var s = _svc; _svc = null;
-        if (s != null) _host?.Post(s.Dispose);
+        var st = _stores; _stores = null;
+        if (s != null) _host?.Post(() => { s.Dispose(); st?.Dispose(); });
+        else st?.Dispose();
     }
 }
 
