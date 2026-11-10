@@ -153,7 +153,9 @@ public class ToastsSurfaceTests
         var more = Host.Until(() => uia.FindFirstDescendant(cf => cf.ByAutomationId("more")), 4000);
         Assert.IsNotNull(more, "no \"+N more\" with four banners:\n" + Tail(app.Log));
         StringAssert.StartsWith(more!.Name, "1 more");
-        Assert.IsNull(uia.FindFirstDescendant(cf => cf.ByAutomationId("toast-990002")), "the oldest of four is on screen (at most three)");
+        // the cards are found by their titles (a card's own Grid has no automation peer, so UIA never lists it)
+        Assert.IsNotNull(Host.Until(() => uia.FindFirstDescendant(cf => cf.ByAutomationId("title-990005")), 4000), "the newest of four is not on screen");
+        Assert.IsNull(uia.FindFirstDescendant(cf => cf.ByAutomationId("title-990002")), "the oldest of four is on screen (at most three)");
 
         // 3: Mantle's own card: on screen before the apps' (never under "+N more"), its buttons answered
         Step(app);

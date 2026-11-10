@@ -88,6 +88,7 @@ internal sealed class ToastsSurface : ISurface
     public void Create(ISurfaceContext ctx)
     {
         _ctx = ctx;
+        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_TOASTS_SURFACE") == "1") { ctx.Log.Line("DIAG: toasts surface left empty"); return; }   // DIAG (temporary)
         _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.View.Theme == "dark"; foreach (var it in _items) Paint(it); PaintMore(); }));
         _subs.Add(ctx.On<ToastsShow>("toasts.show", s => Add(s.Banners)));
         _subs.Add(ctx.On<ToastsIds>("toasts.ids", s => Keep(s.Ids)));
@@ -412,13 +413,13 @@ internal sealed class ToastsSurface : ISurface
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
             row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
             var words = Text(pr.Text, 12, false, "LgInk2"); words.TextTrimming = TextTrimming.CharacterEllipsis; row.Children.Add(words);
+            AutomationProperties.SetAutomationId(words, "progress-" + b.Id);   // on the words: a bare Grid has no automation peer, so UIA never sees it
             if (pr.Pct is double pc) { var pct = Text($"{Math.Round(pc)}%", 12, false, "LgInk3"); Grid.SetColumn(pct, 1); row.Children.Add(pct); }
             col.Children.Add(row);
             var bar = new Grid { Height = 3, Margin = new Thickness(0, 5, 0, 0), CornerRadius = new CornerRadius(2), Tag = "sunk" };
             var fill = new Border { HorizontalAlignment = HorizontalAlignment.Left, CornerRadius = new CornerRadius(2), Tag = b.Tone == "error" ? "danger" : "ink3" };
             bar.SizeChanged += (_, _) => fill.Width = bar.ActualWidth * (pr.Pct is double p ? Math.Clamp(p, 0, 100) / 100 : .32);
             bar.Children.Add(fill);
-            AutomationProperties.SetAutomationId(bar, "progress-" + b.Id);
             col.Children.Add(bar);
         }
         if (!string.IsNullOrEmpty(b.Detail))

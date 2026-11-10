@@ -117,6 +117,7 @@ public sealed class ToastsFeature : IFeature
     public ValueTask InstallAsync(IFeatureContext ctx)
     {
         _ctx = ctx;
+        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_TOASTS_FEATURE") == "1") { ctx.Log("DIAG: toasts feature left empty"); _stopped = true; return ValueTask.CompletedTask; }   // DIAG (temporary)
         _clock = _clockIn ?? new HostToastClock(new HostClock(null, SynchronizationContext.Current));
         _own = _ownIn ?? Shared;
         bool test = ctx.Flags.Test;

@@ -648,6 +648,7 @@ internal sealed class OsdSurface : ISurface
     string _shadowKey = "";
     void Shadow()
     {
+        if (Environment.GetEnvironmentVariable("MANTLE_DIAG_NO_SHADOW") == "1") return;   // DIAG (temporary)
         if (_dark || _pane.ActualWidth <= 0 || _root.ActualWidth <= 0) { _shadowHost.Children.Clear(); _shadowKey = ""; return; }
         double scale = _root.XamlRoot?.RasterizationScale ?? 1;
         var o = _pane.TransformToVisual(_root).TransformPoint(new global::Windows.Foundation.Point(0, 0));
