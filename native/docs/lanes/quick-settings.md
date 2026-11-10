@@ -82,14 +82,16 @@ go`, the dry-run lines above, `mantle: qs.set <part>=<value> -> ok, reads <v> (<
 
 ## State at the part-1 handoff (context ceiling reached)
 
-- Commit 1d9344e (code + tests) pushed; the parity scripts and this doc in the commit after it.
-- First cloud run (build,unit,ui) was still running at handoff: its result decides whether anything above compiles.
-- bar.md status column NOT updated yet: mark rows only after a green run. Planned mapping (tests in brackets):
-  tested: BAR-548, 560, 568, 640, 656, 657, 658, 659, 661, 667, 668, 669, 670, 671, 673, 676, 680
-  [Mantle.Core.Tests/QuickSettings/QsTests.cs], BAR-746, 748 [Mantle.Core.Tests/PowerMode/PowerModeTests.cs],
-  BAR-534, 567, 732, 733 [Mantle.UiTests/QuickSettings/QuickSettingsTests.cs]; ported: BAR-540, 546 (left click
-  only), 553, 554, 555, 557, 558, 559, 562, 563, 564, 565, 569, 570, 571, 652, 660, 663, 672, 675, 684, 690 (no icons),
-  691, 735-737, 743, 747, 749, 750. Not done: holders (677-679), restart re-take (683), net fast re-check (682).
+- Run 42778790583 (1d9344e): `NATIVE-CI: FAILED (unit, ui failed; 1 ok)`: the token lint (Colors.Transparent in
+  QsPanel) and an InvalidCastException on the first open: the AOT build cannot cast XamlReader's result to
+  Shapes.Path (it can to UIElement, as OsdSurface does). Fixed in 83b9283.
+- Run 42780689327 (83b9283): unit `ok (556 of 556)`; ui `FAILED (1 of 35)`: only the launcher's
+  `Typing_shows_the_fixture_rows_and_the_arrows_Enter_and_Esc_work` ("Down on the last row did not wrap", LAU-048),
+  not in this lane's files; both QuickSettings UI tests and the bar/rest tests passed. Whether it is a flake or caused
+  by this branch is NOT established.
+- bar.md: 23 rows `tested:` and 30 rows `ported:83b9283` (53 rows of the 221). Not done: holders (677-679), restart
+  re-take (683), net fast re-check (682), and everything listed in part 2.
+- The screenshot pair has not been run yet.
 
 ## Part 2 starts here
 
