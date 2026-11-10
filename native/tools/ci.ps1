@@ -20,6 +20,11 @@
     ui       if tests/Mantle.UiTests/*.csproj exists: dotnet test it (MANTLE_NATIVE_EXE, MANTLE_TEST_VISIBLE=1)
     bench    if bench/run-bench.ps1 exists: -Mode smoke -Out <Out>/bench
     parity   if tools/parity/run-parity.ps1 exists: -Out <Out>/parity
+    launcher tools/parity/launcher/run-launcher.ps1 (Electron's launcher vs native, light and dark), gated on its floors
+    osd      tools/parity/osd-toasts/run-osd-parity.ps1 (the volume pop-up's states, light and dark), gated on its floor
+    strip    tools/parity/bar-tasks/run-strip-parity.ps1 (the bar's apps strip, light and dark), gated on its floor
+             (the floors and why: tools/parity/README.md "CI floors"; the lanes' scripts are called, never edited here)
+    unit     also runs node tools/parity/launcher/make-golden.cjs --check (Electron's ranking vs the checked-in golden)
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
   A stage whose project or script does not exist is skipped, not failed.
 
@@ -34,7 +39,7 @@
   in <Out>/logs/<stage>.log.
 #>
 param(
-  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'sidecar'),
+  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'sidecar'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
@@ -44,7 +49,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'sidecar')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'sidecar')
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -107,9 +112,23 @@ function Stage-unit {
   $code = Run 'unit' 'dotnet' @('test', (Join-Path $native 'tests\Mantle.Core.Tests\Mantle.Core.Tests.csproj'), '-c', 'Release', '-nologo',
     '--logger', 'trx;LogFileName=core.trx', '--results-directory', $dir)
   $t = Trx $trx
-  if ($null -eq $t) { return "FAILED (no test results; dotnet test exit $code)" }
-  if ($t.Failed -gt 0 -or $code -ne 0) { return "FAILED ($($t.Failed) of $($t.Total) failed: $(($t.Names | Select-Object -First 6) -join ', '))" }
-  return "ok ($($t.Passed) of $($t.Total) passed)"
+  # the launcher lane's golden: Electron's own ranking (lib/launcher-index.js, plain node, ~2 s) vs the checked-in table
+  $golden = Join-Path $native 'tools\parity\launcher\make-golden.cjs'
+  $gold = 'launcher golden skipped (no make-golden.cjs)'; $goldBad = $false
+  if (Test-Path $golden) {
+    $gLog = Join-Path $logs 'unit-golden.log'
+    Push-Location $repo
+    try { & node $golden --check *> $gLog; $gCode = $LASTEXITCODE } catch { $gCode = -1; "node did not run: $($_.Exception.Message)" | Out-File -Append $gLog } finally { Pop-Location }
+    $gLine = @(Get-Content $gLog -ErrorAction SilentlyContinue | Where-Object { $_ -like 'GOLDEN*' })
+    Get-Content $gLog -ErrorAction SilentlyContinue | Where-Object { $_ -like 'GOLDEN DRIFT*' } | Select-Object -First 6 | ForEach-Object { Say ('    ' + (Short $_)) }
+    $gold = if ($gLine.Count) { "launcher " + (Short $gLine[-1]) } else { "launcher GOLDEN: no line (node exit $gCode)" }
+    Say ("  " + $gold)
+    $goldBad = $gCode -ne 0
+  }
+  if ($null -eq $t) { return "FAILED (no test results; dotnet test exit $code; $gold)" }
+  if ($t.Failed -gt 0 -or $code -ne 0) { return "FAILED ($($t.Failed) of $($t.Total) failed: $(($t.Names | Select-Object -First 6) -join ', '); $gold)" }
+  if ($goldBad) { return "FAILED ($($t.Passed) of $($t.Total) passed, but the $gold)" }
+  return "ok ($($t.Passed) of $($t.Total) passed; $gold)"
 }
 
 # ---------------------------------------------------------------------------------------------- smoke
@@ -375,6 +394,95 @@ function Stage-script([string]$name, [string]$script, [string[]]$argv) {
   return "ok ($(Short $last))"
 }
 
+# ---------------------------------------------------------------------------------------------- the surface lanes' pairs
+# Each stage calls a surface lane's own script (never edited here), prints its score lines, and gates on a FLOOR: the
+# number the build must not fall under. The floors sit just under the scores those lanes measured (known gaps they are
+# still closing are printed, never failed on); tools/parity/README.md "CI floors" says where each number comes from.
+# A floor only moves up, in the same commit as the fix that earns it.
+$Floors = [ordered]@{
+  'launcher light' = 0.78   # 0.8295 (run 42388736155)
+  'launcher dark'  = 0.55   # 0.5864: the --test Electron launcher is a framed opaque window (docs/lanes/launcher.md)
+  'osd'            = 0.55   # lowest state: vol-dead (unavailable) 0.58, the why line wraps differently (docs/lanes/osd-toasts.md)
+  'strip'          = 0.88   # dark 0.9091, light 0.9258 (run 42770119126, the first gated run)
+}
+
+function Scores([string]$log, [string]$pattern) {
+  @(Select-String -Path $log -Pattern $pattern -ErrorAction SilentlyContinue | ForEach-Object {
+    [pscustomobject]@{ Tag = $_.Matches[0].Groups[1].Value; Ssim = [double]::Parse($_.Matches[0].Groups[2].Value, [Globalization.CultureInfo]::InvariantCulture); Line = $_.Line }
+  })
+}
+
+function Lane-Script([string]$name, [string]$rel, [string[]]$argv) {
+  $script = Join-Path $native $rel
+  if (-not (Test-Path $script)) { return $null }
+  if (-not (Test-Path $exe)) { return 'FAILED (the published exe is missing; the build stage makes it)' }
+  $env:MANTLE_NATIVE_EXE = $exe
+  $code = Run $name 'pwsh' (@('-NoProfile', '-File', $script) + $argv)
+  return $code
+}
+
+function Stage-launcher {
+  $code = Lane-Script 'launcher' 'tools\parity\launcher\run-launcher.ps1' @('-Exe', $exe)
+  if ($null -eq $code) { return 'skipped (no tools/parity/launcher/run-launcher.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'launcher.log'
+  $rows = Scores $log '^LAUNCHER-PARITY (\w+): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^LAUNCHER-(PARITY|LATENCY) |^LAUNCHER: |launcher PROBLEM: ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^LAUNCHER: ' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  $bad = @(); $got = @()
+  if (-not $sum.Count) { $bad += "no LAUNCHER: line (exit $code)" }
+  foreach ($t in 'light', 'dark') {
+    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["launcher $t"]
+    if (-not $r.Count) { $bad += "$t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
+  }
+  # a launcher that does not work is a failure whatever the score; the known gaps (window sizes, the framed Electron) are printed
+  $broken = @(Select-String -Path $log -Pattern 'launcher PROBLEM: .*(drew no rows|no launcher window|never stood still|no native exe|did not open|threw)' -ErrorAction SilentlyContinue)
+  if ($broken.Count) { $bad += "$($broken.Count) launcher(s) did not work: $((Short $broken[0].Line) -replace '^launcher PROBLEM: ', '')" }
+  $known = @(Select-String -Path $log -Pattern 'launcher PROBLEM: ' -ErrorAction SilentlyContinue).Count - $broken.Count
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok (ssim $($got -join ', '); $known known gap(s) printed above)"
+}
+
+function Stage-osd {
+  $out = Join-Path $Out 'parity\osd'
+  $code = Lane-Script 'osd' 'tools\parity\osd-toasts\run-osd-parity.ps1' @('-Exe', $exe, '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/osd-toasts/run-osd-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'osd.log'
+  $rows = Scores $log '^OSD-PARITY (\S+): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^OSD-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^OSD-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  $f = $Floors['osd']
+  if (-not $sum.Count) { return "FAILED (no OSD-PARITY summary line; exit $code)" }
+  $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
+  $low = @($rows | Sort-Object Ssim | Select-Object -First 1)
+  $bad = @()
+  if ($scored -lt $of -or $of -eq 0) { $bad += "$scored of $of pairs scored" }
+  $under = @($rows | Where-Object { $_.Ssim -lt $f })
+  if ($under.Count) { $bad += ("{0} under the floor {1}: {2}" -f $under.Count, $f, (($under | ForEach-Object { "{0} {1:N4}" -f $_.Tag, $_.Ssim }) -join ', ')) }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return ("ok ({0} of {1} scored, lowest {2} {3:N4} >= {4})" -f $scored, $of, $low[0].Tag, $low[0].Ssim, $f)
+}
+
+function Stage-strip {
+  $out = Join-Path $Out 'parity\bar-tasks'
+  $code = Lane-Script 'strip' 'tools\parity\bar-tasks\run-strip-parity.ps1' @('-Theme', 'both', '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/bar-tasks/run-strip-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'strip.log'
+  $rows = Scores $log '^STRIP-PARITY (\S+): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^STRIP-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $f = $Floors['strip']
+  $bad = @()
+  if ($rows.Count -lt 2) { $bad += "$($rows.Count) of 2 strips scored (exit $code)" }
+  $under = @($rows | Where-Object { $_.Ssim -lt $f })
+  if ($under.Count) { $bad += ("{0} under the floor {1}: {2}" -f $under.Count, $f, (($under | ForEach-Object { "{0} {1:N4}" -f $_.Tag, $_.Ssim }) -join ', ')) }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return ("ok (ssim {0}; floor {1})" -f (($rows | ForEach-Object { "{0} {1:N4}" -f $_.Tag, $_.Ssim }) -join ', '), $f)
+}
+
 function Stage-sidecar {
   $proj = @(Get-ChildItem -Path (Join-Path $native 'src\Mantle.Sidecar') -Filter *.csproj -ErrorAction SilentlyContinue)
   if ($proj.Count -eq 0) { return 'skipped (no src/Mantle.Sidecar/*.csproj)' }
@@ -395,7 +503,7 @@ function Stage-sidecar {
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -439,6 +547,9 @@ foreach ($s in $Stages) {
       'ui'      { Stage-ui }
       'bench'   { Stage-script 'bench' (Join-Path $native 'bench\run-bench.ps1') @('-Mode', 'smoke', '-Out', (Join-Path $Out 'bench')) }
       'parity'  { Stage-script 'parity' (Join-Path $native 'tools\parity\run-parity.ps1') @('-Out', (Join-Path $Out 'parity')) }
+      'launcher' { Stage-launcher }
+      'osd'     { Stage-osd }
+      'strip'   { Stage-strip }
       'sidecar' { Stage-sidecar }
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result

@@ -54,6 +54,8 @@ public sealed class JsonStore : IStore
     internal bool Load()
     {
         lock (_lock) {
+            // a write behind is on its way: the in-memory document is newer than the disk, and that write lands it
+            if (_pending > 0) return false;
             string stamp = ReadOnlyFile.StampOf(_path);
             bool moved = stamp != _stamp;
             _stamp = stamp;
@@ -210,21 +212,90 @@ public sealed class JsonStore : IStore
     ValueTask<StoreWrite> Change(Action<JsonObject> edit)
     {
         lock (_lock) {
-            var next = (JsonObject)JsJson.Clone(_doc)!;
-            edit(next);
-            next = (JsonObject)JsJson.Clone(next)!;     // JSON-only, never shared by reference (lib/features.js)
-            _doc = next;                                // the in-memory document is the truth, saved or not
+            Apply(edit);
+            // a write behind is still on its way: this one goes behind it, so the file never goes back in time
+            if (_pending > 0) return Precheck() is { } no ? ValueTask.FromResult(no) : new ValueTask<StoreWrite>(Queue());
             return ValueTask.FromResult(Save());
         }
     }
 
-    StoreWrite Save()
+    void Apply(Action<JsonObject> edit)
+    {
+        var next = (JsonObject)JsJson.Clone(_doc)!;
+        edit(next);
+        next = (JsonObject)JsJson.Clone(next)!;     // JSON-only, never shared by reference (lib/features.js)
+        _doc = next;                                // the in-memory document is the truth, saved or not
+    }
+
+    /// <summary>
+    /// The in-memory document changes NOW (every read sees it at once); the file is written behind it, off the
+    /// caller's thread, one write at a time in the order asked, each writing the document as it is then (so the last
+    /// one always lands the newest). The write is the same tmp-and-rename with its flush to disk (SafeFile.WriteAtomic),
+    /// so a power cut leaves the old file or the new one, never a torn one. What the gate or the file refuses at once
+    /// (the read-only gate, a hand-written file) answers at once; anything else answers when its write is done.
+    /// A re-read from disk (<see cref="Load"/>) is skipped while a write is on its way. The theme's save uses this, so
+    /// the theme event never waits for a disk (core-6.md).
+    /// </summary>
+    public Task<StoreWrite> UpdateBehind(Action<JsonObject> edit)
+    {
+        if (edit == null) throw new ArgumentNullException(nameof(edit));
+        lock (_lock) {
+            Apply(edit);
+            return Precheck() is { } no ? Task.FromResult(no) : Queue();
+        }
+    }
+
+    /// How many writes behind are still on their way.
+    public int WritesBehind { get { lock (_lock) return _pending; } }
+
+    /// Done when every write asked so far has landed (or failed). Never faults.
+    public Task Behind { get { lock (_lock) return _behind; } }
+
+    Task<StoreWrite> _behind = Task.FromResult(StoreWrite.Done);
+    int _pending;
+
+    // under _lock
+    Task<StoreWrite> Queue()
+    {
+        _pending++;
+        var t = _behind.ContinueWith(_ => WriteLatest(), System.Threading.CancellationToken.None,
+            TaskContinuationOptions.DenyChildAttach, TaskScheduler.Default);
+        _behind = t;
+        return t;
+    }
+
+    StoreWrite WriteLatest()
+    {
+        byte[] bytes; string tmp;
+        lock (_lock) {
+            bytes = JsJson.ToFileBytes(_doc, _spec.Indent, _spec.TrailingNewline);
+            tmp = _spec.PidTmp ? $"{_path}.{Environment.ProcessId}.tmp" : _path + ".tmp";
+        }
+        string? fail;
+        try { fail = _files.WriteAtomic(_path, bytes, tmp); } catch (Exception e) { fail = e.GetType().Name + ": " + e.Message; }
+        lock (_lock) {
+            _pending--;
+            if (fail != null) return StoreWrite.Failed($"{Name} could not be saved ({fail})");
+            _stamp = ReadOnlyFile.StampOf(_path);
+            if (State != ReadState.Ok) State = ReadState.Ok;
+            return StoreWrite.Done;
+        }
+    }
+
+    // under _lock: what refuses a write before any byte is written
+    StoreWrite? Precheck()
     {
         if (_spec.NeverWritten) return StoreWrite.Failed($"{Name} is the user's own hand-written file; Mantle reads it and never writes it");
         if (_noWrite != null) return StoreWrite.Failed(_noWrite);
         string? refused = _files.Gate.Refusal(_path);
         if (refused != null) return StoreWrite.Failed(refused);
         if (_needsAside && !AsideNow()) return StoreWrite.Failed(_noWrite ?? Reason ?? (Name + " could not be moved aside"));
+        return null;
+    }
+
+    StoreWrite Save()
+    {
+        if (Precheck() is { } no) return no;
         string tmp = _spec.PidTmp ? $"{_path}.{Environment.ProcessId}.tmp" : _path + ".tmp";
         string? fail = _files.WriteAtomic(_path, JsJson.ToFileBytes(_doc, _spec.Indent, _spec.TrailingNewline), tmp);
         if (fail != null) return StoreWrite.Failed($"{Name} could not be saved ({fail})");

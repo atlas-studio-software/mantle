@@ -79,6 +79,20 @@ Lines: `PARITY bar <theme>: ssim=.. diffpx=..% meanabs=.. (ok|FAILED vs ...)` pe
 defects still visible in its diff images fail the gate. At the first guess (0.80 / 25 %) that run passed
 even though the defects were plainly visible in the PNGs.
 
+## CI floors (the surface lanes' pairs, `ci.ps1` stages `launcher`, `osd`, `strip`)
+
+`ci.ps1` calls each surface lane's own script (it never edits them), prints its score lines in the CI log and gates on
+a floor: the score the build must not fall under. The floors sit just under what those lanes measured, so a known gap
+they are still closing is printed and never fails the build, while a regression under it does. A floor only moves
+up, in the same commit as the fix that earns it. The numbers live in `ci.ps1` (`$Floors`).
+
+| Stage | Script | Fails on | Floor (SSIM) | Measured (where) |
+|---|---|---|---|---|
+| `unit` | `launcher/make-golden.cjs --check` | Electron's ranking drifting from the checked-in golden | exact | `GOLDEN: ok (255 items, 1220 queries, 144 claimed pages)` |
+| `launcher` | `launcher/run-launcher.ps1 -Exe <published exe>` (no `-Ui`: the `ui` stage runs those tests) | a theme not scored, a score under its floor, a launcher that did not work (no rows, no window, never still, did not open); other `launcher PROBLEM:` lines (window sizes) are printed as known gaps | light 0.78, dark 0.55 | light 0.8295, dark 0.5864 (run 42388736155; dark is confounded: a `--test` Electron launcher is a framed opaque window, docs/lanes/launcher.md) |
+| `osd` | `osd-toasts/run-osd-parity.ps1 -Exe <exe> -Out native/out/parity/osd` | a pair not scored, any state under the floor | 0.55 | pill states 0.87-0.92, `vol-dead` (unavailable) 0.58: the why line wraps differently (run 42389540367, docs/lanes/osd-toasts.md) |
+| `strip` | `bar-tasks/run-strip-parity.ps1 -Theme both -Out native/out/parity/bar-tasks` | fewer than 2 strips scored, any under the floor | 0.88 | dark 0.9091, light 0.9258 (run 42770119126, the first gated run; its run-parity pass with the apps unmasked scores the whole bar 0.9789 / 0.9711, printed, not gated) |
+
 ## Results so far
 
 - Run 42352739396 (base app = the spike bar; only the clock masked, imprecisely): light SSIM 0.667 with
