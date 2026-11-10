@@ -81,8 +81,8 @@
         <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Rectangle Width="1" Height="20" Fill="{ThemeResource LgEdgeOut}" VerticalAlignment="Center"/>
           <Button AutomationProperties.AutomationId="bar.downloads" AutomationProperties.Name="Downloads" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
-          <Button AutomationProperties.AutomationId="bar.volume" AutomationProperties.Name="Volume" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
-          <Button AutomationProperties.AutomationId="bar.network" AutomationProperties.Name="Network" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NetworkHost" Width="16" Height="16"/></Button>
+          <Button x:Name="VolumeBtn" AutomationProperties.AutomationId="bar.volume" AutomationProperties.Name="Volume" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
+          <Button x:Name="NetworkBtn" AutomationProperties.AutomationId="bar.network" AutomationProperties.Name="Network" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NetworkHost" Width="16" Height="16"/></Button>
           <!-- Electron's battery button while it is hidden: .btn's display:flex beats [hidden], so with no battery it
                still takes 14 px (.battery: width auto, padding 0 7px) + the 4 px gap. Kept so the cluster sits where
                Electron's does (the parity known gap "right-cluster"); the battery itself (glyph + percent) is round 3. -->

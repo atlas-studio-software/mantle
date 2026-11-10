@@ -157,6 +157,7 @@ public sealed partial class BarWindow : Window
         });
         Tick();
         StartFrame();
+        StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
     }
 
     // ------------------------------------------------------------------ the glass
