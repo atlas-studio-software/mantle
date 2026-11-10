@@ -45,7 +45,8 @@ public sealed class QsCommands
     public async ValueTask<CommandResult> Watch(CommandCall call)
     {
         bool on = Prop(call.Args, "on").ValueKind == JsonValueKind.True;
-        var r = await _svc.WatchAsync(on, on ? $"{call.Caller} opened the panel" : $"{call.Caller} closed the panel").ConfigureAwait(true);
+        string who = Str(call.Args, "who") is string w && System.Text.RegularExpressions.Regex.IsMatch(w, "^[a-z]{1,20}$") ? w : "panel";
+        var r = await _svc.WatchAsync(on, on ? $"{call.Caller} opened the panel" : $"{call.Caller} closed the panel", who).ConfigureAwait(true);
         return CommandResult.Success(QsService.El(r));
     }
 

@@ -74,6 +74,8 @@ public sealed partial class QsService
             o.Platform.On("qs", e => OnPush(e.Body));
             o.Platform.On("volume", e => { if (e.Body.ValueKind == JsonValueKind.Object) Store("volume", QsParts.Normalize(Detach(e.Body, "ev"), "the volume"), _o.Host.NowMs, publish: true); });
             o.Platform.On("btdevices", e => OnBtPush(e.Body));
+            // BAR-683: a sidecar that restarted forgot the lease; an open panel takes it again at once
+            o.Platform.OnReady(() => { if (_watching) { _o.Log("qs: the sidecar restarted while the panel was open, so the watch is taken again"); _ = LeaseAsync("the sidecar restarted while the panel was open"); } });
         }
     }
 
@@ -164,14 +166,34 @@ public sealed partial class QsService
     /// renews every 20 s (a host that dies costs the sidecar at most 60 s of reads); a sidecar that cannot watch gets
     /// the full re-read every 2 s instead. A --test run with made-up parts has nothing to watch and says so.
     /// </summary>
-    public async ValueTask<JsonObject> WatchAsync(bool on, string why)
+    /// Holders (BAR-678/679): the bar's panel (<c>who</c> absent: "panel", held until it lets go) and other pages
+    /// (Mantle Settings: <c>who:"settings"</c>, which must re-assert within 90 s); the watch stops only when nobody holds it.
+    public async ValueTask<JsonObject> WatchAsync(bool on, string why, string who = "panel")
     {
-        if (!on) return Unwatch(why);
-        if (_fixture != null) { _watching = true; _via = "fixture"; return WatchReply(true, "the parts are MANTLE_TEST_QS's, so there is nothing to watch"); }
+        PruneHolders();
+        if (!on) {
+            _holders.Remove(who);
+            if (_holders.Count > 0 && _watching) return WatchReply(false, $"still watching: {string.Join(" and ", _holders.Keys)} holds it");
+            _holders.Clear();
+            return Unwatch(why);
+        }
+        _holders[who] = who == "panel" ? double.PositiveInfinity : _o.Host.NowMs + HoldMs;
         bool was = _watching;
+        string? again = was ? "the quick-settings watch was already running, so nothing was started twice" : null;
+        if (_fixture != null) { _watching = true; _via = "fixture"; return WatchReply(!was, again ?? "the parts are MANTLE_TEST_QS's, so there is nothing to watch"); }
         _watching = true;
-        await LeaseAsync(why).ConfigureAwait(true);
-        return WatchReply(!was, null);
+        if (!was) await LeaseAsync(why).ConfigureAwait(true);
+        return WatchReply(!was, again);
+    }
+
+    public const int HoldMs = 90000;
+    readonly Dictionary<string, double> _holders = new(StringComparer.Ordinal);
+    public IReadOnlyCollection<string> Holders => _holders.Keys;
+
+    void PruneHolders()
+    {
+        double t = _o.Host.NowMs;
+        foreach (var k in new List<string>(_holders.Keys)) if (_holders[k] <= t) _holders.Remove(k);
     }
 
     JsonObject WatchReply(bool started, string? reason) => new() { ["ok"] = true, ["watching"] = _watching, ["started"] = started, ["via"] = _via, ["reason"] = reason };
@@ -179,6 +201,8 @@ public sealed partial class QsService
     async ValueTask LeaseAsync(string why)
     {
         if (!_watching) return;
+        PruneHolders();
+        if (_holders.Count == 0) { Unwatch("every page that asked for it has gone"); return; }
         _renew?.Dispose();
         _renew = _o.Host.Delay(TimeSpan.FromMilliseconds(RenewMs), () => { _renew = null; _ = LeaseAsync("the lease is renewed"); });
         var r = await _o.Platform.CallAsync("qswatch", new JsonObject { ["on"] = true, ["leaseMs"] = LeaseMs }, TimeSpan.FromMilliseconds(4000)).ConfigureAwait(true);

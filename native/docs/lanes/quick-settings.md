@@ -56,10 +56,8 @@ go`, the dry-run lines above, `mantle: qs.set <part>=<value> -> ok, reads <v> (<
 
 ## Requests (to other lanes)
 
-- **Core (Shell/Popup)**: (1) a closed event or callback on PopupHost (the panel polls `Popups.OpenKey` every 250 ms
-  while open to let its watch go); (2) `PopupHost.Resize(heightDip)` for an open pop-up, Electron's `bar.popover
-  {height}` re-ask (the panel's height is measured once before each open; a note that arrives while it is open can be
-  cut off at the bottom); (3) copy the id table above into AUTOMATION.md.
+- **Core (Shell/Popup)**: (1) and (2), the closed event and Resize, were done in part 2 (this lane, with leave to
+  edit PopupHost); (3) copy the id tables into AUTOMATION.md is still open.
 - **Core (ci.ps1)**: wire `native/tools/parity/quick-settings/run-qs-parity.ps1` as a stage (see that script's header).
 - **OSD lane**: `qs.set` and `qs.audio.sessions` (and `qs.audio.session`) are registered. A refused or invalid set is
   `CommandResult.Fail(reason)`, as `OsdSurface.Set` already reads it; a success is `{ok, part, value, state, reason,
@@ -95,11 +93,60 @@ go`, the dry-run lines above, `mantle: qs.set <part>=<value> -> ok, reads <v> (<
   re-take (683), net fast re-check (682), and everything listed in part 2.
 - The screenshot pair has not been run yet.
 
-## Part 2 starts here
+## Part 2 (branch `native/r5-qs2`, from native/main b6a318e)
 
-1. The three "&gt;" views (ui/bar/qs-more.js): the Wi-Fi network list + scan + connect, with the password field in a
-   non-activating pop-up (Q-W6); the Bluetooth device list (qs.bt.*); the sound output list (qs.audio.devices /
-   qs.audio.default) and the per-app rows (qs.audio.sessions / qs.audio.session).
-2. The qs-tiles row (airplane mode, do not disturb, focus, project, cast), game mode, top bar and hot corners rows.
-3. The network readout's 1 s re-check while open (main.js `net {op:'watch', fast}`), the `volume` broadcast for the
-   bar's speaker glyph, and the power plan list of the power mode row (powermode.plan is registered; its UI is not).
+Built:
+
+- **The three "›" views** (`QsPanel.More.cs`, ui/bar/qs-more.js + bt.js): the Wi-Fi and Bluetooth tiles are split (the
+  tile switches the radio, its "›" always opens the list); a "›" after the mute button opens the sound view. A view
+  replaces the main one in the same pop-up, which is re-asked for 384 DIP (`PopupHost.Resize`); the back arrow, or the
+  close, stops its one read loop (Wi-Fi 4 s, sound 1.5 s with devices every third tick, Bluetooth watch renewed every
+  30 s or a 3 s re-read without it).
+  - Wi-Fi: rows (signal, lock, name, sub), row bodies (Disconnect, Connect, Connect automatically, the password form,
+    Windows' own list), the whole-view states, the last-attempt note, a scan on open.
+  - Bluetooth: rows from bt.js describe(), the battery, Connect/Disconnect or the reason, "Add device", the states.
+  - Sound: the output devices (check from the read-back, "Calls", tooltips), one row per app (level slider through a
+    one-in-flight sender, mute), the states.
+- **Core:** `QsMoreView.cs` (all the words, pure) and `QsService.More.cs` with the commands `qs.wifi.list / scan /
+  connect / disconnect`, `qs.audio.devices / default`, `qs.bt.list / watch / connect / disconnect` (always
+  `Success({ok, reason, ...})`, so the bus's failure log never holds a connect's arguments). The sidecar's `btdevices`
+  pushes are relayed as the event `qs.btdevices`. A failed Bluetooth toggle never names a device (BAR-694).
+- **The password field (Q-W6).** The pop-up stays no-focus. Connect on a network that needs a password asks
+  `PopupHost.TakeKeyboard("qs")`: WS_EX_NOACTIVATE comes off, the window in front is remembered, the pop-up is raised.
+  Cancel, a sent password, leaving the view or the close give it back (`GiveBackKeyboard`: NOACTIVATE back on, focus
+  to the remembered window if the pop-up still has it). Another window taking focus raises `KeyboardLost`: the box
+  closes with "The keyboard went to another window, so the password box closed." The password is read once on Next or
+  Enter, the field cleared in the same step, sent in one call; the service logs its LENGTH only.
+- **Watch holders (BAR-677..679)** (`qs.watch {on, who}`) and the **re-take after a sidecar restart (BAR-683)**.
+- **PopupHost** (item 4): the `Closed(key, why)` event (the 250 ms poll is gone) and `Resize(key, heightDip)`; the
+  main view re-asks its height when its notes change (a late note is no longer cut off).
+
+A --test run: every write above is a dry run, logged as `qs: dry run (--test): <what> would ask the sidecar <verb> <op>
+<args, names and ids as their length>; nothing was sent, Windows was not changed`, answered ok:false "this is a test run,
+so Windows was not changed" (shown under the row). The keyboard is refused with Electron's words unless
+`MANTLE_TEST_QS_KEYS=1` (with MANTLE_TEST_VISIBLE=1, a CI runner only). `MANTLE_TEST_QS` may carry `wifiList`,
+`devices` and `btList` (and part 1's `sessions`).
+
+New ids: `qs.more.wifi`, `qs.more.bluetooth`, `qs.more.sound`; `qs.back`, `qs.view.title`, `qs.view.status`,
+`qs.view.list`, `qs.view.state` / `qs.view.why` / `qs.view.action`, `qs.view.note.<n>`, `qs.view.more`;
+`qs.wifi.scan`, `qs.wifi.net.<i>` (HelpText = the sub line), `qs.wifi.connect`, `qs.wifi.disconnect`, `qs.wifi.auto`,
+`qs.wifi.password`, `qs.wifi.problem`, `qs.wifi.next`, `qs.wifi.cancel`, `qs.wifi.error`, `qs.wifi.windows`;
+`qs.bt.dev.<i>` (ItemStatus = state), `qs.bt.toggle`, `qs.bt.settings`, `qs.bt.error`, `qs.bt.add`;
+`qs.sound.devices`, `qs.sound.dev.<i>` (ItemStatus `default`), `qs.sound.error`, `qs.sound.mixer`,
+`qs.app.<i>` with `.value`, `.volume`, `.mute`. Log lines: `qs: the <title> view opened` / `closed (<why>)`,
+`qs: the password field has the keyboard (...)` / `did not open: <why>`, `pop-up Quick settings: resized to <h> DIP
+high`, `took the keyboard on its own ask`, `gave the keyboard back (<why>)`; the close line is now `qs: the panel closed
+(<why>); its watch is let go`.
+
+Deviations (part 2):
+
+- The views' writes answer ok:false + dryRun in a test run (Electron's passive sidecar refused them); per-app rows draw
+  a letter, not the app's icon (icons are not read yet; the letter's tooltip says so).
+- Bluetooth kind glyphs are path approximations of bt.js's rects and circles (square corners).
+
+Left (not done in part 2):
+
+- The qs-tiles row (airplane mode, do not disturb, focus, project, cast), game mode, top bar and hot corners rows.
+- BAR-682, the 1 s network re-check while open: the native bar has no `net` readout watch yet to speed up.
+- The `volume` broadcast for the bar's speaker glyph, the power plan list, right-click to open.
+- The screenshot pair (part 1's script) and an AUTOMATION.md copy of the ids.

@@ -153,6 +153,27 @@ public class QsMoreTests
     }
 
     [Fact]
+    public async Task The_watch_has_holders_and_is_taken_again_after_a_sidecar_restart()
+    {
+        var k = new Kit().Make(test: false);
+        k.P.Answer("qswatch", "{\"ok\":true}");
+        var first = await k.Svc.WatchAsync(true, "bar opened the panel");
+        Assert.True(QsParts.IsTrue(first["started"]));
+        var again = await k.Svc.WatchAsync(true, "settings opened", "settings");
+        Assert.Equal("the quick-settings watch was already running, so nothing was started twice", QsParts.Str(again["reason"]));
+        var off = await k.Svc.WatchAsync(false, "bar closed the panel");
+        Assert.True(QsParts.IsTrue(off["watching"]));
+        Assert.Equal("still watching: settings holds it", QsParts.Str(off["reason"]));
+        int leases = k.Verbs("qswatch").Length;
+        k.P.Start();   // the sidecar came back: its lease is gone, so the watch is taken again at once
+        Assert.True(k.Verbs("qswatch").Length > leases, "the lease was not taken again after the restart");
+        Assert.Contains("qs: the sidecar restarted while the panel was open", k.Log);
+        var last = await k.Svc.WatchAsync(false, "settings closed", "settings");
+        Assert.False(QsParts.IsTrue(last["watching"]));
+        Assert.Contains("{\"on\":false}", k.Verbs("qswatch"));
+    }
+
+    [Fact]
     public async Task Made_up_lists_are_read_in_place_of_the_sidecar_and_pushes_are_relayed()
     {
         var k = new Kit().Make(test: true, fixture: "{\"wifiList\":{\"present\":true,\"on\":true,\"networks\":[{\"ssid\":\"A\"}]},\"devices\":[{\"id\":\"d1\",\"name\":\"Speakers\",\"isDefault\":true}],\"btList\":{\"ok\":true,\"on\":true,\"devices\":[]}}");
