@@ -164,10 +164,9 @@ internal sealed partial class QsPanel
         _vStatus.Text = "";
         PaintFrame();
         _vList.Children.Clear();
-        // a view keeps the fixed width it was laid out for; the way back re-fits the main view (Fit, never skipped)
-        _width = WidthDip; Root.Width = WidthDip - 2;
+        // a view keeps the panel's width (qs-more.js pins it, BAR-609); the way back re-fits the main view (never skipped)
         _fitted = 0; _fittedW = 0;
-        bool roomed = _room.Resize(SubHeightDip, WidthDip);
+        bool roomed = _room.Resize(SubHeightDip, _width);
         _log($"qs: the {_vTitle.Text} view opened" + (roomed ? "" : "; the pop-up could not be re-sized, so the view may be clipped"));
         int g = _gen;
         if (kind == "wifi") { if (_wifiData != null) RenderWifi(true); else StateBlock(_vList, "Looking for networks…", null, null, null, false); _ = WifiOpen(g); }
@@ -214,7 +213,7 @@ internal sealed partial class QsPanel
 
     double Need()
     {
-        _width = _view != null ? WidthDip : MainWidth();
+        _width = _view != null ? _width : MainWidth();
         Root.Width = _width - 2;
         Root.Measure(new Windows.Foundation.Size(_width - 2, double.PositiveInfinity));
         double h = Math.Ceiling(Root.DesiredSize.Height) + 2;
