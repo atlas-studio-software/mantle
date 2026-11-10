@@ -63,6 +63,7 @@
     }
     v.title = 'Hide the top bar; maximised windows get the whole screen (' + chord + ' shows it again)';
     if (st.stepAside && st.kind === 'video') v.sub = 'Aside · ' + ((st.video && st.video.app) || 'a video') + ' full screen';
+    else if (st.stepAside && st.kind === 'full') v.sub = 'Aside · ' + ((st.full && st.full.app) || 'a window') + ' full screen';
     else if (st.stepAside && (st.kind === 'game' || st.kind === 'run')) v.sub = 'Aside · a game';
     else if (st.stepAside && st.kind === 'lock') v.sub = 'Aside · locked';
     else v.sub = 'Shown · ' + chord + ' hides it';
