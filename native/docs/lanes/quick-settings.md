@@ -223,3 +223,22 @@ Deviations (part 4):
 - Project: Mantle's own Win+P pop-up is not native yet, so the tile opens Windows' own (the sidecar's `keys win+p`).
 - Ending Focus in a test run is a dry run too (Electron's endFocus cleared its record in a test run).
 - The tiles' press and settle motion (qs-tiles.css, BAR-606) is not ported.
+
+The pair, with the row in both shots: Chromium lays a dark tile out at 44.7 px (a 50.7 px pitch) and snaps each box's
+edges where they land, so its five dark rows are 44, 45, 45, 44, 45; native rows were all 44 (whole-pixel lines), 4 px
+short, and dark fell to 0.8346 (run 42812366552). `QsPanel.Tiles.cs` SizeRows gives the dark rows those heights
+(light stays Auto: already within a pixel). Run 42814194376 (c6325f5, build + qs): light 0.9102, dark 0.8953 (part 3:
+0.9094 / 0.8636); both crops 490/491 high. The floors in ci.ps1 (0.89 / 0.84) were left as they are (ci.ps1 is outside
+this lane's files); dark could go to 0.88.
+
+Runs: 42811171147 and 42811782090 (build: JsonArray.Add<T> is refused by the AOT build; fixed in 7df092d, the
+first also had the LookShellTests 1000 ms flake); 42812366552 (7df092d: unit 622/622, ui 46/46, qs dark 0.8346 under
+its floor); 42814194376 (c6325f5: `NATIVE-CI: ok (2 ok)`).
+
+bar.md: 11 rows `tested:` (556, 589, 591, 592, 594, 596, 600, 601, 603, 605, 607) and 3 `ported:c6325f5` (590, 595,
+604). Left `todo`: 593 (the banners' quiet check, the toasts lane), 597-599 (Focus's timer, record and put-back: no
+native timer), 602 (the tray switch for the tiles), 606 (motion).
+
+Left after part 4: the game mode, top bar and hot corners rows (BAR-572, 583-588 and the gamemode / corners rows; the
+native app has none of those three features yet, so each row would draw its "did not answer" state until they exist),
+the power plan list and toggle (BAR-740), the `battery` reading for the footer, BAR-682, the `volume` broadcast.
