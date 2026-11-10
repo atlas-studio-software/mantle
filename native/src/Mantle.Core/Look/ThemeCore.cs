@@ -14,7 +14,8 @@ public readonly record struct WindowsMode(string? Mode, string? Why);
 public sealed record ThemeView(bool Ok, string Mode, string Theme, string? Windows, string? WindowsWhy, string? Pinned, string? Note, string? Reason);
 
 /// <summary>What <c>theme.set</c> answers: the view plus <c>value</c>, or a refusal.</summary>
-public sealed record ThemeSetResult(bool Ok, ThemeView? View, string? Value, string? Reason);
+/// <c>Saved</c>: done once the save has landed and its outcome is in the view (a save behind the tell; null = nothing behind).
+public sealed record ThemeSetResult(bool Ok, ThemeView? View, string? Value, string? Reason, System.Threading.Tasks.Task? Saved = null);
 
 /// <summary>
 /// C# port of lib/theme.js: Mantle's appearance mode (Match Windows / Light / Dark), saved in theme.json
@@ -63,7 +64,15 @@ public sealed class ThemeCore
     /// <param name="windowsMode">reads Windows' app mode (<see cref="ReadWindowsMode"/> in the app); may throw</param>
     /// <param name="overrideMode">--theme= of a test run: the mode is pinned and never saved</param>
     public ThemeCore(JsonStore? file, Func<WindowsMode>? windowsMode, string? overrideMode, ILogSink log)
+        : this(file, windowsMode, overrideMode, log, null) { }
+
+    /// <param name="behind">null: a pick is saved, then listeners are told (lib/theme.js's order). Else listeners are told
+    /// at once and theme.json is written behind (JsonStore.UpdateBehind, in order, still flushed to disk); the save's
+    /// outcome comes back through <paramref name="behind"/>, which must run it on the theme's one thread (under its
+    /// owner's lock). A failure is then the note and the log line, and listeners are told again.</param>
+    public ThemeCore(JsonStore? file, Func<WindowsMode>? windowsMode, string? overrideMode, ILogSink log, Action<Action>? behind)
     {
+        _behind = behind;
         _file = file;
         _windowsMode = windowsMode ?? (() => new WindowsMode(null, "Mantle was given no way to read Windows' mode"));
         _override = IsMode(overrideMode) ? overrideMode : null;
@@ -126,15 +135,62 @@ public sealed class ThemeCore
         _mode = mode!;
         _win = ReadWindows();
         _current = Resolve(_mode, _win.Mode);
+        System.Threading.Tasks.Task? saved = null;
         if (_override == null) {
-            string? err = _file == null ? "Mantle has nowhere to save it"
-                : _file.UpdateAsync(d => d["mode"] = _mode).Result is { Ok: false } w ? w.Reason : null;
-            _saveNote = err != null ? $"{ModeWords(_mode)} is on now, but it could not be saved ({err}), so Mantle goes back to the last saved appearance at its next start" : null;
-            if (err != null) _log.Line("theme: " + _saveNote);
-            else _loadNote = null;   // a good save replaces the file the note was about
+            if (_file == null) SaveOutcome("Mantle has nowhere to save it", _mode, false);
+            else if (_behind == null) SaveOutcome(_file.UpdateAsync(d => d["mode"] = _mode).Result is { Ok: false } w ? w.Reason : null, _mode, false);
+            else {
+                string picked = _mode;
+                var write = _file.UpdateBehind(d => d["mode"] = picked);
+                if (write.IsCompleted) SaveOutcome(write.Result.Ok ? null : write.Result.Reason, picked, false);   // refused before any byte
+                else saved = Behind(write, picked);
+            }
         }
         if (was != _current || wasMode != _mode) _log.Line($"theme: {ModeWords(_mode)} -> Mantle is {_current}");
-        return new ThemeSetResult(true, Tell(), _mode, null);
+        return new ThemeSetResult(true, Tell(), _mode, null, saved);
+    }
+
+    readonly Action<Action>? _behind;
+    int _saveSeq;
+    System.Threading.Tasks.Task _lastSaved = System.Threading.Tasks.Task.CompletedTask;
+
+    /// Done when the last save behind has landed and its outcome is in the view.
+    public System.Threading.Tasks.Task LastSaved => _lastSaved;
+
+    /// theme.json's writes still on their way (the file itself; for the quit's last wait).
+    public System.Threading.Tasks.Task Writes => _file?.Behind ?? System.Threading.Tasks.Task.CompletedTask;
+
+    System.Threading.Tasks.Task Behind(System.Threading.Tasks.Task<StoreWrite> write, string picked)
+    {
+        _saveNote = null;   // told now as saved; a failure is told again with its note
+        int id = ++_saveSeq;
+        var done = new System.Threading.Tasks.TaskCompletionSource(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+        write.ContinueWith(t => {
+            string? err = t.IsFaulted ? t.Exception?.GetBaseException().Message ?? "it failed" : t.Result.Ok ? null : t.Result.Reason;
+            try {
+                _behind!(() => {
+                    try {
+                        if (id == _saveSeq) SaveOutcome(err, picked, true);
+                        else if (err != null) _log.Line($"theme: an earlier save ({ModeWords(picked)}) could not be written ({err}); a newer pick is being saved");
+                    } finally { done.TrySetResult(); }
+                });
+            } catch (Exception e) {
+                _log.Line("theme: the save's outcome could not be passed back (" + e.Message + ")" + (err != null ? "; it failed: " + err : ""));
+                done.TrySetResult();
+            }
+        }, System.Threading.CancellationToken.None, System.Threading.Tasks.TaskContinuationOptions.None, System.Threading.Tasks.TaskScheduler.Default);
+        return _lastSaved = done.Task;
+    }
+
+    /// The save's outcome in the view (lib/theme.js set: the note, the log line, a good save clears the load note).
+    /// After a save behind, listeners hear it again only when the note moved.
+    void SaveOutcome(string? err, string picked, bool tellIfMoved)
+    {
+        string? before = _saveNote ?? _loadNote;
+        _saveNote = err != null ? $"{ModeWords(picked)} is on now, but it could not be saved ({err}), so Mantle goes back to the last saved appearance at its next start" : null;
+        if (err != null) _log.Line("theme: " + _saveNote);
+        else _loadNote = null;   // a good save replaces the file the note was about
+        if (tellIfMoved && (_saveNote ?? _loadNote) != before) Tell();
     }
 
     /// <summary>theme.json changed on disk (Electron's Settings, or a test, wrote it): read the mode again and tell
@@ -142,6 +198,7 @@ public sealed class ThemeCore
     public bool FileChanged()
     {
         if (_override != null || _file == null) return false;
+        if (_file.WritesBehind > 0) return false;   // our own save is landing; the in-memory pick is the newer one
         _file.Load();
         string before = $"{_mode}|{_current}";
         _mode = Load();

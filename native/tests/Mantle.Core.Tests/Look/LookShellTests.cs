@@ -95,8 +95,17 @@ public class LookShellTests
         if (await Task.WhenAny(t, Task.Delay(10000)) != t) throw new Xunit.Sdk.XunitException($"{what} never came (waited 10 s)" + Environment.NewLine + r.Log.All);
         var seen = await t;
         long took = seen.At - from;
+        Stamp(what, took);
         if (took >= ms) throw new Xunit.Sdk.XunitException($"{what} fired {took} ms after the change (over {ms} ms)" + Environment.NewLine + r.Log.All);
         return seen.P;
+    }
+
+    static readonly object StampLock = new();
+    /// tools/test-loop.ps1 sets MANTLE_TEST_TIMINGS to a file and sums every promise timed here (TIMING lines).
+    static void Stamp(string what, long ms)
+    {
+        if (Environment.GetEnvironmentVariable("MANTLE_TEST_TIMINGS") is not { Length: > 0 } f) return;
+        try { lock (StampLock) File.AppendAllText(f, what + "\t" + ms + Environment.NewLine); } catch (IOException) { }
     }
 
     static string? ThemeOf(JsonObject? doc) => doc?["look"]?["theme"]?["v"]?.GetValue<string>();
@@ -145,13 +154,39 @@ public class LookShellTests
     }
 
     [Fact]
+    public async Task Theme_set_tells_the_surfaces_before_its_save_and_a_save_that_fails_is_in_the_answer_and_told_again()
+    {
+        using var r = new Rig();
+        r.Shell.Start();
+        await r.Until(() => r.Shared() != null, "the seed of look.json");
+        var dark = r.NextTheme(p => p.Theme == "dark");
+        CommandResult set;
+        var noted = r.NextTheme(q => q.Theme == "dark" && q.View.Note != null);
+        // theme.json's tmp copy is held open, so the save behind the tell fails; the tell has gone out already
+        using (new FileStream(r.Dir.File("theme.json") + ".tmp", FileMode.Create, FileAccess.ReadWrite, FileShare.None)) {
+            long t0 = r.Log.Ms;
+            var call = r.Call("theme.set", new JsonObject { ["mode"] = "dark" });
+            var p = await Within(r, dark, t0, 1000, "the theme event while its save was failing");
+            Assert.Null(p.View.Note);
+            set = await call;
+            Assert.StartsWith("Dark is on now, but it could not be saved (", (await noted.WaitAsync(TimeSpan.FromSeconds(10))).P.View.Note);
+        }
+        Assert.True(set.Result.GetProperty("ok").GetBoolean());
+        Assert.Equal("dark", set.Result.GetProperty("theme").GetString());
+        Assert.StartsWith("Dark is on now, but it could not be saved (theme.json could not be saved (the new copy could not be written (", set.Result.GetProperty("note").GetString());
+        Assert.Equal("dark", r.Shell.Now);
+    }
+
+    [Fact]
     public async Task Another_apps_theme_reaches_the_theme_event_within_1_s_and_is_not_shared_back()
     {
         using var r = new Rig();
         r.Shell.Start();
         await r.Until(() => r.Shared() != null, "the seed of look.json");
         await Task.Delay(100);
-        using var helm = new LookSync(new LookSyncOptions { App = "helm", Dir = r.LookDir, Files = new SafeFile(WriteGate.Scratch(r.Dir.Path)) });
+        // Helm is an Electron app: its writeAtomic never fsyncs, so its stand-in writes the same way (core-6.md); the clock
+        // then times Mantle's own follow path, which no longer waits for theme.json's save either
+        using var helm = new LookSync(new LookSyncOptions { App = "helm", Dir = r.LookDir, Files = new SafeFile(WriteGate.Scratch(r.Dir.Path), flushToDisk: false) });
         var dark = r.NextTheme(p => p.Theme == "dark");
         long t0 = r.Log.Ms;
         r.Log.Line("helm publishes; " + r.Log.Pool());

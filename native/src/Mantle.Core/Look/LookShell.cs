@@ -65,7 +65,9 @@ public sealed class LookShell : IDisposable
     {
         _o = o ?? throw new ArgumentNullException(nameof(o));
         _pinned = ThemeCore.IsMode(o.PinnedTheme) ? o.PinnedTheme : null;
-        Theme = new ThemeCore(o.Stores.Open("theme.json") as JsonStore, o.WindowsMode, _pinned, o.Log);
+        // theme.json is saved BEHIND the tell (core-6.md): every surface hears the pick at once, the save (still flushed to
+        // disk) lands after it, in order, and its outcome comes back on the host thread under the theme lock
+        Theme = new ThemeCore(o.Stores.Open("theme.json") as JsonStore, o.WindowsMode, _pinned, o.Log, work => o.Post(() => { lock (_theme) work(); }));
         var lt = new LookTheme(
             () => { lock (_theme) return Theme.Mode; },
             () => { lock (_theme) return Theme.Theme; },
@@ -161,14 +163,20 @@ public sealed class LookShell : IDisposable
     public CommandResult ThemeGet(CommandCall call) { ThemeView v; lock (_theme) v = Theme.Get(); return Answer(ViewJson(v)); }
 
     [Command("theme.set")]
-    public CommandResult ThemeSet(CommandCall call)
+    public async ValueTask<CommandResult> ThemeSet(CommandCall call)
     {
         JsonNode? mode = call.Args.ValueKind == JsonValueKind.Object && call.Args.TryGetProperty("mode", out var m) ? JsJson.FromElement(m) : null;
         ThemeSetResult r; lock (_theme) r = Theme.Set(mode);
         if (!r.Ok || r.View == null) return Answer(new JsonObject { ["ok"] = false, ["reason"] = r.Reason });
-        var o = ViewJson(r.View); o["value"] = r.Value;
+        var view = r.View;
+        // every surface has been told already; the answer waits for the save so it carries a failed save's note (LOOK-010)
+        if (r.Saved is { IsCompleted: false } saved) { await saved.ConfigureAwait(true); lock (_theme) view = Theme.Get(); }
+        var o = ViewJson(view); o["value"] = r.Value;
         return Answer(o);
     }
+
+    /// Done when theme.json's writes asked so far have landed (the quit waits for it, bounded).
+    public Task SavedAsync() => Theme.Writes;
 
     [Command("look.get")]
     public CommandResult LookGet(CommandCall call) => Answer(Look.View());

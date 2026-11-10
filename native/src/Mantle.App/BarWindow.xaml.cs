@@ -247,6 +247,10 @@ public sealed partial class BarWindow : Window
         switch (c.File) {
             case DataFile.Theme:
                 if (Host.Args.Theme != null) { Host.Log.Line($"look: theme.json changed, but this run is pinned by --theme={Host.Args.Theme}"); return; }
+                // the host's theme follows theme.json too (LookShell.ThemeFileChanged) and saves it behind the tell, so
+                // once it is up the bar takes the theme from it alone: a save landing on disk never flips the bar back
+                // to an older pick that a newer one is about to overwrite
+                if (MantleApp.ThemeNow != null) return;
                 SetTheme(Resolve(Host.Data.Theme.Value.Mode));
                 break;
             case DataFile.LocalLook:

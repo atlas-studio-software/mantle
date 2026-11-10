@@ -32,11 +32,27 @@ internal sealed class SurfaceHost
     /// Null until <see cref="Start"/> ran.
     public SurfaceSet? Set { get; private set; }
 
-    /// Run on the shell UI thread; false when its queue is gone (Mantle is closing). Any thread.
+    /// Run on the shell UI thread; false when its queue is gone (Mantle is closing). Any thread. After every job the
+    /// list of the surfaces made now (<see cref="Made"/>) is taken again, so the host thread reads it without a hop.
     public bool PostUi(Action work)
     {
-        try { return _q.TryEnqueue(() => work()); } catch (Exception) { return false; }
+        try { return _q.TryEnqueue(() => { try { work(); } finally { Snap(); } }); } catch (Exception) { return false; }
     }
+
+    volatile string[] _made = Array.Empty<string>();
+
+    /// The surfaces whose windows exist now (made, shown or parked), as of the last UI job the host posted. Any thread:
+    /// the rest coordinator reads it on the host thread for "closed N windows" and "kept: ...".
+    public IReadOnlyList<string> Made => _made;
+
+    void Snap()
+    {
+        try { _made = Set is { } s ? s.List().Where(i => i.Phase == SurfacePhase.Made).Select(i => i.Name).ToArray() : Array.Empty<string>(); }
+        catch (Exception) { /* keep the last list */ }
+    }
+
+    /// Does this build have a surface of that name? Any thread.
+    public static bool Builds(string name) => Mantle.Generated.SurfaceCatalog.All.Any(d => d.Name == name);
 
     /// The names a --test second start may --open: the build's test stand-ins.
     public static IReadOnlyCollection<string> TestTargets()

@@ -87,7 +87,8 @@ public partial class MantleApp : Application
         // The bar closed = quit through the ONE shutdown. Surfaces made at start (the launcher, the OSD) are hidden windows,
         // so the bar is no longer the app's last window and WinUI's "last window closed" exit would never come.
         // (Both the launcher and the OSD lanes needed this; one guarded copy.)
-        _window.Closed += (_, _) => { if (!_shutdown.Started) Quit("the bar window was closed", 0); };
+        _barOpen = true;
+        _window.Closed += (_, _) => { _barOpen = false; if (!_shutdown.Started) Quit("the bar window was closed", 0); };
         Host.Marks.Add("window");
         _window.ShowBar();
 
@@ -123,6 +124,9 @@ public partial class MantleApp : Application
     SurfaceControl? _surfaceControl;
     StateFeed? _feed;
     SessionEnd? _sessionEnd;
+    RestCoordinator? _rest;
+    AppBarLease? _appBar;
+    volatile bool _barOpen;
     readonly Shutdown _shutdown = new(l => Host.Log.Line(l), Host.RecoveryCommand);
     readonly List<IDisposable> _offs = new();
     string? _dirtyNote;
@@ -167,9 +171,11 @@ public partial class MantleApp : Application
         // the bar's dock (--dock only; hover is the live default) reserves its app bar through the platform. A test or
         // scratch run's sidecar is passive, so it refuses and nothing is reserved in Windows (the dock line says so).
         var platform = _platform;
+        // the host holds the lease on the app bar, so "put Windows back" gives it back first, while the sidecar can still be asked
+        var appBar = _appBar = new AppBarLease(new Mantle.App.Surfaces.Bar.Frame.PlatformBarShell(platform, loop), platform);
         _queue?.TryEnqueue(() => {
             if (_window == null) return;
-            _window.UseShell(new Mantle.App.Surfaces.Bar.Frame.PlatformBarShell(platform, loop));
+            _window.UseShell(appBar);
             Host.Log.Line($"bar: the platform is wired to the bar's dock ({(Host.Args.Has("dock") ? "--dock: it asks for its app bar now" : "not docked: hover or up, nothing to reserve")}{(live ? "" : "; this run's sidecar is passive and reserves nothing")})");
         });
         _platform.OnStatus(s => {
@@ -194,7 +200,9 @@ public partial class MantleApp : Application
             StopFeatures = async w => { if (_features != null) foreach (var l in await _features.StopAllAsync(w).ConfigureAwait(true)) log("mantle: " + l.Line); },
             Released = w => _features?.Released(w),
             Note = () => _dirtyNote ?? "",
-            // TODO(native-windows): the app bar (--dock) and the desktop layer add their releases here
+            // main.js restoreWindows: the app bar first (while the sidecar can still be asked), then the rest. The desktop
+            // layer adds ("the desktop layer", detach) here when it is built (none in this build).
+            MoreReleases = () => appBar.Releases("Windows was put back"),
         });
 
         // ---- toasts wiring (lane native-osd-toasts): where a --live run keeps the banner record (notif-banners.json, through
@@ -260,7 +268,21 @@ public partial class MantleApp : Application
         _ = launcher.IndexAsync();
         // ---- end launcher wiring
         StartSurfaces(log);
-        // TODO(feature-host-2): RestCoordinator with the surfaces' IRestParts, rest.TrimSoon("60 s after start")
+        // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
+        // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
+        // are kept, as Electron keeps them.
+        var surfaces = _surfaces;
+        _rest = new RestCoordinator(new RestOptions {
+            Platform = _platform, Events = _events, State = _hub, Clock = clock, Features = _features, Test = test,
+            NoLauncher = Host.Env("MANTLE_NO_LAUNCHER") == "1" || !SurfaceHost.Builds(ShellRestParts.Launcher),
+            Closing = () => _shutdown.Started, Log = l => log("mantle: " + l),
+            Parts = new ShellRestParts(new ShellRestPartsOptions {
+                Made = () => surfaces?.Made ?? Array.Empty<string>(),
+                BarOpen = () => _barOpen,
+                HideLauncher = why => surfaces?.PostUi(() => surfaces.Set?.Hide(ShellRestParts.Launcher, why)),
+            }),
+        });
+        _rest.TrimSoon("60 s after start");
 
         // SAFE-020..024: crash recovery with the native record (MantleNative.exe, never Electron)
         _supervisor = new Supervisor(new SupervisorOptions {
@@ -340,6 +362,17 @@ public partial class MantleApp : Application
         Host.Log.Line($"mantle: test-theme {mode}: {(r.Ok ? "ok: " + (r.Result.ValueKind == System.Text.Json.JsonValueKind.Undefined ? "(no answer)" : r.Result.GetRawText()) : "NOT ok: " + r.Error)}");
     }
 
+    /// --test-rest=&lt;on|off&gt;[:&lt;why&gt;] from a second start (test only): host.rest(on, why), the call game mode makes.
+    async Task RestFromSecondAsync(string spec)
+    {
+        int c = spec.IndexOf(':');
+        string verb = c > 0 ? spec[..c] : spec, why = c > 0 && c < spec.Length - 1 ? spec[(c + 1)..] : "a test asked";
+        if (verb is not ("on" or "off")) { Host.Log.Line($"mantle: test-rest {spec}: NOT ok: say on or off (--test-rest=on:<why>)"); return; }
+        if (_rest == null) { Host.Log.Line($"mantle: test-rest {verb}: NOT ok: the rest is not set up"); return; }
+        var a = await _rest.RestAsync(verb == "on", why).ConfigureAwait(true);
+        Host.Log.Line($"mantle: test-rest {verb}: {(a.Ok ? "ok" : "NOT ok")}: {a.Text ?? a.Reason}");
+    }
+
     async Task OnReadyAsync()
     {
         int n = ++_readies;
@@ -395,6 +428,7 @@ public partial class MantleApp : Application
             case SecondAsk.Open: _ = OpenAsync(argv); break;
             case SecondAsk.Surface: _ = SurfaceFromSecondAsync(value ?? ""); break;
             case SecondAsk.Theme: _ = ThemeFromSecondAsync(value ?? ""); break;
+            case SecondAsk.Rest: _ = RestFromSecondAsync(value ?? ""); break;
             case SecondAsk.Tray: Host.Log.Line("mantle: test-tray: " + (_tray?.TestTrayLine() ?? "the tray was never built")); break;
             case SecondAsk.Report:
                 if (_tray != null) _ = _tray.CopyReportAsync("a second instance (test)").ContinueWith(t => { if (t.IsFaulted) Host.Log.Line("mantle: test-report failed: " + t.Exception?.GetBaseException().Message); }, TaskScheduler.Default);
@@ -458,6 +492,14 @@ public partial class MantleApp : Application
                 Host.Log.Line("surfaces: " + said);
             }));
             steps.Add(new("put Windows back", TimeSpan.FromSeconds(10), _ => RestoreAsync(why)));
+            // the restore gives the app bar back first (MoreReleases); when it could not run (a test run, the link down) and
+            // one is still reserved, it goes here, still BEFORE the sidecar stops (main.js shutdown step 1)
+            steps.Add(new("give the app bar back", TimeSpan.FromSeconds(4), async _ => {
+                if (_appBar is not { } lease || lease.Reserved == IntPtr.Zero) return;
+                var r = await lease.GiveBackAsync().ConfigureAwait(true);
+                Host.Log.Line(r.Ok ? "mantle: app bar removed" : $"mantle: the app bar is still registered ({r.Error}); Explorer drops it when the bar's window goes");
+            }));
+            steps.Add(new("save what is still being saved", TimeSpan.FromSeconds(3), _ => _look?.SavedAsync() ?? Task.CompletedTask));
             steps.Add(new("stop the sidecar", TimeSpan.FromSeconds(4), async _ => { if (_platform != null) await _platform.StopAsync(why).ConfigureAwait(true); }));
             steps.Add(new("destroy the tray", TimeSpan.FromSeconds(1), _ => { _tray?.Dispose(); (_hotkeys as IDisposable)?.Dispose(); _broadcast?.Dispose(); _look?.Dispose(); foreach (var o in _offs) o.Dispose(); _stores?.Dispose(); return Task.CompletedTask; }));
             _shutdown.RunAsync(why, code, steps).ContinueWith(t => {
