@@ -129,7 +129,13 @@ public sealed partial class BarWindow
         // previews; a pin with no windows starts the same close a leave would
         if (FlyUp) {
             if (_fly!.AppId == vm.Item.Id) return;
-            if (running) OpenFly(vm, b, "hover");
+            // the swap runs just after this PointerEntered, never inside it: opening the pop-up flips this cell's
+            // ToolTipService.ToolTip (Tip -> null) and builds a window while XAML is still routing the enter to the
+            // cell's own tooltip handling, and that crashed the app with an E_UNEXPECTED from inside XAML, no managed
+            // frame (UI test run 42773426213: "UNHANDLED: COMException (0x8000FFFF)" 2 ms after "opened by hover")
+            if (running) DispatcherQueue.TryEnqueue(() => {
+                if (_flyHover == vm && FlyUp && _fly!.AppId != vm.Item.Id && vm.Item.Windows.Count > 0 && _cells.Contains(vm)) OpenFly(vm, b, "hover");
+            });
             else FlyScheduleLeave();
             return;
         }
