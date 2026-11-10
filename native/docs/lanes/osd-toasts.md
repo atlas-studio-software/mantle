@@ -116,3 +116,30 @@ engages in the app: the surface host (native-r3-core-4) was not on `native/main`
 1. Toast screenshot pairs in `tools/parity/osd-toasts/` (an Electron shot of `ui/toasts/index.html` over a preload `window.mantle`; the native window placed by a step's `at`).
 2. The 30 s idle close and the hover hold under a UI test; the toast glide once a bar motion source exists.
 3. OSD: brightness (`osd.bright`), the glide, the backdrop picture, the panel's click-outside, per-app rows.
+
+## Part 4, round 1 (lane native-r4-osd): the blocker of run 42769441389
+
+Fixed in this lane:
+
+- Colour literals (TokensTests): `ToastsSurface` drew clear with `Colors.Transparent` and mixed `Lift` with `Color.FromArgb`. A default `SolidColorBrush` is clear (`Clear()`), and `Lift` now composites the two tokens' own colours.
+- Toasts UI test, own card held: the runner reads as Do not disturb (`toasts.quiet` dnd 1), so Mantle's own banner was held. `toasts.testOwn` takes `dnd` / `quns` as a stand-in for Windows' quiet state from then on. The UI test sends dnd 0, quns 5, and without them the real check answers (the unit test of the hold is unchanged).
+- A `--test` run never reads the notification list (no `NotificationFeed`): the runner's or the user's own notifications never come and go under a test. The unit test now asserts no `notifications` call in `--test`.
+- Toasts UI test, progress line: its id sat on a bare `Grid`, which has no automation peer, so UIA never saw it. The id is now on the progress words. The stack-of-three check (it passed vacuously for the same reason) finds cards by their titles, and it also asserts the newest one is there.
+- The theme-change crash (the two theme tests): every crash is `SystemBackdrop`'s own `OnDefaultSystemBackdropConfigurationChanged`, called with no target, throwing "The parameter is incorrect: target", an unhandled error that stops Mantle about 6 ms after "the bar now shows dark". These were bisected on the runner (theme.set + look.json tests, 2 runs each, the app logs counted):
+  - run 42775032765: shadow off 0/4 crashed; toasts surface or feature off, still 4/4.
+  - run 42776421533 was wasted (the diag skipped the UI-test build).
+  - run 42777016071: a blank `WriteableBitmap` shown 0/4; the shadow pixels computed and never shown 4/4.
+  - run 42777700651: no shadow plus one forced full GC 4/4; no shadow plus a 400 ms UI-thread hold 0/4.
+
+  So a full garbage collection, then a theme change, crashes. `CssShadow` allocated about 90 bytes per pixel on the managed heap (about 9 MB per OSD size), which brought that collection into the first seconds. `CssShadow` now uses unmanaged working planes and one reused BGRA buffer. The theme tests pass (run 42778532495).
+- The OSD's and the toasts' windows use `Surfaces/Osd/SeeThroughBackdrop`: TransparentBackdrop's clear brush, plus an override of `OnDefaultSystemBackdropConfigurationChanged` that never calls the base (a clear brush follows no configuration). In run 42773083145 it logged the null-target call it absorbed.
+
+NOT fixed (another lane's file): the OSD UI test still crashes at its dark step (runs 42778532495 and 42779579180). That second run logged GC counts 0/0/0 at the theme change, so a GC is one trigger, not the only one. The stack is again the base handler of a `Native/TransparentBackdrop` (the bar's, the launcher's or a pop-up's: the OSD's own is guarded). This is a latent fault on native/main too: any full GC before a theme change crashes there as well; its tests only switch theme before the first one.
+
+REQUEST (native-windows lane, `native/src/Mantle.App/Native/TransparentBackdrop.cs`): add
+
+    protected override void OnDefaultSystemBackdropConfigurationChanged(ICompositionSupportsSystemBackdrop target, XamlRoot xamlRoot) { }   // a clear brush follows no configuration; the base throws on a null target
+
+and a UI test that forces a full GC (a `--test` hook) before a theme change. Once that lands, `SeeThroughBackdrop` can go back to `TransparentBackdrop`.
+
+Left for part 4: the full `mantle-native-public` run once the override is in; the toast screenshot pairs; the rows above.

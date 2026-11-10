@@ -227,7 +227,6 @@ internal sealed class OsdSurface : ISurface
     void SetTheme(bool dark)
     {
         _dark = dark;
-        _ctx.Log.Line($"DIAG theme {(dark ? "dark" : "light")}: GCs {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}, heap {GC.GetTotalMemory(false) / 1024} KB, LOH-ish {GC.GetGCMemoryInfo().GenerationInfo[3].SizeAfterBytes / 1024} KB");   // DIAG (temporary)
         _root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         Paint();
         Shadow();
@@ -657,7 +656,6 @@ internal sealed class OsdSurface : ISurface
         string key = FormattableString.Invariant($"{w}x{h}@{scale}:{box}");
         if (key == _shadowKey) return;
         _shadowKey = key;
-        _ctx.Log.Line($"DIAG shadow {w}x{h}: GCs {GC.CollectionCount(0)}/{GC.CollectionCount(1)}/{GC.CollectionCount(2)}");   // DIAG (temporary)
         var img = new Image { Source = CssShadow.Bitmap(w, h, scale, new[] { box }, CssShadow.LightLg), Width = w / scale, Height = h / scale,
             Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
         _shadowHost.Children.Clear();
