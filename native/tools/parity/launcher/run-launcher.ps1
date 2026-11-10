@@ -83,7 +83,8 @@ $deskPs = Join-Path $root 'native\tools\desk\desk.ps1'
 function Desk-Reset([string]$tag) { if (Test-Path $deskPs) { & pwsh -NoProfile -File $deskPs -Reset -Tag $tag 2>&1 | Select-Object -Last 2 | ForEach-Object { Say "desk: $_" } } }
 function Set-Desk([string]$t) {
   Desk-Reset "launcher-$t"
-  [ParityNative]::ParkCursor(4, 4) if ($t -eq 'dark' -and $DarkDesktop -eq 'solid') { Say ("desktop: " + [LauncherParity.Desk]::Solid()) } else { Say ("wallpaper " + [ParityNative]::SetWallpaper($wallpaper)) } }
+  [ParityNative]::ParkCursor(4, 4)
+  if ($t -eq 'dark' -and $DarkDesktop -eq 'solid') { Say ("desktop: " + [LauncherParity.Desk]::Solid()) } else { Say ("wallpaper " + [ParityNative]::SetWallpaper($wallpaper)) } }
 $pers = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 New-Item -Force -Path $pers | Out-Null
 Set-ItemProperty -Path $pers -Name EnableTransparency -Value 1 -Type DWord
