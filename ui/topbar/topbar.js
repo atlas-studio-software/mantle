@@ -16,6 +16,25 @@
   const rightEl = document.getElementById('right');
   const menusEl = document.getElementById('menus');
   const barEl = document.getElementById('bar');
+  /* THE MOTION (lane mantle-fullscreen-motion, 2026-11-09; motion.js, topbar.css THE MOTION). The user: "it needs
+     to look nice when it goes away though, it can't look like some cheap thing". Main's 'topbar.motion' {phase:
+     'leave'} slides the whole bar up off the screen and fades it (the window hides after it); {phase:'arrive'}
+     brings it back on the spring, from the away frame or, back mid-leave, from wherever it is. While it leaves,
+     a look push that would change it visibly waits until it is gone (look() below), so it leaves in the look it
+     had and comes back in the current one. */
+  const MOT = window.TopbarMotion;
+  const reducedMq = window.matchMedia ? window.matchMedia('(prefers-reduced-motion: reduce)') : null;
+  const MO = MOT ? MOT.create({
+    cls: document.body.classList,
+    reduced: () => !!(reducedMq && reducedMq.matches),
+    longMs: () => MOT.parseMs(getComputedStyle(document.documentElement).getPropertyValue('--m-dur-l')),
+    later: (ms, fn) => setTimeout(fn, ms),
+    cancel: (t) => clearTimeout(t),
+    log: (line) => console.warn('topbar ' + line),
+  }) : null;
+  window.__topbarMotion = MO;   // read-only, for the shots / the --test harness
+  /** A look push (kind: backdrop | guard | under): applied now, or held by the motion while the bar leaves. */
+  function look(kind, p, fn, same) { if (!MO || MO.gate(kind, p, fn, same)) fn(p); }
   const S = { focus: null, menu: null, uia: {}, stats: null, paused: null, note: null, open: null, armed: null, titles: [],
               fit: null, vis: 0, rightKey: null, asked: null, waitT: 0,
               timer: null, timerSkew: 0, tickT: 0, notes: null };   // the two small tools (lane tbtools)
@@ -901,19 +920,20 @@
     GS.tint = b.alpha;
     setTint('rgba(' + fill.r + ',' + fill.g + ',' + fill.b + ',' + GS.tint + ')');
   }
-  mantle.on('topbar.backdrop', setBackdrop);
+  mantle.on('topbar.backdrop', (p) => look('backdrop', p, setBackdrop, (q) => MOT.sameBackdrop(q, GS)));
   /* THE SHARED TOP-BAND DARKENING (lane guard-mantle, 2026-10-10; main: lib/features/_topbar-glass.js
      makeLookGuard): {use, alpha} or {use:false, why, failure}. A failure says why in the Mantle menu's
      first rows and once on the strip; the bar keeps its own guard meanwhile. */
   GS.lookGuard = null; GS.source = 'own';
-  mantle.on('topbar.guard', (g) => {
+  mantle.on('topbar.guard', (g) => look('guard', g, setGuard));
+  function setGuard(g) {
     const was = GS.lookGuard && GS.lookGuard.failure ? GS.lookGuard.why : null;
     GS.lookGuard = GM.lookGuardOf(g);
     const why = GS.lookGuard.failure ? GS.lookGuard.why : null;
     GM.guardMenu(M.MANTLE_MENU, why);
     if (why && why !== was) setNote('Top bar darkening: ' + why);
     if (GS.png) solveTint(++GS.seq);
-  });
+  }
   // a theme change re-reads the tokens: the next picture is solved against the new ones
   // An OPEN menu is laid out again in the new theme's metrics (dark is Helm's: 30 px rows, padding 4/5x10,
   // so the same menu is taller), which re-asks main for the window's height and waits (.wait) until it
@@ -1092,7 +1112,14 @@
     underDraw();
   }
   US.apply = setUnder;
-  mantle.on('topbar.under', setUnder);
+  mantle.on('topbar.under', (p) => look('under', p, setUnder, (q) => MOT.sameUnder(q, US)));
+  // THE MOTION's two pushes (see MO at the top); a theme change mid-leave finishes the leave at once
+  mantle.on('topbar.motion', (ev) => {
+    if (!MO || !ev) return;
+    if (ev.phase === 'leave') { closeAll(false); MO.leave(ev); }
+    else if (ev.phase === 'arrive') MO.arrive(ev);
+  });
+  window.addEventListener('mantle-theme', () => { if (MO) MO.theme(); });
   // the strip re-rendered (the stats every second, the menus on a focus change): same colours, new items
   function underRendered() {
     if (!window.__topbarUnder) return;   // (called before US exists, during the first render)

@@ -428,3 +428,35 @@ body.mock.dark { background: linear-gradient(160deg, #10131c 0%, #252b3b 60%, #3
 
 /* reduced motion: opacity only, 120 ms (the shared rule, lane mantle-motion) */
 @media (prefers-reduced-motion: reduce) { .dd.anim { animation: m-fade 120ms linear backwards; } }
+
+/* THE MOTION: THE FULL-SCREEN STEP-ASIDE (lane mantle-fullscreen-motion, 2026-11-09; ui/topbar/motion.js, main:
+ * lib/features/topbar.js MOTION). The user: "it needs to look nice when it goes away though, it can't look like
+ * some cheap thing". #stage is everything that draws the bar (the glass #bglass / #bdrop / #btint, #bar with
+ * #under inside it, #menus), moved as ONE layer: up off the screen's top edge (the window clips it) and faded
+ * on the way out, the reverse on the spring on the way back. Mantle's own motion (glass-light.css MOTION IN
+ * UNISON; ui/bar/bar.css is the reference): the IN is --m-dur-l on --m-spring with the fade over its first 40 %
+ * on --m-fade-in; the OUT is 45 % of that on --m-accel with --m-fade-out. Like the bottom bar, the duration and
+ * curve come from the AFTER-change style (adding .away plays the OUT, removing it the IN), and both are CSS
+ * transitions, which retarget from wherever they are: a return mid-leave turns round from that pose.
+ * At rest #stage has no transform, no opacity below 1 and no will-change: the layer tree, the glass's backdrop
+ * root and so every pixel are what they were before this lane. While it moves, the blur re-reads only #bdrop,
+ * which moves with it (measured: ui/topbar/motion-proof.js). .snap: a theme change mid-leave ends it at once. */
+#stage {
+  position: absolute; inset: 0;
+  transition:
+    transform var(--m-dur-l) var(--m-spring),
+    opacity   calc(var(--m-dur-l) * .4) var(--m-fade-in);
+}
+body.away #stage {
+  transform: translateY(calc(-1 * var(--tb-h))); opacity: 0; pointer-events: none;   /* the bar's own height: off the top edge */
+  transition:
+    transform calc(var(--m-dur-l) * .45) var(--m-accel),
+    opacity   calc(var(--m-dur-l) * .45) var(--m-fade-out);
+}
+body.snap #stage { transition: none; }
+/* reduced motion (Windows: Animation effects off): opacity only, 120 ms, in and out (the shared rule) */
+@media (prefers-reduced-motion: reduce) {
+  #stage, body.away #stage { transition: opacity 120ms linear; }
+  body.away #stage { transform: none; }
+  body.snap #stage { transition: none; }
+}
