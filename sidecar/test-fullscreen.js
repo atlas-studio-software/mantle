@@ -70,13 +70,16 @@ async function realChromium(t, s) {
   if (!fs.existsSync(electron)) { t.fail('part 2: no electron at ' + electron); return; }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-fs-'));
   const script = path.join(dir, 'main.js');
-  fs.writeFileSync(script, PROBE_MAIN);
+  const cmdFile = path.join(dir, 'cmd.txt');
+  fs.writeFileSync(script, PROBE_MAIN.replace('__CMD__', JSON.stringify(cmdFile)));
   const kid = cp.spawn(electron, [script, '--user-data-dir=' + path.join(dir, 'ud')], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: false });
   let buf = '';
   const lines = [];
   kid.stdout.on('data', (d) => { buf += d; let i; while ((i = buf.indexOf('\n')) >= 0) { lines.push(buf.slice(0, i).trim()); buf = buf.slice(i + 1); } });
   const waitLine = async (re, ms) => { const end = Date.now() + ms; while (Date.now() < end) { const l = lines.find((x) => re.test(x)); if (l) return l; await T.sleep(50); } return null; };
-  const say = (cmd) => kid.stdin.write(cmd + '\n');
+  let seq = 0;
+  // a command FILE the probe polls: Electron's main process read nothing from a piped stdin on the runner
+  const say = (cmd) => fs.writeFileSync(cmdFile, `${++seq} ${cmd}`);
   const brief = (f) => JSON.stringify({ hwnd: f.hwnd, fg: f.fgRect || f.rect, fullscreen: f.fullscreen, zoomed: f.zoomed, err: f.error }) + ' probe: ' + lines.slice(-3).join(' | ');
   const fgRead = async () => { const r = await s.send('foreground', {}, 4000); return r.ok ? r.result : { error: r.error }; };
   const snap = async () => { const r = await s.send('topbar.focus', {}, 4000); if (!r.ok) return { error: r.error }; const f = r.result.focus || r.result; const g = await fgRead(); f.fgRect = g.rect; f.fgFull = g.fullscreen; return f; };
@@ -128,20 +131,25 @@ app.whenReady().then(async () => {
   console.log('READY ' + hwnd);
   const race = (p) => Promise.race([p, new Promise((r) => setTimeout(() => r('timeout 3 s'), 3000))]);
   const guest = () => w.webContents.executeJavaScript('document.getElementById("v").getWebContentsId()').then((id) => require('electron').webContents.fromId(id));
-  let buf = '';
-  process.stdin.on('data', async (d) => {
-    buf += d; let i;
-    while ((i = buf.indexOf('\n')) >= 0) {
-      const cmd = buf.slice(0, i).trim(); buf = buf.slice(i + 1);
+  let last = 0;
+  const poll = async () => {
+    let txt = '';
+    try { txt = require('fs').readFileSync(__CMD__, 'utf8'); } catch (e) { /* not written yet */ }
+    const m = /^(\d+) (.*)$/.exec(txt.trim());
+    if (m && Number(m[1]) > last) {
+      last = Number(m[1]);
+      const cmd = m[2];
       try {
         if (cmd === 'max') { w.maximize(); setTimeout(() => console.log('MAX ' + w.isMaximized() + ' ' + JSON.stringify(w.getBounds()) + ' focused ' + w.isFocused()), 500); }
         else if (cmd === 'fs on') { w.setFullScreen(true); setTimeout(() => console.log('FS on ' + w.isFullScreen() + ' ' + JSON.stringify(w.getBounds()) + ' max ' + w.isMaximized()), 700); }
         else if (cmd === 'fs off') { w.setFullScreen(false); setTimeout(() => console.log('FS off ' + w.isFullScreen()), 700); }
-        else if (cmd === 'el on') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL on no guest: ' + g); continue; } await race(g.executeJavaScript('document.body.requestFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL on ' + r + ' ' + w.isFullScreen()), 900)); }
-        else if (cmd === 'el off') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL off no guest: ' + g); continue; } await race(g.executeJavaScript('document.exitFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL off ' + r + ' ' + w.isFullScreen()), 900)); }
+        else if (cmd === 'el on') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL on no guest: ' + g); } await race(g.executeJavaScript('document.body.requestFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL on ' + r + ' ' + w.isFullScreen()), 900)); }
+        else if (cmd === 'el off') { const g = await race(guest()); if (typeof g === 'string' || !g) { console.log('EL off no guest: ' + g); } await race(g.executeJavaScript('document.exitFullscreen().then(() => "ok", (e) => "refused " + e.message)', true)).then((r) => setTimeout(() => console.log('EL off ' + r + ' ' + w.isFullScreen()), 900)); }
         else if (cmd === 'quit') app.quit();
       } catch (e) { console.log('ERR ' + cmd + ' ' + e.message); }
     }
-  });
+    setTimeout(poll, 50);
+  };
+  poll();
 });
 `;
