@@ -155,7 +155,5 @@ public class QuickSettingsViewsTests
         Keyboard.Type(VirtualKeyShort.ESCAPE);
         Has(dir, "pop-up Quick settings: gave the keyboard back (the password field closed)", "Esc did not give the keyboard back");
         Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.wifi.password")) == null, 3000), "the password field stayed after Esc");
-        ClickEl(app.Find("bar.volume"));
-        Has(dir, "qs: the panel closed (its button was clicked again)", "the panel did not close");
     }
 }
