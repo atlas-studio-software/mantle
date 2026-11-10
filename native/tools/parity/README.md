@@ -79,7 +79,7 @@ Lines: `PARITY bar <theme>: ssim=.. diffpx=..% meanabs=.. (ok|FAILED vs ...)` pe
 defects still visible in its diff images fail the gate. At the first guess (0.80 / 25 %) that run passed
 even though the defects were plainly visible in the PNGs.
 
-## CI floors (the surface lanes' pairs, `ci.ps1` stages `launcher`, `osd`, `strip`)
+## CI floors (the surface lanes' pairs, `ci.ps1` stages `launcher`, `osd`, `strip`, `qs`, `previews`)
 
 `ci.ps1` calls each surface lane's own script (it never edits them), prints its score lines in the CI log and gates on
 a floor: the score the build must not fall under. The floors sit just under what those lanes measured, so a known gap
@@ -89,9 +89,11 @@ up, in the same commit as the fix that earns it. The numbers live in `ci.ps1` (`
 | Stage | Script | Fails on | Floor (SSIM) | Measured (where) |
 |---|---|---|---|---|
 | `unit` | `launcher/make-golden.cjs --check` | Electron's ranking drifting from the checked-in golden | exact | `GOLDEN: ok (255 items, 1220 queries, 144 claimed pages)` |
-| `launcher` | `launcher/run-launcher.ps1 -Exe <published exe>` (no `-Ui`: the `ui` stage runs those tests) | a theme not scored, a score under its floor, a launcher that did not work (no rows, no window, never still, did not open); other `launcher PROBLEM:` lines (window sizes) are printed as known gaps | light 0.78, dark 0.55 | light 0.8295, dark 0.5864 (run 42388736155; dark is confounded: a `--test` Electron launcher is a framed opaque window, docs/lanes/launcher.md) |
+| `launcher` | `launcher/run-launcher.ps1 -Exe <published exe>` (no `-Ui`: the `ui` stage runs those tests) | a theme not scored, a score under its floor, a launcher that did not work (no rows, no window, never still, did not open); other `launcher PROBLEM:` lines (window sizes) are printed as known gaps | light 0.84, dark 0.80 | light 0.8586 / 0.8581, dark 0.8175 / 0.8170 (runs 42786941393, 42789738354; was 0.8295 / 0.5864 in run 42388736155; a `--test` Electron launcher is a framed opaque window, docs/lanes/launcher.md) |
 | `osd` | `osd-toasts/run-osd-parity.ps1 -Exe <exe> -Out native/out/parity/osd` | a pair not scored, any state under the floor | 0.55 | pill states 0.87-0.92, `vol-dead` (unavailable) 0.58: the why line wraps differently (run 42389540367, docs/lanes/osd-toasts.md) |
-| `strip` | `bar-tasks/run-strip-parity.ps1 -Theme both -Out native/out/parity/bar-tasks` | fewer than 2 strips scored, any under the floor | 0.88 | dark 0.9091, light 0.9258 (run 42770119126, the first gated run; its run-parity pass with the apps unmasked scores the whole bar 0.9789 / 0.9711, printed, not gated) |
+| `strip` | `bar-tasks/run-strip-parity.ps1 -Theme both -Out native/out/parity/bar-tasks` | fewer than 2 strips scored, any under the floor | 0.90 | dark 0.9091 / 0.9091, light 0.9258 / 0.9580 (runs 42786941393, 42789738354; first gated run 42770119126: 0.9091 / 0.9258) |
+| `qs` | `quick-settings/run-qs-parity.ps1 -Exe <exe> -Out native/out/parity/qs` | no `QS-PARITY summary: 2 scored of 2`, a theme under its floor | light 0.36, dark 0.43 | light 0.3872, dark 0.4519 (run 42789738354). Low on purpose: native part 1's pop-up is ~44 px taller and ~20 px wider than Electron's and words the power plan and battery time differently, and the pair is compared bottom-aligned (docs/lanes/core-7.md) |
+| `previews` | `bar-tasks/run-preview-parity.ps1 -Exe <exe> -Theme both -Out native/out/parity/previews` | a theme not scored or under its floor, `PREVIEW-PARITY: FAILED` | light 0.93, dark 0.95 | light 0.9545 / 0.9545, dark 0.9746 / 0.9746 (runs 42786941393, 42789738354) |
 
 ## Results so far
 

@@ -404,14 +404,16 @@ function Stage-script([string]$name, [string]$script, [string[]]$argv) {
 # still closing are printed, never failed on); tools/parity/README.md "CI floors" says where each number comes from.
 # A floor only moves up, in the same commit as the fix that earns it.
 $Floors = [ordered]@{
-  'launcher light' = 0.78   # 0.8295 (run 42388736155)
-  'launcher dark'  = 0.55   # 0.5864: the --test Electron launcher is a framed opaque window (docs/lanes/launcher.md)
+  'launcher light' = 0.84   # 0.8586, 0.8581 (runs 42786941393, 42789738354; also 0.8581-0.8586 in 4 runs before)
+  'launcher dark'  = 0.80   # 0.8175, 0.8170 (same runs); the --test Electron launcher is a framed window (docs/lanes/launcher.md)
   'osd'            = 0.55   # lowest state: vol-dead (unavailable) 0.58, the why line wraps differently (docs/lanes/osd-toasts.md)
-  'strip'          = 0.88   # dark 0.9091, light 0.9258 (run 42770119126, the first gated run)
-  'qs light'       = 0.30   # PROVISIONAL: no run yet; set from the first runs
-  'qs dark'        = 0.30   # PROVISIONAL
-  'previews light' = 0.85   # PROVISIONAL: 0.94 / 0.96 by hand
-  'previews dark'  = 0.85   # PROVISIONAL
+  'strip'          = 0.90   # dark 0.9091 / 0.9091, light 0.9258 / 0.9580 (runs 42786941393, 42789738354)
+  # qs: native part 1's pop-up is ~44 px taller (row spacing) and 20 px wider than Electron's and words the power
+  # plan and battery differently, so the bottom-aligned pair scores low; a regression still moves it (lane notes)
+  'qs light'       = 0.36   # 0.3872 (run 42789738354, the first with the Wi-Fi and Bluetooth tiles kept)
+  'qs dark'        = 0.43   # 0.4519 (same run)
+  'previews light' = 0.93   # 0.9545 / 0.9545 (runs 42786941393, 42789738354)
+  'previews dark'  = 0.95   # 0.9746 / 0.9746 (same runs)
 }
 
 function Scores([string]$log, [string]$pattern) {
