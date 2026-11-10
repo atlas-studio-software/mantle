@@ -57,12 +57,12 @@ public static class QsBattery
         // minutesLeft; the sidecar's `battery` reading does, its qs `power` part does not), else the estimate is pending
         double low = QsParts.Num(r["lowAt"]) is double l && l >= 0 ? l : 10, crit = QsParts.Num(r["criticalAt"]) is double c && c >= 0 ? c : 5;
         string? left = SecondsLeft(r) is long s ? Hm(s) : null;
-        string words = left != null ? $"{left} ({pct}%) remaining" : $"{pct}% remaining";
+        string said = left != null ? $"{left} ({pct}%) remaining" : $"{pct}% remaining";
         string foot = pct <= crit ? $"{pct}% · very low, plug in now"
             : pct <= low ? $"{pct}% · low" + (left != null ? $", {left} left" : ", plug in soon")
             : left != null ? $"{pct}% · {left} left" : $"{pct}% · estimating time left";
         string warn = pct <= crit ? "\nBattery very low: plug in now" : pct <= low ? "\nBattery low: plug in soon" : "";
-        return (foot, "Battery status: " + words + warn);
+        return (foot, "Battery status: " + said + warn);
     }
 
     /// battery.js secondsLeft: seconds left on battery, or null when Windows does not know (0, negative, 100 h or more).
