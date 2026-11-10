@@ -374,6 +374,7 @@ internal sealed partial class QsPanel
             _power.Text = bd.Footer;
             _power.Foreground = B("LgInk2");
             Type(_power, Fs, 1.35); Type((TextBlock)_toWin.Content, Fs, 1);
+            _power.Margin = new Thickness(0, -1, 0, 1);   // a BlockLineHeight line sets its text ~1 px lower than CSS centres it
             ToolTipService.SetToolTip(_power, bd.Tip);
             _foot.BorderBrush = B("LgEdgeOut");
             var notes = new List<string>(_note.Values);
@@ -421,6 +422,7 @@ internal sealed partial class QsPanel
         s.Range.IsEnabled = v.Live;
         s.Wrap.Opacity = v.Live ? 1 : _dark ? .45 : .55;
         Type(s.Name, Fs, 1); Type(s.Val, Fs, 1);
+        ((FrameworkElement)s.Name.Parent).Margin = new Thickness(0, 0, 0, HeadGap(s == _bright ? 0 : 1));
         // Chromium's own range track (not a token in Electron either): light #efefef ringed #b2b2b2, dark #3b3b3b
         // ringed #858585; drawn from the nearest tokens
         s.Track.Background = _dark ? B("LgEdgeOut") : B("LgFill0");
@@ -439,6 +441,7 @@ internal sealed partial class QsPanel
     {
         var v = PowerModeView.View(_pm, _pmPending, _pmErr);
         Type(_pmHead, Fs, 1); Type(_pmSub, Fs, 1);
+        ((FrameworkElement)_pmHead.Parent).Margin = new Thickness(0, 0, 0, HeadGap(2));
         _pmHead.Foreground = B("LgInk2"); _pmSub.Foreground = B("LgInk3");
         _pmSub.Text = v.Sub;
         _pmSub.MaxWidth = (_width - 2 - 2 * PadX) * 0.62;
@@ -665,6 +668,10 @@ internal sealed partial class QsPanel
         "<Ellipse Fill='{ThemeResource LgAcc}'/></ControlTemplate></Thumb.Template></Thumb>" +
         "</Grid></Grid></ControlTemplate></Setter.Value></Setter></Style>");
 
+    /// .qsrowhead's 4 px under a head line. Light heads are 12.5 px lines, which Chromium keeps fractional and a TextBlock
+    /// makes 13: the brightness and power mode heads give the half pixel back so the rows land where Electron's do.
+    double HeadGap(int row) => _dark || row == 1 ? 4 : 3;
+
     /// Electron's type per theme: light 12.5 throughout; dark (Helm's scale, bar.css) 13, a tile's sub line 12.
     double Fs => _dark ? 13 : 12.5;
     double SubFs => _dark ? 12 : 12.5;
@@ -673,7 +680,7 @@ internal sealed partial class QsPanel
     static void Type(TextBlock t, double fs, double lh)
     {
         t.FontSize = fs;
-        t.LineHeight = Math.Round(fs * lh, 2);
+        t.LineHeight = Math.Round(fs * lh, MidpointRounding.AwayFromZero);   // a TextBlock's line is whole pixels (Chromium's is not)
         t.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
     }
 
