@@ -25,7 +25,7 @@ public class ToastsSurfaceTests
     const string Steps = "[" +
         "{\"cmd\":\"testShow\",\"n\":1,\"title\":\"First banner\",\"body\":\"It leaves by itself after six seconds.\"}," +
         "{\"cmd\":\"testShow\",\"n\":4,\"sticky\":true}," +
-        "{\"cmd\":\"testOwn\",\"key\":\"upd\",\"title\":\"Mantle v0.2.0 is out\",\"body\":\"Update downloads it and restarts Mantle.\",\"detail\":\"C:\\\\mantle\\\\update.log\"," +
+        "{\"cmd\":\"testOwn\",\"key\":\"upd\",\"dnd\":0,\"quns\":5,\"title\":\"Mantle v0.2.0 is out\",\"body\":\"Update downloads it and restarts Mantle.\",\"detail\":\"C:\\\\mantle\\\\update.log\"," +
         "\"actions\":[{\"id\":\"later\",\"label\":\"Later\"},{\"id\":\"go\",\"label\":\"Update\",\"primary\":true}]}," +
         "{\"cmd\":\"testOwn\",\"key\":\"upd\",\"title\":\"Updating Mantle\",\"progress\":\"Downloading v0.2.0\",\"pct\":30,\"actions\":[{\"id\":\"later\",\"label\":\"Later\"}]}," +
         "{\"cmd\":\"testIds\",\"ids\":[]}" +

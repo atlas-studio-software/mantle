@@ -100,7 +100,7 @@ internal sealed class ToastsSurface : ISurface
     void MakeWindow()
     {
         if (_win != null) return;
-        _root = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+        _root = new Grid { Background = Clear() };
         _stack = new StackPanel { Width = CardW, Spacing = 8, VerticalAlignment = VerticalAlignment.Bottom, HorizontalAlignment = HorizontalAlignment.Right, Margin = new Thickness(Pad, RoomTop, Pad, Pad) };
         _stack.PointerEntered += (_, _) => Hover(true);
         _stack.PointerExited += (_, _) => Hover(false);
@@ -570,8 +570,8 @@ internal sealed class ToastsSurface : ISurface
         it.Ring.CornerRadius = new CornerRadius(r + 1);
         it.Ring.BorderBrush = B("LgEdgeOut");
         it.Lip.CornerRadius = new CornerRadius(r);
-        it.Lip.BorderBrush = _dark ? B("LgLip") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
-        it.X.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        it.Lip.BorderBrush = _dark ? B("LgLip") : Clear();
+        it.X.Background = Clear();
         it.X.Resources["ButtonBackgroundPointerOver"] = B("LgHover");
         it.X.Resources["ButtonBackgroundPressed"] = B("LgPress");
         PaintTree(it.Face);
@@ -647,10 +647,15 @@ internal sealed class ToastsSurface : ISurface
         var u = (under as SolidColorBrush)?.Color ?? default;
         var o = (B(overKey) as SolidColorBrush)?.Color ?? default;
         double oa = o.A / 255.0, ua = u.A / 255.0, a = oa + ua * (1 - oa);
-        if (a <= 0) return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        if (a <= 0) return Clear();
         byte Mix(byte oc, byte uc) => (byte)Math.Round((oc * oa + uc * ua * (1 - oa)) / a);
-        return new SolidColorBrush(global::Windows.UI.Color.FromArgb((byte)Math.Round(a * 255), Mix(o.R, u.R), Mix(o.G, u.G), Mix(o.B, u.B)));
+        var c = o;   // the two tokens' colours composited: no colour of its own
+        c.A = (byte)Math.Round(a * 255); c.R = Mix(o.R, u.R); c.G = Mix(o.G, u.G); c.B = Mix(o.B, u.B);
+        return new SolidColorBrush(c);
     }
+
+    /// No colour at all (a default brush is transparent): a hit-testable fill that draws nothing.
+    static SolidColorBrush Clear() => new();
 
     object Tok(string key)
     {

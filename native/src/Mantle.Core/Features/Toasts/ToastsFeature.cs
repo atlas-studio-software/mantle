@@ -98,6 +98,7 @@ public sealed class ToastsFeature : IFeature
     BannerApply? _lastApply;
     bool _live, _stopped, _accessOk, _helperSeen, _ownChecking, _ownAgain;
     string? _accessWhy, _access, _quiet, _quietLogged, _ownHeldWhy;
+    string? _testQuiet;   // --test only: the stand-in quiet reason ("" = not quiet); null = ask toasts.quiet
     int _shownCount;
     (double H, int Count) _layout;
 
@@ -156,6 +157,14 @@ public sealed class ToastsFeature : IFeature
                 var acts = new List<OwnButtonPost>();
                 if (c.Args.ValueKind == JsonValueKind.Object && c.Args.TryGetProperty("actions", out var aa) && aa.ValueKind == JsonValueKind.Array)
                     foreach (var a in aa.EnumerateArray()) acts.Add(new OwnButtonPost(Str(a, "id", 40), Str(a, "label", 40), Bool(a, "primary")));
+                // dnd / quns: a stand-in for Windows' quiet state from now on, so a test never depends on the machine's
+                // (a CI runner reads as Do not disturb); without them the real toasts.quiet answers
+                if (Num(c.Args, "dnd") != null || Num(c.Args, "quns") != null)
+                {
+                    int? dnd = Num(c.Args, "dnd") is double d1 ? (int)d1 : null, quns = Num(c.Args, "quns") is double q1 ? (int)q1 : null;
+                    _testQuiet = ToastsCore.QuietWhy(true, dnd, quns) ?? "";
+                    _ctx.Log($"test: Windows' quiet state stands in as dnd {dnd?.ToString() ?? "-"}, quns {quns?.ToString() ?? "-"} ({(_testQuiet.Length > 0 ? _testQuiet : "not quiet")})");
+                }
                 double? pct = c.Args.ValueKind == JsonValueKind.Object && c.Args.TryGetProperty("pct", out var p) && p.ValueKind == JsonValueKind.Number ? p.GetDouble() : null;
                 string? ptext = Str(c.Args, "progress", 160);
                 long id = _own.Post(key, new OwnBannerPost(Str(c.Args, "title", 200), Str(c.Args, "body", 600), Str(c.Args, "detail", 4000), null,
@@ -174,8 +183,10 @@ public sealed class ToastsFeature : IFeature
             });
         }
 
-        _feed = new NotificationFeed(ctx.Platform, OnList, l => ctx.Log("" + l));
-        _feed.Start();
+        // a --test run never reads the notification list: the machine's own notifications (the runner's, or the user's
+        // on a laptop) would come and go under the test; its banners are the test's (testShow / testIds) and Mantle's own
+        if (test) ctx.Log("test: the notification list is not read (only test banners and Mantle's own show)");
+        else { _feed = new NotificationFeed(ctx.Platform, OnList, l => ctx.Log("" + l)); _feed.Start(); }
         _offs.Add(_own.OnChange(OnOwn));
         if (_own.List().Count > 0) OwnSoon("Mantle started");
         ctx.OnEnabled(on => {
@@ -338,6 +349,7 @@ public sealed class ToastsFeature : IFeature
     /// toasts.quiet {dnd, quns} -> the reason Windows would be quiet now, or null. A failed check shows the banner (said).
     async Task<string?> QuietAsync(string what)
     {
+        if (_testQuiet != null) return _testQuiet.Length > 0 ? _testQuiet : null;   // a test's stand-in (testOwn dnd / quns)
         var r = await _ctx.Platform.CallAsync("toasts.quiet", new JsonObject(), TimeSpan.FromSeconds(2));
         if (!r.Ok || r.Result.ValueKind != JsonValueKind.Object)
         {

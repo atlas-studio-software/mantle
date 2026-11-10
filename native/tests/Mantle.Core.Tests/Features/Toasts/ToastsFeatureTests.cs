@@ -91,6 +91,7 @@ public class ToastsFeatureTests
         Assert.Null(w.Store.File);                                          // no record either
         Assert.DoesNotContain(r.Platform.Calls, c => c.Verb == "toasts.banners");
         Assert.Empty(Shows(r));                                             // an app's toast is never Mantle's in --test
+        Assert.DoesNotContain(r.Platform.Calls, c => c.Verb == "notifications");   // the list is never read in --test
         foreach (var c in new[] { "toasts.layout", "toasts.ready", "toasts.click", "toasts.more", "toasts.action", "toasts.copy", "toasts.state", "toasts.testShow", "toasts.testOwn", "toasts.testIds" })
             Assert.True(r.Bus.Has(c), c + " is not registered");
         var st = await r.Bus.CallAsync("toasts.state");
