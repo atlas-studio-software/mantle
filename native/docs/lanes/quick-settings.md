@@ -183,3 +183,43 @@ The pair (Electron's part1 shot now keeps the "›" buttons native draws):
 
 Left: the qs-tiles row (airplane mode, do not disturb, focus, project, cast), game mode, top bar, hot corners, the
 power plan list and toggle (BAR-740), the `battery` reading for the footer, AUTOMATION.md.
+
+## Part 4 (lane native-r6-qs4, branch `native/r6-qs4` from native/main 5fa9a26)
+
+Built: the second tile row (ui/bar/qs-tiles.js, lib/features/qstiles.js, _qstiles-core.js, _project-core.js tile()).
+
+- `Mantle.Core/Features/QuickSettings/QsTiles.cs`: the words, pure (dnd, airplane, focus, cast, the Project tile, the
+  click guess, the note a reply leaves).
+- `QsService.Tiles.cs`: one state for the row (qstiles.state with project.state folded in as `project`), the reads
+  (sysnotify.dndGet, netair.get, toasts.quiet, sysdisplay.project; all at once, one round at a time), and the commands
+  `qs.tiles.state`, `qs.tiles.refresh`, `qs.tiles.set {tile, on}`, `qs.tiles.open {tile: project|cast}`, always
+  `Success({tile, ok, reason, dryRun, state})`; pushes `"qs.tiles"`.
+- `QsPanel.Tiles.cs`: the five tiles in the same grid after the first four, their notes strip under the grid
+  (`.qsx-notes`: -4 above, 10 below), the click (guess at once, pending, the reply decides), a refresh after the first
+  frame, Focus's minutes repainted every 20 s while open. Project and Cast close the panel when Windows' panel opened
+  (`Room.Close`).
+
+A --test run: every switch is a dry run, logged as `qs: dry run (--test): <Do not disturb on | airplane mode on> would
+ask the sidecar <sysnotify.dnd | netair.set> {"on":true}; nothing was sent, Windows was not changed`, Focus as
+`qs: dry run (--test): Focus would start a 30 min timer labelled "Focus" [and ask the sidecar sysnotify.dnd
+{"on":true}]; nothing was started, Windows was not changed`; the ways out as `qs: dry run (--test): would open Windows'
+Cast panel (sidecar keys win+k); nothing was opened` (Project: `Windows' Project choices`, `win+p`). The reply is
+ok:true + dryRun with Electron's "test run: would ..." words, shown as the tile's note ("Test run: would ..."); the
+state is never changed by a test, and the panel stays open. `MANTLE_TEST_QS` may carry `qstiles` ({dnd, airplane,
+focus, timer}) and `project` ({on, read}); electron-qs.cjs now writes the mock's qstiles.state and project.state into
+qs-state.json and keeps the row in its part1 shot.
+
+New ids: `qs.tile.airplane`, `qs.tile.dnd`, `qs.tile.focus`, `qs.tile.project`, `qs.tile.cast` (as the first four),
+`qs.tiles.notes`, `qs.tiles.note.<n>`. All the quick-settings ids are now in Mantle.App/AUTOMATION.md.
+
+Deviations (part 4):
+
+- Command names: Electron's `qstiles.*` and `project.open` / `project.cast` are `qs.tiles.*` here (one service, one
+  state).
+- Focus: the native app has no timer feature yet, so outside a fixture the timer reads `{ok:false, reason: "Mantle’s
+  timer is not in the native app yet, so Focus has nothing to run on"}` and the tile is dead with that reason
+  (Electron's dead state when its timer is off). A live Focus never starts; the Focus record, its restart settle and
+  the quit put-back (BAR-597..599) are not ported.
+- Project: Mantle's own Win+P pop-up is not native yet, so the tile opens Windows' own (the sidecar's `keys win+p`).
+- Ending Focus in a test run is a dry run too (Electron's endFocus cleared its record in a test run).
+- The tiles' press and settle motion (qs-tiles.css, BAR-606) is not ported.

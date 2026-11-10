@@ -62,3 +62,35 @@ one and exits; `--quit` with the same profile asks it to close.
   at once` (replaced by another pop-up, or never painted), then `pop-up <Name>: exit done, parked|closed`;
   `pop-up watch: hook|poll ...`; `bar placed (<why>): primary ... at <pct> % (dpi <dpi>); pill ...` on every
   display or DPI change (`WM_DPICHANGED <dpi>`, `WM_DISPLAYCHANGE <w>x<h>`, `... (end of a burst)`).
+
+## Quick settings (Surfaces/Bar/QuickSettings, docs/lanes/quick-settings.md)
+
+The pop-up opens from `bar.volume`, `bar.network` and `bar.battery`. A `--test` run reads `MANTLE_TEST_QS`
+(JSON: the six parts, `powermode`, `sessions`, `wifiList`, `devices`, `btList`, `qstiles`, `project`) in place of
+the sidecar, and every write or way out is a dry run (logged, never sent; nothing opens).
+
+| AutomationId | element | control type | notes |
+|---|---|---|---|
+| (top-level window) `Mantle pop-up: Quick settings` | the pop-up | Window | instant: parked (cloaked) between opens |
+| `qs.panel` | the panel's root | Group | Name `Quick settings` |
+| `qs.tile.wifi`, `qs.tile.bluetooth`, `qs.tile.nightlight`, `qs.tile.saver` | the first four tiles | Button | HelpText = the sub line (`Off`, `Home · 5 GHz`); FullDescription = the tooltip; ItemStatus = `on`/`off` + `; dead` + `; pending` |
+| `qs.tile.airplane`, `qs.tile.dnd`, `qs.tile.focus`, `qs.tile.project`, `qs.tile.cast` | the second tile row (qs-tiles.js) | Button | as the first four; Project and Cast are never `on` |
+| `qs.tiles.notes`, `qs.tiles.note.<n>` | the second row's notes strip (one per refused click or dry run) | Group / Text | Name = the note (`Test run: would turn Do not disturb on (its tile)`) |
+| `qs.more.wifi`, `qs.more.bluetooth`, `qs.more.sound` | the "›" buttons | Button | open the Wi-Fi, Bluetooth and sound views |
+| `qs.brightness`, `qs.volume` | the sliders (0-100) | Slider | ItemStatus = the number shown; HelpText = why when dead |
+| `qs.brightness.value`, `qs.volume.value` | the numbers | Text | `62%`, `—`, `unavailable` |
+| `qs.mute` | the mute button | Button | Name `Mute`/`Unmute`; ItemStatus `muted`/`unmuted` |
+| `qs.notes`, `qs.note.<n>` | the notes (one per dead part or refused set) | Group / Text | |
+| `qs.powermode`, `qs.powermode.<efficiency/balanced/performance>`, `qs.powermode.why`, `qs.powermode.note` | the power mode row | Group / Button / Text | ItemStatus `chosen` and/or `locked` |
+| `qs.power` | the footer's battery line | Text | battery.js footer words |
+| `qs.windows`, `qs.gear` | the footer's two buttons | Button | |
+| `qs.back`, `qs.view.title`, `qs.view.status`, `qs.view.list`, `qs.view.state`, `qs.view.why`, `qs.view.action`, `qs.view.note.<n>`, `qs.view.more` | a "›" view's frame | Button / Text / Group | |
+| `qs.wifi.scan`, `qs.wifi.net.<i>`, `qs.wifi.connect`, `qs.wifi.disconnect`, `qs.wifi.auto`, `qs.wifi.password`, `qs.wifi.problem`, `qs.wifi.next`, `qs.wifi.cancel`, `qs.wifi.error`, `qs.wifi.windows` | the Wi-Fi view | | `qs.wifi.net.<i>` HelpText = the sub line |
+| `qs.bt.dev.<i>`, `qs.bt.toggle`, `qs.bt.settings`, `qs.bt.error`, `qs.bt.add` | the Bluetooth view | | `qs.bt.dev.<i>` ItemStatus = its state |
+| `qs.sound.devices`, `qs.sound.dev.<i>`, `qs.sound.error`, `qs.sound.mixer`, `qs.app.<i>` (+ `.value`, `.volume`, `.mute`) | the sound view | | `qs.sound.dev.<i>` ItemStatus `default` |
+
+Log lines the tests read: `qs: the panel opened from <anchor id> (<w>x<h> DIP)`, `qs: the panel closed (<why>); its
+watch is let go`, `qs: dry run (--test): <what> would ask the sidecar <verb> <args>; nothing was sent, Windows was not
+changed`, `qs: dry run (--test): would open <what> (<target>); nothing was opened`, `mantle: qs.set <part>=<value> ->
+ok, reads <v> (<ms> ms)` / `-> NOT DONE: <why>`, `qs: the <title> view opened` / `closed (<why>)`, `pop-up Quick
+settings: resized to <h> DIP high`.

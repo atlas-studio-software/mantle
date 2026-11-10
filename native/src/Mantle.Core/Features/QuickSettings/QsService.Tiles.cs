@@ -54,7 +54,7 @@ public sealed partial class QsService
     {
         TilesInit();
         var busy = new JsonArray();
-        foreach (var b in _tBusy) busy.Add(b);
+        foreach (var b in _tBusy) busy.Add(JsonValue.Create(b));   // the non-generic Add (the AOT build refuses Add<T>)
         return new JsonObject {
             ["on"] = true,
             ["dnd"] = _tDnd?.DeepClone(), ["airplane"] = _tAir?.DeepClone(), ["focus"] = _tFocus?.DeepClone(),
