@@ -46,7 +46,7 @@ public sealed partial class BarWindow
 
     DragState? _drag;
     DispatcherQueueTimer? _dragSettle, _dragBeat, _orderFailClear;
-    bool _settling, _dragPending, _dragQuiet, _dragHoldWrapped;
+    bool _settling, _dragPending, _dragQuiet, _dragHoldWrapped, _dragCaptureSaid;
     CellVm? _dragQuietCell;
     long _dragSwallowUntil, _dragHoldUntil;
     readonly OrderHold _orderHold = new();
@@ -72,7 +72,12 @@ public sealed partial class BarWindow
         Dock.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, e) => DragUp(e, cancel: null)), true);
         Dock.AddHandler(UIElement.PointerCanceledEvent, new PointerEventHandler((_, e) => DragUp(e, cancel: "the pointer was taken away")), true);
         Dock.AddHandler(UIElement.PointerCaptureLostEvent, new PointerEventHandler((_, e) => {
-            if (_drag is { Lifted: true, Ended: false } d && e.Pointer.PointerId == d.PointerId) DragDrop("the pointer capture was lost");
+            if (_drag is not { Lifted: true, Ended: false } d || e.Pointer.PointerId != d.PointerId) return;
+            // a release takes the capture away first (the Button's own handling runs before the strip hears the
+            // button-up): decide once this input has been handled, so only a capture lost WITHOUT a release cancels
+            DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () => {
+                if (_drag == d && !d.Ended) DragDrop("the pointer capture was lost");
+            });
         }), true);
         // the quiet ends when the pointer leaves the strip (bar.js mouseleave on the bar); PointerExited bubbles up from
         // the cells, so only a pointer outside the strip's own box counts
@@ -160,14 +165,21 @@ public sealed partial class BarWindow
         d.Plan = new DragPlan(slots, from);
         d.Shift = new double[slots.Count];
         d.Bar = Pill.TransformToVisual(Root).TransformBounds(new Rect(0, 0, Pill.ActualWidth, Pill.ActualHeight));
+        // the pointer is the strip's now: the cell's Button lets it go, so it is no longer pressed and a drag never ends in
+        // its click (before the lift is marked, so the Button's own capture loss is not taken for a cancel). If the strip
+        // cannot take it, the Button keeps it: its moves still bubble here, its click is swallowed, and the capture loss
+        // its release brings is told apart from a real one (below)
+        try { d.Btn.ReleasePointerCapture(ptr); } catch (ArgumentException) { }
+        if (!Dock.CapturePointer(ptr) && !_dragCaptureSaid) {
+            _dragCaptureSaid = true;
+            Host.Log.Line("bar tasks: drag: the strip could not take the pointer from the icon, so the icon keeps it (its click is swallowed)");
+        }
         d.Lifted = true;
         // nothing opens on top of a drag, and what was open closes
         StopTimer(_flyDwell);
         if (Popups?.OpenKey != null) Popups?.Close("an icon was lifted to be dragged");
         DragQuietOn();
         HoldBarWhileDragging();
-        // the pointer is the strip's now: the cell's Button loses it, so a drag never ends in its click
-        Dock.CapturePointer(ptr);
         var tr = new Vector3Transition { Duration = TimeSpan.FromMilliseconds(DragOrder.ShiftMs), Components = Vector3TransitionComponents.X };
         foreach (var b in d.Btns) if (b != d.Btn) b.TranslationTransition = tr;
         LiftLook(d, true);

@@ -113,7 +113,7 @@ public partial class StripTests
         using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
         using var run = new Host.Fixture($"Strip drag running {tag}", 520, 60, "pwsh.exe");   // pinned by nobody: after the divider
         var cs = new List<Cell>();
-        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return PinOrder(cs).SequenceEqual(new[] { "Alpha", "Beta" }) && Named(cs, run.Title) is { AfterDivider: true }; }, 20000, 250),
+        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return PinOrder(cs).SequenceEqual(new[] { "Alpha", "Beta" }) && Named(cs, run.Title) is { Pinned: false, Open: true } && cs.FirstOrDefault(c => !c.Pinned) is { AfterDivider: true, Index: 2 }; }, 20000, 250),
             $"in 20 s the strip did not show both pins and the running-only fixture after the divider; cells: {Describe(cs)}");
         Cell Pin(string who) => cs.First(c => c.Pinned && Who(c) == who);
 
@@ -151,7 +151,8 @@ public partial class StripTests
         Host.LogContains(() => LogSince(profile, at), "bar tasks: order: a pinned app moved 1 -> 2 of 2, saved (in this test profile)", "the drag past the divider did not end on the last pin's slot", 6000);
         cs = WaitPins(app, new[] { "Beta", "Alpha" }, 4000, "after the drag past the divider");
         var r = Named(cs, run.Title);
-        Assert.IsTrue(r is { Pinned: false, AfterDivider: true } && r.Index == 2, $"the running-only app is no longer first after the divider: {Describe(cs)}");
+        var firstRun = cs.FirstOrDefault(c => !c.Pinned);
+        Assert.IsTrue(r is { Pinned: false } && firstRun is { AfterDivider: true, Index: 2 } && cs.Take(2).All(c => c.Pinned), $"the pins and the running-only apps are no longer split at the divider: {Describe(cs)}");
         Assert.IsFalse(LogSince(profile, at).Contains("launch dry run", StringComparison.Ordinal), "the drop opened the app");
         Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
     }
