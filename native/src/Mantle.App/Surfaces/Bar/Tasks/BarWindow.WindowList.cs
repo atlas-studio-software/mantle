@@ -11,14 +11,12 @@ using Microsoft.UI.Xaml.Markup;
 namespace Mantle.App;
 
 /// <summary>
-/// The window list (ui/bar/bar.js#flyList; BAR-199, BAR-234): a click on an app with two or more windows touches no
-/// window (bar.open answers action "list") and opens this list above its icon. One row per window: its title
+/// The window list (ui/bar/bar.js#flyList; BAR-226, BAR-234): the previews' fallback when more windows than fit as
+/// 128 DIP cards (BarWindow.Previews.cs opens it, with the reason as its note). One row per window: its title
 /// ("(untitled window)" if none; tooltip with "(minimized)"), the active one in accent with the 3x14 accent bar, a
 /// minimised one in quiet ink; a row's click closes the list and focuses that window, or minimises it if it is the
 /// active one (bar.window toggle); its X ("Close this window") closes the list and asks the window to close.
-/// Clicking the same icon again closes the list (the pop-up's own toggle). Electron opens live previews (DWM cards)
-/// first and keeps this list for too many windows; the native bar has no previews yet, so the list says so in its
-/// note (docs/lanes/bar-tasks.md, part 2). UI Automation: `bar.winlist`, rows `bar.winlist.<n>`, X `bar.winlist.<n>.close`.
+/// Clicking the same icon again closes the list (the pop-up's own toggle). UI Automation: `bar.winlist`, rows `bar.winlist.<n>`, X `bar.winlist.<n>.close`.
 /// </summary>
 public sealed partial class BarWindow
 {
@@ -37,20 +35,7 @@ public sealed partial class BarWindow
         "<ContentPresenter HorizontalAlignment='{TemplateBinding HorizontalContentAlignment}' VerticalAlignment='Center' Foreground='{TemplateBinding Foreground}'/>" +
         "</Grid></ControlTemplate>";
 
-    void OpenWindowList(CellVm vm, FrameworkElement anchor)
-    {
-        if (Popups == null) return;
-        var it = vm.Item;
-        if (it.Windows.Count == 0) return;   // nothing to list; the click itself was the action (bar.js openAppPop)
-        // 11 px padding, the heading (8 px under it), the note, then 32 px per row; held to 420 DIP (it scrolls past that)
-        double h = 11 + 25 + 40 + it.Windows.Count * 32 + 11;
-        var kind = new PopupKind("winlist:" + it.Id, it.Name + " windows", 300, Math.Min(h, 420), Focusable: false, Instant: false, Away: true,
-            () => WindowListBody(it));
-        _popAnchor = anchor;
-        Popups.Toggle(kind, anchor);
-    }
-
-    UIElement WindowListBody(TaskItem it)
+    UIElement WindowListBody(TaskItem it, string note)
     {
         var panel = (StackPanel)XamlReader.Load(
             "<StackPanel " + WlNs + " Padding='12,11,12,11' Spacing='0'>" +
@@ -60,7 +45,7 @@ public sealed partial class BarWindow
         AutomationProperties.SetAutomationId(panel, "bar.winlist");
         AutomationProperties.SetName(panel, it.Name + " windows");
         ((TextBlock)panel.Children[0]).Text = (it.Name.Length > 0 ? it.Name : it.Exe ?? "windows").ToUpperInvariant();
-        ((TextBlock)panel.Children[1]).Text = $"{it.Windows.Count} windows: live previews are not in the native bar yet, so this is the list";
+        ((TextBlock)panel.Children[1]).Text = note;
         int n = 0;
         foreach (var w in it.Windows) panel.Children.Add(WindowRow(w, n++));
         var scroll = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled };

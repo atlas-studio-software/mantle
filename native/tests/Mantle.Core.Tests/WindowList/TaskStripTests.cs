@@ -167,13 +167,16 @@ public class TaskStripTests
     }
 
     [Fact]
-    public async Task Running_only_apps_follow_the_z_order_so_focus_and_minimise_move_them_and_a_dragged_order_wins()
+    public async Task Running_only_apps_keep_their_first_seen_place_when_focus_or_minimise_reorders_the_z_order_and_a_dragged_order_wins()
     {
-        // main.js#buildPinned BAR-289: running-only apps in the sidecar's EnumWindows order (the z-order), then
-        // lib/features/_jumplist-pins.js#orderRunning: this session's dragged order, pruned on a clean read.
+        // BAR-289, better than Electron: the sidecar's EnumWindows order is the z-order (main.js#buildPinned), which
+        // moves an app on every focus and minimise; native holds each running-only app where it first appeared this
+        // session (FirstSeenOrder), then lib/features/_jumplist-pins.js#orderRunning: a dragged order wins, pruned
+        // on a clean read.
         var ro = new RunningOrder();
+        var fs = new FirstSeenOrder();
         async Task<string[]> Build(params WinEntry[] ws) => (await TaskStripBuilder.BuildAsync(new TaskStripBuilder.Input {
-            Running = ws, RunningOrder = ro,
+            Running = ws, RunningOrder = ro, FirstSeen = fs,
             Pins = new PinnedResult(true, null, new[] { MkPin("p.lnk", @"c:\x\p.exe", 0) }),
         })).Items.Select(i => i.Id).ToArray();
         static WinEntry A(bool fg = false, bool min = false) => W("1", @"C:\x\a.exe", fg: fg, min: min);
@@ -182,17 +185,23 @@ public class TaskStripTests
         static WinEntry P() => W("4", @"C:\x\p.exe");
         const string a = @"running:c:\x\a.exe", b = @"running:c:\x\b.exe", c = @"running:c:\x\c.exe";
         Assert.Equal(new[] { "p.lnk", a, b, c }, await Build(A(fg: true), P(), B(), C()));
-        // c focused: it is at the top of the z-order, so it leads the running-only apps; the pin never moves
-        Assert.Equal(new[] { "p.lnk", c, a, b }, await Build(C(fg: true), A(), P(), B()));
-        // a minimised: Windows puts it at the bottom of the z-order, so it goes last
-        Assert.Equal(new[] { "p.lnk", c, b, a }, await Build(C(fg: true), P(), B(), A(min: true)));
-        // a dragged order wins over the z-order; ids it does not name keep their z-order after it
-        ro.Set(new[] { b });
-        Assert.Equal(new[] { "p.lnk", b, c, a }, await Build(C(fg: true), P(), B(), A(min: true)));
-        // b closes on a clean read: it is forgotten, so when it starts again it is in z-order like any other
-        Assert.Equal(new[] { "p.lnk", c, a }, await Build(C(fg: true), A()));
+        // c focused: the top of the z-order now, but nothing moves (Electron would put it first)
+        Assert.Equal(new[] { "p.lnk", a, b, c }, await Build(C(fg: true), A(), P(), B()));
+        // a minimised: the bottom of the z-order, and still where it was (Electron would put it last)
+        Assert.Equal(new[] { "p.lnk", a, b, c }, await Build(C(fg: true), P(), B(), A(min: true)));
+        // a dragged order wins over the first-seen order; ids it does not name keep their first-seen order after it
+        ro.Set(new[] { c });
+        Assert.Equal(new[] { "p.lnk", c, a, b }, await Build(C(fg: true), P(), B(), A(min: true)));
+        // c closes on a clean read: forgotten by both, so when it starts again it goes last like any newcomer
+        Assert.Equal(new[] { "p.lnk", a, b }, await Build(B(fg: true), A()));
         Assert.Empty(ro.Current);
-        Assert.Equal(new[] { "p.lnk", b, c, a }, await Build(B(fg: true), C(), A()));
+        Assert.Equal(new[] { "p.lnk", a, b, c }, await Build(C(fg: true), B(), A()));
+        // FirstSeenOrder alone: a list that was not read cleanly forgets nobody
+        var only = new FirstSeenOrder();
+        static TaskItem R(string id) => new("running:" + id, id, "running", null, null, null, "x", new[] { new TaskWindow("1", 1, id, false, false) });
+        only.Apply(new() { R("x"), R("y") }, true);
+        only.Apply(new(), false);
+        Assert.Equal(new[] { "running:x", "running:y" }, only.Apply(new() { R("y"), R("x") }, true).Select(t => t.Id).ToArray());
     }
 
     [Fact]

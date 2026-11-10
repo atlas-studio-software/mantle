@@ -16,7 +16,7 @@ namespace Mantle.UiTests.BarTasks;
 /// that is not running is a dry run that the log names.
 /// </summary>
 [TestClass]
-public class StripTests
+public partial class StripTests
 {
     public TestContext TestContext { get; set; } = null!;
 
@@ -294,67 +294,6 @@ public class StripTests
         Assert.AreEqual(iconicBefore, Win32.IsIconic(a.Hwnd), "a middle-click minimised or restored the open window");
         StringAssert.Contains(log, "1 window(s), fresh", $"the middle-click was not a fresh open: {Tail(log)}");
         Assert.IsFalse(LogSince(profile, at).Contains("1 window(s), active", StringComparison.Ordinal), "a middle-click was also taken as a plain click");
-        Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
-    }
-
-    [TestMethod]
-    public void An_app_with_two_windows_opens_the_window_list_and_a_row_focuses_its_window()
-    {
-        const string profile = "uitest-strip-winlist";
-        _profile = profile;
-        string tag = Guid.NewGuid().ToString("N")[..6];
-        var pins = PinFolder("winlist-" + tag, ("Alpha Shell", PowerShellExe));
-        using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
-        using var other = new Host.Fixture($"Strip other {tag}", 960, 60, "pwsh.exe");
-        using var w1 = new Host.Fixture($"Strip one {tag}", 60, 60);
-        using var w2 = new Host.Fixture($"Strip two {tag}", 520, 60);
-        var cs = new List<Cell>();
-        Cell? Alpha() { cs = Cells(app); return cs.FirstOrDefault(c => c.Pinned && c.Status.Contains("2 windows", StringComparison.Ordinal)); }
-        Assert.IsTrue(Host.Until(() => Alpha() != null, 20000, 250), $"in 20 s Alpha Shell's pin did not hold both windows: {Describe(cs)}");
-        int pid = app.Proc.Id;
-        IntPtr List() => FrameProbe.Find(pid, "Mantle pop-up: Alpha Shell windows");
-
-        // a click touches no window (bar.open action "list", BAR-199) and opens the list over the icon
-        IntPtr fg = Win32.GetForegroundWindow();
-        bool i1 = Win32.IsIconic(w1.Hwnd), i2 = Win32.IsIconic(w2.Hwnd);
-        Click(Alpha()!, app: app);
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(List()), 4000), $"the window list did not open; the app's click lines: {ClickLines(profile)}");
-        Assert.AreEqual(fg, Win32.GetForegroundWindow(), "the click on an app with two windows changed the window in front");
-        Assert.AreEqual(i1, Win32.IsIconic(w1.Hwnd)); Assert.AreEqual(i2, Win32.IsIconic(w2.Hwnd));
-        var list = Host.Uia.FromHandle(List());
-        AutomationElement? Row(int n) => list.FindFirstDescendant(cf => cf.ByAutomationId("bar.winlist." + n));
-        Assert.IsTrue(Host.Until(() => Row(0) != null && Row(1) != null, 3000), "the list does not have a row per window");
-        Assert.IsNull(Row(2), "the list has more rows than the app has windows");
-        var names = new[] { Row(0)!.Name, Row(1)!.Name };
-        CollectionAssert.AreEquivalent(new[] { w1.Title, w2.Title }, names, "the rows are not the app's two windows");
-        Assert.AreEqual("Close this window", list.FindFirstDescendant(cf => cf.ByAutomationId("bar.winlist.0.close"))?.Name);
-        Host.Screenshot("winlist-open");
-
-        // a row: the list closes and that window comes to the front (bar.window focus, BAR-234)
-        var target = Win32.GetForegroundWindow() == w1.Hwnd ? w2 : w1;   // the one not in front, so the focus shows
-        int pick = Array.IndexOf(names, target.Title);
-        var r = Row(pick)!.BoundingRectangle;
-        Click(new Cell(-1, names[pick], "", r, Row(pick)!));
-        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(List()), 3000), "the list stayed open after a row was clicked");
-        Assert.IsTrue(Host.Until(() => Win32.GetForegroundWindow() == target.Hwnd, 4000), $"the row did not bring its window to the front (foreground: {Win32.Title(Win32.GetForegroundWindow())}); log: {ClickLines(profile)}");
-
-        // the icon again opens it, and again closes it (its own toggle)
-        Click(Alpha()!, app: app);
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(List()), 4000), "the window list did not open the second time");
-        Click(Alpha()!, app: app);
-        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(List()), 3000), "a second click on the icon did not close its window list");
-
-        // the X: a test run never closes a window, and says so (the act chip), the list closes
-        Click(Alpha()!, app: app);
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(List()), 4000), "the window list did not open the third time");
-        list = Host.Uia.FromHandle(List());
-        var x = list.FindFirstDescendant(cf => cf.ByAutomationId("bar.winlist.0.close"))!;
-        long at = LogLength(profile);
-        Click(new Cell(-1, "close", "", x.BoundingRectangle, x));
-        string log = "";
-        Assert.IsTrue(Host.Until(() => { log = LogSince(profile, at); return log.Contains("bar tasks: window close: failed: could not close that window: a test run never closes", StringComparison.Ordinal); }, 4000), $"no refused close line: {Tail(log)}");
-        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(List()), 3000), "the X left the list open");
-        Assert.IsTrue(Win32.IsWindow(w1.Hwnd) && Win32.IsWindow(w2.Hwnd), "a test run closed a window");
         Assert.IsFalse(app.Proc.HasExited, "the app exited during the test");
     }
 
