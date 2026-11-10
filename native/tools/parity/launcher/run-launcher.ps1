@@ -102,6 +102,12 @@ function Wait-Still([int]$x, [int]$y, [int]$w, [int]$h) {
   for ($i = 0; $i -lt 20; $i++) { if ([ParityNative]::Motion($x, $y, $w, $h, 300) -lt 0.5) { return $true } }
   return $false
 }
+function Get-ProcTree([int]$top) {   # a process and all its children (read-only: only used to find its windows)
+  $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+  $set = [System.Collections.Generic.List[int]]::new(); $set.Add($top)
+  for ($i = 0; $i -lt $set.Count; $i++) { foreach ($p in $all) { if ($p.ParentProcessId -eq $set[$i] -and -not $set.Contains([int]$p.ProcessId)) { $set.Add([int]$p.ProcessId) } } }
+  return $set.ToArray()
+}
 function Median([double[]]$v) { if (-not $v -or $v.Count -eq 0) { return -1 }; $s = $v | Sort-Object; return $s[[int][Math]::Floor(($s.Count - 1) / 2)] }
 function Log-Text([string]$ud) { try { $fs = [IO.FileStream]::new((Join-Path $ud 'mantle-native.log'), 'Open', 'Read', 'ReadWrite,Delete'); $r = [IO.StreamReader]::new($fs); $t = $r.ReadToEnd(); $r.Dispose(); return $t } catch { return '' } }
 function Until([scriptblock]$f, [int]$ms) { $end = (Get-Date).AddMilliseconds($ms); while ((Get-Date) -lt $end) { if (& $f) { return $true }; Start-Sleep -Milliseconds 100 }; return $false }
@@ -136,6 +142,8 @@ foreach ($t in $Themes) {
   $r = @{ theme = $t }
 
   # ---- Electron
+  # the screen before Electron starts: a later shot that matches it holds no launcher (see the grab below)
+  $bgFull = [ParityNative]::Grab(0, 0, $W, $H)
   $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
   $node = Start-Process node -ArgumentList (Join-Path $PSScriptRoot 'electron-launcher.mjs'), "--root=$root", "--theme=$t", "--fixture=$fx", "--out=$ej", "--query=$Query", "--opens=$Opens", '--hold=300' `
     -PassThru -NoNewWindow -RedirectStandardOutput (Join-Path $dir 'electron-launcher.stdout.txt') -RedirectStandardError (Join-Path $dir 'electron-launcher.stderr.txt')
@@ -150,7 +158,21 @@ foreach ($t in $Themes) {
     $eRect = @([int](($e.rect[0] + $bx) * $s), [int](($e.rect[1] + $e.rect[3] - $e.inner[1] - $bx) * $s), [int]($e.inner[0] * $s), [int]($e.inner[1] * $s))
     [ParityNative]::ParkCursor(4, 4)
     if (-not (Wait-Still $eRect[0] $eRect[1] $eRect[2] $eRect[3])) { Problem "electron ${t}: the launcher never stood still" }
-    $ePx = [ParityNative]::Grab($eRect[0], $eRect[1], $eRect[2], $eRect[3])
+    # Electron's light glass excludes its window from capture several times a second, so a plain grab can hold
+    # only the wallpaper (staging run 42782943069: light ssim 0.6470, the Electron half was the bare desktop while
+    # its rows had drawn). Grab clean (ParityNative.CleanGrab: never while a window of its process tree is
+    # excluded), and take it again if the shot still matches the screen from before Electron started.
+    $eApp = @(Get-ProcTree ([int]$e.pid)); $eOk = $false
+    for ($try = 1; $try -le 5 -and -not $eOk; $try++) {
+      $g = [ParityNative]::CleanGrab($eApp, $eRect[0], $eRect[1], $eRect[2], $eRect[3], 60, 5000)
+      $ePx = $g.Px
+      $vsBg = [ParityNative]::CropVsFull($ePx, $eRect[2], $eRect[3], $bgFull, $W, $eRect[0], $eRect[1])
+      $eOk = $g.Clean -and $vsBg -ge 8
+      Say ("electron {0}: shot {1}: clean={2} ({3} window(s), {4} ms, {5} grab(s)), vs the screen before Electron {6:N2}{7}" -f $t, $try,
+        $g.Clean, $g.Windows, $g.WaitedMs, $g.Tries, $vsBg, $(if ($eOk) { '' } else { ': taken again' }))
+      if (-not $eOk) { Start-Sleep -Milliseconds 400 }
+    }
+    if (-not $eOk) { Problem "electron ${t}: no shot with the launcher in it in 5 tries (the last one is saved)" }
     Save-Bgra $ePx $eRect[2] $eRect[3] (Join-Path $dir 'electron.png')
     $r.electron = @{ rect = $eRect; opens = @($e.opens); keys = @($e.keys); rows = @($e.rows); groups = @($e.groups); hint = $e.hint; focused = $e.focused; active = $e.active }
     Say ("electron {0}: rect {1}; rows {2}; opens {3}; keys {4}" -f $t, ($eRect -join ','), ($e.rows -join ' / '), ($e.opens -join ','), ($e.keys -join ','))
