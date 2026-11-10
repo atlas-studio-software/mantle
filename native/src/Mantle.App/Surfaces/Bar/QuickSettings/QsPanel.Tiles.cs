@@ -26,11 +26,25 @@ internal sealed partial class QsPanel
     readonly HashSet<string> _xBusy = new(StringComparer.Ordinal);
     JsonObject? _xState, _xGuess;
     int _xGen;
+    Grid _grid = null!;
+
+    /// Dark tiles are Chromium's 44.7 px (13 x 1.1 + 12 x 1.2 + 16) at a 50.7 px pitch, and Chromium snaps each box's
+    /// edges to whole pixels where they land, so the five rows come out 44, 45, 45, 44, 45 (the pair's dark crop,
+    /// run 42812366552); a TextBlock's whole-pixel lines make every native row 44, four short over the grid. Light
+    /// tiles land within a pixel of Chromium's with Auto rows.
+    static readonly double[] DarkRows = { 44, 45, 45, 44, 45 };
+
+    void SizeRows()
+    {
+        for (int r = 0; r < _grid.RowDefinitions.Count; r++)
+            _grid.RowDefinitions[r].Height = _dark && r < DarkRows.Length ? new GridLength(DarkRows[r]) : GridLength.Auto;
+    }
 
     static double WallMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();
 
     void BuildTiles(Grid grid, int i)
     {
+        _grid = grid;
         foreach (var (key, label) in QsTiles.Order) {
             var t = MakeTile(key, label);
             int row = i / 2;
@@ -112,6 +126,7 @@ internal sealed partial class QsPanel
 
     void PaintTiles()
     {
+        SizeRows();
         var busy = new HashSet<string>(_xBusy, StringComparer.Ordinal);
         if (XState?["busy"] is JsonArray ba) foreach (var b in ba) if (QsParts.Str(b) is string s) busy.Add(s);
         foreach (var (k, _) in QsTiles.Order) PaintTile(XView(k), TileGlyph(k), busy.Contains(k));

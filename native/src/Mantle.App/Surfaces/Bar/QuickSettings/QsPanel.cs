@@ -511,6 +511,7 @@ internal sealed partial class QsPanel
     {
         var t = new Tile { B = Btn("qs.tile." + key, label, double.NaN, double.NaN) };
         t.B.HorizontalAlignment = HorizontalAlignment.Stretch;
+        t.B.VerticalAlignment = VerticalAlignment.Stretch;   // fills a fixed dark row (QsPanel.Tiles.cs SizeRows)
         t.B.HorizontalContentAlignment = HorizontalAlignment.Stretch;
         t.B.Padding = new Thickness(9, 8, 9, 8);
         var g = new Grid { ColumnSpacing = 8 };
