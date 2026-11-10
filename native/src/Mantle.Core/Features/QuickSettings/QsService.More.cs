@@ -75,8 +75,8 @@ public sealed partial class QsService
     {
         // THE PASSWORD LEAVES THE ARGUMENTS FIRST: from here it lives in this one local and, live, the one sidecar call
         string? password = null;
-        bool hasPw = a.ValueKind == JsonValueKind.Object && a.TryGetProperty("password", out var pw);
-        if (hasPw) {
+        JsonElement pw = default;
+        if (a.ValueKind == JsonValueKind.Object && a.TryGetProperty("password", out pw)) {
             if (pw.ValueKind == JsonValueKind.String) password = pw.GetString();
             else if (pw.ValueKind != JsonValueKind.Null) return new JsonObject { ["ok"] = false, ["reason"] = "the Wi-Fi password must be text" };
         }
