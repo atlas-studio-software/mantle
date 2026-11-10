@@ -175,9 +175,9 @@ public class BarTests
         Assert.AreEqual("powershell.exe", (btnA!.Properties.HelpText.ValueOrDefault ?? "").ToLowerInvariant(), "HelpText = the exe file name");
 
         void Click(AutomationElement e) { Mouse.Click(Centre(Rect(e))); Thread.Sleep(400); }
-        // Running-only apps follow the z-order, as in Electron (BAR-289): a focused app moves to the front of them and a
-        // minimised one to the back, at the strip's next rebuild (at most once a second). So each click finds the
-        // button again once it has stopped moving (two reads 1.2 s apart agree), never at the place it had before.
+        // Running-only apps keep their first-seen place (BAR-289, better: than Electron, whose z-order order moves a
+        // focused app to the front and a minimised one to the back). Each click still finds the button again once it
+        // has stopped moving (two reads 1.2 s apart agree), and the button is checked not to have moved.
         AutomationElement Settled(Host.Fixture f)
         {
             AutomationElement? e = null;
@@ -194,10 +194,15 @@ public class BarTests
         // Make sure A is not the window in front before the first click (a click on the front app minimizes it).
         if (Fg(a.Hwnd)) { Click(Settled(b)); Assert.IsTrue(Host.Until(() => Fg(b.Hwnd), 4000), "clicking B's button did not bring B forward"); }
 
+        var at0 = Rect(Settled(a));
         Click(Settled(a));
         Assert.IsTrue(Host.Until(() => Fg(a.Hwnd) && !Win32.IsIconic(a.Hwnd), 4000), $"click 1: A not in front (foreground {Win32.Title(Win32.GetForegroundWindow())})");
+        var at1 = Rect(Settled(a));
         Click(Settled(a));
         Assert.IsTrue(Host.Until(() => Win32.IsIconic(a.Hwnd), 4000), "click 2 on the app in front: A was not minimized");
+        var at2 = Rect(Settled(a));
+        Assert.AreEqual(at0, at1, "BAR-289: A's button moved when A was focused (running-only apps keep their first-seen place)");
+        Assert.AreEqual(at0, at2, "BAR-289: A's button moved when A was minimised (running-only apps keep their first-seen place)");
         Click(Settled(a));
         Assert.IsTrue(Host.Until(() => !Win32.IsIconic(a.Hwnd) && Fg(a.Hwnd), 4000), "click 3: A was not restored to the front");
 
