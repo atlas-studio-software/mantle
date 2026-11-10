@@ -47,10 +47,11 @@ $env:MANTLE_NATIVE_EXE = $Exe
 if ($Ui) {
   $uiLog = Join-Path $Out 'ui-launcher.log'
   & pwsh -NoProfile -File (Join-Path $root 'native\tests\Mantle.UiTests\run-ui.ps1') -Exe $Exe -Filter 'FullyQualifiedName~Mantle.UiTests.Launcher|FullyQualifiedName~Mantle.UiTests.Surfaces' *> $uiLog
-  $sum = Get-Content $uiLog | Where-Object { $_ -match 'Passed!|Failed!|Total tests|Passed:|Failed:' } | Select-Object -Last 2
+  $sum = Get-Content $uiLog | Where-Object { $_ -match 'Passed!|Failed!|Total tests|Passed:|Failed:|UITEST:' } | Select-Object -Last 2
   Say ("UI tests: " + ($sum -join ' | '))
   Get-Content $uiLog | Where-Object { $_ -match '^\s+(Failed|Passed) ' } | ForEach-Object { Say $_.Trim() }
-  if (-not ($sum -match 'Passed!') -or ($sum -match 'Failed!')) { Problem 'launcher/surface UI tests did not all pass (ui-launcher.log)' }
+  # run-ui.ps1's summary line is "UITEST: ok|FAILED (...)" (older: dotnet test's "Passed!" / "Failed!")
+  if (-not ($sum -match 'Passed!|UITEST: ok') -or ($sum -match 'Failed!|UITEST: FAILED')) { Problem 'launcher/surface UI tests did not all pass (ui-launcher.log)' }
 }
 
 # ------------------------------------------------------------------ 4. the runner desktop
@@ -76,7 +77,13 @@ Add-Type -Namespace LauncherParity -Name Desk -MemberDefinition @'
 public static string Solid() { bool a = SystemParametersInfoW(0x14, 0, "", 3); bool b = SetSysColors(1, new[] { 1 }, new[] { 0 }); return "solid black desktop (no picture " + a + ", colour " + b + ")"; }
 '@
 $wallpaper = Join-Path $root 'assets\backgrounds\snow-peak.jpg'
-function Set-Desk([string]$t) { if ($t -eq 'dark' -and $DarkDesktop -eq 'solid') { Say ("desktop: " + [LauncherParity.Desk]::Solid()) } else { Say ("wallpaper " + [ParityNative]::SetWallpaper($wallpaper)) } }
+# the runner's desktop put back first (tools/desk/desk.ps1 -Reset, as ci.ps1 does before every GUI stage): a stray window
+# (run 42769793275: the runner's own console stood over both launchers) would be scored as a launcher difference
+$deskPs = Join-Path $root 'native\tools\desk\desk.ps1'
+function Desk-Reset([string]$tag) { if (Test-Path $deskPs) { & pwsh -NoProfile -File $deskPs -Reset -Tag $tag 2>&1 | Select-Object -Last 2 | ForEach-Object { Say "desk: $_" } } }
+function Set-Desk([string]$t) {
+  Desk-Reset "launcher-$t"
+  [ParityNative]::ParkCursor(4, 4) if ($t -eq 'dark' -and $DarkDesktop -eq 'solid') { Say ("desktop: " + [LauncherParity.Desk]::Solid()) } else { Say ("wallpaper " + [ParityNative]::SetWallpaper($wallpaper)) } }
 $pers = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Personalize'
 New-Item -Force -Path $pers | Out-Null
 Set-ItemProperty -Path $pers -Name EnableTransparency -Value 1 -Type DWord

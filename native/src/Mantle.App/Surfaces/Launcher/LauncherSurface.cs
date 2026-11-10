@@ -154,7 +154,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     /// The accent line under the query: only while the query has the keyboard in an ACTIVE window (a page's
     /// :focus-within is off while its window is not focused; a --test launcher is never active, so it has none).
-    void FocusLine() => _focusLine.Opacity = _winActive && _q.FocusState != FocusState.Unfocused ? 1 : 0;
+    void FocusLine() => _focusLine.Opacity = _winActive && Win32.GetForegroundWindow() == _hwnd && _q.FocusState != FocusState.Unfocused ? 1 : 0;
 
     // ------------------------------------------------------------------ the tree (ui/launcher/index.html + launcher.css)
 
