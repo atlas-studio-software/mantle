@@ -131,6 +131,11 @@ over a solid black desktop.
   42769793275 had the runner's own console over both launchers) and reads run-ui's `UITEST:` line. Run 42770736122:
   SSIM light 0.8359, dark 0.7935 (pairs looked at: the Files group is the main gap in both; the native caret shows in dark).
   Open-to-first-frame median native 24.1 / 3.9 ms vs Electron 45.6 / 29.1 (light now includes the screen capture).
+  Final full CI on native/main 960bc48 (run 42772697675, `NATIVE-CI: ok (10 ok)`): launcher SSIM light 0.8586, dark
+  0.8170; keystroke-to-rows median native 5.7 / 5.9 ms vs Electron 16.3 / 16.8; open 30.3 / 4.4 vs 47.4 / 29.7.
+  Run 42775195512 (UI 6/6, keyboard tests 6 of 6 rounds) scored lower (0.7903 / 0.6669) because a Windows "System
+  Properties" paging-file dialog stood over both launchers on that runner (seen in both pairs; not a launcher gap):
+  desk.ps1 -Reset does not close it.
 
 ## Part 5 starts here
 
