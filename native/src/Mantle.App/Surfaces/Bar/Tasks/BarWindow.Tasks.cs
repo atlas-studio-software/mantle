@@ -30,7 +30,11 @@ public sealed partial class CellVm : INotifyPropertyChanged
     public string Name { get; private set; } = "";
     public string Letter { get; private set; } = "?";
     public string ExeName { get; private set; } = "";
-    public string Tip { get; private set; } = "";
+    string _tip = "";
+    bool _flying;
+    /// The tooltip; none while this app's previews are up (bar.js flyBuild: no tooltip window over the pictures).
+    public string? Tip => _flying ? null : _tip;
+    internal bool Flying { set { if (_flying == value) return; _flying = value; Changed(nameof(Tip)); } }
     string _title = "";
     public string Title => _title;
     ImageSource? _icon;
@@ -82,7 +86,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
         string exeName = it.Exe != null ? Path.GetFileName(it.Exe) : "";
         Set(ref _title, title, nameof(Title), notify);
         if (Name != name) { Name = name; Letter = LetterOf(name); if (notify) { Changed(nameof(Name)); Changed(nameof(Letter)); } }
-        if (Tip != tip) { Tip = tip; if (notify) Changed(nameof(Tip)); }
+        if (_tip != tip) { _tip = tip; if (notify) Changed(nameof(Tip)); }
         if (ExeName != exeName) { ExeName = exeName; if (notify) Changed(nameof(ExeName)); }
         if (_run != run || _act != act) { _run = run; _act = act; if (notify) { Changed(nameof(RunVisibility)); Changed(nameof(ActVisibility)); } }
         SetStatus(notify);
@@ -115,7 +119,7 @@ public sealed partial class BarWindow
         if (Host.Args.Test) StartUiBeat();
     }
 
-    void StopTasks() { _beat?.Dispose(); _tasks?.Dispose(); }
+    void StopTasks() { FlyTeardown("the bar is closing"); _beat?.Dispose(); _tasks?.Dispose(); }
 
     // ------------------------------------------------------------------ TEST RUNS ONLY: what the strip's clicks met
     // A queued ping every 250 ms: a UI thread that runs it late is said with how late (a stalled thread drops no click,
@@ -181,6 +185,7 @@ public sealed partial class BarWindow
             string order = string.Join(" | ", _cells.Select(c => c.Title));
             if (order != _testOrder) { _testOrder = order; Host.Log.Line($"bar tasks: test: strip now [{order}]"); }
         }
+        FlyRefresh(list);   // the open flyout follows the push (bar.js flyRefresh)
         _syncs++;
         _cellsDirty = true;
         if (_benchOut != null) DispatcherQueue.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, WriteCells);
@@ -226,6 +231,7 @@ public sealed partial class BarWindow
     {
         TestLine("click", sender);
         if (sender is not Button b || b.Tag is not CellVm vm) return;
+        if (FlyClick(vm)) return;   // the flyout answered it (bar.js el.dock click)
         OpenCell(vm, fresh: false, b);
     }
 
@@ -240,6 +246,7 @@ public sealed partial class BarWindow
         _cellMiddle ??= new PointerEventHandler(Cell_PointerReleased);
         b.RemoveHandler(UIElement.PointerReleasedEvent, _cellMiddle);
         b.AddHandler(UIElement.PointerReleasedEvent, _cellMiddle, true);
+        HookCellHover(b);   // the preview flyout's dwell and leave (BarWindow.Previews.cs)
         if (Host.Args.Test) {
             _cellPress ??= new PointerEventHandler((o, _) => TestLine("press", o));
             b.RemoveHandler(UIElement.PointerPressedEvent, _cellPress);
@@ -268,8 +275,8 @@ public sealed partial class BarWindow
             // a failed open is a warn chip until the next success (bar.js act, ACT_LABEL; BAR-195)
             bool changed = r.Ok ? _chips.Clear("open") : _chips.Fail("open", "App did not open", r.Reason ?? "Mantle did not say why", "warn");
             if (changed) RenderPip(force: true);
-            // two or more windows: none touched, the bar's own window list over the icon (BAR-199; previews: part 2)
-            if (r.Ok && r.Action == "list" && anchor != null) OpenWindowList(vm, anchor);
+            // two or more windows: none touched, the previews over the icon (BAR-199, BAR-221; the list if too many)
+            if (r.Ok && r.Action == "list" && anchor != null) OpenFly(vm, anchor, "click");
         });
     }
 
