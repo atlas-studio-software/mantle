@@ -41,6 +41,8 @@ internal sealed class OsdSurface : ISurface
 {
     const double M = 18, PillW = 288, OpenW = 348, RowH = 44;
     const string Ns = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
+    // osd.css font-family: 'Segoe UI Variable Text' first, as the page names it (the run-osd-parity pairs measure the choice)
+    static readonly FontFamily TextFont = new("Segoe UI Variable Text, Segoe UI Variable, Segoe UI");
     const string Warn = "M8 2.2l6.2 10.9H1.8z M8 6.4v3M8 11.2v.01";
 
     ISurfaceContext _ctx = null!;
@@ -282,6 +284,7 @@ internal sealed class OsdSurface : ISurface
         _pillLine.BorderThickness = _open ? (_below ? new Thickness(0, 0, 0, 1) : new Thickness(0, 1, 0, 0)) : new Thickness(0);
         _pillLine.BorderBrush = _dark ? B("LgDivider") : B("LgSunk");
         foreach (var t in Texts()) t.FontSize = t == _num ? 14 : t == _whyText ? 12 : t.Tag as string == "ink" ? 14 : _dark ? 13 : 12.5;
+        foreach (var t in Texts()) t.FontFamily = TextFont;
 
         // glyph
         bool on = vol && muted && !d.Dead;
@@ -298,7 +301,9 @@ internal sealed class OsdSurface : ISurface
 
         // the chevron (brightness has none); points away from the bar, turned when open
         _more.Visibility = vol ? Visibility.Visible : Visibility.Collapsed;
-        _pill.ColumnDefinitions[3].Width = new GridLength(vol ? 26 : 0);
+        // brightness: three columns (28px 1fr 30px), not a fourth of 0: its column gap would still take 8 DIP from the level
+        if (vol && _pill.ColumnDefinitions.Count == 3) _pill.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(26) });
+        else if (!vol && _pill.ColumnDefinitions.Count == 4) _pill.ColumnDefinitions.RemoveAt(3);
         _pill.ColumnSpacing = 8;
         var cc = new Canvas { Width = 16, Height = 16 };
         cc.Children.Add(PathOf("M4.5 9.8L8 6.3l3.5 3.5", false, 1.4, _dark && _moreHover ? "LgInk" : "LgInk2"));
