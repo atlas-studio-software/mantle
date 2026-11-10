@@ -412,8 +412,8 @@ $Floors = [ordered]@{
   # plan and battery differently, so the bottom-aligned pair scores low; a regression still moves it (lane notes)
   'qs light'       = 0.36   # 0.3872 (run 42789738354, the first with the Wi-Fi and Bluetooth tiles kept)
   'qs dark'        = 0.43   # 0.4519 (same run)
-  'previews light' = 0.93   # 0.9545 / 0.9545 (runs 42786941393, 42789738354)
-  'previews dark'  = 0.95   # 0.9746 / 0.9746 (same runs)
+  'previews light' = 0.92   # 0.9545 / 0.9545 / 0.9418 (runs 42786941393, 42789738354, 42792223889; live DWM pictures)
+  'previews dark'  = 0.94   # 0.9746 / 0.9746 / 0.9599 (same runs)
 }
 
 function Scores([string]$log, [string]$pattern) {

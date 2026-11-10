@@ -15,7 +15,7 @@
   so the height alone shifts every row. These are app-side (the quick-settings lane); the floors only catch a regression.
 - `previews` runs `tools/parity/bar-tasks/run-preview-parity.ps1 -Exe <exe> -Theme both -Out <Out>/parity/previews`
   (the script took no -Exe before: it now takes -Exe, else MANTLE_NATIVE_EXE, else the published exe) and gates each
-  theme on its floor and on `PREVIEW-PARITY: FAILED`. 0.9545 light / 0.9746 dark in both runs.
+  theme on its floor and on `PREVIEW-PARITY: FAILED`. 0.9545 light / 0.9746 dark in two runs, 0.9418 / 0.9599 in a third (the pictures are live DWM thumbnails).
 
 ## The bar pair's two flakes (run-parity.ps1)
 
@@ -27,7 +27,9 @@
   waits, over the CDP link it already holds, until `#network` has a data-state other than `unknown`, `#battery`
   shows no `loading` dash, and that cluster has held for 1.5 s (max 30 s), and reports `readings` in electron.json;
   run-parity.ps1 prints them and makes an unsettled cluster a problem. On the runner it settles in 1.5-1.7 s
-  (net=connected, battery hidden). Native needs no wait: BarWindow.xaml.cs BuildGlyphs draws its wired glyph and
+  (net=connected, battery hidden). An `error` does not count as a reading: run 42792223889 failed bar light at
+  0.9763 with Electron's battery error dash (its first read timed out while the sidecar started; main replaces it
+  once the sidecar's watch is armed), so the wait now holds out for a real state. Native needs no wait: BarWindow.xaml.cs BuildGlyphs draws its wired glyph and
   battery slot from the first frame. (`#battery` starts hidden and a machine with no battery hides it again, so
   "hidden" alone cannot prove a reading: hence the hold.)
 
@@ -44,4 +46,4 @@ as Cancel), whatever process hosts it; desk.ps1 also stops the `SystemProperties
 | launcher dark | 0.55 | 0.80 | 0.8175, 0.8170 |
 | strip | 0.88 | 0.90 | dark 0.9091 / 0.9091, light 0.9258 / 0.9580 |
 | qs light / dark | - | 0.36 / 0.43 | 0.3872 / 0.4519 (run 42789738354) |
-| previews light / dark | - | 0.93 / 0.95 | 0.9545 / 0.9746, both runs |
+| previews light / dark | - | 0.92 / 0.94 | 0.9545 / 0.9746 in both runs, 0.9418 / 0.9599 in run 42792223889 |

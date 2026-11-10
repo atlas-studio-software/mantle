@@ -93,7 +93,7 @@ up, in the same commit as the fix that earns it. The numbers live in `ci.ps1` (`
 | `osd` | `osd-toasts/run-osd-parity.ps1 -Exe <exe> -Out native/out/parity/osd` | a pair not scored, any state under the floor | 0.55 | pill states 0.87-0.92, `vol-dead` (unavailable) 0.58: the why line wraps differently (run 42389540367, docs/lanes/osd-toasts.md) |
 | `strip` | `bar-tasks/run-strip-parity.ps1 -Theme both -Out native/out/parity/bar-tasks` | fewer than 2 strips scored, any under the floor | 0.90 | dark 0.9091 / 0.9091, light 0.9258 / 0.9580 (runs 42786941393, 42789738354; first gated run 42770119126: 0.9091 / 0.9258) |
 | `qs` | `quick-settings/run-qs-parity.ps1 -Exe <exe> -Out native/out/parity/qs` | no `QS-PARITY summary: 2 scored of 2`, a theme under its floor | light 0.36, dark 0.43 | light 0.3872, dark 0.4519 (run 42789738354). Low on purpose: native part 1's pop-up is ~44 px taller and ~20 px wider than Electron's and words the power plan and battery time differently, and the pair is compared bottom-aligned (docs/lanes/core-7.md) |
-| `previews` | `bar-tasks/run-preview-parity.ps1 -Exe <exe> -Theme both -Out native/out/parity/previews` | a theme not scored or under its floor, `PREVIEW-PARITY: FAILED` | light 0.93, dark 0.95 | light 0.9545 / 0.9545, dark 0.9746 / 0.9746 (runs 42786941393, 42789738354) |
+| `previews` | `bar-tasks/run-preview-parity.ps1 -Exe <exe> -Theme both -Out native/out/parity/previews` | a theme not scored or under its floor, `PREVIEW-PARITY: FAILED` | light 0.92, dark 0.94 | light 0.9545 / 0.9545 / 0.9418, dark 0.9746 / 0.9746 / 0.9599 (runs 42786941393, 42789738354, 42792223889) |
 
 ## Results so far
 
