@@ -279,7 +279,12 @@ async function frames(browser, lab, scene, dark, reduced) {
   R.turn = { at: { opacity: mid.opacity, y: ty(mid.transform) }, back: turn.map((x) => ({ f: x.f, opacity: x.st.opacity, y: ty(x.st.transform) })) };
   const dT = await diff(lab, midPng, turn[0].png);
   R.turnJump = dT;
-  check(`${name}: the turn-round's first frame == the pose it turned at (no jump)`, dT.max <= 3 && Math.abs(turn[0].st.opacity - mid.opacity) < 0.01 && Math.abs(ty(turn[0].st.transform) - ty(mid.transform)) < 0.05, { dT, mid, t0: turn[0].st });
+  // (measured: in dark one physical row, the moving bar's anti-aliased bottom edge at a fractional y, can differ by up
+  // to ~18 levels between the paused leave frame and the new transition's first: a re-raster of the same pose, the
+  // pose itself is identical; any other difference fails)
+  const edgeOnly = dT.box && dT.box[1] === dT.box[3] && Math.abs(dT.box[1] - Math.round((28 + ty(mid.transform)) * DPR)) <= 1;
+  R.turnEdgeOnly = !!edgeOnly;
+  check(`${name}: the turn-round's first frame == the pose it turned at (no jump; at most the bottom edge's AA row)`, (dT.max <= 3 || edgeOnly) && Math.abs(turn[0].st.opacity - mid.opacity) < 0.01 && Math.abs(ty(turn[0].st.transform) - ty(mid.transform)) < 0.05, { dT, mid, t0: turn[0].st });
   check(`${name}: the turn-round lands at rest`, turn[4].st.opacity === 1 && Math.abs(ty(turn[4].st.transform)) < 0.05, turn[4].st);
   check(`${name}: no page errors`, (p._errs || []).concat(q._errs || []).length === 0, (p._errs || []).concat(q._errs || []));
   const file = path.join(OUT, `motion-strip-${name}.png`);
