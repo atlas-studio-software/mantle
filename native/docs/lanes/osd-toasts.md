@@ -84,10 +84,35 @@ engages in the app: the surface host (native-r3-core-4) was not on `native/main`
   start, so the bar is no longer the last window and a WM_CLOSE on it left the process alive (UiTests
   `Close_and_kill_leave_no_process_behind` failed in runs 42389540367 and 42390182560 without this).
 
-## Part 3 starts here
+## Part 3 (branch `native/r4-osd`): OSD pairs closed, toasts feature + surface
 
-1. Chase the pill SSIM (the glyph stroke and text rendering; the shadow) and the dead state's why-line height.
-2. `[Feature("toasts", ...)]`: the owner + safety + picker on the notification list, quiet check, own banners on the page,
-   status line, `toasts.state`, the takeover only in a `--live` sole-shell run; then `[Surface("toasts")]` (card, stack,
-   timing, "+N more", cornerSpots with bar-follow) and its pairs in `native/tools/parity/osd-toasts/`.
-3. Brightness (osd.bright watch + flyout verdicts) and the per-app rows once a `qs.audio.sessions` / `qs.set` owner exists.
+### OSD: what the SSIM gap was (diff images of run 42767286777, `vol-62-light`)
+
+| Cause | Fix |
+|---|---|
+| The hairline: CSS draws the border OVER the element's own face (background-clip: border-box); WinUI's Border draws its background inside the border, so the 10 % edge ink sat on the desktop (0x737D8C vs Electron's 0xE3E3E6) | `BackgroundSizing.OuterBorderEdge` on the pane |
+| The light shadow: Composition's DropShadow BlurRadius is not CSS's blur: a hard band 0x13-0x18 darker than the desktop to the window's edge (Electron 0x02) | `Surfaces/Osd/CssShadow.cs`: the CSS box-shadow formula (shape + spread, Gaussian sigma = blur / 2, nothing under the element) into a bitmap; shared with the toast cards |
+| The `unavailable` why line did not wrap: a horizontal StackPanel measures its text unbounded (one line, clipped: 105 px tall vs 122) | a two-column Grid; line-height 1.4 exact (BlockLineHeight) |
+| Brightness: a fourth column of width 0 still took its 8 DIP column gap from the level | the fourth column is removed for brightness |
+| Electron's shots had ClearType colour fringes: shot over an OPAQUE colour Chromium uses LCD text; Mantle's real pop-up window is transparent, where it never does | `electron-osd.cjs` passes `--disable-lcd-text` (harness only; command line and output lines unchanged) |
+| Text family | `Segoe UI Variable Text` named first, as osd.css |
+
+### Toasts
+
+| Native file | Electron source | What it is |
+|---|---|---|
+| `Mantle.Core/Features/Notifications/NotificationFeed.cs` | `lib/notifications.js` (list + watch only) | the sidecar's `notifications` list and watch, READ only; every read published, a failed one with its reason |
+| `Mantle.Core/Features/Toasts/ToastsFeature.cs` | `lib/features/toasts.js` | `[Feature("toasts")]`: picker on the list; owner + safety ONLY in a --live run whose host said where the record lives (`Configure`, App.xaml.cs block "toasts wiring"); quiet check; access; own banners (`ToastsFeature.Shared`); commands layout / ready / click / more / action / copy / state; test-only testShow / testOwn / testIds |
+| `Mantle.Core/Features/Toasts/ToastsStatus.cs` | `_toasts-status.js` | the one status line |
+| `Mantle.App/Surfaces/Toasts/ToastsSurface.cs` | `ui/toasts/*` | `[Surface("toasts")]`: window made on the first banner, closed 30 s after the last; card, stack of 3 + "+N more", in/out motion, 6 s life with hover hold, X, own banners' buttons / progress / detail / Copy, update in place, light and dark, raised, never activating |
+
+- **Takeover gate.** `ToastsFeatureTests.A_test_run_makes_no_owner_and_never_reads_or_writes_Windows_banner_settings` and `A_live_run_takes_the_covered_apps_shows_their_new_toasts_and_puts_back_on_stop`; the UI test asserts from the log that a --test run takes nothing.
+- **Test road.** `MANTLE_TEST_TOASTS` = a JSON list of steps; each `--test-surface=show:toasts` runs the next (`testShow` / `testOwn` / `testIds`; `at` = the window's bottom right in physical px; `theme`).
+- **Not ported / deviations.** The glide with the bar (no bar motion source: the stack stands above the pill when the bar is up); the shaped tall column (the window is sized to the stack: Electron's own no-shape road); the FLIP slide of the cards below a leaving one; the early "toast coming" pre-warm; a click that brings the app's window forward or opens the bell (no native owner: a click asks the sidecar's `open`, a failure is said); "+N more" opens nothing yet (said); data: URL icons (file / http / ms-appx only, else the letter tile); the screenshot card and bar pop-ups as corner occupants; toast screenshot pairs (no script yet).
+- **Requests.** Bar lane: a pill rect / `barRect` source and bar motion events (OSD and toast glide). Core: ship `tools/restore-banners.ps1` next to the exe (the toasts block points at `<exe dir>/tools/restore-banners.ps1`); a notification-list owner (`notifs.*`) for "+N more" and the click fallback; an app-window focus command for a click. QS: `qs.audio.sessions` / `qs.set` (OSD per-app rows).
+
+## Part 4 starts here
+
+1. Toast screenshot pairs in `tools/parity/osd-toasts/` (an Electron shot of `ui/toasts/index.html` over a preload `window.mantle`; the native window placed by a step's `at`).
+2. The 30 s idle close and the hover hold under a UI test; the toast glide once a bar motion source exists.
+3. OSD: brightness (`osd.bright`), the glide, the backdrop picture, the panel's click-outside, per-app rows.
