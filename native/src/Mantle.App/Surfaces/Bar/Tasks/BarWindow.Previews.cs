@@ -61,6 +61,7 @@ public sealed partial class BarWindow
     CellVm? _flyHover, _noFly;
     DispatcherQueueTimer? _flyDwell, _flyLeave, _flyWatch, _flyRebuild, _flyReady;
     Thumbs? _thumbs;
+    bool _leaveArmed;
     string? _testFlyout;
     bool _testFlyoutDone;
 
@@ -79,6 +80,23 @@ public sealed partial class BarWindow
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool GetClientRect(IntPtr hwnd, out Native.Win32.RECT r);
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetWindowRect")] static extern bool FlyWindowRect(IntPtr hwnd, out Native.Win32.RECT r);
+    [System.Runtime.InteropServices.DllImport("user32.dll", EntryPoint = "GetCursorPos")] static extern bool FlyCursor(out Native.Win32.POINT p);
+
+    /// The pointer is on the flyout's pop-up window (its slack below covers the 7 DIP gap to the pill) or on its icon.
+    /// The leave is decided from the real cursor, not only from XAML's pointer events: a pointer leaving a no-activate
+    /// pop-up window gave no usable PointerExited on the runner (UI test, round 4).
+    bool PointerOverFly(Fly f)
+    {
+        if (!FlyCursor(out var p)) return true;   // no cursor to read: never close on a guess
+        if (f.Dest != IntPtr.Zero && FlyWindowRect(f.Dest, out var r) && p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom) return true;
+        try {
+            var g = Geometry; double sc = g.Scale;
+            var a = f.Anchor.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0));
+            double x = g.Window.Left + a.X * sc, y = g.Window.Top + a.Y * sc;
+            return p.X >= x && p.X < x + f.Anchor.ActualWidth * sc && p.Y >= y && p.Y < y + f.Anchor.ActualHeight * sc;
+        } catch (ArgumentException) { return false; }
+    }
 
     static void StopTimer(DispatcherQueueTimer? t) => t?.Stop();
 
@@ -104,7 +122,7 @@ public sealed partial class BarWindow
     void FlyCellEnter(CellVm vm, Button b)
     {
         _flyHover = vm;
-        StopTimer(_flyLeave);
+        FlyCancelLeave();
         StopTimer(_flyDwell);
         bool running = vm.Item.Windows.Count > 0;
         // a flyout is already up: follow the pointer across the icons with no dwell, the way Windows swaps its
@@ -133,10 +151,14 @@ public sealed partial class BarWindow
     void FlyScheduleLeave()
     {
         if (_fly == null || _fly.By != "hover") return;
+        _leaveArmed = true;
         Timer(ref _flyLeave, Previews.LeaveMs, () => {
-            if (_fly != null && _fly.By == "hover" && FlyUp) Popups?.Close("the pointer left the icon and its previews");
+            _leaveArmed = false;
+            if (_fly != null && _fly.By == "hover" && FlyUp && !PointerOverFly(_fly)) Popups?.Close("the pointer left the icon and its previews");
         });
     }
+
+    void FlyCancelLeave() { StopTimer(_flyLeave); _leaveArmed = false; }
 
     /// The strip's left click (bar.js el.dock click): true when the flyout already answered it.
     bool FlyClick(CellVm vm)
@@ -190,12 +212,19 @@ public sealed partial class BarWindow
     {
         if (_fly == null) return;
         if (!FlyUp) { FlyTeardown("the flyout closed"); return; }
+        // a hover-opened flyout: the cursor itself arms and cancels the leave (bar.js flyScheduleLeave / flyCancelLeave)
+        if (_fly.By == "hover") {
+            bool over = PointerOverFly(_fly);
+            if (over && _leaveArmed) FlyCancelLeave();
+            else if (!over && !_leaveArmed) FlyScheduleLeave();
+        }
         Timer(ref _flyWatch, 40, WatchFly);
     }
 
     void FlyTeardown(string why)
     {
-        StopTimer(_flyDwell); StopTimer(_flyLeave); StopTimer(_flyWatch); StopTimer(_flyRebuild); StopTimer(_flyReady);
+        StopTimer(_flyDwell); StopTimer(_flyWatch); StopTimer(_flyRebuild); StopTimer(_flyReady);
+        FlyCancelLeave();
         _thumbs?.Clear(why);
         if (_fly != null) _fly.Cell.Flying = false;
         _fly = null;
@@ -205,7 +234,8 @@ public sealed partial class BarWindow
     {
         var root = (Grid)XamlReader.Load("<Grid " + WlNs + " Background='Transparent'/>");   // hit-testable everywhere
         root.Children.Add(inner);
-        root.PointerEntered += (_, _) => { if (_fly == f) StopTimer(_flyLeave); };
+        root.PointerEntered += (_, _) => { if (_fly == f) FlyCancelLeave(); };
+        root.Loaded += (_, _) => { if (_fly == f && f.Dest == IntPtr.Zero) f.Dest = FlyHwnd(root, f.Name + " windows"); };
         root.PointerExited += (_, e) => {
             var p = e.GetCurrentPoint(root).Position;
             if (p.X >= 0 && p.Y >= 0 && p.X < root.ActualWidth && p.Y < root.ActualHeight) return;   // bubbled from a child
@@ -243,7 +273,7 @@ public sealed partial class BarWindow
         // pictures cannot ride the motion, so they land on the resting rects: bar.js popRestRect)
         ((FrameworkElement)root).Loaded += (_, _) => {
             if (_fly != f) return;
-            f.Dest = FlyHwnd((FrameworkElement)root, f.Name + " windows");
+            if (f.Dest == IntPtr.Zero) f.Dest = FlyHwnd((FrameworkElement)root, f.Name + " windows");
             int ms = (ReducedMotion ? PopupWindow.ReducedMs : PopupWindow.DurSMs) + 30;
             Timer(ref _flyReady, ms, () => { if (_fly == f) { f.Ready = true; FlySync(); } });
         };
@@ -274,9 +304,10 @@ public sealed partial class BarWindow
     FlyCard FlyCardFor(Fly f, CellVm vm, TaskWindow w, int n, double sw, double sh)
     {
         string corner = Dark ? "10" : "8";   // --lg-r per theme
-        string tpl = CardTemplate.Replace("CORNER", corner).Replace("HOVER", "LgHover").Replace("PRESS", "LgPress").Replace("FGHOVER", "");
-        string xTpl = CardTemplate.Replace("CORNER", "6").Replace("HOVER", "LgWarnSoft").Replace("PRESS", "LgWarnSoft")
-            .Replace("FGHOVER", "<Setter Target='Cp.Foreground' Value='{ThemeResource LgWarn}'/>");
+        // FGHOVER first: "HOVER" is inside it
+        string tpl = CardTemplate.Replace("FGHOVER", "").Replace("CORNER", corner).Replace("HOVER", "LgHover").Replace("PRESS", "LgPress");
+        string xTpl = CardTemplate.Replace("FGHOVER", "<Setter Target='Cp.Foreground' Value='{ThemeResource LgWarn}'/>")
+            .Replace("CORNER", "6").Replace("HOVER", "LgWarnSoft").Replace("PRESS", "LgWarnSoft");
         string ico = vm.Icon != null
             ? ""
             : "<Border Width='16' Height='16' CornerRadius='4' Background='{ThemeResource LgTile}'><TextBlock FontSize='10' FontWeight='SemiBold' HorizontalAlignment='Center' VerticalAlignment='Center' Foreground='{ThemeResource LgInk}' Text='" + SecurityElement.Escape(vm.Letter) + "'/></Border>";
