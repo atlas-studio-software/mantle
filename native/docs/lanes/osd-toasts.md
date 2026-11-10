@@ -128,7 +128,7 @@ Fixed in this lane:
 - The theme-change crash (the two theme tests): every crash is `SystemBackdrop`'s own `OnDefaultSystemBackdropConfigurationChanged`, called with no target, throwing "The parameter is incorrect: target", an unhandled error that stops Mantle about 6 ms after "the bar now shows dark". These were bisected on the runner (theme.set + look.json tests, 2 runs each, the app logs counted):
   - run 42775032765: shadow off 0/4 crashed; toasts surface or feature off, still 4/4.
   - run 42776421533 was wasted (the diag skipped the UI-test build).
-  - run 42777016071: a blank `WriteableBitmap` shown 0/4; the shadow pixels computed and never shown 4/4.
+  - run 42776898579: a blank `WriteableBitmap` shown 0/4; the shadow pixels computed and never shown 4/4.
   - run 42777700651: no shadow plus one forced full GC 4/4; no shadow plus a 400 ms UI-thread hold 0/4.
 
   So a full garbage collection, then a theme change, crashes. `CssShadow` allocated about 90 bytes per pixel on the managed heap (about 9 MB per OSD size), which brought that collection into the first seconds. `CssShadow` now uses unmanaged working planes and one reused BGRA buffer. The theme tests pass (run 42778532495).
