@@ -7,6 +7,8 @@ using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Mantle.App.Native;
 using Mantle.Core;
+using Mantle.Core.Commands;
+using Mantle.Core.Features.JumpList;
 using Mantle.Core.Features.Pinned;
 using Mantle.Core.Features.WindowList;
 using Mantle.Core.Lifecycle;
@@ -29,6 +31,9 @@ internal sealed partial class BarTasksHost : IDisposable
     TaskStripService? _svc;
     IHostScheduler? _host;
     Mantle.Core.Data.Stores? _stores;
+    JumpListService? _jl;
+    ICommandBus? _bus;
+    IDisposable? _ontopSub, _toastSub;
 
     public BarTasksHost(DispatcherQueue ui, Action<string> log) { _ui = ui; _log = log; }
 
@@ -61,7 +66,7 @@ internal sealed partial class BarTasksHost : IDisposable
     }
 
     /// On the host thread, once: start the strip's host side on the platform.
-    public void AttachOnHost(IPlatform platform, IHostScheduler host)
+    public void AttachOnHost(IPlatform platform, IHostScheduler host, ICommandBus? bus = null, IEvents? events = null)
     {
         if (_svc != null) return;
         _host = host;
@@ -83,6 +88,11 @@ internal sealed partial class BarTasksHost : IDisposable
             Marks = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
             WindowsProblem = p => _ui.TryEnqueue(() => { if (WindowsProblem == p) return; WindowsProblem = p; Changed?.Invoke(); }),
         });
+        // the right-click menu (lib/features/jumplist.js): its pin rows write the same store as the dragged order
+        string? jlFixture = Host.Args.Test ? Host.Env("MANTLE_TEST_JUMPLIST") : null;
+        _jl = new JumpListService(new JumpListOptions { Platform = platform, Overlay = overlay, Test = Host.Args.Test, Fixture = jlFixture, Log = _log });
+        _bus = bus;
+        AttachOnTop(events);
         _log($"bar tasks: the strip reads the running apps from the platform's windows push; pins: {(dir != null ? (Host.Args.Kind == RunKind.Live ? "Windows' taskbar pins" : "the scratch folder MANTLE_TEST_PINS_DIR") : note)}");
         _svc.Start();
     }
@@ -127,8 +137,110 @@ internal sealed partial class BarTasksHost : IDisposable
         });
     }
 
+    // ---------------------------------------------------------------- the right-click menu (BarWindow.JumpList.cs)
+    /// Run <paramref name="work"/> on the host thread; its answer (or <paramref name="fail"/> of what it threw) comes back on the UI thread.
+    void OnHost<T>(Func<ValueTask<T>> work, Func<string, T> fail, Action<T> done)
+    {
+        if (_host == null || _jl == null) { done(fail("the bar is not connected to Mantle's host yet")); return; }
+        _host.Post(async () => {
+            T r;
+            try { r = await work().ConfigureAwait(true); }
+            catch (Exception e) { r = fail(e.Message); }
+            _ui.TryEnqueue(() => done(r));
+        });
+    }
+
+    static JumpAct Failed(string why) => new(false, why);
+
+    public void JumpGet(JumpApp app, Action<JumpListReply> done) =>
+        OnHost(() => _jl!.GetAsync(app), w => new JumpListReply(false, false, w, Array.Empty<JumpSection>(), null, null, null, 0), done);
+    public void JumpOpen(JumpApp app, string item, string? title, Action<JumpAct> done) => OnHost(() => _jl!.OpenAsync(app, item, title), Failed, done);
+    public void JumpRemove(JumpApp app, string item, string? title, Action<JumpAct> done) => OnHost(() => _jl!.RemoveAsync(app, item, title), Failed, done);
+    public void JumpClose(IReadOnlyList<string> hwnds, Action<JumpAct> done) => OnHost(() => _jl!.CloseAsync(hwnds), Failed, done);
+
+    /// Pin / Unpin from taskbar (Mantle's own list); the strip is rebuilt at once after it, done or not (refreshPinned).
+    public void JumpPin(JumpApp app, bool pin, bool undo, Action<JumpAct> done) => OnHost(async () => {
+        var r = await _jl!.PinAsync(app, pin, undo).ConfigureAwait(true);
+        _svc?.Refresh(pin ? "an app was pinned from its menu" : "an app was unpinned from its menu");
+        return r;
+    }, Failed, done);
+
+    // ---------------------------------------------------------------- keep on top (lib/features/ontop.js through the bus)
+    /// Windows Mantle keeps on top (hwnd -> name), from the <c>ontop.state</c> push; UI thread.
+    public IReadOnlyDictionary<string, string> OnTopPinned { get; private set; } = new Dictionary<string, string>();
+    /// Why the bar cannot show which windows are kept on top (ui/bar/ontop.js CANT), or null.
+    public string? OnTopProblem { get; private set; } = "the bar can't show which windows are kept on top right now (restart Mantle to fix it)";
+    public event Action? OnTopChanged;
+    public event Action<string>? OnTopToast;
+
+    void AttachOnTop(IEvents? events)
+    {
+        if (events == null) { _log("bar tasks: keep on top: the bar has no event channel, so the pin badge does not show"); return; }
+        try {
+            _ontopSub = events.Subscribe<System.Text.Json.JsonElement>(Mantle.Core.Features.OnTop.OnTopFeature.StateEvent, TakeOnTop);
+            // the feature is installed after the strip attaches, so its replay never reached this subscription: ask once
+            _ontopAsk = _host?.Delay(TimeSpan.FromMilliseconds(1500), () => _ = AskOnTop(20));
+            _toastSub = events.Subscribe<System.Text.Json.JsonElement>(Mantle.Core.Features.OnTop.OnTopFeature.ToastEvent, t => {
+                string text = t.TryGetProperty("text", out var x) ? x.ToString() : "";
+                string why = t.TryGetProperty("reason", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String ? " - " + r.GetString() : "";
+                _ui.TryEnqueue(() => OnTopToast?.Invoke(text + why));
+            });
+        } catch (Exception e) { _log("bar tasks: keep on top: could not subscribe to the pin state (" + e.Message + ")"); }
+    }
+
+    IDisposable? _ontopAsk;
+
+    void TakeOnTop(System.Text.Json.JsonElement s)
+    {
+        var d = new Dictionary<string, string>(StringComparer.Ordinal);
+        if (s.ValueKind == System.Text.Json.JsonValueKind.Object && s.TryGetProperty("pinned", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
+            foreach (var p in arr.EnumerateArray())
+                if (p.TryGetProperty("hwnd", out var h)) d[h.ToString()] = p.TryGetProperty("name", out var n) ? n.ToString() : "";
+        _ui.TryEnqueue(() => {
+            if (OnTopProblem != null) _log($"bar tasks: keep on top: the pin state is known ({d.Count} window(s) kept on top)");
+            OnTopPinned = d; OnTopProblem = null; OnTopChanged?.Invoke();
+        });
+    }
+
+    /// On the host thread: ontop.state, retried every 1.5 s while the feature is not up yet (at most <paramref name="left"/> times).
+    async Task AskOnTop(int left)
+    {
+        if (_bus == null || _svc == null) return;
+        var c = await _bus.CallAsync("ontop.state", null, "bar").ConfigureAwait(true);
+        if (c.Ok) { TakeOnTop(c.Result); return; }
+        if (left == 20) _log("bar tasks: keep on top: the pin state did not answer yet (" + (c.Error ?? "no answer") + "); asking again every 1.5 s");
+        if (left > 1) _ontopAsk = _host?.Delay(TimeSpan.FromMilliseconds(1500), () => _ = AskOnTop(left - 1));
+        else _log("bar tasks: keep on top: the pin state never answered (" + (c.Error ?? "no answer") + "), so the bar can't show which windows are kept on top");
+    }
+
+    /// The menu's "Keep on top" / "Stop keeping on top" (ontop.set {hwnd, pid, name, on}); a refusal comes back in words.
+    public void OnTopSet(string hwnd, int pid, bool on, string name, Action<JumpAct> done)
+    {
+        if (_bus == null || _host == null) { done(new JumpAct(false, "keep on top: the bar did not reach Mantle's commands")); return; }
+        var bus = _bus;
+        var args = new JsonObject { ["hwnd"] = hwnd, ["on"] = on, ["name"] = name.Length > 48 ? name[..48] : name };
+        if (pid > 0) args["pid"] = pid;
+        _host.Post(async () => {
+            JumpAct r;
+            try {
+                var c = await bus.CallAsync("ontop.set", args, "bar").ConfigureAwait(true);
+                if (!c.Ok) r = new JumpAct(false, c.Error ?? "keep on top did not answer");
+                else {
+                    var o = c.Result;
+                    bool ok = o.TryGetProperty("ok", out var k) && k.ValueKind == System.Text.Json.JsonValueKind.True;
+                    string text = o.TryGetProperty("text", out var t) ? t.ToString() : "";
+                    string? why = o.TryGetProperty("reason", out var w) && w.ValueKind == System.Text.Json.JsonValueKind.String ? w.GetString() : null;
+                    string did = o.TryGetProperty("did", out var dd) ? dd.ToString() : "";
+                    r = new JumpAct(ok, ok ? text : (why != null ? $"{text}: {why}" : text), DryRun: did == "dry", Did: did);
+                }
+            } catch (Exception e) { r = new JumpAct(false, e.Message); }
+            _ui.TryEnqueue(() => done(r));
+        });
+    }
+
     public void Dispose()
     {
+        _ontopSub?.Dispose(); _toastSub?.Dispose(); _ontopAsk?.Dispose();
         var s = _svc; _svc = null;
         var st = _stores; _stores = null;
         if (s != null) _host?.Post(() => { s.Dispose(); st?.Dispose(); });

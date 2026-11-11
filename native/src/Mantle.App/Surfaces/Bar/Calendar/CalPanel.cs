@@ -32,10 +32,10 @@ internal sealed class CalPanel
     public const double WidthDip = 268, PadX = 12, PadY = 11, CellH = 28, RowH = 28, ListMax = 140;
     const string Ns = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
 
-    /// What the panel may ask of the bar: a new height, the keyboard (Q-W6) and its return, the close, and Windows' own
-    /// notification centre (win+n) until Mantle's (Bar/Notifications) is native.
+    /// What the panel may ask of the bar: a new height, the keyboard (Q-W6) and its return, the close, a key press, and
+    /// Mantle's own notification centre (BAR-855: the footer link opens it, Bar/Notifications#OpenNotifications).
     public sealed record Room(Func<double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys, Action<string> Close,
-        Func<string, Task<string?>> Keys);
+        Func<string, Task<string?>> Keys, Action? OpenNotifications = null);
 
     readonly Action<string> _log;
     readonly bool _test;
@@ -573,12 +573,14 @@ internal sealed class CalPanel
         _room.Close("Settings opened");
     }
 
-    async Task Notifications()
+    Task Notifications()
     {
-        // Mantle's own centre (the bell, Bar/Notifications) is another lane's; until it is native, Windows' own (win+n)
-        if (_test) { _log("cal: dry run (--test): would press win+n (Windows' notification centre); nothing was pressed"); return; }
+        // BAR-855 (bar.js calfoot): Mantle's own centre, the bell's pop-up. It is Mantle's own window, so a test run opens
+        // it too; nothing in Windows is pressed.
         _room.Close("Notifications");
-        if (await _room.Keys("win+n") is { } why) _log("cal: Windows' notification centre did not open: " + why);
+        if (_room.OpenNotifications is { } open) { _log("cal: Notifications: opening Mantle's notification centre"); open(); }
+        else _log("cal: Notifications: the bar has no notification centre to open");
+        return Task.CompletedTask;
     }
 
     // ------------------------------------------------------------------ look

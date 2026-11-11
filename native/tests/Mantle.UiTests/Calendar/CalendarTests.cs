@@ -165,7 +165,7 @@ public class CalendarTests
     }
 
     [TestMethod]
-    public void Signed_out_it_still_draws_the_month_offers_Connect_and_Notifications_is_a_dry_run()
+    public void Signed_out_it_still_draws_the_month_offers_Connect_and_Notifications_opens_Mantles_centre()
     {
         var (app, dir) = Launch("cal-none", "light", fixture: null);
         using var _ = app;
@@ -175,6 +175,9 @@ public class CalendarTests
         Assert.AreEqual(0, Ids(w, "cal.day.").Count(id => Status(El(w, id)).Contains("dot")), "a dot with no events");
         El(w, "cal.connect");
         Press(El(w, "cal.notifications"));
-        Has(dir, "cal: dry run (--test): would press win+n", "Notifications pressed something in a test run");
+        // BAR-855: the footer link opens Mantle's own centre (the bell's pop-up), never win+n
+        Has(dir, "cal: Notifications: opening Mantle's notification centre", "the footer link did not ask for Mantle's centre");
+        Has(dir, "notifs: the panel opened (", "Mantle's notification centre did not open from the calendar", 8000);
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("would press win+n"), "the calendar's Notifications link pressed win+n");
     }
 }
