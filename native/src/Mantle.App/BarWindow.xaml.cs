@@ -153,11 +153,13 @@ public sealed partial class BarWindow : Window
         System.Threading.Tasks.Task.Run(() =>
         {
             var n = Surfaces.Bar.Frame.Chips.NotificationAccess();   // a WinRT call: off the UI thread
-            DispatcherQueue.TryEnqueue(() => { if (n != null) _chips.Fail(n.Key, n.Label, n.Reason, n.Tone); RenderPip(); });
+            // once the notification centre has a list, its health() owns the "notifs" chip (lane native-r7-notif)
+            DispatcherQueue.TryEnqueue(() => { if (n != null && _notifs?.Data == null) _chips.Fail(n.Key, n.Label, n.Reason, n.Tone); RenderPip(); });
         });
         Tick();
         StartFrame();
         StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
+        StartNotifications();   // lane native-r7-notif: the bell + centre, the tray strip, the More menu (Surfaces/Bar/Notifications, Tray, Chips)
     }
 
     // ------------------------------------------------------------------ the glass
@@ -199,7 +201,7 @@ public sealed partial class BarWindow : Window
     // ------------------------------------------------------------------ the pip on "more" (bar.js renderChips)
     void RenderPip(bool force = false)
     {
-        var p = _chips.Pip(null);   // the shell state reaches the bar when it becomes a surface (native-core)
+        var p = _chips.Pip(_shellState);   // the shell state arrives over lane native-r7-notif's surface link (Surfaces/Bar/Notifications)
         if (p == null && !force) return;
         var (shown, warn, tip) = p ?? _pipNow;
         _pipNow = (shown, warn, tip);
