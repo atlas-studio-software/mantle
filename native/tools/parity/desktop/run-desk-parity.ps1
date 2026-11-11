@@ -46,6 +46,7 @@ Add-Type -Namespace DeskPar -Name Z -MemberDefinition @'
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string title);
 [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
 public static bool Raise(string title) { IntPtr h = FindWindowW(null, title); return h != IntPtr.Zero && SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, 0x0013); }
+public static bool Under(string top, string below) { IntPtr t = FindWindowW(null, top), b = FindWindowW(null, below); return t != IntPtr.Zero && b != IntPtr.Zero && SetWindowPos(b, t, 0, 0, 0, 0, 0x0013); }
 '@
 
 # ---- the fixture both sides draw (the UI tests' own: a frozen 4:15:32 PM, numbers, no dashboard, two strip rows)
@@ -127,9 +128,11 @@ try {
     for ($i = 0; $i -lt 150 -and -not $m; $i++) { Start-Sleep -Milliseconds 200; $all = [regex]::Matches((LogText $log), $re); if ($all.Count) { $m = $all[$all.Count - 1] } }
     if (-not $m) { $rows += "desk-$theme no score: the native layer never reported its panes in 30 s"; Copy-Item $log (Join-Path $Out "native-desk-$theme-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     if (-not [DeskPar.Z]::Raise('Mantle desktop')) { Say 'the native layer could not be put over the backdrop' }
+    if (-not [DeskPar.Z]::Under('Mantle desktop', 'Desktop parity backdrop')) { Say 'the backdrop could not be put under the native layer' }
     Start-Sleep -Milliseconds 1500   # the last paint, then the rects again (a late layout pass re-reports them)
     $all = [regex]::Matches((LogText $log), $re); $m = $all[$all.Count - 1]
     $g = $m.Groups
+    try { $lay = [ParityNative]::Grab(40, 40, 960, 540); (Png $lay 960 540).Save((Join-Path $Out "native-desk-$theme-layer.png")) } catch { Say "no layer grab: $($_.Exception.Message)" }
     Write-Host "desk-parity native $theme $($m.Value)"
     foreach ($part in @(@{ n = 'stats'; i = 5 }, @{ n = 'strip'; i = 13 })) {
       $k = $part.i

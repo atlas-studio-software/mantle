@@ -83,7 +83,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         AutomationProperties.SetName(_root, "Desktop layer");   // a panel with no name has no automation peer: the tests read its theme here
         _win = new Window { Title = "Mantle desktop", Content = _root };
         var p = OverlappedPresenter.Create();
-        p.IsResizable = ctx.Test; p.IsMaximizable = false; p.IsMinimizable = false;
+        p.IsResizable = false; p.IsMaximizable = false; p.IsMinimizable = false;   // not resizable even in --test: a resizable borderless window stayed a white sheet on the runner
         p.SetBorderAndTitleBar(false, false);
         _win.AppWindow.SetPresenter(p);
         _win.AppWindow.IsShownInSwitchers = false;
