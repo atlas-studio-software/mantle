@@ -196,7 +196,10 @@ internal sealed partial class BarTasksHost : IDisposable
         if (s.ValueKind == System.Text.Json.JsonValueKind.Object && s.TryGetProperty("pinned", out var arr) && arr.ValueKind == System.Text.Json.JsonValueKind.Array)
             foreach (var p in arr.EnumerateArray())
                 if (p.TryGetProperty("hwnd", out var h)) d[h.ToString()] = p.TryGetProperty("name", out var n) ? n.ToString() : "";
-        _ui.TryEnqueue(() => { OnTopPinned = d; OnTopProblem = null; OnTopChanged?.Invoke(); });
+        _ui.TryEnqueue(() => {
+            if (OnTopProblem != null) _log($"bar tasks: keep on top: the pin state is known ({d.Count} window(s) kept on top)");
+            OnTopPinned = d; OnTopProblem = null; OnTopChanged?.Invoke();
+        });
     }
 
     /// On the host thread: ontop.state, retried every 1.5 s while the feature is not up yet (at most <paramref name="left"/> times).
@@ -205,6 +208,7 @@ internal sealed partial class BarTasksHost : IDisposable
         if (_bus == null || _svc == null) return;
         var c = await _bus.CallAsync("ontop.state", null, "bar").ConfigureAwait(true);
         if (c.Ok) { TakeOnTop(c.Result); return; }
+        if (left == 20) _log("bar tasks: keep on top: the pin state did not answer yet (" + (c.Error ?? "no answer") + "); asking again every 1.5 s");
         if (left > 1) _ontopAsk = _host?.Delay(TimeSpan.FromMilliseconds(1500), () => _ = AskOnTop(left - 1));
         else _log("bar tasks: keep on top: the pin state never answered (" + (c.Error ?? "no answer") + "), so the bar can't show which windows are kept on top");
     }

@@ -71,6 +71,7 @@ public partial class StripTests
             $"in 20 s the strip did not show both pins with the fixture's window on Alpha Shell; cells: {Describe(cs)}");
         Func<string> log = () => LogSince(profile, 0);
         Host.LogContains(log, "jump list: a --test run with MANTLE_TEST_JUMPLIST", "the made-up jump lists were not taken", 5000);
+        Host.LogContains(log, "bar tasks: keep on top: the pin state is known (0 window(s) kept on top)", "the strip never learned the keep-on-top state", 15000);
 
         // BAR-207, 208, 209, 315, 316: the jump list's sections over the app row, Unpin, Keep on top, Close window
         Click(Named(cs, a.Title)!, MouseButton.Right, app);
