@@ -57,6 +57,7 @@ public class GcalFeatureTests
     {
         var a = typeof(GcalFeature).GetCustomAttribute<FeatureAttribute>()!;
         Assert.Equal("gcal", a.Name);
+        Assert.Equal("Google Calendar in the clock's calendar", a.Label);
         Assert.True(a.DefaultOn);
         Assert.True(a.Rest);
         r.Host.Load(new[] { D() });
