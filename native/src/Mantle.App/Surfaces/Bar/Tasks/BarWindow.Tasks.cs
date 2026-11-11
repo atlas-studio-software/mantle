@@ -33,7 +33,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
     string _tip = "";
     bool _flying, _quiet;
     /// The tooltip; none while this app's previews are up (bar.js flyBuild: no tooltip window over the pictures).
-    public string? Tip => _flying || _quiet ? null : _tip + (_onTop ? "\nKept on top · right-click or Win+Ctrl+T to stop" : "");
+    public string? Tip => _flying || _quiet ? null : _tip + Mantle.Core.Features.OnTop.OnTopWords.TipLine(_onTop, _run, _cant);
     internal bool Flying { set { if (_flying == value) return; _flying = value; Changed(nameof(Tip)); } }
     /// No tooltip while an icon is dragged, and until the pointer leaves the icon it was dropped on (bar.js dragQuietOn).
     internal bool Quiet { set { if (_quiet == value) return; _quiet = value; Changed(nameof(Tip)); } }
@@ -55,6 +55,10 @@ public sealed partial class CellVm : INotifyPropertyChanged
     /// tooltip line, and "; kept on top" in the status.
     internal bool OnTop { set { if (_onTop == value) return; _onTop = value; Changed(nameof(OnTopVisibility)); Changed(nameof(Tip)); SetStatus(true); } }
     public Visibility OnTopVisibility => _onTop ? Visibility.Visible : Visibility.Collapsed;
+    string? _cant;
+    /// BAR-334 (ui/bar/ontop.js CANT): no pin state reaches the bar, so an app with windows says why in its tooltip and
+    /// "; keep on top unknown" in its status.
+    internal string? OnTopCant { set { if (_cant == value) return; _cant = value; Changed(nameof(Tip)); SetStatus(true); } }
     internal bool Divider { set { if (_div == value) return; _div = value; Changed(nameof(DividerVisibility)); SetStatus(true); } }
     /// UI Automation ItemStatus (the UI tests read it): the kind ("pinned" / "running"), then "open" while it has
     /// windows, "active" while one is the active window (the accent line), "after divider" on the first running-only
@@ -64,7 +68,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
     void SetStatus(bool notify)
     {
         int n = Item.Windows.Count;
-        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "") + (n >= 2 ? "; " + n + " windows" : "") + (_onTop ? "; kept on top" : "");
+        string s = Item.Kind + (_run ? "; open" : "") + (_act ? "; active" : "") + (_div ? "; after divider" : "") + (n >= 2 ? "; " + n + " windows" : "") + (_onTop ? "; kept on top" : _cant != null && _run ? "; keep on top unknown" : "");
         if (s == Status) return;
         Status = s;
         if (notify) Changed(nameof(Status));
@@ -195,7 +199,7 @@ public sealed partial class BarWindow
         }
         for (int i = 0; i < _cells.Count; i++) _cells[i].Index = i;   // bar.app.<n>, in display order
         HookJlOnce();   // the menu's pop-up close and the keep-on-top badge (BarWindow.JumpList.cs)
-        foreach (var c in _cells) c.OnTop = OnTopOf(c.Item) != null;
+        foreach (var c in _cells) { c.OnTop = OnTopOf(c.Item) != null; c.OnTopCant = _tasks.OnTopProblem; }
         if (Host.Args.Test) {
             string order = string.Join(" | ", _cells.Select(c => c.Title));
             if (order != _testOrder) { _testOrder = order; Host.Log.Line($"bar tasks: test: strip now [{order}]"); }

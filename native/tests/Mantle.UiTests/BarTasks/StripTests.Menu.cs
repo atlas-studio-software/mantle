@@ -7,6 +7,7 @@ using System.Linq;
 using System.Threading;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.BarTasks;
@@ -121,6 +122,22 @@ public partial class StripTests
         Host.LogContains(log, "would keep window " + a.Hwnd.ToInt64() + " on top; nothing in Windows changed", "keep on top did not reach the made-up Windows", 5000);
         Assert.IsTrue(Host.Until(() => Named(Cells(app), a.Title)?.Status.Contains("kept on top", StringComparison.Ordinal) == true, 5000),
             "the cell does not say it is kept on top: " + Describe(Cells(app)));
+        // BAR-341: the result pop-up: its own window at the volume pop-up's place, 396 x 80 DIP, topmost, click-through, never
+        // focused, saying how to undo the pin; hidden by 4.3 s whatever happens
+        IntPtr tw = IntPtr.Zero;
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(tw = FrameProbe.Find(app.Proc.Id, "Mantle keep on top")), 3000), $"the keep-on-top pop-up did not show; log: {Tail(log())}");
+        var pane = Host.Until(() => Host.Uia.FromHandle(tw).FindFirstDescendant(cf => cf.ByAutomationId("ontop.toast")), 3000);
+        Assert.IsNotNull(pane, "the pop-up has no ontop.toast pane");
+        Assert.AreEqual("Win+Ctrl+T again to stop", pane!.HelpText, "a new pin does not say how to undo it");
+        long ex = GetWindowLongPtrW(tw, -20).ToInt64();
+        Assert.IsTrue((ex & 0x8) != 0 && (ex & 0x20) != 0 && (ex & 0x08000000) != 0, $"the pop-up is not topmost, click-through and unfocusable (ex style 0x{ex:x})");
+        Assert.AreNotEqual(tw, Win32.GetForegroundWindow(), "the pop-up took the foreground");
+        FrameProbe.GetWindowRect(tw, out var trc);
+        double ts = Named(Cells(app), a.Title)!.Rect.Width / 36.0;
+        Assert.IsTrue(Math.Abs(trc.Right - trc.Left - 396 * ts) <= 2 && Math.Abs(trc.Bottom - trc.Top - 80 * ts) <= 2, $"the pop-up is {trc.Right - trc.Left}x{trc.Bottom - trc.Top} px, not 396x80 DIP at {ts:0.##}");
+        var pill = app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.pill")).BoundingRectangle;
+        Assert.IsTrue(trc.Bottom <= pill.Top + 2 && trc.Bottom >= pill.Top - 40 * ts, $"the pop-up (bottom {trc.Bottom}) is not just above the bar (pill top {pill.Top})");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle keep on top")), 4800), "the pop-up was still up after 4.3 s");
         Click(Named(Cells(app), a.Title)!, MouseButton.Right, app);
         var w2 = Menu(app, "Alpha Shell", profile);
         Assert.AreEqual("Stop keeping on top", Jl(w2, "bar.jl.ontop").Name);
@@ -155,4 +172,81 @@ public partial class StripTests
         Assert.IsTrue(File.Exists(Path.Combine(pins, "Beta Map.lnk")), "Unpin touched the pinned shortcut itself");
         try { File.Delete(fx); } catch (IOException) { }
     }
+
+    [TestMethod]
+    public void Without_the_keep_on_top_channel_every_app_tooltip_and_the_menu_say_the_bar_cannot_show_it()
+    {
+        // BAR-334 (ui/bar/ontop.js CANT): MANTLE_TEST_ONTOP_CHANNEL=0 attaches the strip as if it had no event channel
+        const string profile = "uitest-strip-ontop-cant";
+        _profile = profile;
+        string tag = Guid.NewGuid().ToString("N")[..6];
+        var pins = PinFolder("cant-" + tag, ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
+        string fx = Path.Combine(Path.GetTempPath(), "mantle-jl-fixture-cant-" + tag + ".json");
+        File.WriteAllText(fx, MenuFixture);
+        using var app = BarApp.Launch(profile, env: new Dictionary<string, string> {
+            ["MANTLE_TEST_PINS_DIR"] = pins, ["MANTLE_TEST_JUMPLIST"] = fx, ["MANTLE_TEST_ONTOP_CHANNEL"] = "0" });
+        using var a = new Host.Fixture($"Strip cant {tag}", 60, 60);
+        Func<string> log = () => LogSince(profile, 0);
+        Host.LogContains(log, "bar tasks: keep on top: the bar has no event channel (MANTLE_TEST_ONTOP_CHANNEL=0)", "the strip did not say it has no keep-on-top channel", 15000);
+        var cs = new List<Cell>();
+        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, a.Title) is { Open: true } c && c.Status.Contains("keep on top unknown", StringComparison.Ordinal); }, 20000, 250),
+            $"the running app's status does not say keep on top is unknown; cells: {Describe(cs)}");
+        Assert.IsFalse(Named(cs, "Beta Map")!.Status.Contains("keep on top", StringComparison.Ordinal), $"a pin with no window says something about keep on top: {Describe(cs)}");
+        Click(Named(cs, a.Title)!, MouseButton.Right, app);
+        var w = Menu(app, "Alpha Shell", profile);
+        Assert.AreEqual("Keep on top: the bar can't show which windows are kept on top right now (restart Mantle to fix it)", Jl(w, "bar.jl.ontop").HelpText);
+        Assert.IsFalse(log().Contains("the pin state is known", StringComparison.Ordinal), "the pin state arrived with no channel");
+    }
+
+    [TestMethod]
+    public void The_menu_draws_its_bottom_rows_while_it_reads_and_the_arrow_keys_move_over_every_row()
+    {
+        // BAR-208, 316: the bottom rows at once, "Reading the jump list…" until the (made-up, 2.5 s slow) list arrives;
+        // BAR-220, 328: with the keyboard (MANTLE_TEST_JL_KEYS=1) Up/Down wrap, Home/End, Right/Left the item's actions, Esc
+        const string profile = "uitest-strip-menu-keys";
+        _profile = profile;
+        string tag = Guid.NewGuid().ToString("N")[..6];
+        var pins = PinFolder("keys-" + tag, ("Alpha Shell", PowerShellExe));
+        string fx = Path.Combine(Path.GetTempPath(), "mantle-jl-fixture-keys-" + tag + ".json");
+        File.WriteAllText(fx, MenuFixture.Replace("\"powershell.exe\":{\"sections\"", "\"powershell.exe\":{\"delayMs\":2500,\"sections\"", StringComparison.Ordinal));
+        using var app = BarApp.Launch(profile, env: new Dictionary<string, string> {
+            ["MANTLE_TEST_PINS_DIR"] = pins, ["MANTLE_TEST_JUMPLIST"] = fx, ["MANTLE_TEST_ONTOP_FAKE"] = "1", ["MANTLE_TEST_JL_KEYS"] = "1" });
+        using var a = new Host.Fixture($"Strip keys {tag}", 60, 60);
+        var cs = new List<Cell>();
+        Assert.IsTrue(Host.Until(() => { cs = Cells(app); return Named(cs, a.Title) is { Open: true }; }, 20000, 250), $"the pin never showed its window; cells: {Describe(cs)}");
+        Func<string> log = () => LogSince(profile, 0);
+        Host.LogContains(log, "bar tasks: keep on top: the pin state is known", "the strip never learned the keep-on-top state", 15000);
+
+        Click(Named(cs, a.Title)!, MouseButton.Right, app);
+        var w = Menu(app, "Alpha Shell", profile);
+        Assert.AreEqual("Reading the jump list…", Jl(w, "bar.jl.quiet.0", 1000).Name, "no reading line while the list is read");
+        foreach (var id in new[] { "bar.jl.app", "bar.jl.pin", "bar.jl.ontop", "bar.jl.close" }) Jl(w, id, 1000);
+        Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId("bar.jl.item.0")), "the list was there before its read finished");
+        Assert.IsFalse(log().Contains("bar tasks: menu: the jump list arrived", StringComparison.Ordinal), "the slow read finished at once");
+        Jl(w, "bar.jl.item.1", 6000);
+        Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId("bar.jl.quiet.0")), "the reading line stayed after the list arrived");
+
+        Host.LogContains(log, "bar tasks: menu: the bar has the keyboard for the menu", "the menu never took the keyboard");
+        string Focused() { try { return Host.Uia.FocusedElement()?.AutomationId ?? ""; } catch (Exception) { return ""; } }
+        void Key(VirtualKeyShort k, string want, string what)
+        {
+            Keyboard.Type(k);
+            Assert.IsTrue(Host.Until(() => Focused() == want, 2000), $"{what}: focus is on '{Focused()}', not {want}; log: {Tail(log())}");
+        }
+        Key(VirtualKeyShort.HOME, "bar.jl.item.0", "Home takes the first row");   // (from no row: JumpListTests)
+        Key(VirtualKeyShort.UP, "bar.jl.close", "Up from the first wraps to the last");
+        Key(VirtualKeyShort.DOWN, "bar.jl.item.0", "Down from the last wraps to the first");
+        Key(VirtualKeyShort.END, "bar.jl.close", "End");
+        Key(VirtualKeyShort.HOME, "bar.jl.item.0", "Home");
+        Key(VirtualKeyShort.DOWN, "bar.jl.item.1", "Down");
+        Keyboard.Type(VirtualKeyShort.RIGHT);
+        Jl(w, "bar.jl.sub.open", 2000);
+        Keyboard.Type(VirtualKeyShort.LEFT);
+        Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("bar.jl.sub.open")) == null, 2000), "Left did not close the item's actions");
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Assert.IsTrue(MenuGone(app, "Alpha Shell"), "Esc did not close the menu");
+        Host.LogContains(log, "gave the keyboard back", "the keyboard was not given back on close");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr h, int index);
 }

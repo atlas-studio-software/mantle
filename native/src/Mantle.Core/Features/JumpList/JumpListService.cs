@@ -49,6 +49,17 @@ public sealed record JumpAct(bool Ok, string? Reason, bool DryRun = false, strin
 /// <summary>The argument checks and words of lib/features/jumplist.js (pure; unit-tested).</summary>
 public static class JumpRules
 {
+    /// The menu's arrow keys (ui/bar/jumplist.js key, BAR-220 / BAR-328): Up / Down wrap, Home / End go to the ends; from
+    /// no focused row, Down takes the first and Up the last.
+    public enum Move { Down, Up, Home, End }
+    public static int Step(int at, int count, Move k)
+    {
+        if (count <= 0) return -1;
+        return k == Move.Home ? 0 : k == Move.End ? count - 1
+            : at < 0 || at >= count ? (k == Move.Down ? 0 : count - 1)
+            : (at + (k == Move.Down ? 1 : -1) + count) % count;
+    }
+
     public const int HwndsMax = 64;
     public const string FilesAumid = "mantle.files", ExplorerAppId = "Microsoft.Windows.Explorer";
     static readonly Regex HwndRe = new(@"^(?:\d{1,20}|0x[0-9a-f]{1,16})$", RegexOptions.IgnoreCase | RegexOptions.CultureInvariant);
@@ -199,6 +210,9 @@ public sealed class JumpListService
         if (Fixtured) {
             if (_fixtureWhy != null) return new JumpListReply(false, false, _fixtureWhy, Array.Empty<JumpSection>(), null, null, null, 0);
             var f = FixtureFor(app);
+            // "delayMs": a slow read, so a test sees "Reading the jump list…" (bounded like the real read, 6 s)
+            if (f is { } dl && dl.ValueKind == JsonValueKind.Object && dl.TryGetProperty("delayMs", out var dm) && dm.TryGetInt32(out int ms) && ms > 0)
+                await Task.Delay(Math.Min(ms, 6000)).ConfigureAwait(true);
             if (f is { } e && e.TryGetProperty("fail", out var fail)) return new JumpListReply(false, false, JumpRules.Plain(fail.GetString()), Array.Empty<JumpSection>(), null, null, null, _o.Now() - t0);
             rep = f is { } g ? JumpRules.Parse(g, _o.Now() - t0) : new JumpListReply(true, false, null, Array.Empty<JumpSection>(), "this app doesn't publish one", null, null, _o.Now() - t0);
         } else {

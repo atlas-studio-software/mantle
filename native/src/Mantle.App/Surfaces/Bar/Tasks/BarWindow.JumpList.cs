@@ -110,7 +110,7 @@ public sealed partial class BarWindow
             _jl = null;
         };
         Popups.KeyboardLost += key => { if (_jl != null && _jl.Key == key) _jl.Kbd = false; };
-        _tasks.OnTopChanged += () => { foreach (var c in _cells) c.OnTop = OnTopOf(c.Item) != null; };
+        _tasks.OnTopChanged += () => { foreach (var c in _cells) { c.OnTop = OnTopOf(c.Item) != null; c.OnTopCant = _tasks?.OnTopProblem; } };
         _tasks.OnTopToast += words => Host.Log.Line("bar tasks: keep on top: " + (Host.Args.Test ? words : "a result came back"));
     }
 
@@ -223,7 +223,7 @@ public sealed partial class BarWindow
                 : it.Windows.FirstOrDefault(w => RunningWindows.IsActive(w) && !w.Minimized) ?? it.Windows[0];
             var ot = JlRow(onH != null ? "Stop keeping on top" : "Keep on top", onH != null ? GUnpin : GPin, null, null, "bar.jl.ontop",
                 _ => JlRun(m, onH != null ? "Stopping" : "Keeping on top", done => _tasks!.OnTopSet(target.Hwnd, target.Pid, onH == null, name, done)));
-            string otTip = _tasks?.OnTopProblem is { } cant ? "Keep on top: " + cant
+            string otTip = _tasks?.OnTopProblem is { } cant ? Mantle.Core.Features.OnTop.OnTopWords.MenuCant(cant)
                 : (onH != null ? "Mantle keeps this window above the others" : "Keep this window above all the others") + " (Win+Ctrl+T does the same for the window in front)";
             ToolTipService.SetToolTip(ot, otTip);
             AutomationProperties.SetHelpText(ot, otTip);
@@ -412,9 +412,9 @@ public sealed partial class BarWindow
         if (rows.Count == 0) return false;
         int at = rows.FindIndex(r => r.FocusState != FocusState.Unfocused);
         if (k is VirtualKey.Down or VirtualKey.Up or VirtualKey.Home or VirtualKey.End) {
-            int n = k == VirtualKey.Home ? 0 : k == VirtualKey.End ? rows.Count - 1
-                : at < 0 ? (k == VirtualKey.Down ? 0 : rows.Count - 1)
-                : (at + (k == VirtualKey.Down ? 1 : -1) + rows.Count) % rows.Count;
+            int n = JumpRules.Step(at, rows.Count, k == VirtualKey.Home ? JumpRules.Move.Home : k == VirtualKey.End ? JumpRules.Move.End
+                : k == VirtualKey.Down ? JumpRules.Move.Down : JumpRules.Move.Up);
+            if (Host.Args.Test) Host.Log.Line($"bar tasks: menu: {k} moved to row {n + 1} of {rows.Count}");
             rows[n].Focus(FocusState.Keyboard);
             rows[n].StartBringIntoView();
             return true;
