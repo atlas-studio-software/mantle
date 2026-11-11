@@ -16,6 +16,10 @@ public partial class TopBarSurfaceTests
     [StructLayout(LayoutKind.Sequential)] struct PIN { public int type; public MIN mi; }   // 40 bytes on x64, as INPUT
     [DllImport("user32.dll")] static extern uint SendInput(uint n, PIN[] inputs, int size);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+    [DllImport("user32.dll")] static extern bool SystemParametersInfoW(uint action, uint param, out int value, uint ini);
+    /// Windows' "Animation effects" (SPI_GETCLIENTAREAANIMATION), which UISettings.AnimationsEnabled reports to the app:
+    /// off (the hosted runners have it off), the app's reduced-motion pop-in is the right one.
+    static bool AnimationsOn() => !SystemParametersInfoW(0x1042, 0, out int on, 0) || on != 0;
 
     static void Mouse(int flags, int x = 0, int y = 0)
     {
@@ -47,7 +51,9 @@ public partial class TopBarSurfaceTests
         MoveTo(file.X, file.Y);
         Mouse(0x0002);
         Host.LogContains(() => app.Log, "topbar: title pressed: m0 (open; 11 rows)", "a press on File did not open it", 4000);
-        Host.LogContains(() => app.Log, "topbar: dropdown pop-in: up 3 px over 240 ms, fade 96 ms", "the dropdown did not pop in", 4000);
+        string pop = AnimationsOn() ? "topbar: dropdown pop-in: up 3 px over 240 ms, fade 96 ms" : "topbar: dropdown pop-in: fade 120 ms (reduced motion)";
+        Host.LogContains(() => app.Log, pop, "the dropdown did not pop in as this machine's animation setting asks", 4000);
+        Host.LogContains(() => app.Log, "topbar: drag armed: topbar.title.m0 (focus ", "the press on File did not arm the drag", 4000);
 
         // slide onto Edit and back while held (TOP-031)
         MoveTo(Mid(Find(win, "topbar.title.m1")).X, file.Y);

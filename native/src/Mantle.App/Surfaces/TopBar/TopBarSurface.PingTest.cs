@@ -227,6 +227,7 @@ internal sealed partial class TopBarSurface
                 box.TextChanged += (_, _) => _pt?.Typed(box.Text, box.SelectionStart, box.SelectionStart + box.SelectionLength);
                 box.SelectionChanged += (_, _) => _pt?.Typed(box.Text, box.SelectionStart, box.SelectionStart + box.SelectionLength);
                 AutomationProperties.SetAutomationId(box, "topbar.pt.name");
+                NoClearButton(box);
                 AutomationProperties.SetName(box, "Test name");
                 _ptBox = box;
                 return box;

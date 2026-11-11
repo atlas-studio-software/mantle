@@ -370,6 +370,7 @@ internal sealed partial class TopBarSurface
             var box = new TextBox { Text = o.Edit!.Value.Value, MaxLength = 40, PlaceholderText = "Name it, e.g. Work", MinWidth = 150, Height = 20, MinHeight = 20, Padding = new Thickness(6, 0, 6, 0), FontSize = 12, IsSpellCheckEnabled = false };
             AutomationProperties.SetName(box, "Layout name");
             AutomationProperties.SetAutomationId(box, "topbar.menu.namebox");
+            NoClearButton(box);
             box.TextChanged += (_, _) => { if (_open?.Edit is { } e2) _open.Edit = (e2.Item, box.Text); };
             Grid.SetColumn(box, 1); g.Children.Add(box);
             _editBox = box;

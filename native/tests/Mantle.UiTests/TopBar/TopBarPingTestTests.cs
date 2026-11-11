@@ -95,6 +95,9 @@ public partial class TopBarSurfaceTests
         if (Win32.GetForegroundWindow() != bar) Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so the name box cannot get keys");
         FrameProbe.Tap(0x23);   // End
         FrameProbe.Tap(0x32);   // "2"
+        string typed = "";   // found again each time: a 1 s sample redraws the box with its new text (a new element)
+        Assert.IsTrue(Host.Until(() => (typed = win.FindFirstDescendant(cf => cf.ByAutomationId("topbar.pt.name"))?.AsTextBox().Text ?? "") == "upstairs2", 3000),
+            $"End and 2 typed into the name box left \"{typed}\", not upstairs2");
         FrameProbe.Tap(0x0D);   // Enter
         Host.LogContains(() => app.Log, "topbar: ping test name box: Enter", "Enter in the name box was not the box's", 4000);
         Assert.IsTrue(Host.Until(() => File.ReadAllText(file).Contains("\"name\": \"upstairs2\""), 3000), "Enter did not rename the test");

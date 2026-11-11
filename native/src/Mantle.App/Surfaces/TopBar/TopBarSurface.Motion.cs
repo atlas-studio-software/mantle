@@ -59,15 +59,40 @@ internal sealed partial class TopBarSurface
         if (_test) _ctx.Log.Line($"dropdown pop-in: up 3 px over {PopMs} ms, fade {PopFadeMs} ms");
     }
 
-    /// A press that opened a menu lets the pointer go, so the rows hear the drag and the release.
-    void ArmDrag(UIElement opener)
+    /// A press that opened a menu lets the pointer go, so the rows hear the drag and the release. Letting go also cancels
+    /// the button's own press (its capture is lost), so it would never take the focus a click gives it; it takes it
+    /// here instead (as Electron's mousedown focuses the button), or the menu keys after a real click reach nothing.
+    void ArmDrag(Control opener)
     {
         opener.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((s, e) =>
         {
             if (_open == null || e.Pointer.PointerDeviceType == Microsoft.UI.Input.PointerDeviceType.Touch) return;
             _dragArmed = true;
-            ((UIElement)s).ReleasePointerCaptures();
+            var c = (Control)s;
+            c.ReleasePointerCaptures();
+            bool had = c.FocusState != FocusState.Unfocused;
+            bool took = had || c.Focus(FocusState.Pointer);
+            if (_test) _ctx.Log.Line($"drag armed: {Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c)} (focus {(had ? "kept" : took ? "taken" : "refused")})");
         }), true);
+    }
+
+    /// The TextBox template's clear (x) button: Electron's name inputs are plain inputs with none, and a click at the
+    /// box's right end would empty it instead of placing the caret.
+    static void NoClearButton(TextBox box) => box.Loaded += (_, _) =>
+    {
+        if (Named(box, "DeleteButton", 0) is FrameworkElement b) { b.Width = 0; b.MinWidth = 0; b.Margin = new Thickness(0); b.Opacity = 0; b.IsHitTestVisible = false; b.IsTabStop = false; }
+    };
+
+    static DependencyObject? Named(DependencyObject d, string name, int depth)
+    {
+        int n = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChildrenCount(d);
+        for (int i = 0; i < n; i++)
+        {
+            var c = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetChild(d, i);
+            if (c is FrameworkElement fe && fe.Name == name) return c;
+            if (depth < 16 && Named(c, name, depth + 1) is { } f) return f;
+        }
+        return null;
     }
 
     /// A row that a press-drag-release picks: the release after a press on a title (the row's own click never fires then).
