@@ -57,7 +57,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         long h = System.Threading.Interlocked.Exchange(ref s_attached, 0);
         if (h == 0 || _platform is not { } p) return Array.Empty<(string, Func<Task<PlatformReply>>)>();
         if (Current is { } cur) cur._ctx.Dispatcher.TryEnqueue(() => cur._recheckT?.Stop());   // or it re-places the layer while it is detached
-        return new (string, Func<Task<PlatformReply>>)[] { ("the desktop layer", () => p.CallAsync("desktop",
+        return new (string, Func<Task<PlatformReply>>)[] { ("the desktop layer", async () => await p.CallAsync("desktop",
             new JsonObject { ["hwnd"] = h.ToString(CultureInfo.InvariantCulture), ["detach"] = true }, TimeSpan.FromMilliseconds(4000))) };
     }
 
