@@ -149,11 +149,11 @@
                             HorizontalAlignment="Center" Visibility="{x:Bind ActVisibility, Mode=OneWay}"/>
                   </Grid>
                 </StackPanel>
-                <!-- r7-strip, ui/bar/jumplist.css .cell .ontop-badge: a 13 DIP accent disc with a pin, top-right, while Mantle keeps one of its windows on top -->
-                <Border Width="13" Height="13" CornerRadius="6.5" Margin="0,-3,-9,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"
+                <!-- r7-strip, ui/bar/jumplist.css .cell .ontop-badge: a 13 DIP accent disc with a pin, top-right, while Mantle keeps one of its windows on top (top-left while a count disc shows: helmbadge.css .hb-on) -->
+                <Border Width="13" Height="13" CornerRadius="6.5" Margin="{x:Bind OnTopMargin, Mode=OneWay}" HorizontalAlignment="{x:Bind OnTopAlign, Mode=OneWay}" VerticalAlignment="Top" IsHitTestVisible="False"
                         Background="{ThemeResource LgAcc}" BorderBrush="{ThemeResource LgFillStrong}" BorderThickness="1.5"
                         Visibility="{x:Bind OnTopVisibility, Mode=OneWay}">
-                  <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="7" Foreground="{ThemeResource LgAccOn}"
+                  <TextBlock Text="&#xE718;" AutomationProperties.AutomationId="bar.ontop.pin" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="7" Foreground="{ThemeResource LgAccOn}"
                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
                 <!-- media4, ui/bar/helmbadge.css .hb-badge: the app's count (Helm: chats that need the user), accent, warn when one stopped on an error -->

@@ -17,4 +17,11 @@ public static class OnTopWords
 
     /// The menu's "Keep on top" row tooltip when the bar cannot know the state.
     public static string MenuCant(string cant) => "Keep on top: " + cant;
+
+    /// ui/bar/helmbadge.css <c>.cell.hb-on .ontop-badge { right: auto; left: 3px; }</c>: an app's count disc owns the
+    /// icon's top-right corner, so while a count shows the keep-on-top pin moves to the top-left (both stay readable).
+    public static bool PinOnLeft(int count) => count > 0;
+
+    /// The pin's offset from the icon's corner (DIP, left, top, right, bottom): mirrored when it moves left.
+    public static (double L, double T, double R, double B) PinMargin(int count) => PinOnLeft(count) ? (-9, -3, 0, 0) : (0, -3, -9, 0);
 }

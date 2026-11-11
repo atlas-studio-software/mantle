@@ -30,6 +30,7 @@ public sealed partial class CellVm
         if (n == _badgeN && warn == _badgeWarn && line == _badgeLine) return false;
         _badgeN = n; _badgeWarn = warn; _badgeLine = line;
         Changed(nameof(BadgeText)); Changed(nameof(BadgePad)); Changed(nameof(BadgeAccVisibility)); Changed(nameof(BadgeWarnVisibility)); Changed(nameof(Tip));
+        PinMoved();   // lane native-r7-strip-3: the keep-on-top pin goes top-left while a count shows (BarWindow.Tasks.cs)
         SetStatus(true);
         return true;
     }

@@ -55,6 +55,11 @@ public sealed partial class CellVm : INotifyPropertyChanged
     /// tooltip line, and "; kept on top" in the status.
     internal bool OnTop { set { if (_onTop == value) return; _onTop = value; Changed(nameof(OnTopVisibility)); Changed(nameof(Tip)); SetStatus(true); } }
     public Visibility OnTopVisibility => _onTop ? Visibility.Visible : Visibility.Collapsed;
+    /// helmbadge.css .cell.hb-on .ontop-badge: the count disc (CellVm.Badge.cs) owns the top-right, so the pin moves
+    /// top-left while a count shows. SetBadge raises PinMoved.
+    public HorizontalAlignment OnTopAlign => Mantle.Core.Features.OnTop.OnTopWords.PinOnLeft(_badgeN) ? HorizontalAlignment.Left : HorizontalAlignment.Right;
+    public Thickness OnTopMargin { get { var (l, t, r, b) = Mantle.Core.Features.OnTop.OnTopWords.PinMargin(_badgeN); return new Thickness(l, t, r, b); } }
+    internal void PinMoved() { Changed(nameof(OnTopAlign)); Changed(nameof(OnTopMargin)); }
     string? _cant;
     /// BAR-334 (ui/bar/ontop.js CANT): no pin state reaches the bar, so an app with windows says why in its tooltip and
     /// "; keep on top unknown" in its status.
