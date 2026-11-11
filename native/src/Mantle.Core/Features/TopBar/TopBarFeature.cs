@@ -152,9 +152,9 @@ public sealed class TopBarFeature : IFeature
                 return Ok(new JsonObject { ["ok"] = true });
             });
         }
-        ctx.OnChord(TopBarRules.HideChord, _ => _ = Run(() => SetHidden(!_hidden, TopBarRules.HideChord), TopBarRules.HideChord + " failed"));
-        ctx.OnOption("hidden", (v, _) => _ = Run(() => SetHidden(v.ValueKind == JsonValueKind.True, "Mantle Settings"), "hidden"));
-        ctx.OnOption("overGames", (v, _) => _ = Run(async () =>
+        ctx.OnChord(TopBarRules.HideChord, chord => _ = Run(() => SetHidden(!_hidden, TopBarRules.HideChord), TopBarRules.HideChord + " failed"));
+        ctx.OnOption("hidden", (v, key) => _ = Run(() => SetHidden(v.ValueKind == JsonValueKind.True, "Mantle Settings"), "hidden"));
+        ctx.OnOption("overGames", (v, key) => _ = Run(async () =>
         {
             _overGames = v.ValueKind == JsonValueKind.True;
             _ctx.Log($"keep the top bar over full-screen games: {(_overGames ? "true" : "false")} (Mantle Settings)");
