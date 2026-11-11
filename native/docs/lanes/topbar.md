@@ -83,15 +83,40 @@ this area.
 - **CI:** stage `topbar` at the end of ci.ps1's list (block marked `# lane native-r7-topbar`), gated on
   `TOPBAR-PARITY summary: 4 scored of 4` and a floor per theme (the lowest of its two scales).
 
+## State at handoff 2 (context ceiling)
+
+- **Runs:** 42998830982 (154f63d3) `NATIVE-CI: ok (2 ok)`, unit 656/656. 43011515526 (312921cb, build,topbar): the strip
+  made at last, 4 of 4 scored but the native half was the bare backdrop (the strip was BEHIND it: handing the foreground
+  back raised the backdrop; fixed in 8cc89c1d) and Electron's 150 % page was 853 CSS px wide (forced scale on a 150 %
+  display; fixed in 8cc89c1d). 43012272746 (8cc89c1d, build,unit,ui,topbar): build ok, unit 656/656, ui 47 of 49 passed
+  (the strip test and the scale test PASSED), then the ui stage never ended (job killed at 80 min; topbar not reached).
+- **UI failures in 43012272746:** (1) `Win_Alt_T_...`: hide, dry run and "peek: watching" all fine, but the real cursor on
+  the edge never peeked, with no reason logged. The next commit logs `peek: not now: <why>` on each change and, in --test,
+  `peek: first look: the cursor at X,Y DIP, the edge band ...`, so the next run says why. (2)
+  `Bar_and_glass_idle_cpu_hidden_at_rest_and_shown` (light, hidden at rest 1.354 % > 1 %): the visible --test strip
+  rebuilt its whole right side on every 1 s stats sample. The next commit updates the cells' words in place.
+- **The ui stage hang:** the trx was complete (49 executed), then `dotnet test` never returned; the job's cleanup killed
+  an orphan `Mantle.Sidecar`. The first ui run (cf88e147, strip never made, feature running) also passed 30 min. Likely
+  a sidecar that outlives its killed app holds the inherited stdout pipe; every UI test app now runs the topbar
+  feature (topbar.watch / guard / stats in the sidecar). Sidecar exit is not this lane's code: report it to the
+  coordinator / sidecar lane. Until then run `-Stages build,unit,ui` with `--timeout 80` and read `native/out/ui/ui.trx`
+  from the run's artifacts (`gh run download <id> -n cloudtest-artifacts`) if the stage hangs.
+- **Pairs not scored yet** with both fixes; floors are placeholders (0.50) in ci.ps1's topbar block.
+- **Ledger:** not marked (no full green run). A ready marker: the rows and their test ids are listed in the Core and UI
+  test names; TOP-218 is the `better:` (exact 28 DIP, no shape) once the scale test is green in a green run.
+
 ## Left (exact list, in order)
 
-6. **Sections not started** (shell.md order):
+1. Run `-Stages build,unit,ui,topbar` (`--timeout 80`), fix the peek from its new lines, check the idle-CPU test.
+2. Look at the four `topbar-*-pair.png`, set the two floors a little under the scores, re-run.
+3. Mark the rows (only those a passing test covers), then the full run.
+4. **Sections not started** (shell.md order):
    - Menus (TOP-031..), Keyboard;
    - Stats dropdowns, App power, Ping, Tools (the timer / notes features), Strip note;
    - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only);
    - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, newWindow, power, about,
      settings, ...).
-7. **Parts of started sections not ported:**
+5. **Parts of started sections not ported:**
    - Page and strip: TOP-003 menubar role, TOP-006/007 visible width, TOP-010..017 focus details (uia cache, title
      menuChanged re-render, the PIN_FOCUS test hook).
    - Feature + settings: TOP-211 tools hub.

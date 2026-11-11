@@ -67,6 +67,7 @@ public sealed class TopBarFeature : IFeature
     // peek
     PeekState _peekSt = TopBarPeek.Initial();
     bool _peekWatching, _peekShown; bool? _peekOk; string? _peekReason; long _peekSince; IDisposable? _peekT;
+    string? _peekBlocked; bool _peekLooked;
     (double X, double Y)? _fakeCursor; bool _fakeSource;
 
     public TopBarFeature() { _screen = new Win32TopBarScreen(); _reserve = new(false, "not reserved yet"); }
@@ -548,6 +549,7 @@ public sealed class TopBarFeature : IFeature
         {
             _peekWatching = true;
             _peekSt = TopBarPeek.StartState();
+            _peekBlocked = null; _peekLooked = false;
             PeekProbe();
             _ctx.Log($"peek: watching the top edge ({why})");
             PeekSchedule();
@@ -590,6 +592,13 @@ public sealed class TopBarFeature : IFeature
         var r = TopBarPeek.Step(_peekSt, new PeekInput(Now, pt, cwhy, bounds, new PeekRect(bounds.X, bounds.Y, bounds.W, _menuOpen ? _menuH : TopBarRules.BarDip),
             _menuOpen, guard, false, () => _fakeSource ? new PeekButtons(true) : _screen.Buttons()));
         _peekSt = r.St;
+        // what keeps the edge from peeking, said once per change (never silent); a --test run also says its first look
+        if (r.Blocked != _peekBlocked) { _peekBlocked = r.Blocked; if (r.Blocked != null) _ctx.Log($"peek: not now: {r.Blocked}"); }
+        if (_test && !_peekLooked)
+        {
+            _peekLooked = true;
+            _ctx.Log($"peek: first look: the cursor {(pt is { } q ? $"at {q.X:0.#},{q.Y:0.#} DIP" : $"unreadable ({cwhy ?? "no reason"})")}, the edge band the top {TopBarPeek.BandDip} DIP of {bounds.X:0.#},{bounds.Y:0.#} {bounds.W:0.#}x{bounds.H:0.#} DIP, phase {r.St.Phase}");
+        }
         if (r.Act == "show") PeekShow(r.Why!);
         else if (r.Act == "hide") PeekHide(r.Why!);
         PeekSchedule();

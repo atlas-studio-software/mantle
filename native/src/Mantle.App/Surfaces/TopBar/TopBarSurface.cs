@@ -239,9 +239,15 @@ internal sealed class TopBarSurface : ISurface
         Fit();
     }
 
+    /// One drawn stat cell, kept so a 1 s sample only changes its words (rebuilding the right side every second cost
+    /// the idle bar its CPU budget in the UI tests' idle-CPU check).
+    sealed class Cell { public Button B = null!; public Microsoft.UI.Xaml.Documents.Run V = null!; public TextBlock T = null!; public string Ink = "", Name = "", Tip = ""; }
+    readonly Dictionary<string, Cell> _cells = new();
+
     void RenderRight()
     {
         _right.Children.Clear();
+        _cells.Clear();
         if (_stats == null && _paused != null)
             _right.Children.Add(new TextBlock { Text = "Stats paused", Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
         else
@@ -255,13 +261,15 @@ internal sealed class TopBarSurface : ISurface
                 var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
                 row.Children.Add(new TextBlock { Text = c.Label, FontSize = 11, FontWeight = FontWeights.SemiBold, CharacterSpacing = 20, Foreground = Br("LgInk2"), VerticalAlignment = VerticalAlignment.Center });
                 double min = c.Key switch { "cpu" or "gpu" => 4.6, "mem" => 11.5, "net" => 20.5, "ping" => 6.1, _ => 0 } * ch;
-                var v = new TextBlock { MinWidth = min, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-                    Foreground = c.Why != null ? Br("LgInk2") : c.Warn ? Br("LgWarn") : Br("LgInk") };
-                v.Inlines.Add(Tabular(c.Value));
+                string ink = c.Why != null ? "LgInk2" : c.Warn ? "LgWarn" : "LgInk";
+                var v = new TextBlock { MinWidth = min, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Foreground = Br(ink) };
+                var run = Tabular(c.Value);
+                v.Inlines.Add(run);
                 row.Children.Add(v);
                 b.Content = row;
-                var tip = c.Title ?? c.Why;
-                if (!string.IsNullOrEmpty(tip)) ToolTipService.SetToolTip(b, tip);
+                var tip = c.Title ?? c.Why ?? "";
+                if (tip.Length > 0) ToolTipService.SetToolTip(b, tip);
+                _cells[c.Key] = new Cell { B = b, V = run, T = v, Ink = ink, Name = c.Label + " " + c.Value, Tip = tip };
                 b.Click += (_, _) => OnStat(c.Key);
                 _right.Children.Add(b);
             }
@@ -362,8 +370,25 @@ internal sealed class TopBarSurface : ISurface
     {
         _stats = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
         _paused = s.Paused;
+        if (_cells.Count > 0 && !(_stats == null && _paused != null)) { UpdateCells(); return; }   // cells stay cells: words only
         RenderRight();
         Fit();
+    }
+
+    /// A sample on cells already drawn: only what changed is set (fixed decimals and fixed minimum widths, so no re-fit).
+    void UpdateCells()
+    {
+        foreach (var c in TopBarModel.StatCells(_stats))
+        {
+            if (!_cells.TryGetValue(c.Key, out var cell)) continue;
+            if (cell.V.Text != c.Value) cell.V.Text = c.Value;
+            string ink = c.Why != null ? "LgInk2" : c.Warn ? "LgWarn" : "LgInk";
+            if (cell.Ink != ink) { cell.Ink = ink; cell.T.Foreground = Br(ink); }
+            string name = c.Label + " " + c.Value;
+            if (cell.Name != name) { cell.Name = name; AutomationProperties.SetName(cell.B, name); }
+            string tip = c.Title ?? c.Why ?? "";
+            if (cell.Tip != tip) { cell.Tip = tip; ToolTipService.SetToolTip(cell.B, tip.Length > 0 ? tip : null); }
+        }
     }
     void OnVisible(TopBarVisible v)
     {
