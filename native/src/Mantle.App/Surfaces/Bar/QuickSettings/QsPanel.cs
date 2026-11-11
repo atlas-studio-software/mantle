@@ -62,6 +62,7 @@ internal sealed partial class QsPanel
     readonly TextBlock _power;
     readonly Button _toWin, _gear;
     readonly Border _foot;
+    readonly Mantle.App.Surfaces.Bar.GameMode.GameModeRow _gm;   // the Game mode row (lane native-r7-media3)
 
     sealed class Tile { public Button B = null!; public Button? Chev; public Canvas Ico = null!; public TextBlock Lbl = null!, Sub = null!; public QsTileView? View; }
     sealed class SliderRow
@@ -140,6 +141,13 @@ internal sealed partial class QsPanel
             _ = Set("mute", JsonValue.Create(want), p => p["muted"] = want);
         };
 
+        // ---- game mode (ui/bar/gamemode.js, attached before .qsnotes as bar.js does): its own row (Surfaces/Bar/GameMode)
+        _gm = new Mantle.App.Surfaces.Bar.GameMode.GameModeRow(B, Font(), log, Fit);
+        // the qs screenshot pair's part1 mode takes Electron's .gmrow out (the row has its own pair, tools/parity/media):
+        // MANTLE_TEST_QS_NO_GAMEMODE=1 (test only) leaves it out here too, so the pair compares like with like
+        if (test && Environment.GetEnvironmentVariable("MANTLE_TEST_QS_NO_GAMEMODE") == "1") log("qs: test: MANTLE_TEST_QS_NO_GAMEMODE=1: the Game mode row is left out (the qs pair's part1 mode)");
+        else _stack.Children.Add(_gm.Root);
+
         // ---- notes (.qsnotes): one line per part that is not ok, and each set that did not take
         _notes = new StackPanel();
         Uia(_notes, "qs.notes", "Notes");
@@ -211,6 +219,7 @@ internal sealed partial class QsPanel
         _subs.Add(link.On<JsonElement>("powermode.state", e => { _pm = Obj(e); if (Open) Paint(); }));
         _subs.Add(link.On<JsonElement>(QsService.BtEvent, OnBtPush));
         _subs.Add(link.On<JsonElement>(QsService.TilesEvent, e => { if (Obj(e) is JsonObject s) { _xState = s; if (Open) Paint(); } }));
+        _gm.Attach(link);
         _ = TilesRefresh();  // warmed at start (lib/features/qstiles.js reads 3 s after the helper is up)
         _ = Snapshot();      // warmed at start, so the first open draws real values in its first frame
         _ = ReadPowerMode();
@@ -224,6 +233,7 @@ internal sealed partial class QsPanel
     {
         _dark = dark;
         Root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
+        _gm.Theme(dark);
         Paint();
         return _fitted = Need();
     }
@@ -235,6 +245,7 @@ internal sealed partial class QsPanel
         _ = Snapshot();
         _ = ReadPowerMode();
         TilesOpened();
+        _ = _gm.Opened(_dark);
         if (_link != null) _ = _link.CallAsync("qs.watch", new JsonObject { ["on"] = true });
     }
 
