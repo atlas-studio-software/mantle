@@ -1,5 +1,5 @@
 import re, sys
-# usage: python -I mark_topbar_rows.py <repo native dir> [ui]
+# usage: python -I mark-topbar-rows.py <repo native dir> [ui [<sha> for the ported rows]]
 native = sys.argv[1]
 ui = len(sys.argv) > 2 and sys.argv[2] == 'ui'
 P = 'Mantle.Core.Tests/Features/TopBar/TopBarPureTests.cs#'
@@ -32,6 +32,12 @@ put(['TOP-233'], 'tested:' + F + 'Display_changes_skip_Mantles_own_work_area_mov
 put(['TOP-298', 'BAR-349'], 'tested:' + F + 'Peek_on_a_fake_cursor_shows_over_the_screen_and_hides_after_the_grace_TOP_292_298_300_BAR_349')
 put(['TOP-302'], 'tested:' + F + 'Show_during_a_peek_keeps_it_up_for_good_TOP_302')
 put(['TOP-265'], 'tested:' + F + 'Over_games_keeps_the_bar_over_a_game_verdict_TOP_205_265')
+C = 'Mantle.Core.Tests/Features/TopBar/TopBarCommandsTests.cs#'
+put(['TOP-316'], 'tested:' + C + 'About_pushes_one_line_about_Mantle_and_the_machine_and_hello_drops_it_after_8_s_TOP_316')
+put(['TOP-318', 'TOP-319'], 'tested:' + C + 'Settings_winSettings_and_taskmgr_are_dry_runs_in_test_and_open_or_run_live_TOP_317_318_319')
+put(['TOP-314'], 'tested:' + C + 'New_window_takes_only_the_known_args_of_an_app_on_disk_and_is_a_dry_run_in_test_TOP_314')
+# TOP-317: the Win+I delivered branch (Mantle Settings opening) has no test yet, only the fallback and the dry runs
+if len(sys.argv) > 3: put(['TOP-317', 'TOP-175'], 'ported:' + sys.argv[3])   # TOP-175: the strip note is drawn, no UI test triggers one yet
 if ui:
     put(['TOP-001', 'TOP-002', 'TOP-216'], 'tested:' + U + 'Top_bar_is_parked_then_shown_at_the_top_never_topmost_every_control_pressed_and_themed')
     put(['TOP-215'], 'tested:' + U + 'A_scale_change_re_places_it_28_DIP_tall_at_150_percent_without_a_restart')

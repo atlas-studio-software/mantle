@@ -125,14 +125,25 @@ this area.
   Known differences: at 150 % Electron cuts the app name ("Notepad...") where native fits "Notepad++", and native's
   titles drift about 0.5 px per title to the right.
 - **Ledger:** 59 rows marked by `mark-topbar-rows.py native ui` after run 43028973569 (unit 656/656, ui 49/49).
+- **Smoke:** its UI Automation probe took the process's first top-level window, which is now the top bar; it asks
+  for 'Mantle bar' by name (ci.ps1, smoke probe `uia` mode).
+- **Menu commands (5e0704ab):** `TopBarFeature.Commands.cs`: `about`, `settings`, `winSettings`, `taskmgr`,
+  `newWindow`, each a dry run in --test (`refuseInTest`), opening and spawning through `ITopBarShell`
+  (`ProcessTopBarShell` live, a fake in `TopBarCommandsTests.cs`). Deviation: a `newWindow` spawn that fails at once
+  answers `ok: false` as well as the "New window: ..." note (Electron's spawn fails later, so it answers ok). Not
+  ported yet: `window` and `uia*` (need TOP-308's handle guard), `power` (needs the launcher's power runner, not native
+  yet). Rows: TOP-314/316/318/319 tested; TOP-317 ported (the Win+I delivered branch has no test).
+- **Strip note (TOP-175, ported):** `topbar.note` is now a `TopBarNote` record. The surface draws it before the stats
+  (warn glyph, cut at 60 characters, tooltip, AutomationId `topbar.note`) and clears it after 8 s. No UI test triggers
+  a note yet: a `note=` key in `MANTLE_TEST_TOPBAR` would let one.
 
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
    - Menus (TOP-031..), Keyboard;
-   - Stats dropdowns, App power, Ping, Tools (the timer / notes features), Strip note;
+   - Stats dropdowns, App power, Ping, Tools (the timer / notes features); Strip note is ported (needs a UI test);
    - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only);
-   - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, newWindow, power, about,
+   - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about,
      settings, ...).
 2. **Parts of started sections not ported:**
    - Page and strip: TOP-003 menubar role, TOP-006/007 visible width, TOP-010..017 focus details (uia cache, title
