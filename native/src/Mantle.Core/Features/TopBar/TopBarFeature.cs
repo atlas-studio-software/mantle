@@ -121,6 +121,7 @@ public sealed partial class TopBarFeature : IFeature
         ctx.Command("hidden", async c => Answer(await SetHidden(Bool(c.Args, "on"), Str(c.Args, "via") ?? "the menu")));
         ctx.Command("state", _ => Ok(ViewObj()));
         InstallMenuCommands(ctx);   // TopBarFeature.Commands.cs: about, settings, winSettings, taskmgr, newWindow
+        InstallPingTest(ctx);       // TopBarFeature.PingTest.cs: topbar.pingTest / pingTests and the pingtest pushes
         ctx.Command("status", _ => Ok(Status()));
         ctx.Command("overGames", async c =>
         {

@@ -51,6 +51,7 @@ internal sealed partial class TopBarSurface
     {
         _win.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus"); };
         _subs.Add(_ctx.On<bool>("topbar.peek", on => { _peeking = on; RefreshTitles(); }));
+        InstallPingTest();   // TopBarSurface.PingTest.cs
         _subs.Add(_ctx.On<JsonElement>("topbar.state", st =>
         {
             if (st.ValueKind == JsonValueKind.Object && st.TryGetProperty("overGames", out var og) && og.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -154,7 +155,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         _open = null; _openKey = null;
-        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null;
+        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null; _ptBox = null;
         _menus.Children.Clear(); _dds.Clear();
         _menus.Visibility = Visibility.Collapsed; _away.Visibility = Visibility.Collapsed;
         _asked = -1;
@@ -250,6 +251,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         var name = KeyName(e.Key);
+        if (PingKey(e, name)) return;   // TOP-091: the ping test's name box first (TopBarSurface.PingTest.cs)
         if (_open.Edit != null && _editBox != null && e.OriginalSource == _editBox && name is not ("Enter" or "Escape")) return;   // typing into the box
         if (name == null) return;
         _ctx.Log.Line($"key: {(name == " " ? "Space" : name)}");

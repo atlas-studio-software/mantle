@@ -71,7 +71,8 @@ internal sealed partial class TopBarSurface
     void RenderStatMenu(TopBarMenu o)
     {
         var rows = TopBarStatMenu.Rows(o.Stat!, _stats);
-        string shape = TopBarStatMenu.Shape(rows);
+        var (ptRows, ptSig) = PingRows(o);   // TOP-139..159: the ping test below PING's rows (TopBarSurface.PingTest.cs)
+        string shape = TopBarStatMenu.Shape(rows) + "|" + ptSig;
         if (_statView is { } v && v.Owner == o && v.Shape == shape)
         {
             int changed = 0;
@@ -81,11 +82,12 @@ internal sealed partial class TopBarSurface
             return;
         }
         double scroll = _statView?.Owner == o ? _statView.Dd.Sv.VerticalOffset : 0;
-        _menus.Children.Clear(); _dds.Clear(); _editBox = null;
+        _menus.Children.Clear(); _dds.Clear(); _editBox = null; _ptBox = null;
         _menus.Visibility = Visibility.Visible; _away.Visibility = Visibility.Visible;
         var view = new StatView { Owner = o, Shape = shape };
         var panel = new StackPanel();
         for (int i = 0; i < rows.Count; i++) { var (el, entry) = StatRowView(rows[i], i); panel.Children.Add(el); view.Rows.Add(entry); }
+        for (int i = 0; i < ptRows.Count; i++) panel.Children.Add(PingRowView(ptRows[i], i));
         var dd = new Dd { Lv = o.Stack[0], Rows = panel };
         dd.Sv = new ScrollViewer { Content = panel, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollMode = ScrollMode.Disabled, IsTabStop = false };
         dd.Box = new Border
@@ -110,6 +112,7 @@ internal sealed partial class TopBarSurface
         _dds.Add(dd);
         _menus.UpdateLayout();
         if (scroll > 0) dd.Sv.ChangeView(null, scroll, null, true);
+        AfterPingRender();
         NotifyMain();
         Reveal();
     }
