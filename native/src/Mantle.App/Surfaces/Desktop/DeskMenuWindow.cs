@@ -35,7 +35,7 @@ internal sealed class DeskMenuWindow
     readonly TextBlock _note = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Padding = new Thickness(10, 6, 10, 4), Visibility = Visibility.Collapsed };
     readonly List<(DeskMenuRow Row, Button B)> _items = new();
     readonly List<Border> _seps = new();
-    bool _dark;
+    bool _dark, _activated;
     int _sel = -1;
     PxRect _at;
 
@@ -104,7 +104,16 @@ internal sealed class DeskMenuWindow
         PxRect? area = Win32.GetMonitorInfoW(mon, ref mi) ? new PxRect(mi.rcWork.Left, mi.rcWork.Top, mi.rcWork.Right - mi.rcWork.Left, mi.rcWork.Bottom - mi.rcWork.Top) : null;
         _at = DeskMenu.Place(x, y, w * scale, h * scale, (int)Math.Round(DeskMenu.Inset * scale), area);
         _win.AppWindow.MoveAndResize(new global::Windows.Graphics.RectInt32(_at.X, _at.Y, _at.Width, _at.Height));
-        _win.AppWindow.Show(false);
+        if (!_activated) {
+            // WinUI starts drawing a window's content at its first Activate (before it the window is a white sheet); this
+            // no-focus window gives the foreground straight back to whatever had it (Shell/Popup/PopupWindow.Show)
+            _activated = true;
+            IntPtr prev = Win32.GetForegroundWindow();
+            _win.Activate();
+            if (prev != IntPtr.Zero && prev != _hwnd && Win32.GetForegroundWindow() == _hwnd) Win32.SetForegroundWindow(prev);
+        }
+        else Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);
+        Mantle.App.Shell.Windowing.WindowKinds.StripFrame(_hwnd);   // the presenter puts frame bits back at a show
         Mantle.App.Shell.Windowing.WindowKinds.Raise(_hwnd, _ctx.Dispatcher, "desktop menu");
         _watch?.Arm();
         return _at;

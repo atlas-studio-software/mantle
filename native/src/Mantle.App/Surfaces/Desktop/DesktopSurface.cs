@@ -56,7 +56,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     IntPtr _hwnd;
     DeskPanes? _panes;
     DeskFixture? _fx;
-    bool _dark, _widgetsOn = true, _shown;
+    bool _dark, _widgetsOn = true, _shown, _activated;
     readonly List<IDisposable> _subs = new();
     DispatcherQueueTimer? _clockT, _statsT, _mcT, _recheckT, _reportT;
     int _mcFails, _mcChain;
@@ -157,7 +157,16 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     public void Show(string why)
     {
         if (_win == null) return;
-        _win.AppWindow.Show(false);   // showInactive: never takes the keyboard
+        if (!_activated) {
+            // WinUI starts drawing a window's content at its first Activate (before it the layer is a white sheet); the
+            // layer is a no-focus window, so the foreground goes straight back to whatever had it (PopupWindow.Show)
+            _activated = true;
+            IntPtr prev = Win32.GetForegroundWindow();
+            _win.Activate();
+            if (prev != IntPtr.Zero && prev != _hwnd && Win32.GetForegroundWindow() == _hwnd) Win32.SetForegroundWindow(prev);
+        }
+        else Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);   // showInactive: never takes the keyboard
+        Mantle.App.Shell.Windowing.WindowKinds.StripFrame(_hwnd);   // the presenter puts frame bits back at a show
         _shown = true;
         var pos = _win.AppWindow.Position; var size = _win.AppWindow.Size;
         string where = _ctx.Test ? "as an ordinary window (a test run never puts it under the icons)" : "on the primary display";
@@ -183,7 +192,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _mcChain++;
         CloseMenu(why);
         try { _win?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
-        _win = null; _root = null; _panes = null; _shown = false;
+        _win = null; _root = null; _panes = null; _shown = false; _activated = false;
         if (Current == this) Current = null;
         _ctx.Log.Line($"destroyed ({why})");
     }

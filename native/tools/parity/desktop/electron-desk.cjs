@@ -47,7 +47,9 @@ const PRELOAD = `(() => {
   const STATE = ${JSON.stringify(state)}, STATS = ${JSON.stringify(stats)}, PROBE = ${JSON.stringify(probe)};
   const L = Object.create(null);
   window.__emit = (ch, p) => (L[ch] || []).slice().forEach((f) => f(p));
-  window.__dmPlace = null;
+  window.__dmPlace = null; window.__dmWin = null;
+  const open = window.open;
+  window.open = function (...a) { const w = open.apply(window, a); window.__dmWin = w; return w; };
   window.mantle = {
     mode: 'harness',
     on(ch, cb) { (L[ch] || (L[ch] = [])).push(cb); if (ch === 'state') setTimeout(() => cb(STATE), 40); return () => { L[ch] = (L[ch] || []).filter((f) => f !== cb); }; },
@@ -94,21 +96,28 @@ app.whenReady().then(async () => {
       const clip = { x: Math.max(0, Math.floor(r.x - 12)), y: Math.max(0, Math.floor(r.y - 12)), width: Math.ceil(r.w + 24), height: Math.ceil(r.h + 24) };
       await shoot(wc, clip, path.join(out, `electron-desk-${theme}-${part}.png`), `${theme} ${part} pane=${Math.round(r.w)}x${Math.round(r.h)}`);
     }
-    // the menu: a right-click began (prepare: the page opens its window), then ended (show: it draws and asks for its size)
+    const rects = await wc.executeJavaScript(`Array.from(document.querySelectorAll('.cluster > .pane')).map((e) => { const b = e.getBoundingClientRect(); return (e.dataset.cover || e.id) + '=' + [b.x, b.y, b.width, b.height].map(Math.round).join(','); }).join(' ')`);
+    console.log(`ELECTRON-DESK ${theme} panes (CSS px in the 960x540 page): ${rects}`);
+    // the menu: a right-click began (prepare: the page opens its window), then ended (show: it draws and asks for its size).
+    // An offscreen pop-up never paints for capturePage, so the drawn menu document (its stylesheets are absolute file
+    // URLs) is copied into a window of the size the page asked for and shot there.
     await wc.executeJavaScript(`window.__emit('deskmenu.prepare'); true`);
-    if (!await until(() => !!child, 3000)) throw new Error('the page opened no menu window');
+    if (!await until(() => wc.executeJavaScript(`!!(window.__dmWin && window.__dmWin.document && window.__dmWin.document.querySelector('.dm-panel'))`), 3000)) throw new Error('the page opened no menu window');
     await wc.executeJavaScript(`window.__emit('deskmenu.show', { seq: 1 }); true`);
     if (!await until(() => wc.executeJavaScript('!!window.__dmPlace'), 4000)) throw new Error('the menu never asked for its size (deskmenu.place)');
     const place = await wc.executeJavaScript('window.__dmPlace');
     if (place.error) throw new Error('the menu said: ' + place.error);
-    child.setContentSize(place.w, place.h);
-    await child.webContents.executeJavaScript(`document.documentElement.style.background = ${JSON.stringify(bg)}; document.body.style.background = 'transparent'; true`);
     await wait(900);   // the pop-in
-    await child.webContents.executeJavaScript(`document.querySelectorAll('*').forEach((e) => { e.style.animation = 'none'; e.style.transition = 'none'; }); true`);
-    await wait(300);
-    const [cw, ch] = child.getContentSize();
-    await shoot(child.webContents, { x: 0, y: 0, width: cw, height: ch }, path.join(out, `electron-desk-${theme}-menu.png`), `${theme} menu place=${place.w}x${place.h} inset=${place.inset}`);
-    child.destroy();
+    const html = await wc.executeJavaScript(`(() => { const d = window.__dmWin.document; d.querySelectorAll('*').forEach((e) => { e.style.animation = 'none'; e.style.transition = 'none'; }); return '<!doctype html>' + d.documentElement.outerHTML; })()`);
+    const htmlFile = path.join(out, `electron-desk-${theme}-menu.html`);
+    fs.writeFileSync(htmlFile, html);
+    const mw = new BrowserWindow({ show: false, width: place.w, height: place.h, useContentSize: true, frame: false, webPreferences: { offscreen: true } });
+    await mw.loadFile(htmlFile);
+    await mw.webContents.executeJavaScript(`document.documentElement.style.background = ${JSON.stringify(bg)}; document.body.style.background = 'transparent'; document.querySelectorAll('*').forEach((e) => { e.style.animation = 'none'; e.style.transition = 'none'; }); true`);
+    await wait(600);
+    await shoot(mw.webContents, { x: 0, y: 0, width: place.w, height: place.h }, path.join(out, `electron-desk-${theme}-menu.png`), `${theme} menu place=${place.w}x${place.h} inset=${place.inset}`);
+    mw.destroy();
+    if (child && !child.isDestroyed()) child.destroy();
     win.destroy();
   }
   app.quit();

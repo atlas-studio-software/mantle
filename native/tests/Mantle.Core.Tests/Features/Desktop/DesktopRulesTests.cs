@@ -127,6 +127,8 @@ public class DesktopRulesTests
         Assert.Equal("Show desktop widgets", DeskMenu.Rows(false)[4].Label);
         Assert.Equal(new[] { "", "", "", "", "" }, DeskMenu.Rows(true).Where(r => !r.Sep).Select(r => r.Glyph).ToArray());
         Assert.Equal(("settings.open", "display"), (DeskMenu.Rows(true)[1].Command, DeskMenu.Rows(true)[1].Section));
+        Assert.Equal(("wallpaper.open", "settings.open", "personalization"), (DeskMenu.Rows(true)[0].Command, DeskMenu.Rows(true)[2].Command, DeskMenu.Rows(true)[2].Section));
+        Assert.Equal(("settings.open", (string?)null), (DeskMenu.Rows(true)[6].Command, DeskMenu.Rows(true)[6].Section));
         Assert.Equal(0, DeskMenu.Step(-1, 5, "down")); Assert.Equal(4, DeskMenu.Step(-1, 5, "up"));
         Assert.Equal(0, DeskMenu.Step(4, 5, "down")); Assert.Equal(4, DeskMenu.Step(0, 5, "up"));
         Assert.Equal(0, DeskMenu.Step(3, 5, "home")); Assert.Equal(4, DeskMenu.Step(1, 5, "end"));

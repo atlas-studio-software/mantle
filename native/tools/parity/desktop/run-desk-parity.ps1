@@ -122,10 +122,11 @@ try {
     Start-Sleep -Milliseconds 1500   # the last paint, then the rects again (a late layout pass re-reports them)
     $all = [regex]::Matches((LogText $log), $re); $m = $all[$all.Count - 1]
     $g = $m.Groups
+    Write-Host "desk-parity native $theme $($m.Value)"
     foreach ($part in @(@{ n = 'stats'; i = 5 }, @{ n = 'strip'; i = 13 })) {
       $k = $part.i
       $x = [int]$g[$k].Value - 12; $y = [int]$g[$k + 1].Value - 12; $w0 = [int]$g[$k + 2].Value + 24; $h0 = [int]$g[$k + 3].Value + 24
-      $line = Score "desk-$theme-$($part.n)" (Join-Path $Out "electron-desk-$theme-$($part.n).png") $x $y $w0 $h0
+      try { $line = Score "desk-$theme-$($part.n)" (Join-Path $Out "electron-desk-$theme-$($part.n).png") $x $y $w0 $h0 } catch { $line = "desk-$theme-$($part.n) no score: $($_.Exception.Message)" }
       Write-Host $line; $rows += $line
     }
     # the menu, through the test road (a second start: no mouse, no right-click hook)
@@ -136,7 +137,7 @@ try {
     if (-not $mm) { $rows += "desk-$theme-menu no score: the native menu did not open" }
     else {
       Start-Sleep -Milliseconds 900   # the pop-in
-      $line = Score "desk-$theme-menu" (Join-Path $Out "electron-desk-$theme-menu.png") ([int]$mm.Groups[1].Value) ([int]$mm.Groups[2].Value) ([int]$mm.Groups[3].Value) ([int]$mm.Groups[4].Value)
+      try { $line = Score "desk-$theme-menu" (Join-Path $Out "electron-desk-$theme-menu.png") ([int]$mm.Groups[1].Value) ([int]$mm.Groups[2].Value) ([int]$mm.Groups[3].Value) ([int]$mm.Groups[4].Value) } catch { $line = "desk-$theme-menu no score: $($_.Exception.Message)" }
       Write-Host $line; $rows += $line
     }
     Copy-Item $log (Join-Path $Out "native-desk-$theme-log.txt") -ErrorAction SilentlyContinue
