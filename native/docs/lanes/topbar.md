@@ -102,7 +102,7 @@ this area.
   coordinator / sidecar lane. Until then run `-Stages build,unit,ui` with `--timeout 80` and read `native/out/ui/ui.trx`
   from the run's artifacts (`gh run download <id> -n cloudtest-artifacts`) if the stage hangs.
 - **Pairs not scored yet** with both fixes; floors are placeholders (0.50) in ci.ps1's topbar block.
-- **Ledger:** not marked (no full green run). A ready marker: the rows and their test ids are listed in the Core and UI
+- **Ledger:** not marked (no full green run). Marker ready: `python -I native/tools/parity/topbar/mark-topbar-rows.py native [ui]` (Core rows; `ui` adds the UI ones). The rows and their test ids are also in the Core and UI
   test names; TOP-218 is the `better:` (exact 28 DIP, no shape) once the scale test is green in a green run.
 
 ## Left (exact list, in order)
