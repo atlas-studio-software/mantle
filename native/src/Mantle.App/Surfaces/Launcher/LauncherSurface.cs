@@ -35,7 +35,7 @@ namespace Mantle.App.Surfaces.Launcher;
 /// Part 1/2: apps mode only (search/run/quick modes, the fold, the backdrop picture, file rows, calc: later).
 /// </summary>
 [Mantle.App.Shell.Surface("launcher", AtStart = true)]
-internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
+internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
 {
     public const double WidthDip = 680, HeightDip = 460, InsetDip = 10;
     public const string KeysEnv = "MANTLE_TEST_LAUNCHER_KEYS";
@@ -143,6 +143,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
             if (d != _dark) ApplyTheme(d);
             if (ctx.Test) ctx.Log.Line("theme " + t.View.Theme + " reached it");
         });
+        QuickCreate();                                                     // Win+X (LauncherSurface.Quick.cs)
         ctx.Log.Line("created, hidden and parked (" + (!ctx.Test ? "live" : Mantle.App.Host.Quiet ? "test: never activated, alpha 0, click-through"
             : _keys ? "test, visible; " + KeysEnv + "=1: it takes the keyboard when shown" : "test, visible: never activated") + ")");
     }
@@ -357,7 +358,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         _ctx.Log.Line("shown (" + why + ")");
         _look?.Unfold(WidthDip - 2 * InsetDip, InsetDip);                  // ui/shared/unfold-live.js open, size 'pop'
         _ = _ctx.CallAsync("apps.index");                                    // LAU-018: re-checked on every open
-        RunSearch(_q.Text, 0, opening: true);
+        if (!QuickOpening()) RunSearch(_q.Text, 0, opening: true);
     }
 
     public void Hide(string why)
@@ -365,6 +366,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         if (!_shown) return;
         _shown = false;
         FlushSearch();
+        QuickHidden();
         _ctx.Log.Line("hidden (" + why + ")");
         if (_look == null) { _win.AppWindow.Hide(); return; }
         // main.js: MantleLauncherFold() before the hide; the window goes when the fold has landed (an open first cancels it)
@@ -381,6 +383,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
     {
         _shown = false;
         _debounce?.Stop();
+        QuickDestroy();
         _themeSub?.Dispose(); _themeSub = null;
         try { _win?.Close(); } catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException) { }
         _ctx?.Log.Line("destroyed (" + why + ")");
@@ -420,6 +423,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     void RunSearch(string q, long typedAt, bool opening = false)
     {
+        if (_mode == QuickMode) return;                                    // Quick links' rows are not a search
         int seq = ++_seq;
         if (typedAt != 0) _typedTs = 0;
         _queuedQ = q;
@@ -457,6 +461,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     void Apply(string q, List<SearchHit> hits, IReadOnlyList<IndexSource> sources, long typedAt, bool opening, double searchMs)
     {
+        if (_mode == QuickMode) return;                                    // a late apps answer never replaces Quick links' rows
         long t0 = Stopwatch.GetTimestamp();
         string? keepId = _view.Flat.Count > _sel ? _view.Flat[_sel].Item.Id : null;
         // the selection stays on its row when the rows answer the same query (an open, an index refresh, a repeat);
@@ -629,7 +634,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         r.Index = index;
         r.Root.Margin = index > 0 ? new Thickness(0, 1, 0, 0) : new Thickness(0);
         string name = it.Name.Length > 0 ? it.Name : "(unnamed)";
-        if (r.Name.Text != name) r.Name.Text = name;
+        if (!QuickName(r, it, name) && r.Name.Text != name) r.Name.Text = name;
         if (r.Sub.Text != it.Subtitle) r.Sub.Text = it.Subtitle;
         if (r.Id != it.Id)
         {
@@ -693,6 +698,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
     {
         if (_rows.Count == 0) { _sel = 0; RenderHint(); return; }
         _sel = Math.Clamp(index, 0, _rows.Count - 1);
+        QuickMoved();
         for (int i = 0; i < _rows.Count; i++)
         {
             bool on = i == _sel;
@@ -730,6 +736,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
         }
         if (_view.Groups.Count > 1) keys.Add(("Tab", "Next group"));
         keys.Add(("Esc", "Close"));
+        if (_mode == QuickMode) { keys.Clear(); keys.AddRange(_quick.Hint()); }
         string key = (_dark ? "d|" : "l|") + string.Join("|", keys.Select(k => k.Key + "=" + k.Word));
         if (key == _hintKey) return;
         _hintKey = key;
@@ -769,6 +776,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     void OnKey(object sender, KeyRoutedEventArgs e)
     {
+        if (QuickKey(e)) return;                                           // Quick links' letters, Esc, Left, Right
         int n = _rows.Count;
         bool shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
         int page = Math.Max(1, (int)(_scroll.ViewportHeight / 45) - 1);
@@ -798,6 +806,7 @@ internal sealed class LauncherSurface : Mantle.App.Shell.ISurface
 
     async void Activate()
     {
+        if (QuickActivate()) return;
         if (_view.Flat.Count <= _sel) return;
         var it = _view.Flat[_sel].Item;
         if (it.Kind == "web") { _ctx.Log.Line("Enter on the web row: web search is not built yet (part 2), so nothing opened"); return; }
