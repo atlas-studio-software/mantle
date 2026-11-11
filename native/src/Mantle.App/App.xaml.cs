@@ -200,9 +200,9 @@ public partial class MantleApp : Application
             StopFeatures = async w => { if (_features != null) foreach (var l in await _features.StopAllAsync(w).ConfigureAwait(true)) log("mantle: " + l.Line); },
             Released = w => _features?.Released(w),
             Note = () => _dirtyNote ?? "",
-            // main.js restoreWindows: the app bar first (while the sidecar can still be asked), then the rest. The desktop
-            // layer adds ("the desktop layer", detach) here when it is built (none in this build).
-            MoreReleases = () => appBar.Releases("Windows was put back"),
+            // main.js restoreWindows: the app bar first (while the sidecar can still be asked), then the rest: the desktop
+            // layer is detached from Explorer's desktop window (desktop {detach:true}; none when it was never put there)
+            MoreReleases = () => System.Linq.Enumerable.ToArray(System.Linq.Enumerable.Concat(appBar.Releases("Windows was put back"), Mantle.App.Surfaces.Desktop.DesktopSurface.Releases())),
         });
 
         // ---- toasts wiring (lane native-osd-toasts): where a --live run keeps the banner record (notif-banners.json, through
@@ -279,6 +279,28 @@ public partial class MantleApp : Application
         Mantle.App.Surfaces.Launcher.LauncherSurface.Service = launcher;
         _ = launcher.IndexAsync();
         // ---- end launcher wiring
+        // ---- desktop wiring (lane native-r7-desktop): the desktop layer's live attach / recheck use the sidecar's desktop
+        // verb on the host thread (never sent in --test) and set the "desktop" state piece there; a hot corner opens the
+        // launcher through the surface host (a --test run only looks for it). Before StartSurfaces: the layer is AtStart.
+        Mantle.App.Surfaces.Desktop.DesktopSurface.Wire(_platform, loop.Post, change => _hub!.Set(change), () => _tray?.Paused == true);
+        // a hot corner set to Quick settings toggles the bar's panel on its right cluster (CORN-053/054): run on the bar's
+        // thread, answered within 1500 ms or said in words; a --test run only looks for the panel
+        Mantle.Core.Features.Corners.CornersFeature.ToggleQs = dry => {
+            if (_window is not { } bar) return System.Threading.Tasks.Task.FromResult(new Mantle.Core.Features.Corners.CornerFx(false, "there is no bar to open it on", dry));
+            var done = new System.Threading.Tasks.TaskCompletionSource<Mantle.Core.Features.Corners.CornerFx>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+            if (!bar.DispatcherQueue.TryEnqueue(() => {
+                try { var r = bar.ToggleQuickSettingsFromCorner(dry); done.TrySetResult(new(r.Ok, r.Why, DryRun: dry && r.Ok, Closed: r.Closed)); }
+                catch (Exception e) { done.TrySetResult(new(false, "the bar could not open it: " + e.Message, dry)); }
+            })) return System.Threading.Tasks.Task.FromResult(new Mantle.Core.Features.Corners.CornerFx(false, "there is no bar to open it on", dry));
+            return Mantle.Core.Features.Corners.CornerQs.Within(done.Task, Mantle.Core.Features.Corners.CornerQs.AckMs, dry);
+        };
+        Mantle.Core.Features.Corners.CornersFeature.OpenLauncher = dry => {
+            if (_surfaceControl is not { } sc) return new Mantle.Core.Features.Corners.CornerFx(false, "this Mantle has no launcher to open", dry);
+            if (dry) return new Mantle.Core.Features.Corners.CornerFx(true, DryRun: true);
+            _ = sc.RunAsync("show", "launcher", "a hot corner");
+            return new Mantle.Core.Features.Corners.CornerFx(true);
+        };
+        // ---- end desktop wiring
         StartSurfaces(log);
         // ---- quick settings wiring (lane native-bar-qs): qs.get / qs.set / qs.watch / qs.audio.sessions / qs.audio.session
         // from the generated catalog, on the sidecar's own verbs; a --test run's sets are dry runs (QsService), and
