@@ -84,9 +84,7 @@ public sealed partial class BarWindow
         var btnVis = hidden > 0 ? Visibility.Visible : Visibility.Collapsed;
         if (DockMore.Visibility != btnVis) DockMore.Visibility = btnVis;
         if (hidden > 0) {
-            string label = StripFit.Label(hidden), tip = StripFit.Tip(hidden);
-            if (DockMore.Content as string != label) DockMore.Content = label;
-            if (AutomationProperties.GetName(DockMore) != tip) { AutomationProperties.SetName(DockMore, tip); ToolTipService.SetToolTip(DockMore, tip); }
+            SetMoreLabel(StripFit.Label(hidden));   // its tooltip, name and count disc: PaintMore below (BarWindow.OverflowBadge.cs)
         }
         string sig = StripFit.Sig(_cells.Select(c => c.Item).ToList(), keep);
         if (Popups?.OpenKey == OvfKey) {
@@ -99,6 +97,7 @@ public sealed partial class BarWindow
             }
         }
         _ovfSig = sig;
+        PaintMore();
     }
 
     /// The "+N" button: opens the panel, or closes it on a second click (bar.js openPop('ovf')).
@@ -108,7 +107,7 @@ public sealed partial class BarWindow
         if (!_ovfHooked) {
             _ovfHooked = true;
             Popups.Anchor(DockMore);
-            Popups.Closed += (key, _) => { if (key != OvfKey) return; _ovfRoot = null; Popups.GiveBackKeyboard("the panel closed"); };
+            Popups.Closed += (key, _) => { if (key != OvfKey) return; _ovfRoot = null; _ovfTiles.Clear(); Popups.GiveBackKeyboard("the panel closed"); };
         }
         int hidden = _cells.Count - OnStripCount;
         if (hidden <= 0) return;
@@ -136,6 +135,7 @@ public sealed partial class BarWindow
     void FillOverflow(UiaGrid root)
     {
         root.Children.Clear();
+        _ovfTiles.Clear();
         int keep = OnStripCount, hidden = _cells.Count - keep, cols = StripFit.Columns(hidden);
         var grid = new Grid { ColumnSpacing = StripFit.TileGap, RowSpacing = StripFit.TileGap };
         for (int c = 0; c < cols; c++) grid.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(StripFit.TileW) });
@@ -147,6 +147,7 @@ public sealed partial class BarWindow
             grid.Children.Add(t);
         }
         root.Children.Add(grid);
+        PaintTiles();
     }
 
     PointerEventHandler? _ovfMiddle;
@@ -158,16 +159,18 @@ public sealed partial class BarWindow
             "<Button " + JlNs + " HorizontalAlignment='Stretch' VerticalAlignment='Stretch' HorizontalContentAlignment='Center' Padding='4,8,4,5' IsTabStop='True' UseSystemFocusVisuals='False'" +
             " Foreground='{ThemeResource LgInk2}'><Button.Template>" + JlRowTemplate + "</Button.Template>" +
             "<StackPanel Spacing='4' HorizontalAlignment='Center'>" +
-            "<Grid Width='24' Height='24' CornerRadius='6' HorizontalAlignment='Center'>" +
+            "<Grid HorizontalAlignment='Center'><Grid Width='24' Height='24' CornerRadius='6'>" +
             "<Border Background='{ThemeResource LgTile}'><TextBlock FontSize='12.5' FontWeight='SemiBold' Foreground='{ThemeResource LgInk}' HorizontalAlignment='Center' VerticalAlignment='Center'/></Border>" +
-            "<Image Width='24' Height='24'/></Grid>" +
+            "<Image Width='24' Height='24'/></Grid>" + TileDisc("LgAcc") + TileDisc("LgWarn") + "</Grid>" +
             "<TextBlock FontSize='11.5' MaxWidth='68' TextTrimming='CharacterEllipsis' HorizontalAlignment='Center' FontFamily='{ThemeResource LgFont}'/>" +
             "<Grid Height='3' Width='16'>" +
             "<Border Width='6' Height='3' CornerRadius='1.5' Background='{ThemeResource LgInk2}' HorizontalAlignment='Center'/>" +
             "<Border Width='16' Height='3' CornerRadius='1.5' Background='{ThemeResource LgAcc}' HorizontalAlignment='Center'/></Grid>" +
             "</StackPanel></Button>");
         var sp = (StackPanel)b.Content;
-        var icoBox = (Grid)sp.Children[0];
+        var wrap = (Grid)sp.Children[0];   // the icon and its count disc (helmbadge.js paintTile's .hb-wrap)
+        var icoBox = (Grid)wrap.Children[0];
+        _ovfTiles.Add((vm, b, (Border)wrap.Children[1], (Border)wrap.Children[2]));
         var tile = (Border)icoBox.Children[0];
         var img = (Image)icoBox.Children[1];
         ((TextBlock)tile.Child).Text = vm.Letter;

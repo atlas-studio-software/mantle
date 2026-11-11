@@ -56,10 +56,15 @@ public sealed partial class CellVm : INotifyPropertyChanged
     internal bool OnTop { set { if (_onTop == value) return; _onTop = value; Changed(nameof(OnTopVisibility)); Changed(nameof(Tip)); SetStatus(true); } }
     public Visibility OnTopVisibility => _onTop ? Visibility.Visible : Visibility.Collapsed;
     /// helmbadge.css .cell.hb-on .ontop-badge: the count disc (CellVm.Badge.cs) owns the top-right, so the pin moves
-    /// top-left while a count shows. SetBadge raises PinMoved.
+    /// top-left while a count shows. SetBadge calls BadgeMoved.
     public HorizontalAlignment OnTopAlign => Mantle.Core.Features.OnTop.OnTopWords.PinOnLeft(_badgeN) ? HorizontalAlignment.Left : HorizontalAlignment.Right;
     public Thickness OnTopMargin { get { var (l, t, r, b) = Mantle.Core.Features.OnTop.OnTopWords.PinMargin(_badgeN); return new Thickness(l, t, r, b); } }
-    internal void PinMoved() { Changed(nameof(OnTopAlign)); Changed(nameof(OnTopMargin)); }
+    /// The count as "+N" and its panel read it (BarWindow.OverflowBadge.cs).
+    internal int BadgeCount => _badgeN;
+    internal bool BadgeWarn => _badgeWarn;
+    /// Set by the bar: a count changed, so "+N"'s sum and an open panel's tile follow it (no timer: only on a change).
+    internal Action? OnBadge;
+    internal void BadgeMoved() { Changed(nameof(OnTopAlign)); Changed(nameof(OnTopMargin)); OnBadge?.Invoke(); }
     string? _cant;
     /// BAR-334 (ui/bar/ontop.js CANT): no pin state reaches the bar, so an app with windows says why in its tooltip and
     /// "; keep on top unknown" in its status.
@@ -190,7 +195,7 @@ public sealed partial class BarWindow
         bool divPlaced = false;
         for (int i = 0; i < want.Count; i++) {
             var it = want[i];
-            if (!have.TryGetValue(it.Id, out var vm)) { vm = new CellVm(it); _cells.Insert(Math.Min(i, _cells.Count), vm); }
+            if (!have.TryGetValue(it.Id, out var vm)) { vm = new CellVm(it) { OnBadge = MoreBadgeChanged }; _cells.Insert(Math.Min(i, _cells.Count), vm); }
             else {
                 vm.Update(it);
                 int at = _cells.IndexOf(vm);

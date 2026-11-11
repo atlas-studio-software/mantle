@@ -55,7 +55,7 @@ public partial class StripTests
             Invoke(Jl(Menu(app, "Alpha Shell", profile), "bar.jl.ontop"));
             Host.LogContains(log, "would keep window " + a.Hwnd.ToInt64() + " on top; nothing in Windows changed", "keep on top did not reach the made-up Windows", 5000);
             Cell? c = null;
-            Assert.IsTrue(Host.Until(() => (c = Named(Cells(app), a.Title))?.Status.Contains("kept on top", StringComparison.Ordinal) == true && PinX(c) != null, 5000),
+            Assert.IsTrue(Host.Until(() => (c = Named(Cells(app), a.Title))?.Status.Contains("kept on top", StringComparison.Ordinal) == true && PinX(c!) != null, 5000),
                 "the cell is not kept on top with its pin drawn: " + Describe(Cells(app)));
             double mid = c!.Rect.Left + c.Rect.Width / 2.0;
             Assert.IsTrue(PinX(c)! > mid, $"with no count the pin is not top-right (pin x {PinX(c)}, cell {c.Rect})");
