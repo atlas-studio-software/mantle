@@ -6,7 +6,6 @@ using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Threading.Tasks;
 using Mantle.Core.Features.Media;
-using Mantle.Core.Lifecycle;
 using Mantle.Core.Platform;
 using Mantle.Core.Tests.Features;
 using Mantle.Core.Tests.Platform;
@@ -114,7 +113,7 @@ public class MediaServiceTests
         Assert.Equal("the slow media poll (no change events)", (string?)k.Last["why"]);
 
         using var k2 = new Kit();
-        k2.P.Handle("media", _ => PlatformReply.Fail(PlatformOutcome.Timeout, "did not answer media within 8s"));
+        k2.P.Handle("media", _ => PlatformReply.Fail(PlatformOutcome.TimedOut, "did not answer media within 8s"));
         k2.Make();
         Assert.Equal("the sessions could not be read: did not answer media within 8s", (string?)k2.Last["reason"]);
         int m = k2.Gets;

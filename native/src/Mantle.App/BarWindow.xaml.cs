@@ -158,6 +158,7 @@ public sealed partial class BarWindow : Window
         Tick();
         StartFrame();
         StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
+        StartMedia();           // lane native-r7-media: the now-playing chip and its card (Surfaces/Bar/Media)
     }
 
     // ------------------------------------------------------------------ the glass

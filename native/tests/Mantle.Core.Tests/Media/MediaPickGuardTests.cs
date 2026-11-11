@@ -58,7 +58,7 @@ public class MediaPickGuardTests
     public void Automatic_is_Windows_current_except_under_the_guard_and_the_first_when_there_is_none()
     {
         var prot = S("Lessons", "Lessons", true, prot: true);
-        var player = S("Spotify.exe", "Spotify", playing: false), playing = S("Chrome", "Chrome", playing: true);
+        MediaPickSession player = S("Spotify.exe", "Spotify", playing: false), playing = S("Chrome", "Chrome", playing: true);
         Assert.Equal("current", MediaPick.Choose(null, new[] { prot, player }, prot, false, 0).By);
         var g = MediaPick.Choose(null, new[] { prot, player, playing }, prot, true, 0);
         Assert.Equal(("protected-rule", "Chrome"), (g.By, g.Want));   // a playing one first
