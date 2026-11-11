@@ -34,7 +34,7 @@ public sealed partial class BarWindow
     /// Called once from the bar's start, after the pop-up framework exists (BarWindow.xaml.cs, after StartQuickSettings).
     void StartNotifications()
     {
-        _bell = (VolumeBtn.Parent as Panel)?.Children.OfType<Button>().FirstOrDefault(b => AutomationProperties.GetAutomationId(b) == "bar.notifications");
+        _bell = NotifsBtn;
         if (_bell == null || Popups == null) { Host.Log.Line("notifs: the bell or the pop-up framework is missing, so the notification centre does not open"); return; }
         var popups = Popups;
         _notifs = new NotifPanel(Host.Log.Line, new NotifPanel.Room(

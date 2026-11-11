@@ -32,7 +32,7 @@ public sealed partial class BarWindow
 
     void StartTray()
     {
-        if (VolumeBtn.Parent is not Panel cluster) { Host.Log.Line("tray: the bar's right cluster was not found, so the notification area is not drawn"); return; }
+        var cluster = RightCluster;
         _tray = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 2, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
         BarLook.Uia(_tray, "bar.tray", "Notification area");
         cluster.Children.Insert(0, _tray);   // before the separator (index.html: #tray, then .sep)

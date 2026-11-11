@@ -78,7 +78,8 @@
           <Viewbox Width="22" Height="22"><Canvas x:Name="MarkHost" Width="24" Height="24"/></Viewbox>
         </Button>
 
-        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+        <!-- RightCluster / NotifsBtn: named for lane native-r7-notif (the tray strip goes in first; the bell) -->
+        <StackPanel x:Name="RightCluster" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Rectangle Width="1" Height="20" Fill="{ThemeResource LgEdgeOut}" VerticalAlignment="Center"/>
           <Button AutomationProperties.AutomationId="bar.downloads" AutomationProperties.Name="Downloads" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
           <Button x:Name="VolumeBtn" AutomationProperties.AutomationId="bar.volume" AutomationProperties.Name="Volume" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
@@ -97,7 +98,7 @@
                          LineHeight="13" LineStackingStrategy="BlockLineHeight" Text="--"/>
             </StackPanel>
           </Button>
-          <Button AutomationProperties.AutomationId="bar.notifications" AutomationProperties.Name="Notifications" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NotifsHost" Width="16" Height="16"/></Button>
+          <Button x:Name="NotifsBtn" AutomationProperties.AutomationId="bar.notifications" AutomationProperties.Name="Notifications" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NotifsHost" Width="16" Height="16"/></Button>
           <Button x:Name="MoreBtn" AutomationProperties.AutomationId="bar.more" AutomationProperties.Name="More" Style="{StaticResource LgBtn}" Width="36">
             <!-- bar.css .more .mpip: one pip for every chip, 6 px at top 7 / right 7, a 2 px ring of the fill behind it -->
             <Grid Width="36" Height="36">
