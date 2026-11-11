@@ -33,8 +33,10 @@ public sealed partial class BarWindow
     /// Called once from the bar's start, after the pop-up framework (BarWindow.xaml.cs, after StartQuickSettings).
     void StartMedia()
     {
-        // the right island: the volume button's panel (BarWindow.xaml has no name on it)
-        if (VolumeBtn.Parent is not StackPanel right) { Host.Log.Line("media: the bar's right island was not found, so there is no now-playing chip"); return; }
+        // the right island: the panel holding the volume button (BarWindow.xaml has no name on it), found by walking the
+        // panels from the root (FrameworkElement.Parent was null here at start on the runner)
+        string parentName = VolumeBtn.Parent?.GetType().Name ?? "none";
+        if ((PanelOf(Root, VolumeBtn) ?? PanelOf(Pill, VolumeBtn) ?? VolumeBtn.Parent as Panel) is not StackPanel right) { Host.Log.Line($"media: the bar's right island was not found (the volume button's parent is {parentName}), so there is no now-playing chip"); return; }
         _media = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Visibility = Visibility.Collapsed };
         AutomationProperties.SetAutomationId(_media, "bar.media");
         AutomationProperties.SetName(_media, "Now playing");
@@ -62,6 +64,15 @@ public sealed partial class BarWindow
                 Host.Log.Line($"media: the card closed ({why})");
             };
         }
+    }
+
+    static Panel? PanelOf(UIElement from, UIElement child)
+    {
+        if (from is Panel p) {
+            if (p.Children.Contains(child)) return p;
+            foreach (var c in p.Children) if (PanelOf(c, child) is { } hit) return hit;
+        } else if (from is Border b && b.Child != null) return PanelOf(b.Child, child);
+        return null;
     }
 
     /// From the host thread's wiring (App.xaml.cs, block "media wiring"), posted here.
