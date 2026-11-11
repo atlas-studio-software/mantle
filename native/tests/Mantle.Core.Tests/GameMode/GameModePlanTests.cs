@@ -252,7 +252,7 @@ public class GameModePlanTests
         Assert.Contains("started after the game", skip);
         Assert.Contains("playing sound", skip);
         Assert.Equal(1, t.Small);
-        Assert.Empty(GameModePlan.TrimPlan(procs, eased, bases, done: new HashSet<int> { 2 }).Trim);
+        Assert.Empty(GameModePlan.TrimPlan(procs, eased, bases, audioPids: new HashSet<int> { 7 }, done: new HashSet<int> { 2 }).Trim);
     }
 
     [Fact]

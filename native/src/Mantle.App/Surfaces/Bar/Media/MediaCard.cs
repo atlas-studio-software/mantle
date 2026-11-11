@@ -114,6 +114,9 @@ internal sealed class MediaCard
         _srcWhy.Margin = new Thickness(0, 0, 0, 5); _srcWhy.TextWrapping = TextWrapping.Wrap;
         Uia(_src, "media.card.src", "Sources"); Uia(_srcWhy, "media.card.srcwhy", "");
         srcStack.Children.Add(_srcWhy); srcStack.Children.Add(_srcList);
+        // The list's place is read after each layout pass too, not only at paint (before layout) and at a click: a
+        // paint-time read is pre-layout, so the first click after it saw a "move" that had happened long before.
+        _srcList.LayoutUpdated += (_, _) => Moved();
         _src.Child = srcStack;
         _stack.Children.Add(_src);
         _foot.Margin = new Thickness(0, 10, 0, 0); _foot.TextWrapping = TextWrapping.Wrap;
