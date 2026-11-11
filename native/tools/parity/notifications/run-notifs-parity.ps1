@@ -39,6 +39,7 @@ Add-Type -Path (Join-Path $root 'native/tools/parity/ParityNative.cs')
 Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 [void][ParityNative]::DpiAware()
+$scr = [ParityNative]::Screen(); $SW = $scr[0]; $SH = $scr[1]
 
 # ---- Electron (both themes, and the lists the native side takes)
 $electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
@@ -82,7 +83,12 @@ function FindId($procId, $id) {
 function Score($tag, $ef, $x, $y, $w0, $h0, $procId = 0) {
   if (-not (Test-Path $ef)) { return "$tag no score: no Electron shot" }
   # the bar hides itself from capture while its glass is re-shot: a clean grab waits that out (ParityNative.CleanGrab)
-  $nat = if ($procId) { ([ParityNative]::CleanGrab(@([int]$procId), $x, $y, $w0, $h0, 60, 5000)).Px } else { [ParityNative]::Grab($x, $y, $w0, $h0) }
+  if ($procId) {
+    $shot = [ParityNative]::CleanGrab(@([int]$procId), $x, $y, $w0, $h0, 60, 5000); $nat = $shot.Px
+    Say ("{0}: grab at {1},{2} {3}x{4}: clean={5} ({6} own window(s) over it, {7} ms, {8} grab(s)); covering: {9}" -f $tag, $x, $y, $w0, $h0, $shot.Clean, $shot.Windows, $shot.WaitedMs, $shot.Tries, ((@([ParityNative]::Covering($x, $y, $w0, $h0, @([int]$procId))) -join '; ') -replace '^$', 'none'))
+    $full = [ParityNative]::Grab(0, 0, $script:SW, $script:SH); $fb = Png $full $script:SW $script:SH; $fb.Save((Join-Path $Out "native-$tag-full.png")); $fb.Dispose()
+    [ParityNative]::VisibleWindows() | Set-Content -Encoding utf8 (Join-Path $Out "native-$tag-windows.txt")
+  } else { $nat = [ParityNative]::Grab($x, $y, $w0, $h0) }
   $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-$tag.png"))
   $eb = [System.Drawing.Bitmap]::FromFile($ef)
   $w = [Math]::Min($eb.Width, $nb.Width); $h = [Math]::Min($eb.Height, $nb.Height)

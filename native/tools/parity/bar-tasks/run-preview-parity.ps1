@@ -9,11 +9,15 @@
      (red) and "Preview fixture 1" (blue), top left, away from the bar.
   2. Electron: `electron . --test --test-live-bar --flyout=powershell --screenshot=<dir>` (main.js runFlyoutTest: the same openFly()
      a 400 ms hover runs, no input injected), visible (MANTLE_TEST_VISIBLE=1). Its own flyout.png / -page / -dwm
-     are kept; the SCORED capture is the real screen, grabbed 4 s after it asked the page to open the flyout (main
-     captures at 5 s), because only the screen has the glass, the page and DWM's pictures together.
+     are kept; the SCORED capture is the real screen, grabbed from 1.5 s to 4.8 s after it asked the page to open
+     the flyout (main captures at 5 s and quits), because only the screen has the glass, the page and DWM's
+     pictures together. A run with no complete, settled grab is run again (3 runs at most).
   3. Native: MantleNative.exe --test with MANTLE_TEST_FLYOUT=powershell (BarWindow.Previews.cs TestFlyout, the same
-     OpenFly a click runs) and an empty scratch pin folder; the screen is grabbed 700 ms after its log says the
-     pictures are live.
+     OpenFly a click runs) and an empty scratch pin folder; the screen is grabbed from 700 ms after its log says
+     the pictures are live.
+  Both: windows of other processes over the bottom half are minimised first (the runner's Windows Terminal
+  consoles), and a grab is only scored when it is complete (both pictures, nothing over the flyout, the band over
+  the titles the theme's surface) and settled (the same as the grab before it); every retake is logged with why.
   4. In each screen grab the two pictures are found by their colours (the bottom half of the screen only, so the
      fixture windows themselves never count), the flyout's rectangle is worked out from the left picture's box
      (bar.css: 200x112 box, 6 px card padding, 24 px head, 8 px pop padding + border; scale 1 on the runner), and
@@ -84,7 +88,15 @@ $fx = "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName Syste
   "foreach (`$i in 0, 1) { `$f = New-Object System.Windows.Forms.Form; `$f.Text = ""Preview fixture `$i""; `$f.StartPosition = 'Manual'; " +
   "`$f.Location = New-Object System.Drawing.Point((40 + 60 * `$i), (40 + 40 * `$i)); `$f.Size = New-Object System.Drawing.Size(420, 280); " +
   "`$f.BackColor = [System.Drawing.Color]::FromName(@('Red', 'Blue')[`$i]); `$fs += `$f }; foreach (`$x in `$fs) { `$x.Show() }; [System.Windows.Forms.Application]::Run(`$fs[0])"
-$fixture = Start-Process powershell.exe -ArgumentList '-NoProfile', '-EncodedCommand', ([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fx))) -PassThru
+# Started WITHOUT a console (CreateNoWindow): Start-Process gave powershell.exe a new console, and on the runner a new
+# console is a Windows Terminal window (1113x626, cascaded) that came up seconds later, took the foreground and sat
+# over the bottom of the screen. Electron's bar window is under it in the z-order, so the Electron reference had a
+# black band over the flyout titles (runs 43017337735 light 0.7116 / dark 0.8538, 43002600779 light 0.8196) or no
+# bar at all once the terminal took the foreground (run 43014608940 light: "no live previews"). Native's flyout sat
+# above it, so only the Electron half was ever wrong.
+$fsi = [System.Diagnostics.ProcessStartInfo]::new('powershell.exe', "-NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($fx)))")
+$fsi.UseShellExecute = $false; $fsi.CreateNoWindow = $true
+$fixture = [System.Diagnostics.Process]::Start($fsi)
 Start-Sleep -Seconds 3
 
 # the left picture's box -> the flyout's rectangle (bar.css, scale 1): box 200 x 112; card padding 6, head 24 + gap 5;
@@ -123,6 +135,74 @@ function Crop([byte[]]$px, [int]$w, $r, [int]$m) {
   return @{ Px = $out; W = $cw; H = $ch }
 }
 
+# The pid and every process under it (the app under test: its windows are never moved out of the way).
+function Get-Tree([int]$top) {
+  $all = @(Get-CimInstance Win32_Process | Select-Object ProcessId, ParentProcessId)
+  $set = [System.Collections.Generic.List[int]]::new(); $set.Add($top)
+  for ($i = 0; $i -lt $set.Count; $i++) { foreach ($p in $all) { if ($p.ParentProcessId -eq $set[$i] -and -not $set.Contains([int]$p.ProcessId)) { $set.Add([int]$p.ProcessId) } } }
+  return $set.ToArray()
+}
+# Windows of other processes over the bottom half (where the bar and its flyout are) are minimised without
+# activation, as run-parity.ps1 does for the bar: the runner's consoles from earlier stages are Windows Terminal
+# windows, and one of them over the flyout covers the Electron reference (see the fixture above).
+function Clear-Bottom([string]$tag, [int[]]$keep) {
+  $done = @([ParityNative]::ClearRect(0, [int]($H / 2), $W, $H - [int]($H / 2), $keep))
+  if ($done.Count) { Say ("{0}: minimised {1} window(s) of other processes over the bottom half: {2}" -f $tag, $done.Count, ($done -join '; ')); Start-Sleep -Milliseconds 500 }
+}
+
+# The flyout surface measured on clean captures of both apps (median luminance of the pop's top padding and the
+# card heads, 11-11 runs 43011452538 and 43014608940): light 230, dark 25. A Windows Terminal over it reads 12.
+$Surface = @{ light = 230; dark = 25 }; $SurfaceTol = 12
+# Is this whole-screen grab a complete flyout? Both pictures found, nothing of another process over the flyout,
+# and every row of the band from the pop's top padding through the card heads (y +2..+34: padding 8, card padding
+# 6, head 24) has the theme's surface as its median. Returns @{ R = the flyout rect or $null; Why = $null or why not }.
+function Test-Flyout([byte[]]$px, [string]$t, [int[]]$keep) {
+  $r = Find-Flyout $px $W $H
+  if (-not $r) { return @{ R = $null; Why = 'the two pictures were not found on screen (no live previews in that capture)' } }
+  $over = @([ParityNative]::Covering($r.X, $r.Y, $r.W, $r.H, $keep))
+  if ($over.Count) { return @{ R = $r; Why = "covered by another process's window: $($over -join '; ')" } }
+  $want = $Surface[$t]; $off = @()
+  for ($y = $r.Y + 2; $y -le $r.Y + 34; $y++) {
+    if ($y -lt 0 -or $y -ge $H) { continue }
+    $l = [System.Collections.Generic.List[double]]::new()
+    for ($x = [Math]::Max(0, $r.X + 20); $x -lt [Math]::Min($W, $r.X + $r.W - 20); $x += 2) {
+      $i = ($y * $W + $x) * 4; $l.Add(0.114 * $px[$i] + 0.587 * $px[$i + 1] + 0.299 * $px[$i + 2])
+    }
+    $a = $l.ToArray(); [Array]::Sort($a); $m = $a[[int]($a.Length / 2)]
+    if ([Math]::Abs($m - $want) -gt $SurfaceTol) { $off += ("y {0}: {1:N0}" -f $y, $m) }
+  }
+  if ($off.Count) { return @{ R = $r; Why = ("the band over the titles is not the {0} surface ({1} +-{2}) in {3} of 33 rows ({4})" -f $t, $want, $SurfaceTol, $off.Count, (($off | Select-Object -First 3) -join ', ')) } }
+  return @{ R = $r; Why = $null }
+}
+# Grabs (each a ParityNative.CleanGrab: never while the app has its own window over the flyout excluded from
+# capture) until one is complete (Test-Flyout) AND the flyout crop matches the previous complete grab (mean abs
+# under 2 of 255: settled, not mid-paint). Every retake is logged with its reason. $go = a scriptblock that says
+# whether another grab may still be taken. Returns @{ Px = the full grab; R = the flyout rect; Why = $null or the
+# last reason }.
+function Get-SettledShot([string]$tag, [string]$t, [int[]]$keep, [scriptblock]$go) {
+  $prev = $null; $last = @{ Px = $null; R = $null; Why = 'no grab was taken' }; $n = 0
+  while (& $go) {
+    $n++
+    Clear-Bottom $tag $keep
+    $s = [ParityNative]::CleanGrab($keep, 0, 0, $W, $H, 60, 1500)
+    if (-not $s.Clean) { $last = @{ Px = $s.Px; R = $null; Why = 'the app kept its window excluded from capture for 1.5 s' }; Say "${tag}: grab ${n}: retake ($($last.Why))"; $prev = $null; continue }
+    $v = Test-Flyout $s.Px $t $keep
+    $last = @{ Px = $s.Px; R = $v.R; Why = $v.Why }
+    if ($v.Why) { Say "${tag}: grab ${n}: retake ($($v.Why))"; $prev = $null; Start-Sleep -Milliseconds 250; continue }
+    $c = Crop $s.Px $W $v.R $Margin
+    if ($prev -and $prev.R.X -eq $v.R.X -and $prev.R.Y -eq $v.R.Y) {
+      $d = ([ParityNative]::Diff($prev.C.Px, $c.Px, $c.W, $c.H, @(), $PixelThreshold)).MeanAbs
+      if ($d -lt 2) { Say ("{0}: grab {1}: complete and settled (mean abs {2:N2} against grab {3})" -f $tag, $n, $d, ($n - 1)); return $last }
+      Say ("{0}: grab {1}: retake (complete, but still changing: mean abs {2:N2} against the previous grab)" -f $tag, $n, $d)
+    } elseif ($prev) { Say "${tag}: grab ${n}: retake (the flyout moved from $($prev.R.X),$($prev.R.Y) to $($v.R.X),$($v.R.Y))" }
+    else { Say "${tag}: grab ${n}: complete; one more to prove it settled" }
+    $prev = @{ R = $v.R; C = $c }
+    Start-Sleep -Milliseconds 250
+  }
+  if (-not $last.Why) { $last.Why = 'complete but never settled across two grabs' }
+  return $last
+}
+
 $themes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
 $lines = @(); $failed = @()
 foreach ($t in $themes) {
@@ -131,36 +211,63 @@ foreach ($t in $themes) {
   $grabs = @{}
 
   # Electron
-  $eo = Join-Path $dir 'electron-stdout.txt'; $ee = Join-Path $dir 'electron-stderr.txt'
-  $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_BAR_TEST_CURSOR = '1'
-  $ep = Start-Process -FilePath $electronExe -ArgumentList '.', '--test', "--profile-name=prevpar-$t", "--theme=$t", '--test-live-bar', '--no-desktop', '--flyout=powershell', "--screenshot=$(Join-Path $dir 'electron-own')" `
-    -WorkingDirectory $root -PassThru -RedirectStandardOutput $eo -RedirectStandardError $ee
-  $end = (Get-Date).AddSeconds(150); $asked = $null
-  while ((Get-Date) -lt $end -and -not $ep.HasExited) {
-    if (-not $asked -and (Test-Path $eo) -and (Select-String -Path $eo -SimpleMatch 'asking the bar page to open the flyout' -Quiet)) { $asked = Get-Date }
-    if ($asked -and ((Get-Date) - $asked).TotalMilliseconds -ge 4000) { $grabs.electron = [ParityNative]::Grab(0, 0, $W, $H); break }
-    Start-Sleep -Milliseconds 100
+  # The --flyout test opens the flyout, writes its own screenshots 5 s after asking and quits, so the screen is
+  # grabbed from 1.5 s to 4.8 s after it asked, until a grab is complete and settled (Get-SettledShot); a run that
+  # never gives one is run again (3 runs at most), each retake logged with its reason.
+  $eWhy = $null; $eLast = $null
+  for ($run = 1; $run -le 3 -and -not $grabs.electron; $run++) {
+    $eo = Join-Path $dir 'electron-stdout.txt'; $ee = Join-Path $dir 'electron-stderr.txt'
+    Clear-Bottom "electron $t run $run" @($fixture.Id)
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_BAR_TEST_CURSOR = '1'
+    $ep = Start-Process -FilePath $electronExe -ArgumentList '.', '--test', "--profile-name=prevpar-$t", "--theme=$t", '--test-live-bar', '--no-desktop', '--flyout=powershell', "--screenshot=$(Join-Path $dir 'electron-own')" `
+      -WorkingDirectory $root -PassThru -RedirectStandardOutput $eo -RedirectStandardError $ee
+    $end = (Get-Date).AddSeconds(150); $asked = $null
+    while ((Get-Date) -lt $end -and -not $ep.HasExited -and -not $asked) {
+      if ((Test-Path $eo) -and (Select-String -Path $eo -SimpleMatch 'asking the bar page to open the flyout' -Quiet)) { $asked = Get-Date }
+      else { Start-Sleep -Milliseconds 100 }
+    }
+    if ($asked) {
+      $keep = @(Get-Tree $ep.Id) + @($fixture.Id)
+      while (((Get-Date) - $asked).TotalMilliseconds -lt 1500) { Start-Sleep -Milliseconds 50 }
+      $shot = Get-SettledShot "electron $t run $run" $t $keep { -not $ep.HasExited -and ((Get-Date) - $asked).TotalMilliseconds -lt 4800 }
+      if (-not $shot.Why) { $grabs.electron = $shot.Px; $eWhy = $null }
+      else { $eWhy = $shot.Why; $eLast = $shot.Px; Say "electron $t run ${run}: no complete, settled grab before it quit ($eWhy)$(if ($run -lt 3) { ': run again' })" }
+    } else { $eWhy = "no flyout asked for in 150 s; exited: $($ep.HasExited)" }
+    $ep.WaitForExit(30000) | Out-Null
+    if (-not $ep.HasExited) { Stop-Process -Id $ep.Id -Force -ErrorAction SilentlyContinue }
+    Get-Content $eo -ErrorAction SilentlyContinue | Where-Object { $_ -match '--flyout' } | ForEach-Object { Say "electron $t run ${run}: $_" }
+    & $park; Start-Sleep -Seconds 2
   }
-  if (-not $grabs.electron) { $failed += "electron $t (no flyout asked for in 150 s; exited: $($ep.HasExited))" }
-  $ep.WaitForExit(30000) | Out-Null
-  if (-not $ep.HasExited) { Stop-Process -Id $ep.Id -Force -ErrorAction SilentlyContinue }
-  Get-Content $eo -ErrorAction SilentlyContinue | Where-Object { $_ -match '--flyout' } | ForEach-Object { Say "electron ${t}: $_" }
-  & $park; Start-Sleep -Seconds 2
+  if (-not $grabs.electron) {
+    $failed += "electron $t (no complete, settled capture in 3 runs: $eWhy)"
+    if ($eLast) { Save-Bgra $eLast $W $H (Join-Path $dir 'electron-full-rejected.png') }
+  }
 
   # native
   $ud = Join-Path ([IO.Path]::GetTempPath()) "mantle-native-prevpar-$t"; Remove-Item -Recurse -Force $ud -ErrorAction SilentlyContinue; New-Item -ItemType Directory -Force -Path $ud | Out-Null
   $pins = Join-Path $ud 'pins'; New-Item -ItemType Directory -Force -Path $pins | Out-Null
   $env:MANTLE_TEST_FLYOUT = 'powershell'; $env:MANTLE_TEST_PINS_DIR = $pins
+  Clear-Bottom "native $t" @($fixture.Id)
   $np = Start-Process -FilePath $exe -ArgumentList '--test', "--profile-name=prevpar-$t", "--user-data=$ud", "--theme=$t" -PassThru
   Remove-Item Env:MANTLE_TEST_FLYOUT, Env:MANTLE_TEST_PINS_DIR -ErrorAction SilentlyContinue
-  $end = (Get-Date).AddSeconds(60); $nlog = $null
+  $end = (Get-Date).AddSeconds(60); $nlog = $null; $live = $false
   while ((Get-Date) -lt $end -and -not $np.HasExited) {
     if (-not $nlog) { $nlog = Get-ChildItem -Path $ud -Recurse -Filter 'mantle-native.log' -ErrorAction SilentlyContinue | Select-Object -First 1 }
-    if ($nlog -and (Select-String -Path $nlog.FullName -Pattern 'bar previews: .*: \d+: live' -Quiet)) { Start-Sleep -Milliseconds 700; $grabs.native = [ParityNative]::Grab(0, 0, $W, $H); break }
+    if ($nlog -and (Select-String -Path $nlog.FullName -Pattern 'bar previews: .*: \d+: live' -Quiet)) { $live = $true; break }
     Start-Sleep -Milliseconds 150
   }
+  if ($live) {
+    # the same complete-and-settled rule as Electron's, from 700 ms after the log says the pictures are live, 8 s at most
+    Start-Sleep -Milliseconds 700
+    $nEnd = (Get-Date).AddSeconds(8)
+    $shot = Get-SettledShot "native $t" $t (@($np.Id) + @($fixture.Id)) { -not $np.HasExited -and (Get-Date) -lt $nEnd }
+    if (-not $shot.Why) { $grabs.native = $shot.Px }
+    else {
+      $failed += "native $t (no complete, settled capture in 8 s: $($shot.Why))"
+      if ($shot.Px) { Save-Bgra $shot.Px $W $H (Join-Path $dir 'native-full-rejected.png') }
+    }
+  } else { $failed += "native $t (no live preview line in 60 s; exited: $($np.HasExited))" }
   if ($nlog) { Select-String -Path $nlog.FullName -Pattern 'bar previews' | Select-Object -First 6 | ForEach-Object { Say "native ${t}: $($_.Line)" } }
-  if (-not $grabs.native) { $failed += "native $t (no live preview line in 60 s; exited: $($np.HasExited))" }
   if (-not $np.HasExited) { Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue }
   & $park; Start-Sleep -Seconds 1
 
