@@ -32,31 +32,47 @@ IPC" (863, 864), "Notification area" (368, 369), "Tray" (352..362), "Tray tone" 
 BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host-2: `TrayBatchTests`
 (`AnAskNeverRebuildsInsideTheCall_...`, `SameKeyIsSkipped_ForceRebuildsAtOnce_...`).
 
+## Part 2: the visible half (built)
+
+| File | Electron | What |
+|---|---|---|
+| `Surfaces/Bar/Notifications/BarWindow.Notifications.cs` | `notifications.js` init / renderBell / health / open, `bar.js on('bar.winkey')` | the bell: the count BESIDE the glyph (the button widens only then), quiet ink-3 + "off" when the list cannot be read, tooltip / UIA name = `BellTip`, ItemStatus `none` / `some` / `new N` / `off`; click toggles the centre, right-click only opens; `OpenNotifications()` for the calendar's footer link (BAR-855); health(): the "notifs" chip follows the list; the lane's SurfaceLink also carries the shell state to the chips and listens for `bar.winkey` |
+| `Surfaces/Bar/Notifications/NotifPanel.cs` | `notifications.js` build / paint / act, `notifications.css` | the centre, 340 wide, code-built with theme tokens: head + Clear all, groups (icon or letter, name, count, dismiss-all), cards (logo, title, body clamped to 4 lines, meta, dismiss, hero, the unread dot of what was new at the open), loading / empty / unavailable, the note, the plain-source detail, the Win+N link; seen on open, busy dimming, a refusal as the note, re-measured (PopupHost.Resize) on every change; a 30 s age ticker while open |
+| `Surfaces/Bar/Notifications/BarLook.cs` | - | tokens in code, the flat button face, glyphs, data: pictures (decoded once), straight-alpha pixels for the tone |
+| `Surfaces/Bar/Tray/BarWindow.Tray.cs` | `bar.js` renderTray / trayButton / toneOf, `bar.css .tray .ti` | the strip first in the right cluster (before the separator): 26 px buttons 2 apart, 20 px tiles, letter tiles, unclickable dimmed (.42) with the reason in the tooltip and the "can't click" chip on a click (nothing sent), promoted:false kept for the More menu, rebuilt only on a new signature; tones measured once (TrayTone / TrayToneCache), the plate per theme; a theme change redraws the strip |
+| `Surfaces/Bar/Chips/BarWindow.More.cs` | `bar.js` buildMorePop | the More menu (only when MANTLE_TEST_POPUPS is unset): MANTLE, the test copy line, every chip in words, "Tray icons not shown", the hidden tray icons + their why line + taskbar settings, Settings (Win+I), Restore, Restart, Quit (armed for 4 s) |
+| `Surfaces/Bar/Frame/Chips.cs` (2 lines) | `bar.js` chipData | "Desktop not attached" not while the desktop has not started; "Tray icons not updating" suppressed while the strip says the tray is unavailable (`TrayUnavailable`) |
+| hooks | | `BarWindow.xaml` names `RightCluster` and `NotifsBtn`; `BarWindow.xaml.cs` calls `StartNotifications()`, `RenderPip` passes the shell state, the startup access check leaves the "notifs" chip to the centre once it has a list; `App.xaml.cs` block "notifications wiring": the lane's SurfaceLink (its own StateFeed on the hub) and `@<file>` fixtures |
+
+### --test
+
+- `MANTLE_TEST_NOTIFS` / `MANTLE_TEST_TRAY` may be `@<path>`: the list is read from that file (the parity run's lists carry
+  pictures and outgrow an environment variable).
+- The More menu's items are dry runs: `more: dry run (--test): would open Settings (ms-settings:); nothing was opened`,
+  `... would restore Windows' taskbar; nothing was changed`, `... would quit Mantle; nothing was closed`.
+
+### Tests and the pair
+
+- `tests/Mantle.UiTests/Notifications/NotificationsTests.cs` (4): the bell's count and widening, the centre's groups /
+  cards / unread / dead / meta, dismiss / dismiss-all / Clear all / Win+N as dry runs, the empty state; an unreadable list
+  in dark (quiet bell, warn pip, right-click opens, "Notifications unavailable"); the strip's tones, dimming, left / right
+  clicks as dry runs, the refused click's chip, the More menu (who line, chips, hidden icon and its why, Quit armed,
+  Settings dry run); the tones in dark.
+- `tools/parity/notifications/run-notifs-parity.ps1` + `electron-notifs.cjs`: Electron `?mock=1&mode=pill&tray=tones&notifs=some`;
+  its `notifs.get` / `tray.list` answers (times moved on) become the native fixtures; the centre and the strip, light and
+  dark. ci.ps1 stage `notifs` (last in the list), floors `notifs tray` / `notifs centre`.
+
 ## Deviations
 
 - The centre reads the list itself; the toasts feature still has its own `NotificationFeed` (two readers in a live run
   until the toasts feature takes `NotificationCentre.Published`, a request to the toasts owner).
-- `shell.restart` does not exist natively yet: the More menu's Restart will say "Could not restart: restarting is not
-  part of this build yet".
-- Nothing publishes `bar.winkey` natively yet (the switcher lane's hook); the bar will listen for it.
+- `shell.restart` does not exist natively yet: the More menu's Restart says "Could not restart: restarting is not part of
+  this build yet".
+- Nothing publishes `bar.winkey` natively yet (the switcher lane's hook); the bar listens for it.
+- Cards open on a pointer tap; keyboard focus / Enter (BAR-844) is not drawn (the bar's pop-ups never take the keyboard).
+- The edge bar's chip strip is not drawn (the island's pip stands for it, as before).
 
-## Left (part 2, the UI)
+## Left
 
-- `Surfaces/Bar/Notifications/`: the bell (badge, `.new` widening, `.off`, tooltip, the `notifs` chip), the panel
-  (`NotifPanel`, 340 wide, groups, cards, hero, note, foot, Win+N link), right-click opens, Win+N via `bar.winkey`,
-  `OpenNotifications()` for the calendar's footer link (BAR-855, the calendar lane calls it).
-- `Surfaces/Bar/Tray/`: the strip (inserted before the separator), 26 px buttons, letter tiles, dimmed unclickable,
-  tones per theme (`Root.ActualThemeChanged`), clicks through `tray.click`, the "can't click" chip.
-- `Surfaces/Bar/Chips/`: the shell state into `Chips` (BarWindow.RenderPip passes null today), the tray-unavailable
-  suppression of "Tray icons not updating", the More menu (replaces the MANTLE_TEST_POPUPS stand-in only when that
-  variable is unset).
-- UI tests, `tools/parity/notifications/` pair script (Electron `?mock=1&mode=pill&tray=tones&notifs=some`; the mock's
-  `tray.list` / `notifs.get` answers become MANTLE_TEST_TRAY / MANTLE_TEST_NOTIFS), the ci.ps1 `notifs` stage, bar.md rows.
-
-## State at the part-1 handoff (context ceiling)
-
-- Run 42996911243 (dc88b24): build ok, unit 4 of 639 failed (an int-backed JsonValue is not TryGetValue<long>; seen ids
-  read only in Start). Run 42997472325 (f3c72f0): AOT publish failed on IL2026 (generic JsonArray.Add<T>). Both fixed.
-- Run 42998120400 (7470f00, -Stages build,unit,ui): `NATIVE-CI: ok (3 ok, 0 skipped)`; unit 639 of 639, ui 46 of 46.
-- bar.md: BAR-370, BAR-371 `tested:` (TrayBatchTests). Every other row of the lane is still `todo`: the host half is
-  built and unit-tested, but no row is marked until the bar draws it (part 2). No full run, no screenshot pair yet.
+- BAR-844 (keyboard on cards), BAR-856 (no panel fallback), BAR-191 (a push channel that cannot be subscribed).
+- The calendar lane calls `OpenNotifications()` for BAR-855.

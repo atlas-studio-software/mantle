@@ -41,6 +41,8 @@ public class NotificationsTests
         "{\"id\":\"n:3\",\"title\":\"Tailscale\",\"icon\":\"" + Png(Color.FromArgb(255, 47, 111, 224)) + "\",\"promoted\":false,\"clickable\":false,\"reason\":\"Tailscale " + Hid + "\"}]";
 
     static void ClickEl(AutomationElement e) { var r = e.BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(350); }
+    // UI Automation Invoke: a button scrolled out of the list (it caps at 300) cannot be reached by the mouse
+    static void Press(AutomationElement e) { e.Patterns.Invoke.Pattern.Invoke(); Thread.Sleep(350); }
     static void RightClickEl(AutomationElement e) { var r = e.BoundingRectangle; FlaUI.Core.Input.Mouse.RightClick(new Point(r.Left + r.Width / 2, r.Top + r.Height / 2)); Thread.Sleep(350); }
 
     static (BarApp App, string Dir) Launch(string profile, string theme = "light", bool notifs = true, bool tray = false)
@@ -103,15 +105,15 @@ public class NotificationsTests
         Assert.IsTrue(Host.Until(() => Status(bell) == "some", 3000), "the bell still counts after the open: " + Status(bell));
         Host.Screenshot("notifs-centre-light");
 
-        ClickEl(El(w, "notifs.card.104.x"));
+        Press(El(w, "notifs.card.104.x"));
         Host.LogContains(Log(dir), "notifs: dry run (--test): dismiss: would dismiss 1 notification (104) in Windows; nothing was sent, Windows was not changed");
         Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("notifs.card.104")) == null, 3000), "the dismissed card is still drawn");
         Assert.IsTrue(Host.Until(() => El(w, "notifs.head").Name == "Notifications · 3", 2000), "the head did not count 3");
 
-        ClickEl(El(w, "notifs.group.1.x"));
+        Press(El(w, "notifs.group.1.x"));
         Host.LogContains(Log(dir), "notifs: dry run (--test): dismiss that app's notifications: would dismiss 1 notification (101) in Windows");
 
-        ClickEl(El(w, "notifs.clear"));
+        Press(El(w, "notifs.clear"));
         Host.LogContains(Log(dir), "notifs: dry run (--test): clear all: would dismiss 2 notifications (103, 90) in Windows");
         Assert.IsTrue(Host.Until(() => El(w, "notifs.empty").Name == "No notifications", 3000), "no empty state after Clear all");
         Assert.IsTrue(Host.Until(() => Status(bell) == "none", 2000), "the bell did not go to none: " + Status(bell));
@@ -180,7 +182,7 @@ public class NotificationsTests
         var hidden = El(m, "bar.tray.n:3");
         Assert.IsTrue(Host.Until(() => Status(hidden) == "normal off", 2000), "the hidden icon is not dimmed: " + Status(hidden));
         Host.Screenshot("more-menu-light");
-        ClickEl(hidden);
+        Press(hidden);
         Assert.IsTrue(Host.Until(() => El(m, "more.hidwhy").Name.StartsWith("Tailscale is in Windows' hidden-icons flyout", StringComparison.Ordinal), 2000), "the hidden icon's click did not say why");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("notification-area icon n:3"), "a hidden icon was sent a click");
         var quit = El(m, "more.quit");

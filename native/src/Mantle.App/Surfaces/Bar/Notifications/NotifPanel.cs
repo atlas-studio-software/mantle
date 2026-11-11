@@ -326,14 +326,14 @@ internal sealed class NotifPanel
             card.Tapped += (_, e) => { e.Handled = true; OpenToast(t); };
         }
         var col = new StackPanel();
-        var row = new Grid { ColumnSpacing = 9 };
+        var row = new Grid();   // gap 9 after the logo only: an empty column takes no gap (flex)
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
         row.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         if (NotificationCentre.Str(t["logo"]) is { } logo) {
             bool circle = t["logoCircle"] is JsonValue cv && cv.TryGetValue<bool>(out var cb) && cb;
             var img = new Image { Width = 32, Height = 32, Stretch = Stretch.UniformToFill };
-            var frame = new Border { Width = 32, Height = 32, Margin = new Thickness(0, 1, 0, 0), CornerRadius = new CornerRadius(circle ? 16 : 6), Child = img, VerticalAlignment = VerticalAlignment.Top };
+            var frame = new Border { Width = 32, Height = 32, Margin = new Thickness(0, 1, 9, 0), CornerRadius = new CornerRadius(circle ? 16 : 6), Child = img, VerticalAlignment = VerticalAlignment.Top };
             _ = Fill(img, logo, () => frame.Visibility = Visibility.Collapsed);
             row.Children.Add(frame);
         }
@@ -354,11 +354,12 @@ internal sealed class NotifPanel
         }
         Grid.SetColumn(text, 1); row.Children.Add(text);
         var x = XButton("notifs.card." + id + ".x", "Dismiss", () => _ = Act("id:" + id, "notifs.remove", new JsonObject { ["ids"] = new JsonArray((JsonNode)JsonValue.Create(id)) }, "Could not dismiss it"));
-        x.Margin = new Thickness(0, -2, 0, 0); x.VerticalAlignment = VerticalAlignment.Top;
+        x.VerticalAlignment = VerticalAlignment.Top;
+        x.Margin = new Thickness(9, -2, 0, 0);
         Grid.SetColumn(x, 2); row.Children.Add(x);
         col.Children.Add(row);
         if ((NotificationCentre.Str(t["hero"]) ?? NotificationCentre.Str(t["image"])) is { } pic) {
-            var img = new Image { Stretch = Stretch.UniformToFill, MaxHeight = 132 };
+            var img = new Image { Stretch = Stretch.UniformToFill, Height = 132 };   // object-fit: cover, centred
             var frame = new Border { CornerRadius = new CornerRadius(6), Margin = new Thickness(0, 7, 0, 0), Child = img, MaxHeight = 132 };
             _ = Fill(img, pic, () => frame.Visibility = Visibility.Collapsed);
             col.Children.Add(frame);

@@ -115,12 +115,12 @@ try {
     $ok = $false
     for ($i = 0; $i -lt 150 -and -not $ok; $i++) { Start-Sleep -Milliseconds 200; $t = LogText $log; $ok = ($t -match 'notifs: a --test run with MANTLE_TEST_NOTIFS') -and ($t -match 'tray: the strip shows') }
     if (-not $ok) { $rows += "$theme no score: the native app did not draw MANTLE_TEST_NOTIFS / MANTLE_TEST_TRAY in 30 s"; Copy-Item $log (Join-Path $Out "native-$theme-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
-    Start-Sleep -Milliseconds 1500   # the tones and pictures
+    Start-Sleep -Milliseconds 3500   # the bar's first reveal, the tones and the pictures
     # ---- the strip
     $strip = FindId $p.Id 'bar.tray'
     if (-not $strip) { $rows += "tray-$theme no score: no bar.tray in the native bar" }
     else {
-      $r = $strip.Current.BoundingRectangle
+      $r = $strip.Current.BoundingRectangle; Say "native strip at $($r.X),$($r.Y) $($r.Width)x$($r.Height)"
       $line = Score "tray-$theme" (Join-Path $Out "electron-tray-$theme.png") ([int]$r.X - 4) ([int]$r.Y - 4) ([int]$r.Width + 8) ([int]$r.Height + 8)
       Write-Host $line; $rows += $line
       $mm = [regex]::Match($line, 'ssim=([\d.]+)'); if ($mm.Success -and [double]$mm.Groups[1].Value -lt $low.tray) { $low.tray = [double]$mm.Groups[1].Value }
