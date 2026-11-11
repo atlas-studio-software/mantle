@@ -49,7 +49,11 @@ internal sealed partial class TopBarSurface
 
     void InstallMenus()
     {
-        _win.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus"); };
+        _win.Activated += (_, e) =>
+        {
+            if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus");
+            else KeysHomeSoon();   // TopBarSurface.Motion.cs: the menu keys need the focus inside the bar
+        };
         _subs.Add(_ctx.On<bool>("topbar.peek", on => { _peeking = on; RefreshTitles(); }));
         InstallPingTest();   // TopBarSurface.PingTest.cs
         InstallDragEnd();    // TopBarSurface.Motion.cs

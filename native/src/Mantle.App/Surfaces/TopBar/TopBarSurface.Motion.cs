@@ -1,7 +1,9 @@
 using System;
+using System.Linq;
 using System.Numerics;
 using Mantle.Core.Features.TopBar;
 using Microsoft.UI.Composition;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
 using Microsoft.UI.Xaml.Hosting;
@@ -75,6 +77,37 @@ internal sealed partial class TopBarSurface
             if (_test) _ctx.Log.Line($"drag armed: {Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(c)} (focus {(had ? "kept" : took ? "taken" : "refused")})");
         }), true);
     }
+
+    /// The menu keys arrive through _root's PreviewKeyDown, so they need the XAML focus inside the bar. When the window is
+    /// activated (a click on it, or the foreground handed over), the island puts its own focus back first, and that can
+    /// be nothing at all (the element it had was redrawn away). After that turn, an open menu whose bar holds no focus
+    /// gives it to its name box or else the open title or stat cell. --test logs where the keys go, so a test sends keys only after this.
+    void KeysHomeSoon() => _win.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
+    {
+        string where;
+        if (_open == null) where = "nothing (no menu open)";
+        else
+        {
+            var f = _root.XamlRoot != null ? FocusManager.GetFocusedElement(_root.XamlRoot) as DependencyObject : null;
+            if (Within(f, _root)) where = Aid(f) + " (it held the focus)";
+            else
+            {
+                // a name box shown in the dropdown first (it keeps the focus through redraws), else the open title or cell
+                Control? b = (Control?)_ptBox ?? _editBox ?? _left.Children.Concat(_right.Children).OfType<Button>().FirstOrDefault(IsOpen);
+                bool ok = b != null && b.Focus(FocusState.Programmatic);
+                where = b == null ? "nothing (the open menu's title or cell is not drawn)" : Aid(b) + (ok ? " (the focus given)" : " (the focus refused)");
+            }
+        }
+        if (_test) _ctx.Log.Line("window activated; keys go to " + where);
+    });
+
+    static bool Within(DependencyObject? d, DependencyObject root)
+    {
+        for (; d != null; d = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(d)) if (d == root) return true;
+        return false;
+    }
+
+    static string Aid(DependencyObject? d) => d is FrameworkElement fe && Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(fe) is { Length: > 0 } id ? id : d?.GetType().Name ?? "nothing";
 
     /// The TextBox template's clear (x) button: Electron's name inputs are plain inputs with none, and a click at the
     /// box's right end would empty it instead of placing the caret.

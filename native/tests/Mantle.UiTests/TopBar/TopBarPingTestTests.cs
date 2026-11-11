@@ -92,8 +92,11 @@ public partial class TopBarSurfaceTests
         var box = Find(win, "topbar.pt.name");
         Assert.AreEqual("upstairs", box.AsTextBox().Text);
         var br = box.BoundingRectangle;
+        bool wasFront = Win32.GetForegroundWindow() == bar;   // an activated bar takes keys once it says where they go (TopBarStatTests)
+        int acts = Count(app.Log, "topbar: window activated; keys go to ");
         ZOrder.Click(br.Right - 6, br.Top + br.Height / 2);
-        if (Win32.GetForegroundWindow() != bar) Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so the name box cannot get keys");
+        if (Win32.GetForegroundWindow() != bar) { wasFront = false; Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so the name box cannot get keys"); }
+        if (!wasFront) Assert.IsTrue(Host.Until(() => Count(app.Log, "topbar: window activated; keys go to ") > acts, 4000), "the activated bar never said where its keys go");
         FrameProbe.Tap(0x23);   // End
         FrameProbe.Tap(0x32);   // "2"
         string typed = "";   // found again each time: a 1 s sample redraws the box with its new text (a new element)

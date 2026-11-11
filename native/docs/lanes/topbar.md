@@ -269,6 +269,48 @@ this area.
 - **Coordinator note (open):** part 5's stat UI test once missed "key: ArrowRight" (run 43064259180, with game mode's
   extra quick settings row); passed in 43064426559. Not looked at yet; harden with a log-line wait if a cause shows.
 
+## Part 7 (lane native-r7-topbar-7, same branch): part 6's three UI failures (HANDOFF, not green yet)
+
+- **Merged** origin/native/main 86ae174f (d3af033d, clean). native/main is now 259926d6 (game mode, downloads, the Helm
+  badge): NOT merged yet; merge it before the next full run.
+- **Commit message fix:** 0b1d4735's message says run "43066xxxx"; it was 43066176188 (history not rewritten).
+- **Real causes** (from run 43067056971's ui.trx, fetched with `gh run download`; cloudtest had not brought it back):
+  1. Stat test, "ArrowRight never arrived" after a real click on CPU. Two things. (a) `ArmDrag` released the pressed
+     button's pointer capture, which cancels the button's own press, so it never took the focus a click gives it; it now
+     focuses the opener itself (Pointer state, no ring) and --test logs `drag armed: <id> (focus kept|taken|refused)`.
+     Run 43072038005 passed the stat test with this. (b) The coordinator saw the same miss on main with no ArmDrag
+     (3 runs). Likely race: a click (or the test's `ZOrder.Foreground`) ACTIVATES the inactive bar, and the island then
+     puts its own focus back, which can be nothing (the element it had, the PING cell focused by the UIA Invoke, was
+     redrawn away on close), so PreviewKeyDown on `_root` never fires. Fix (committed, NOT yet run): `KeysHomeSoon()`
+     in Motion.cs runs on `_win.Activated` (not Deactivated) at Low priority, after the island's own restore: with a
+     menu open and no focus inside `_root`, it focuses the ping name box, else the in-menu name box, else the open title
+     or stat cell; --test logs `window activated; keys go to <id> (...)`. The stat, ping and pointer tests now wait for
+     that line (a new one) before sending keys whenever the bar was not already foreground.
+  2. Ping test, "Enter did not rename the test": the real click at the name box's right end hit the WinUI TextBox's
+     clear (x) button and emptied it, so the name became "2". Electron's inputs have none: both top bar name boxes
+     hide it (`NoClearButton`, the launcher's way), and the test checks the typed text before Enter. Passed in
+     43072038005. Then "no topbar.pt.compare on the top bar": a plain Grid makes no automation peer, so the ids on the
+     result / compare tables and the progress bar never reached UI Automation; they are `UiaGrid`s now (shared type in
+     Uia.cs, used, not edited). Also: a name box that had the focus and is redrawn away (Enter saved, Escape left it)
+     dropped the XAML focus, so later menu keys (the test's final Escape) reached nothing; `AfterPingRender(boxFocused)`
+     gives the focus to the PING cell. The test keeps the app log as `uitest-topbar-pingtest-native-log.txt`.
+  3. Pointer test, "the dropdown did not pop in": the hosted runner has Windows' animation effects OFF, so the app
+     (correctly) did the reduced-motion fade. The old check assumed animations on; the test now reads
+     SPI_GETCLIENTAREAANIMATION (what UISettings.AnimationsEnabled reports) and expects the matching line. Passed in
+     43072038005.
+- **Runs:** 43072038005 (643a9ac7, build,unit,ui,topbar): `NATIVE-CI: FAILED (ui failed; 3 ok, 0 skipped)`, ui 1 of
+  71 (ping test: no topbar.pt.compare). 43075038269 (6c9632d7, full): `NATIVE-CI: FAILED (ui failed; 16 ok, 0
+  skipped)`, ui 2 of 71: the ping test (message not read: the artifact download had not finished at the handoff) and
+  `QuickSettingsViewsTests.The_three_views_open_draw_their_rows_and_every_click_is_a_dry_run` (not this lane's; it came
+  with main). Every other stage ok, topbar parity 4 of 4. The last commit (KeysHomeSoon + the tests' activation waits)
+  has NO run.
+- **Ledger:** NOT marked (no green full run on a HEAD).
+- **Next, in order:** merge origin/native/main (259926d6); read 43075038269's ui.trx for the ping test's message (if not
+  already in `.cloudtest/20261111-180914-a7809b/artifacts`); run the fast loop, then `cloudtest --recipe
+  mantle-native-public`; on green run `python -I native/tools/parity/topbar/mark-topbar-rows.py native ui <sha>` and
+  commit the ledger and these notes. Then, if there is time: a submenu flipping left at the screen edge (TOP-072),
+  losing focus closing the menu (TOP-078), an app menu that fills in late (TOP-067).
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):

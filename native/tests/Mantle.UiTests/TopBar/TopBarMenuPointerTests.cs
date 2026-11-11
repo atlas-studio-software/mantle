@@ -87,7 +87,12 @@ public partial class TopBarSurfaceTests
         Host.LogContains(() => app.Log, "topbar: menu closed (a click outside the menu", "a click beside the dropdown did not close it", 4000);
 
         // Tab from the keyboard: the focus ring on a strip button (TOP-028)
-        if (Win32.GetForegroundWindow() != bar) Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys");
+        int acts = Count(app.Log, "topbar: window activated; keys go to ");
+        if (Win32.GetForegroundWindow() != bar)
+        {
+            Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys");
+            Assert.IsTrue(Host.Until(() => Count(app.Log, "topbar: window activated; keys go to ") > acts, 4000), "the activated bar never said where its keys go");
+        }
         FrameProbe.Tap(0x09);
         Host.LogContains(() => app.Log, "topbar: focus ring: topbar.", "Tab did not put the focus ring on a strip button", 4000);
         Assert.IsFalse(app.Proc.HasExited, "the app exited while its menus were used");

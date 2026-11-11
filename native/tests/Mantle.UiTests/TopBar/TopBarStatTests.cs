@@ -59,9 +59,14 @@ public partial class TopBarSurfaceTests
         Assert.IsFalse(app.Log.Contains("stats detail asked: ping"), "the PING dropdown asked for details");
 
         // the keyboard after a real click on CPU: Right walks to the app's first title (TOP-090), Escape closes
+        // (an inactive bar is activated by the click or by Foreground: its keys work only once it says where they go,
+        // after the island has put its own focus back; sending them sooner was the race of runs 43064259180 and others)
+        bool wasFront = Win32.GetForegroundWindow() == bar;
+        int acts = Count(app.Log, "topbar: window activated; keys go to ");
         ZOrder.Click(cell.Left + cell.Width / 2, cell.Top + cell.Height / 2);
         Host.LogContains(() => app.Log, "topbar: stat pressed: cpu (open;", "a real click on CPU did not open its dropdown", 4000);
-        if (Win32.GetForegroundWindow() != bar) Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys");
+        if (Win32.GetForegroundWindow() != bar) { wasFront = false; Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys"); }
+        if (!wasFront) Assert.IsTrue(Host.Until(() => Count(app.Log, "topbar: window activated; keys go to ") > acts, 4000), "the activated bar never said where its keys go");
         FrameProbe.Tap(0x27);
         Host.LogContains(() => app.Log, "topbar: key: ArrowRight", "ArrowRight never arrived", 4000);
         Assert.IsTrue(Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId("topbar.menu.0"))?.Name == "app", 3000), "ArrowRight from CPU did not walk to the app's menu");
