@@ -20,6 +20,7 @@ public partial class TopBarSurfaceTests
     public void Ping_test_runs_on_demand_shows_its_result_and_keeps_a_history()
     {
         using var app = Launch("topbar-pingtest");
+        using var keep = new KeepLog(app, "topbar-pingtest");   // its log, kept with the screenshots (a failure names no app line otherwise)
         IntPtr bar = Up(app);
         Host.LogContains(() => app.Log, "focus: Notepad++, ", "the made-up app's focus never reached the strip", 6000);
         var win = Host.Uia.FromHandle(bar);
@@ -124,4 +125,13 @@ public partial class TopBarSurfaceTests
     }
 
     static int Count(string s, string part) { int n = 0, i = 0; while ((i = s.IndexOf(part, i, StringComparison.Ordinal)) >= 0) { n++; i += part.Length; } return n; }
+
+    /// Writes the app's log to the UI test output when the test ends (disposed before the app, so the log is complete).
+    sealed class KeepLog(App app, string name) : IDisposable
+    {
+        public void Dispose()
+        {
+            try { File.WriteAllText(Path.Combine(Host.OutDir, $"uitest-{name}-native-log.txt"), app.Log); } catch (IOException) { } catch (UnauthorizedAccessException) { }
+        }
+    }
 }

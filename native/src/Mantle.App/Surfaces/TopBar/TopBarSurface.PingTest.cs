@@ -69,9 +69,19 @@ internal sealed partial class TopBarSurface
         return true;
     }
 
-    void AfterPingRender()
+    /// After a redraw: the name box keeps its focus, text and caret; a name box that had the focus and is gone (Enter saved,
+    /// Escape left it) hands the focus to the PING cell, so the menu keys still arrive (Electron's focus falls to the page).
+    void AfterPingRender(bool boxFocused)
     {
-        if (_ptBox == null || _pt?.Edit is not { } ed) return;
+        if (_ptBox == null || _pt?.Edit is not { } ed)
+        {
+            if (boxFocused && _open?.Stat is { } k && _cells.TryGetValue(k, out var cell))
+            {
+                bool ok = cell.B.Focus(FocusState.Programmatic);
+                if (_test) _ctx.Log.Line($"ping test name box gone: the focus to topbar.stat.{k} ({(ok ? "taken" : "refused")})");
+            }
+            return;
+        }
         _ptBox.Focus(FocusState.Programmatic);
         int a = Math.Clamp(ed.A ?? _ptBox.Text.Length, 0, _ptBox.Text.Length), b = Math.Clamp(ed.B ?? _ptBox.Text.Length, a, _ptBox.Text.Length);
         _ptBox.Select(a, b - a);
@@ -141,7 +151,7 @@ internal sealed partial class TopBarSurface
             case PtKind.Progress:
             {
                 // .pt-prog: 4 px on --lg-sunk, the done part in the accent
-                var g = new Grid { Height = 4, Margin = new Thickness(8, 2, 8, 4), CornerRadius = new CornerRadius(2), Background = Br("LgSunk") };
+                var g = new UiaGrid { Height = 4, Margin = new Thickness(8, 2, 8, 4), CornerRadius = new CornerRadius(2), Background = Br("LgSunk") };
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(r.Progress, 0.0001), GridUnitType.Star) });
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(Math.Max(1 - r.Progress, 0.0001), GridUnitType.Star) });
                 g.Children.Add(new Border { Background = Br("LgAcc"), CornerRadius = new CornerRadius(2) });
@@ -152,7 +162,8 @@ internal sealed partial class TopBarSurface
             case PtKind.Table:
             {
                 // .pt-t / .pt-c: the place, then four right-aligned figures; tabular numbers
-                var g = new Grid { ColumnSpacing = r.Text == "compare" ? 10 : 12, RowSpacing = 1, Padding = new Thickness(8, 2, 8, 4) };
+                // (a UiaGrid: a plain Grid makes no automation peer, so topbar.pt.table / topbar.pt.compare never reached UI Automation)
+                var g = new UiaGrid { ColumnSpacing = r.Text == "compare" ? 10 : 12, RowSpacing = 1, Padding = new Thickness(8, 2, 8, 4) };
                 g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
                 for (int c = 0; c < 4; c++) g.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
                 int row = -1, col = 5;

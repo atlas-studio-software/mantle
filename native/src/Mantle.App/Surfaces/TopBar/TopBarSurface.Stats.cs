@@ -82,6 +82,7 @@ internal sealed partial class TopBarSurface
             return;
         }
         double scroll = _statView?.Owner == o ? _statView.Dd.Sv.VerticalOffset : 0;
+        bool boxFocused = _ptBox != null && _ptBox.FocusState != FocusState.Unfocused;
         _menus.Children.Clear(); _dds.Clear(); _editBox = null; _ptBox = null;
         _menus.Visibility = Visibility.Visible; _away.Visibility = Visibility.Visible;
         var view = new StatView { Owner = o, Shape = shape };
@@ -112,7 +113,7 @@ internal sealed partial class TopBarSurface
         _dds.Add(dd);
         _menus.UpdateLayout();
         if (scroll > 0) dd.Sv.ChangeView(null, scroll, null, true);
-        AfterPingRender();
+        AfterPingRender(boxFocused);
         NotifyMain();
         Reveal();
     }
