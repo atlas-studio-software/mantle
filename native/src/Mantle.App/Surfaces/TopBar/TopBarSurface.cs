@@ -387,6 +387,9 @@ internal sealed class TopBarSurface : ISurface
         WindowKinds.StripFrame(_hwnd);
         if (!_test) Win32.SetWindowPos(_hwnd, Win32.HWND_TOPMOST, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
         else if (Host.Quiet) Win32.SetWindowPos(_hwnd, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);   // TOP-222
+        // a VISIBLE --test strip (UI tests, pairs): handing the foreground back above raised that window over the strip
+        // (a full-screen backdrop hid it), so the strip goes to the top of the plain z-order, still not topmost or active
+        else Win32.SetWindowPos(_hwnd, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
         _shown = true;
         _ = _ctx.CallAsync("topbar.shown", new JsonObject { ["on"] = true });
         _ctx.Log.Line("shown (" + why + ")");

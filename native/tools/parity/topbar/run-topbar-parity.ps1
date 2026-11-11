@@ -104,6 +104,8 @@ try {
         Start-Sleep -Milliseconds 1500   # the fit, the stats paint and the theme
         $x = [int]$m.Groups[1].Value; $y = [int]$m.Groups[2].Value; $w0 = [int]$m.Groups[3].Value; $h0 = [int]$m.Groups[4].Value
         $ef = Join-Path $Out "electron-topbar-$tag.png"
+        $ej = Join-Path $Out "electron-topbar-$tag.json"
+        if (Test-Path $ej) { Say "Electron $tag page: $((Get-Content $ej -Raw).Trim())" }
         if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
         $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
         $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-topbar-$tag.png"))

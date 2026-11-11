@@ -49,44 +49,42 @@ this area.
   28 DIP height. If Windows keeps it taller, a window region crops it (logged). Electron needed a shape around Chromium's
   38-40 DIP floor. To be confirmed by the UI geometry test before marking.
 
-## State at handoff (context ceiling)
+## Part 2 (lane native-r7-topbar-2, same branch)
 
-- **Run 42997383359 (cb079414):** `NATIVE-CI: FAILED (build, unit failed)`. Cause: CS0029 x3, lambda parameters
-  named `_`. Fixed in 1414fb69.
-- **Run 42997875488 (1414fb69):** `NATIVE-CI: FAILED (unit failed; 1 ok)`. The build is ok, and 5 of 656 unit tests
-  failed:
-  - **Three of the live tests** (`A_live_run_reserves...`, `Live_a_work_area...`, `Live_hidden_by_hand...`): the
-    likely cause is that they omit `test: false` in `T(...)`, so they run as --test.
-  - **`TopBarPureTests.Stat_cells_fixed_decimals_and_reasons`:** a value mismatch; read the assert message.
-  - **`TokensTests.No_colour_literal_in_Mantle_App_outside_Tokens_xaml`:** TopBarSurface uses
-    `Microsoft.UI.Colors.Transparent`. Replace it with `new SolidColorBrush()` (clear) or a token.
-- **Ledger:** no parity rows are marked yet. Rows are marked only after a green run.
+### Fixes
+
+- **The five unit failures (run 42997875488):** the three live tests now pass `test: false`; `TopBarModel.Num` reads an
+  int JSON number (a built `JsonValue` of 23 does not `TryGetValue<double>`, so the ping cell said `--`); the surface's
+  clear brushes are `ClearBrush()` (`new SolidColorBrush()`, all-zero ARGB) instead of `Colors.Transparent`. Run
+  42998830982 (154f63d3): `NATIVE-CI: ok (2 ok, 0 skipped)`, unit 656 of 656.
+- **The surface was never made on the runner** ("Specified cast is not valid", found by logging the frames of a failed
+  make: `MakeButton`). The strip buttons are now loaded from XAML with their template inline (a `ControlTemplate` cast
+  from `XamlReader.Load` is the likely AOT cast failure: no other surface casts one), and each themed step is guarded
+  and logged once if it throws. Also: glyph paths go through a XAML `Path` (not `XamlBindingHelper.ConvertValue`), and
+  tabular figures are set on a `Run` (Typography on a TextBlock is not promised to work), with any refusal logged.
+
+### Tests and pairs
+
+- **UI tests:** `tests/Mantle.UiTests/TopBar/TopBarSurfaceTests.cs`, three tests, each its own --test profile with
+  `MANTLE_TEST_TOPBAR=app=npp&stats=ok`: (1) parked then shown, title, not topmost, toolwindow, work area untouched,
+  geometry at the current scale, every control by AutomationId pressed with its log line, light then dark through
+  `--test-theme=dark` (face luminance); (2) started `--theme=dark`, Win+Alt+T (`--test-chord`) hides with the dry-run
+  line and the hidden flag in the run's own topbar.json, the REAL cursor resting on the top edge peeks it and leaving
+  hides it, Win+Alt+T shows it again; (3) 100 % -> 150 % -> 100 % with `FrameProbe.SetScale`: same window, at the
+  top-left, full width, round(28 x scale) px tall.
+- **Deviation from the brief: the peek is driven by the real cursor, not `topbar.testPeek`.** No second-start road
+  reaches a feature command (`--test-surface` only calls `surface.*`), and adding one means editing App.xaml.cs /
+  Requests.cs outside this lane. The real cursor is the stronger test; `testPeek` stays for the Core tests.
+- **Pairs:** `tools/parity/topbar/run-topbar-parity.ps1` + `electron-topbar.cjs`, light and dark at 100 % and 150 %.
+  Electron draws `ui/topbar/index.html?app=npp&stats=ok` in a window that is never shown (an OFFSCREEN window paints at
+  scale 1 whatever `force-device-scale-factor` says: its 150 % shots came back 1280x28), theme set by the same file as
+  preload before the first paint, page over the backdrop colour, no `?flat=` (the dark glass is not native yet, so the
+  dark pair compares Electron's `--lg-fill-pop` fallback with native's fill). Native over a full-screen backdrop window.
+- **CI:** stage `topbar` at the end of ci.ps1's list (block marked `# lane native-r7-topbar`), gated on
+  `TOPBAR-PARITY summary: 4 scored of 4` and a floor per theme (the lowest of its two scales).
 
 ## Left (exact list, in order)
 
-1. **Make the build and unit run green.** First compile on the runner; likely spots:
-   - `Typography.SetNumeralAlignment` and `FontNumeralAlignment` in TopBarSurface;
-   - the async lambdas returning `ValueTask<CommandResult>` in TopBarFeature.
-2. **UI tests** in `tests/Mantle.UiTests/TopBar/TopBarSurfaceTests.cs`, copying OsdSurfaceTests' Launch / Second and
-   waiting with Host.LogContains. Run with `MANTLE_TEST_TOPBAR=app=npp&stats=ok` and `MANTLE_TEST_VISIBLE=1`:
-   - parked then shown: log `surface topbar: made`, then `shown (`;
-   - title `Mantle top bar`, not topmost in --test;
-   - geometry at 100 % and 150 % with FrameProbe.SetScale: window at the primary's top-left, full width,
-     round(28 x scale) tall, and a `placed at ... (display: scaleFactor)` line after the change;
-   - light and dark via `--theme`;
-   - each control by AutomationId (`topbar.title.mantle`, `topbar.title.app`, `topbar.title.m0`, `topbar.more`,
-     `topbar.stat.cpu|mem|gpu|net|ping`, `topbar.tool.timer|notes`), clicked, each with its `... pressed:` log line;
-   - Win+Alt+T through `--test-chord=Win+Alt+T`: hidden, then shown;
-   - the peek through `topbar.testPeek`.
-3. **Pairs:** add `tools/parity/topbar/run-topbar-parity.ps1` + `electron-topbar.cjs`:
-   - Electron shoots `ui/topbar/index.html?app=npp&stats=ok[&dark=1]` over a solid colour, with the mock body
-     gradient replaced by that colour;
-   - native runs over a backdrop window of the same colour;
-   - light and dark, 100 % and 150 %; one `TOPBAR-PARITY <tag>: ssim=` line each, then a summary.
-4. **CI:** add ONE `Stage-topbar` block at the end of the ci.ps1 stage list, marked `# lane native-r7-topbar`, with its
-   floor.
-5. **Ledger:** mark the TOP / BAR rows the green tests cover. The Core tests name their rows: TOP-018..025, 201, 203-205,
-   222, 233-238, 241-249, 253, 259-262, 265, 266, 282, 283, 286, 287, 290-303, BAR-348..350.
 6. **Sections not started** (shell.md order):
    - Menus (TOP-031..), Keyboard;
    - Stats dropdowns, App power, Ping, Tools (the timer / notes features), Strip note;
