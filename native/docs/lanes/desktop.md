@@ -132,7 +132,7 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
   the layer is shown and stop when it is parked, closed or given up on (a check still out is stale when it lands; the CPU
   share is sampled afresh after a rest); the shell watch starts at the first show (live: when the layer starts on its way
   under the icons). Shown but unchanged: the strip is rebuilt only when its rows change (`DeskStrip.Same`), and the
-  System / Mission Control text, visibility and automation status are set only when they change. Readings, hidden at rest, light / dark: 1.354 / 1.146 % before (run 43043879358); 0.208 / 0.625 % after (run 43048815419, build,unit,ui at 806e8ab2).
+  System / Mission Control text, visibility and automation status are set only when they change. Readings, hidden at rest, light / dark: 1.354 / 1.146 % before (run 43043879358); 0.208 / 0.625 % after (run 43048815419, build,unit,ui at 806e8ab2) and 0.729 / 0.104 % with the widget hiding in (run 43051233304 at faa1d157).
 - **Widgets under windows (DESK-091..103):** `WidgetCover` (Core, pure: the rules of sidecar/WidgetCover.cs, the answer,
   the idle reasons, the fade timings, `CoverThrottle`), `CoverWatch` (App: WinEvent hooks on a thread of their own, so a
   cursor or caret move is dropped there; one check 100 ms after the first window event of a burst and every 100 ms while
@@ -147,7 +147,8 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
 - **Tests:** `WidgetCoverTests` (rules, decision, fail-open, areas, throttle, parking); UI
   `Widgets_step_aside_under_a_window_one_by_one_and_a_resting_desktop_costs_no_checks` (a WinForms window of another
   process over the clock: the clock alone is covered and parks; minimised, restored and moved away; then it counts the
-  checks made in 4 s with nothing moving).
+  checks made in 4 s with nothing moving). Run 43051233304: 13 checks in all, 0 in 4 s at rest. The CI runner has animations
+  off, so it ran the reduced-motion road (no fade, parked at once): the 260 / 560 ms fades are not run by a test.
 - **Deviations:** the fade curve is WinUI's (ScalarTransition has a duration, no easing), not --lg-ease. No helper in the
   loop, so DESK-100's "the helper is out of date" case does not exist and the failed-watch words say "Mantle could not
   watch the windows". The cursor and the caret raise location-change events too; the hook thread drops them at once
