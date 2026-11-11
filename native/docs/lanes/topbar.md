@@ -256,6 +256,19 @@ this area.
   `TopBar/TopBarMenuPointerTests.cs` (a real pointer: press on File, slide to Edit and back, hover Recent Files opens
   its submenu, no second pop-in on a re-render, release on Open… picks it, click-away, Tab focus ring).
 
+- **Runs:** 43063412200 (4e75cea9, build,unit,ui,topbar): unit 9 of 812 failed (an in-memory JsonValue made from an
+  int throws on GetValue<double>; fixed with `PingTestPanel.Number`), ui: the ping test failed. 43065420632 and
+  43066176188 (full): build failed (CS0102 `MenuLevel.Shown` already existed, then CS0246 a missing using); unit
+  812/812 in the second. 43067056971 (0b1d4735, full): `NATIVE-CI: FAILED (ui failed; 15 ok, 0 skipped)`, ui 3 of 64 failed:
+  the two new UI tests and part 5's `Stat_dropdowns_hang_from_their_cell...`. The log has no assertion text and no trx
+  was fetched, so the causes are NOT known. Suspect first: `ArmDrag` (TopBarSurface.Motion.cs) releases the pointer
+  capture on a press of a stat cell or title, which can change what a real click does (the stat test's real click on
+  CPU, then ArrowRight). Try removing `ArmDrag(b)` from the stat cells first and fetch ui.trx for the messages.
+- **Ledger:** NOT marked this part (no green run). `mark-topbar-rows.py` has the part 6 rows and an `upgrade` pass
+  (ported -> tested for TOP-030 / TOP-071); run it only after a green full run.
+- **Coordinator note (open):** part 5's stat UI test once missed "key: ArrowRight" (run 43064259180, with game mode's
+  extra quick settings row); passed in 43064426559. Not looked at yet; harden with a log-line wait if a cause shows.
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
