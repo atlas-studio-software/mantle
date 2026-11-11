@@ -219,6 +219,14 @@ public sealed class TaskStripService : IDisposable
         return r;
     }
 
+    /// Rebuild now (still at most once a second): the menu pinned or unpinned an app (jumplist.js refreshPinned).
+    public void Refresh(string why)
+    {
+        if (_disposed) return;
+        _pushTimer?.Dispose(); _pushTimer = null;
+        Schedule(why);
+    }
+
     // ---------------------------------------------------------------- the pins folder watch (lib/pinned.js watchPins)
     void ArmWatch()
     {

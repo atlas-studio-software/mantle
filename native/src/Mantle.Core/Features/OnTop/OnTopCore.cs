@@ -99,7 +99,7 @@ public sealed class OnTopCore
         try { Changed?.Invoke(l); } catch (Exception e) { _log($"the pin-state push failed: {e.Message}"); }
     }
 
-    static OnTopResult Out(string did, string text, string? reason, string? name)
+    static OnTopResult Out(string did, string text, string? reason, string? name = null)
     {
         bool ok = did is "pinned" or "unpinned" or "dry" or "none";
         return new OnTopResult(ok, did, text, reason != null ? Plain(reason) : null, name, ok ? (did == "dry" ? "quiet" : "") : "warn") { Raw = reason };
@@ -249,7 +249,7 @@ public sealed class OnTopCore
     public async ValueTask<(List<string> Back, List<string> Skipped)> ResumeAsync(IReadOnlyList<OnTopPin> saved, string why)
     {
         var back = new List<string>(); var skipped = new List<string>(); var unnamed = new List<string>();
-        void Skip(OnTopPin p, string w, params string?[] more) { skipped.Add($"{p.Name}: {w}"); unnamed.Add($"{Who(p.Hwnd, p.Pid)}: {Quiet(w, new[] { p.Name, p.Exe }.Concat(more))}"); }
+        void Skip(OnTopPin p, string w, params string?[] more) { skipped.Add($"{p.Name}: {w}"); unnamed.Add($"{Who(p.Hwnd, p.Pid)}: {Quiet(w, new string?[] { p.Name, p.Exe }.Concat(more))}"); }
         foreach (var p in saved) {
             var i = await _send("ontop.info", new JsonObject { ["hwnd"] = p.Hwnd }).ConfigureAwait(true);
             if (!i.Ok) { Skip(p, "it closed"); continue; }

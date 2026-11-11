@@ -11,6 +11,7 @@ using Mantle.Core.Data;
 using Mantle.Core.Features.Pinned;
 using Mantle.Core.Features.WindowList;
 using Mantle.Core.Platform;
+using PinOverlay = Mantle.Core.Features.Pinned.PinOverlay;
 
 namespace Mantle.Core.Features.JumpList;
 

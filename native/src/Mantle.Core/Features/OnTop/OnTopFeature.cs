@@ -57,6 +57,11 @@ public sealed class OnTopFeature : IFeature
             _ctx.Log($"test fixture (MANTLE_TEST_ONTOP_FAKE): would {(on ? "keep" : "stop keeping")} window {h} on top; nothing in Windows changed");
             return PlatformReply.Success(El(new JsonObject { ["hwnd"] = h, ["was"] = was, ["topmost"] = on, ["changed"] = was != on, ["tries"] = 1 }));
         }
+        if (_fake && verb == "ontop.info") {
+            // the made-up Windows knows no pid (0 = not checked) and only its own "on top" marks
+            string h = args["hwnd"]?.ToString() ?? "0";
+            return PlatformReply.Success(El(new JsonObject { ["hwnd"] = h, ["pid"] = 0, ["name"] = "", ["topmost"] = _fakeTop.Contains(h) }));
+        }
         if (_fake && verb == "ontop.check") {
             var ws = new JsonArray();
             foreach (var w in args["hwnds"] as JsonArray ?? new JsonArray()) {
