@@ -33,8 +33,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
     string _tip = "";
     bool _flying, _quiet;
     /// The tooltip; none while this app's previews are up (bar.js flyBuild: no tooltip window over the pictures).
-    public string? Tip => _flying || _quiet ? null : _tip + (_onTop ? "
-Kept on top · right-click or Win+Ctrl+T to stop" : "");
+    public string? Tip => _flying || _quiet ? null : _tip + (_onTop ? "\nKept on top · right-click or Win+Ctrl+T to stop" : "");
     internal bool Flying { set { if (_flying == value) return; _flying = value; Changed(nameof(Tip)); } }
     /// No tooltip while an icon is dragged, and until the pointer leaves the icon it was dropped on (bar.js dragQuietOn).
     internal bool Quiet { set { if (_quiet == value) return; _quiet = value; Changed(nameof(Tip)); } }
