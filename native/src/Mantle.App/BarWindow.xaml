@@ -81,7 +81,7 @@
         <!-- RightCluster / NotifsBtn: named for lane native-r7-notif (the tray strip goes in first; the bell) -->
         <StackPanel x:Name="RightCluster" Grid.Column="2" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
           <Rectangle Width="1" Height="20" Fill="{ThemeResource LgEdgeOut}" VerticalAlignment="Center"/>
-          <Button AutomationProperties.AutomationId="bar.downloads" AutomationProperties.Name="Downloads" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
+          <Button x:Name="DownloadsBtn" AutomationProperties.AutomationId="bar.downloads" AutomationProperties.Name="Downloads" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="DownloadsHost" Width="16" Height="16"/></Button>
           <Button x:Name="VolumeBtn" AutomationProperties.AutomationId="bar.volume" AutomationProperties.Name="Volume" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="VolumeHost" Width="16" Height="16"/></Button>
           <Button x:Name="NetworkBtn" AutomationProperties.AutomationId="bar.network" AutomationProperties.Name="Network" Style="{StaticResource LgBtn}" Width="36"><Canvas x:Name="NetworkHost" Width="16" Height="16"/></Button>
           <!-- Electron's battery button while it is hidden: .btn's display:flex beats [hidden], so with no battery it

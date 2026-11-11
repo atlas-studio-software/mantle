@@ -162,6 +162,7 @@ public sealed partial class BarWindow : Window
         StartCalendar();        // lane native-r7-calendar: a left or right click on the clock opens the calendar (Surfaces/Bar/Calendar)
         StartNotifications();   // lane native-r7-notif: the bell + centre, the tray strip, the More menu (Surfaces/Bar/Notifications, Tray, Chips)
         StartMedia();           // lane native-r7-media: the now-playing chip and its card (Surfaces/Bar/Media)
+        StartDownloads();       // lane native-r7-media4: the Downloads button and its shelf (Surfaces/Bar/Downloads)
     }
 
     // ------------------------------------------------------------------ the glass
