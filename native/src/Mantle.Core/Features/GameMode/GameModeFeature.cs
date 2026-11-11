@@ -29,7 +29,7 @@ namespace Mantle.Core.Features.GameMode;
 public sealed class GameModeFeature : IFeature
 {
     public const string StateEvent = "gamemode.state", TestGameEnv = "MANTLE_GAMEMODE_TEST_GAME", RecordName = "gamemode-restore.json";
-    const int IdleMs = 3000, OnMs = 5000, RestMs = 5000, ReplanMs = 30000, BackstopMs = 12000, RetryMs = 30000, RetryMax = 20, Chunk = 40;
+    const int IdleMs = 3000, OnMs = 5000, RestMs = 5000, BackstopMs = 12000, RetryMs = 30000, RetryMax = 20, Chunk = 40;
     const string WatchKey = "gamemode-watch";
     const string NotReady = "the sidecar is restarting (Mantle's background helper)";
 
@@ -46,7 +46,12 @@ public sealed class GameModeFeature : IFeature
     /// <param name="WallpaperHold">Hold Mantle's wallpaper paused (why) or let it go (null); true when one was playing. Null: this build cannot.</param>
     public sealed record Host(string DataRoot, Func<IReadOnlyList<int>>? OwnPids = null, Func<string?, bool>? WallpaperHold = null,
         HostClock? Clock = null, Func<long>? FreeMem = null, Action<string, string>? Spawn = null, long TrimAfterMs = GameModePlan.TrimAfterMs,
-        double IdleCpuMs = GameModePlan.IdleCpuMs, IReadOnlyList<string>? TestGames = null, int? MainPid = null, Mantle.Core.Data.SafeFile? Files = null);
+        double IdleCpuMs = GameModePlan.IdleCpuMs, IReadOnlyList<string>? TestGames = null, int? MainPid = null, Mantle.Core.Data.SafeFile? Files = null,
+        long ReplanMs = ReplanEveryMs);
+    /// <summary>gamemode.js REPLAN_MS: while on, the plan is redone this often so apps started since are eased too (BAR-781).</summary>
+    public const long ReplanEveryMs = 30000;
+    /// <summary>A --test run only: the replan's interval in ms (at least 500), so a UI test need not wait 30 s.</summary>
+    public const string TestReplanEnv = "MANTLE_TEST_GAMEMODE_REPLAN_MS";
     static Host? _configured;
     public static void Configure(Host h) => _configured = h;
 
@@ -86,7 +91,8 @@ public sealed class GameModeFeature : IFeature
     readonly Rest _rest = new();
     Boost? _boost;
     Dictionary<int, GameCpuBase>? _cpuBase;
-    long _cpuBaseAt, _lastReplan;
+    long _cpuBaseAt, _lastReplan, _replanMs = ReplanEveryMs;
+    int _replans;
     HashSet<int> _trimDone = new();
     (int GamePid, string? GameFile, List<int> Pids)? _crashTrim;
     List<GameTarget> _dryEased = new();
@@ -103,6 +109,12 @@ public sealed class GameModeFeature : IFeature
         _h = _given ?? _configured ?? new Host(Path.Combine(Path.GetTempPath(), "mantle-gamemode-unconfigured"));
         _clock = _h.Clock ?? new HostClock();
         _dry = ctx.Flags.Test || Environment.GetEnvironmentVariable("MANTLE_GAMEMODE_DRY") == "1";
+        _replanMs = _h.ReplanMs;
+        if (ctx.Flags.Test && long.TryParse(Environment.GetEnvironmentVariable(TestReplanEnv), out var rp) && rp >= 500)
+        {
+            _replanMs = rp;
+            ctx.Log($"test run: {TestReplanEnv}={rp}: while on, the plan is redone every {rp} ms (live: {ReplanEveryMs / 1000} s)");
+        }
         _recordPath = Path.Combine(_h.DataRoot, RecordName);
         _testGames = ctx.Flags.Test
             ? (_h.TestGames ?? (Environment.GetEnvironmentVariable(TestGameEnv) ?? "").Split(',').Select(s => s.Trim()).Where(s => s.Length > 0).ToArray())
@@ -913,7 +925,7 @@ public sealed class GameModeFeature : IFeature
                 _w?.Publish(Fail(NotReady));
                 return;
             }
-            bool replan = _on && (_replanSoon || Now() - _lastReplan >= ReplanMs);
+            bool replan = _on && (_replanSoon || Now() - _lastReplan >= _replanMs);
             JsonObject raw;
             try { raw = await ProcScan(replan).ConfigureAwait(true) ?? throw new HelperException("the process list came back empty", "empty"); }
             catch (HelperException e) { _w?.Publish(Fail(e.Raw)); throw; }
@@ -935,6 +947,7 @@ public sealed class GameModeFeature : IFeature
             {
                 _lastReplan = Now();
                 await ApplyProcs(scan).ConfigureAwait(true); Push();
+                if (_ctx.Flags.Test) _ctx.Log($"replan {++_replans}: the plan was redone while on (every {_replanMs} ms)");
             }
             // The boost's one trim: a minute after its CPU baseline (taken from a detail scan).
             var b = _boost;

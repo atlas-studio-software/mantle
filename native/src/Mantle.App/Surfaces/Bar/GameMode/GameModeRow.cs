@@ -27,11 +27,13 @@ internal sealed class GameModeRow
     readonly Func<string, Brush> _b;
     readonly Action<string> _log;
     readonly Action _refit;
+    readonly Func<(bool Ok, string Words)>? _takeKeys;
     readonly FontFamily _font;
     SurfaceLink? _link;
     IDisposable? _sub;
     JsonObject? _st;
     bool _open, _inflight, _dark;
+    long _lastClick = long.MinValue / 2;
     string? _note;
 
     public readonly StackPanel Root = new() { Margin = new Thickness(0, 2, 0, 9) };
@@ -44,9 +46,11 @@ internal sealed class GameModeRow
     readonly StackPanel _list = new() { Spacing = 2 }, _opts = new() { Margin = new Thickness(0, 4, 0, 0) };
     readonly Dictionary<string, CheckBox> _boxes = new(StringComparer.Ordinal);
 
-    public GameModeRow(Func<string, Brush> brush, FontFamily font, Action<string> log, Action refit)
+    /// <param name="takeKeys">A --test panel only (MANTLE_TEST_QS_KEYS=1): Details opened by a click takes the keyboard, so
+    /// a test can press Esc in it (a live panel has the keyboard already).</param>
+    public GameModeRow(Func<string, Brush> brush, FontFamily font, Action<string> log, Action refit, Func<(bool Ok, string Words)>? takeKeys = null)
     {
-        _b = brush; _font = font; _log = log; _refit = refit;
+        _b = brush; _font = font; _log = log; _refit = refit; _takeKeys = takeKeys;
         AutomationProperties.SetAutomationId(Root, "qs.gamemode");
         AutomationProperties.SetName(Root, "Game mode");
         var head = new Grid { Margin = new Thickness(0, 0, 0, 4) };
@@ -76,7 +80,18 @@ internal sealed class GameModeRow
         moreFace.Children.Add(_moreText); moreFace.Children.Add(_chev);
         _more = MakeButton("qs.gamemode.more", "Details", moreFace);
         ToolTipService.SetToolTip(_more, "What game mode changes, and its two options");
-        _more.Click += (_, _) => { _open = !_open; _log($"qs: game mode row: details {(_open ? "open" : "closed")}"); Paint(); };
+        _more.Click += (_, _) => { _open = !_open; _log($"qs: game mode row: details {(_open ? "open" : "closed")}"); Paint(); if (_open) TestKeys(); };
+        // BAR-815: Esc inside the open Details closes it, gives the focus back to Details, and leaves quick settings open
+        // (handled here, so the pop-up's own Esc, on its root, never hears it)
+        Root.KeyDown += (_, e) =>
+        {
+            if (e.Key != global::Windows.System.VirtualKey.Escape || !_open) return;
+            e.Handled = true;
+            _open = false;
+            Paint(); _refit();
+            bool back = _more.Focus(FocusState.Keyboard);
+            _log($"qs: game mode row: details closed (Esc); the focus is back on Details: {(back ? "yes" : "no")}");
+        };
         Grid.SetColumn(_more, 1);
         line.Children.Add(_sw); line.Children.Add(_more);
         Root.Children.Add(line);
@@ -116,7 +131,10 @@ internal sealed class GameModeRow
 
     async Task Switch()
     {
-        if (_link == null || _inflight) return;
+        long now = Environment.TickCount64;
+        var gv = GameModeView.Of(_st);
+        if (_link == null || !GameModeView.SwitchTakes(gv.Dead, gv.Pending, _inflight, _lastClick, now)) { _log("qs: game mode row: a click on the switch was held back (one decision)"); return; }
+        _lastClick = now;
         bool want = !(_st != null && GameModeJson.True(_st["on"]));
         _inflight = true; _note = null; Paint();
         var r = await _link.CallAsync("gamemode.set", new JsonObject { ["on"] = want });
@@ -129,6 +147,14 @@ internal sealed class GameModeRow
         }
         else { _note = "Game mode didn't switch: " + (r.Error ?? "no answer"); _log($"qs: game mode row: the switch failed: {r.Error}"); }
         Paint(); _refit();
+    }
+
+    void TestKeys()
+    {
+        if (_takeKeys == null) return;
+        var (ok, words) = _takeKeys();
+        if (ok) _more.Focus(FocusState.Keyboard);
+        _log($"qs: game mode row: details {(ok ? "took" : "did not take")} the keyboard (test): {words}");
     }
 
     void Opt(string key, string label, string cmd, string help)

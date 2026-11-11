@@ -142,7 +142,7 @@ internal sealed partial class QsPanel
         };
 
         // ---- game mode (ui/bar/gamemode.js, attached before .qsnotes as bar.js does): its own row (Surfaces/Bar/GameMode)
-        _gm = new Mantle.App.Surfaces.Bar.GameMode.GameModeRow(B, Font(), log, Fit);
+        _gm = new Mantle.App.Surfaces.Bar.GameMode.GameModeRow(B, Font(), log, Fit, test ? () => _room.TakeKeys() : null);   // test: Details may take the keyboard (BAR-815)
         // the qs screenshot pair's part1 mode takes Electron's .gmrow out (the row has its own pair, tools/parity/media):
         // MANTLE_TEST_QS_NO_GAMEMODE=1 (test only) leaves it out here too, so the pair compares like with like
         if (test && Environment.GetEnvironmentVariable("MANTLE_TEST_QS_NO_GAMEMODE") == "1") log("qs: test: MANTLE_TEST_QS_NO_GAMEMODE=1: the Game mode row is left out (the qs pair's part1 mode)");
