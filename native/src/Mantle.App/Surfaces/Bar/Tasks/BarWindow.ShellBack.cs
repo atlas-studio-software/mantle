@@ -1,6 +1,6 @@
 using System;
 using System.Runtime.InteropServices;
-using Mantle.Core.Args;
+using Mantle.Core;
 using Mantle.Core.Features.WindowList;
 
 namespace Mantle.App;
