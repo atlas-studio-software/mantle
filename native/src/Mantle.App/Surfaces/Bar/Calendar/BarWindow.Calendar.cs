@@ -38,7 +38,8 @@ public sealed partial class BarWindow
                 : (false, "a test instance never takes the keyboard from whoever is at the machine, so the arrow keys stay where they are"),
             GiveKeys: why => popups.GiveBackKeyboard(why),
             Close: why => { if (popups.OpenKey == "cal") popups.Close(why); },
-            Keys: combo => _calKeys?.Invoke(combo) ?? pressKeys(combo)));
+            Keys: combo => _calKeys?.Invoke(combo) ?? pressKeys(combo),
+            OpenNotifications: () => DispatcherQueue.TryEnqueue(() => OpenNotifications())));
         if (Host.Args.Test && keys) Host.Log.Line($"cal: {CalKeysEnv}=1: this test calendar may take the keyboard for the arrow keys");
         // BAR-415: the clock's tooltip is the locale long date, then "Click: the calendar" (bar.js tick), read when it opens
         var tip = new Microsoft.UI.Xaml.Controls.ToolTip { Content = now().ToString("D", CultureInfo.CurrentCulture) + "\nClick: the calendar" };
