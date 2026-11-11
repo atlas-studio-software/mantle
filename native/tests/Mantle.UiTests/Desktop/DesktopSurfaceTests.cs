@@ -397,7 +397,10 @@ public class DesktopSurfaceTests
             Host.LogContains(() => app.Log, "desktop: the clock ticks again (uncovered)", "uncovered, the clock paints and ticks");
 
             // restored over it, then moved away
-            ShowWindow(cover.Hwnd, 4 /* SW_SHOWNOACTIVATE */);
+            // SW_RESTORE, then to the top: restored without activation it can come back UNDER the --test layer (an
+            // ordinary window), and a window under the layer does not cover it (run 43053107615)
+            ShowWindow(cover.Hwnd, 9 /* SW_RESTORE */);
+            SetWindowPos(cover.Hwnd, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, 0x0013 /* SWP_NOSIZE | SWP_NOMOVE | SWP_NOACTIVATE */);
             Assert.IsTrue(Host.Until(() => Count(app.Log, $"desktop: covered: clock (by {title})") >= 2, 5000), "restored over the clock: covered again");
             GetWindowRect(layer, out var lr);
             Assert.IsTrue(SetWindowPos(cover.Hwnd, IntPtr.Zero, lr.Right + 40, lr.Top, cw / 2, ch / 2, SWP_NOACTIVATE), "the fixture window moves away");
