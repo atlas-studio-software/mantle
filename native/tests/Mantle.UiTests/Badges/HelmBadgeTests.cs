@@ -1,7 +1,6 @@
 using System.Diagnostics;
 using System.Text;
 using FlaUI.Core.AutomationElements;
-using Mantle.UiTests.BarFrame;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.Badges;
