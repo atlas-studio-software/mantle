@@ -185,7 +185,7 @@ public class GameModePlanTests
     [Fact]
     public void Plan_eases_background_apps_and_leaves_the_never_touch_list_alone()
     {
-        var procs = new[]
+        var procs = new GameProc[]
         {
             P(900, "VALORANT-Win64-Shipping.exe"), P(901, "CrashHandler.exe", ppid: 900), P(910, "vgc.exe"), P(911, "EasyAntiCheat.exe"),
             P(920, "Discord.exe"), P(930, "Spotify.exe"), P(940, "claude.exe"), P(941, "msedgewebview2.exe", prio: "belownormal"),
@@ -202,7 +202,7 @@ public class GameModePlanTests
         });
         var tp = pl.Targets.Select(t => t.Pid).ToHashSet();
         string? Why(int pid) => pl.Left.FirstOrDefault(l => l.File == procs.First(p => p.Pid == pid).File)?.Why;
-        Assert.Equal(new[] { 940, 941, 950, 970, 993 }.ToHashSet(), tp);
+        Assert.True(tp.SetEquals(new[] { 940, 941, 950, 970, 993 }), string.Join(",", tp.OrderBy(x => x)));
         Assert.Equal("the game", Why(901));
         Assert.Equal("a game or its anti-cheat", Why(910));
         Assert.Equal("voice and calls", Why(920));

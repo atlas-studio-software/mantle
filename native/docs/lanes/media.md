@@ -85,3 +85,26 @@ Log lines the tests read: `media: the chip shows <app> (<playing|paused>[, contr
   `media: the card picked <label> (<aumid>)`). Re-run, then flip those rows to `tested:` with the test names.
 - Unit flakes seen in one run (not this lane's): LookShellTests.Another_apps_theme..., BannerCrashRestoreTests.
 - previews failed once with light SSIM 0.8196 (known Electron reference flake; this lane does not touch previews).
+
+## Part 2 (lane native-r7-media-2)
+
+### What is built
+
+- `Mantle.Core/Features/GameMode/GameModePlan.cs`: lib/features/_gamemode-plan.js, the PURE half of game mode, whole:
+  detectGame, step (auto on/off, AWAY_MS, suppress), runningGames (javaw memory, own session, test stand-ins), gameLabel,
+  restStep, restIsGame, plan (the never-touch list, the game's tree, sound, elevated, Windows' own, pending), names,
+  leftByWhy, trimCalls, trimPlan, cpuBase, biggestApp, bytes, appCount, boostLine. Tests: GameMode/GameModePlanTests.
+- `Mantle.Core/Features/Downloads/DownloadsList.cs`: lib/features/_downloads-list.js (shelf, skipReason, arrival, fsWhy,
+  JARGON, the plain read over a real folder) and ui/bar/downloads.js's pure words (ago, size, meta, kindOf, shown,
+  sentence). Tests: Downloads/DownloadsListTests (the plain read runs on a temp folder, never the user's Downloads).
+- `Mantle.Core/Features/Badges/HelmBadge.cs`: lib/helm-badge.js's pure half (parse, matches, describe, cleanSources,
+  defaultSources with MANTLE_HELM_BADGE_FILE) plus the disc's text and ink. Tests never read the real Helm file.
+- `Mantle.Core/Features/QuickLinks/WinXLinks.cs`: lib/quick-links.js (rows, letters, submenu, byKey, byId).
+- `tools/parity/media/`: the now-playing card pair (electron-media.cjs + run-media-parity.ps1) and ci.ps1 stage
+  `media` (the block marked "stage media"); `mark-rows.cjs` marks bar.md rows from a JSON map.
+
+### Ledger rules used
+
+Rows whose rule is ported and unit-tested but which no running feature uses yet (game mode, Downloads, the Helm badge,
+quick links: no service, no surface) stay `todo` with a note naming the class and test, so the ledger never says native
+does something it does not. Only rows a passing test covers end to end are `tested:`.
