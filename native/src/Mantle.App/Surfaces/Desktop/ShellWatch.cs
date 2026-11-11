@@ -16,7 +16,7 @@ namespace Mantle.App.Surfaces.Desktop;
 /// Mantle's own process): a TaskbarCreated broadcast would reach every app on the machine, and Explorer is never
 /// restarted by a test.
 /// </remarks>
-internal sealed class ShellWatch : IDisposable
+internal sealed partial class ShellWatch : IDisposable
 {
     public const string Title = "Mantle shell watch";
     const uint WM_DISPLAYCHANGE = 0x007E, WM_DPICHANGED = 0x02E0, WM_SETTINGCHANGE = 0x001A, WM_CLOSE = 0x0010, WM_QUIT = 0x0012;
