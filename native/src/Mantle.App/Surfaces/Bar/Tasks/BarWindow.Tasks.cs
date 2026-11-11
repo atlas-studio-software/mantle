@@ -49,6 +49,7 @@ public sealed partial class CellVm : INotifyPropertyChanged
     public Visibility RunVisibility => _run && !_act ? Visibility.Visible : Visibility.Collapsed;
     public Visibility ActVisibility => _act ? Visibility.Visible : Visibility.Collapsed;
     public Visibility DividerVisibility => _div ? Visibility.Visible : Visibility.Collapsed;
+    internal bool HasDivider => _div;
     bool _onTop;
     /// BAR-258, BAR-333 (ui/bar/ontop.js paint): one of this app's windows is kept on top by Mantle: the pin badge, the
     /// tooltip line, and "; kept on top" in the status.
@@ -124,6 +125,7 @@ public sealed partial class BarWindow
         // pass, and an icon lands after its sync (it decodes asynchronously)
         Dock.LayoutUpdated += (_, _) => { if (_cellsDirty && _benchOut != null) WriteCells(); };
         HookDrag();   // drag to reorder (BarWindow.Drag.cs)
+        HookOverflow();   // the fit and "+N" (BarWindow.Overflow.cs)
         if (Host.Args.Test) StartUiBeat();
     }
 
@@ -198,6 +200,7 @@ public sealed partial class BarWindow
             string order = string.Join(" | ", _cells.Select(c => c.Title));
             if (order != _testOrder) { _testOrder = order; Host.Log.Line($"bar tasks: test: strip now [{order}]"); }
         }
+        Judge();            // the fit: centred, slid, or the tail behind "+N" (BarWindow.Overflow.cs)
         FlyRefresh(list);   // the open flyout follows the push (bar.js flyRefresh)
         _syncs++;
         _cellsDirty = true;

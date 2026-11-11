@@ -152,8 +152,12 @@ public sealed partial class BarWindow
         d.Group = _cells.Where(c => DragOrder.KindOf(c.Item) == d.Kind).ToList();
         int from = d.Group.IndexOf(d.Vm);
         if (from < 0) return false;
+        // never into the "+N" tail (bar.js d.list, BAR-242): only the group's icons on the strip are slots; the hidden
+        // ones are the order's tail, so the save below still moves within the whole group by the same indexes
+        int onStrip = d.Group.Count == 0 ? 0 : StripFit.OnStrip(_cells.IndexOf(d.Group[0]), d.Group.Count, OnStripCount);
+        if (from >= onStrip) return false;
         var slots = new List<double>();
-        foreach (var c in d.Group) {
+        foreach (var c in d.Group.Take(onStrip)) {
             if (ButtonOf(c) is not Button b) { Host.Log.Line("bar tasks: drag: an icon of the group is not laid out yet, so the press stays a click"); return false; }
             b.TranslationTransition = null;
             b.Translation = Vector3.Zero;

@@ -112,8 +112,10 @@
         </StackPanel>
       </Grid>
 
-      <!-- .dock: absolutely centred on the whole island, not between the clusters -->
-      <local:UiaItemsControl x:Name="Dock" AutomationProperties.AutomationId="bar.apps" AutomationProperties.Name="Running apps" HorizontalAlignment="Center" VerticalAlignment="Center" IsTabStop="False">
+      <!-- .dock: centred on the whole island, not between the clusters; slid off centre and "+N" by the fit rule (BarWindow.Overflow.cs) -->
+      <StackPanel x:Name="DockRow" Orientation="Horizontal" Spacing="6" HorizontalAlignment="Center" VerticalAlignment="Center">
+      <StackPanel.RenderTransform><TranslateTransform x:Name="DockShift"/></StackPanel.RenderTransform>
+      <local:UiaItemsControl x:Name="Dock" AutomationProperties.AutomationId="bar.apps" AutomationProperties.Name="Running apps" VerticalAlignment="Center" IsTabStop="False">
         <local:UiaItemsControl.ItemsPanel>
           <ItemsPanelTemplate><StackPanel Orientation="Horizontal" Spacing="6"/></ItemsPanelTemplate>
         </local:UiaItemsControl.ItemsPanel>
@@ -160,6 +162,10 @@
           </DataTemplate>
         </local:UiaItemsControl.ItemTemplate>
       </local:UiaItemsControl>
+      <!-- bar.css .dmore: the "+N" button, the strip's last child, for the apps that do not fit (BAR-235) -->
+      <Button x:Name="DockMore" AutomationProperties.AutomationId="bar.apps.more" Style="{StaticResource LgBtn}" Width="36" Height="36" Visibility="Collapsed"
+              Background="{ThemeResource LgSunk}" Foreground="{ThemeResource LgInk2}" FontSize="12.5" FontWeight="SemiBold" FontFamily="{StaticResource LgFont}"/>
+      </StackPanel>
     </local:UiaGrid>
   </local:UiaGrid>
 </Window>
