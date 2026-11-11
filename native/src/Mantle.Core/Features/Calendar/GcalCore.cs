@@ -243,8 +243,9 @@ public static class GcalCore
         if (err is not GcalError g) return new GcalProblem("other", "Google could not be reached (" + Cut(err.Message, 80) + ")");
         if (g.Kind != null) return new GcalProblem(g.Kind, g.Reason ?? g.Message, g.RetryAfterMs, g.LogReason);
         int status = g.Status;
-        var reasons = (g.Body?["error"]?["errors"] as JsonArray)?.Select(x => Str(x?["reason"])).Where(x => x != null).Select(x => x!).ToList() ?? new List<string>();
-        string gerr = Str(g.Body?["error"]) ?? "";
+        var bo = g.Body as JsonObject;   // Google sends {error: "invalid_grant"} for OAuth and {error: {errors: [...]}} for the API
+        var reasons = ((bo?["error"] as JsonObject)?["errors"] as JsonArray)?.Select(x => Str((x as JsonObject)?["reason"])).Where(x => x != null).Select(x => x!).ToList() ?? new List<string>();
+        string gerr = Str(bo?["error"]) ?? "";
         long ra = RetryAfter(g.RetryAfter, nowMs);
         if (status == 0) {
             if (OfflineCode.IsMatch(g.Code ?? "") || OfflineMsg.IsMatch(g.Message)) return new GcalProblem("offline", "no internet connection");

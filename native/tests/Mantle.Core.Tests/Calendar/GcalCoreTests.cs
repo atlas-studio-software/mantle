@@ -197,12 +197,12 @@ public class GcalCoreTests
     [Fact]
     public void A_calendar_colour_is_data_and_the_title_mix_is_oklab()
     {
-        Assert.Equal(new GcalColors.Rgba(3, 155, 229, 1), GcalColors.Parse("#039be5"));
-        Assert.Null(GcalColors.Parse("red"));
-        var a = new GcalColors.Rgba(3, 155, 229, 1); var ink = new GcalColors.Rgba(20, 20, 20, 1);
-        Assert.Equal(a, GcalColors.MixOklab(a, ink, 1));
-        Assert.Equal(ink, GcalColors.MixOklab(a, ink, 0));
-        var m = GcalColors.MixOklab(a, ink, 0.6);
+        Assert.Equal(new GcalColour.Rgba(3, 155, 229, 1), GcalColour.Parse("#039be5"));
+        Assert.Null(GcalColour.Parse("red"));
+        var a = new GcalColour.Rgba(3, 155, 229, 1); var ink = new GcalColour.Rgba(20, 20, 20, 1);
+        Assert.Equal(a, GcalColour.MixOklab(a, ink, 1));
+        Assert.Equal(ink, GcalColour.MixOklab(a, ink, 0));
+        var m = GcalColour.MixOklab(a, ink, 0.6);
         Assert.InRange(m.B, ink.B + 1, a.B - 1);   // between the two, nearer the calendar's colour
     }
 }

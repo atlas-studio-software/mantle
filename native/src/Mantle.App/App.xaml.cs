@@ -298,14 +298,14 @@ public partial class MantleApp : Application
         {
             Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
             var calLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
-            var platform = _platform!;
+            var calPlatform = _platform!;
             // asked from the UI thread, run on the host thread (the platform's own), answered back
             Func<string, System.Threading.Tasks.Task<string?>> keys = combo => {
                 var tcs = new System.Threading.Tasks.TaskCompletionSource<string?>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
                 async System.Threading.Tasks.Task Press()
                 {
                     try {
-                        var r = await platform.CallAsync("keys", new System.Text.Json.Nodes.JsonObject { ["combo"] = combo }, TimeSpan.FromMilliseconds(3000)).ConfigureAwait(true);
+                        var r = await calPlatform.CallAsync("keys", new System.Text.Json.Nodes.JsonObject { ["combo"] = combo }, TimeSpan.FromMilliseconds(3000)).ConfigureAwait(true);
                         tcs.TrySetResult(r.Ok ? null : r.Error ?? "the sidecar did not answer");
                     } catch (Exception e) { tcs.TrySetResult(e.Message); }
                 }

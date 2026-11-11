@@ -141,7 +141,7 @@ public sealed class GcalFeature : IFeature
         if (o?["status"] is not JsonObject st) { _ctx.Log("MANTLE_TEST_GCAL is not {status, events}, so it was not taken"); return; }
         _fxStatus = (JsonObject)st.DeepClone();
         var evs = new JsonArray();
-        foreach (var e in o["events"]?["events"] as JsonArray ?? new JsonArray()) {
+        foreach (var e in (o["events"] as JsonObject)?["events"] as JsonArray ?? new JsonArray()) {
             if (e is not JsonObject eo || GcalCore.Str(eo["k"]) is not { } k) continue;
             _fxLinks[k] = GcalCore.Str(eo["link"]);
             var c = (JsonObject)eo.DeepClone(); c.Remove("link");

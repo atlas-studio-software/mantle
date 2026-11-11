@@ -308,7 +308,7 @@ internal sealed class CalPanel
             AutomationProperties.SetItemStatus(c.B, string.Join("; ", new[] { c.Sel ? "selected" : null, c.Today ? "today" : null, c.Other ? "other" : null, dot != null ? "dot" : null }.Where(x => x != null)));
             AutomationProperties.SetHelpText(c.B, dot == null ? "" : dot.Many ? "many" : dot.Color ?? "no colour");
             c.Dot.Visibility = dot != null ? Visibility.Visible : Visibility.Collapsed;
-            c.Dot.Fill = dot?.Color != null && GcalColors.Parse(dot.Color) is { } rgb ? Solid(rgb) : B("LgInk2");
+            c.Dot.Fill = dot?.Color != null && GcalColour.Parse(dot.Color) is { } rgb ? Solid(rgb) : B("LgInk2");
             c.Dot.Opacity = c.Other ? 0.6 : 1;
             PaintCell(c);
         }
@@ -489,7 +489,7 @@ internal sealed class CalPanel
         var g = new Grid { Height = RowH, ColumnSpacing = 8, Padding = new Thickness(6, 0, 6, 0) };
         foreach (var w in new[] { new GridLength(3), GridLength.Auto, new GridLength(1, GridUnitType.Star) }) g.ColumnDefinitions.Add(new ColumnDefinition { Width = w });
         string? hex = _idx!.Colors.GetValueOrDefault(ev.Cal);
-        var rgb = GcalColors.Parse(hex);
+        var rgb = GcalColour.Parse(hex);
         var bar = new Border { Width = 3, Height = 14, CornerRadius = new CornerRadius(2), Background = rgb is { } c ? Solid(c) : B("LgInk3"), VerticalAlignment = VerticalAlignment.Center };
         var time = Text(_idx.TimeOf(ev, _sel), Fs); time.MinWidth = 58; time.Foreground = B("LgInk2"); time.VerticalAlignment = VerticalAlignment.Center; Type(time, Fs, 1.2);
         var title = Text(ev.Title, Fs); title.TextTrimming = TextTrimming.CharacterEllipsis; title.TextWrapping = TextWrapping.NoWrap; title.VerticalAlignment = VerticalAlignment.Center; Type(title, Fs, 1.2);
@@ -508,11 +508,11 @@ internal sealed class CalPanel
     }
 
     /// gcal.css: color-mix(in oklab, the calendar's colour 60%, --lg-ink).
-    Brush TitleInk(GcalColors.Rgba? cal)
+    Brush TitleInk(GcalColour.Rgba? cal)
     {
         var ink = B("LgInk");
         if (cal is not { } c || ink is not SolidColorBrush sb) return ink;
-        var m = GcalColors.MixOklab(c, new GcalColors.Rgba(sb.Color.R, sb.Color.G, sb.Color.B, sb.Color.A / 255.0 * sb.Opacity), 0.6);
+        var m = GcalColour.MixOklab(c, new GcalColour.Rgba(sb.Color.R, sb.Color.G, sb.Color.B, sb.Color.A / 255.0 * sb.Opacity), 0.6);
         return Solid(m);
     }
 
@@ -650,8 +650,8 @@ internal sealed class CalPanel
         t.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
     }
 
-    /// A calendar's own colour (Google's data, GcalColors), never a theme colour.
-    static SolidColorBrush Solid(GcalColors.Rgba c) => new(new Windows.UI.Color { A = (byte)Math.Round(c.A * 255), R = c.R, G = c.G, B = c.B });
+    /// A calendar's own colour (Google's data, GcalColour), never a theme colour.
+    static SolidColorBrush Solid(GcalColour.Rgba c) => new(new Windows.UI.Color { A = (byte)Math.Round(c.A * 255), R = c.R, G = c.G, B = c.B });
 
     static JsonObject? Obj(JsonElement e) => e.ValueKind == JsonValueKind.Object ? JsonNode.Parse(e.GetRawText()) as JsonObject : null;
 

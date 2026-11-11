@@ -43,7 +43,7 @@ public sealed class GcalDays
         var colors = new Dictionary<string, string?>(StringComparer.Ordinal);
         var names = new Dictionary<string, string>(StringComparer.Ordinal);
         foreach (var c in p["calendars"] as JsonArray ?? new JsonArray())
-            if (GcalCore.Str(c?["id"]) is { } id) { colors[id] = GcalCore.Str(c!["color"]); names[id] = GcalCore.Str(c["name"]) ?? ""; }
+            if (c is JsonObject co && GcalCore.Str(co["id"]) is { } id) { colors[id] = GcalCore.Str(co["color"]); names[id] = GcalCore.Str(co["name"]) ?? ""; }
         var days = new Dictionary<string, List<Row>>(StringComparer.Ordinal);
         foreach (var n in p["events"] as JsonArray ?? new JsonArray()) {
             if (RowOf(n) is not { } ev || !colors.ContainsKey(ev.Cal)) continue;
@@ -55,7 +55,7 @@ public sealed class GcalDays
         foreach (var l in days.Values) l.Sort(Cmp);
         var spans = new List<(long, long)>();
         foreach (var s in p["spans"] as JsonArray ?? new JsonArray())
-            if (GcalCore.Num(s?["from"]) is long f && GcalCore.Num(s?["to"]) is long t) spans.Add((f, t));
+            if (s is JsonObject so && GcalCore.Num(so["from"]) is long f && GcalCore.Num(so["to"]) is long t) spans.Add((f, t));
         return new GcalDays((int)(GcalCore.Num(p["ver"]) ?? 0), days, colors, names, spans, z);
     }
 
@@ -175,7 +175,7 @@ public sealed class GcalDays
     {
         if (!string.IsNullOrEmpty(openNote)) return openNote;
         var parts = new List<string>();
-        string? reason = GcalCore.Str(s["error"]?["reason"]);
+        string? reason = GcalCore.Str((s["error"] as JsonObject)?["reason"]);
         long syncedAt = GcalCore.Num(s["syncedAt"]) ?? 0;
         if (GcalCore.Bool(s["needsSignIn"])) parts.Add(!string.IsNullOrEmpty(reason) ? reason : "Google ended Mantle's sign-in; sign in again in Settings");
         else if (!string.IsNullOrEmpty(reason)) parts.Add(reason);

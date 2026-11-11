@@ -8,7 +8,7 @@ namespace Mantle.Core.Features.Calendar;
 /// gcal.css <c>color-mix(in oklab, var(--gc) 60%, var(--lg-ink))</c> done in OKLab (Björn Ottosson's matrices), so a pale
 /// Google colour still reads on light glass and a dark one on dark glass.
 /// </summary>
-public static class GcalColors
+public static class GcalColour
 {
     public readonly record struct Rgba(byte R, byte G, byte B, double A);
 

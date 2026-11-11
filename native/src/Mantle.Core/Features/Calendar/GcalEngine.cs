@@ -135,15 +135,17 @@ public sealed class GcalEngine
             S.Account = S.Token.Account;
             if (_d.Store.GetCache() is { } cache) {
                 S.Calendars = (cache["calendars"] as JsonArray ?? new JsonArray()).Select(CalOf).Where(x => x != null).Select(x => x!).ToList();
-                S.Events = (cache["events"] as JsonArray)!.Select(EventOf).Where(x => x != null).Select(x => x!).Take(MaxEvents).ToList();
-                S.Spans = (cache["spans"] as JsonArray ?? new JsonArray()).Select(x => (GcalCore.Num(x?["from"]), GcalCore.Num(x?["to"])))
+                S.Events = (cache["events"] as JsonArray ?? new JsonArray()).Select(EventOf).Where(x => x != null).Select(x => x!).Take(MaxEvents).ToList();
+                S.Spans = (cache["spans"] as JsonArray ?? new JsonArray()).Select(x => (GcalCore.Num((x as JsonObject)?["from"]), GcalCore.Num((x as JsonObject)?["to"])))
                     .Where(x => x.Item1 != null && x.Item2 != null).Select(x => (x.Item1!.Value, x.Item2!.Value)).ToList();
                 S.SyncedAt = GcalCore.Num(cache["syncedAt"]) ?? 0;
                 if (GcalCore.Str(cache["account"]) is { } a) S.Account = a;
             }
             Plan(FirstMs);
         } else {
-            // no sign-in: no events may stay on this PC (privacy claim 6: a sign-out cut short)
+            // no sign-in: no events may stay on this PC (privacy claim 6: a sign-out cut short), nor in memory from an
+            // earlier start of this engine (the feature turned off and on again)
+            S.Account = null; S.Calendars = new(); S.Events = new(); S.Spans = new(); S.SyncedAt = 0;
             try { _d.Store.DeleteCache(); } catch (Exception e) { _d.Log("could not delete a leftover cache: " + Code(e)); }
         }
         Publish(true);
@@ -211,7 +213,7 @@ public sealed class GcalEngine
         catch (Exception e) {
             Live(g);
             var c = GcalCore.Classify(e);
-            if (c.Kind == "auth" || (e is GcalError ge && GcalCore.Str(ge.Body?["error"]) == "invalid_grant")) S.NeedsSignIn = true;
+            if (c.Kind == "auth" || (e is GcalError ge && GcalCore.Str((ge.Body as JsonObject)?["error"]) == "invalid_grant")) S.NeedsSignIn = true;
             throw new GcalError(c.Kind, c.Reason, c.LogReason) { RetryAfterMs = c.RetryAfterMs };
         }
         Live(g);
@@ -245,7 +247,7 @@ public sealed class GcalEngine
         var cals = GcalCore.PickCalendars(list, _d.Choices());
         string? account = GcalCore.AccountOf(list);
         var tzOf = new Dictionary<string, string?>(StringComparer.Ordinal);
-        foreach (var n in list) if (GcalCore.Str(n?["id"]) is { } id) tzOf[id] = GcalCore.Str(n!["timeZone"]);
+        foreach (var n in list) if (n is JsonObject no && GcalCore.Str(no["id"]) is { } id) tzOf[id] = GcalCore.Str(no["timeZone"]);
         var evs = new List<GcalEvent>(); var notes = new List<string>();
         int okCals = 0;
         foreach (var cal in cals.Where(c => c.On)) {
