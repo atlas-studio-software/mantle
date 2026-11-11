@@ -196,6 +196,27 @@ deliberate deviation for safety.
 - Left: overflow "+N" (BAR-235..238, the "+N" part of BAR-242), Explorer restart (BAR-158..163: a TaskbarCreated test
   hook on the bar window, which is Frame's), the off switch for jump lists (BAR-317 "switched off"), BAR-341.
 
+## Round 7, part 2: overflow, keep on top, menu keys (native-r7-strip-2)
+
+- Fit and "+N" (BAR-056, 235..238, the "+N" part of 242): `Mantle.Core/Features/WindowList/StripFit.cs` (measure,
+  keepFor, placeStrip, decide; the panel's sig and size; `OnStrip` for the drag) and `Tasks/BarWindow.Overflow.cs`.
+  BarWindow.xaml: the Dock now sits in `DockRow` (a horizontal StackPanel, Spacing 6, `DockShift` translate) with the
+  `DockMore` button (`bar.apps.more`) after it. Hidden icons are their containers collapsed; the panel (`bar.ovf`,
+  tiles `bar.ovf.<n>`) is the bar's one pop-up, rebuilt in place (`Popups.Resize`) only when its sig changes. The wall
+  is RightCluster's left edge; the left end is StartBtn's right edge. Judged on Pill / RightCluster / StartBtn
+  SizeChanged and every SyncCells: no timer, nothing at rest. The panel takes the keyboard like the menu (same gate).
+- Keep on top: `Mantle.Core/Features/OnTop/OnTopWords.cs` (the tooltip line, CANT) and `OnTopToast.cs` (the pop-up's
+  numbers and how it reads a result); `Surfaces/OnTop/OnTopToastSurface.cs` (`[Surface("ontop", AtStart = true)]`: a
+  subscription only; the window "Mantle keep on top" is made on the first result and destroyed after 30 s unused).
+  `BarTasksHost.OnTopProblem` is now null until the bar knows it will not hear the state (no channel, subscribe threw,
+  20 asks failed); test hook `MANTLE_TEST_ONTOP_CHANNEL=0`. A running app's status then ends "; keep on top unknown".
+- Menu: `JumpRules.Step` (the arrow keys); the fixture's `"delayMs"` makes a slow read (bounded 6 s) so a test sees
+  "Reading the jump list…"; in a --test run each arrow logs "bar tasks: menu: <key> moved to row n of N".
+- Left: Explorer restart (BAR-158..163: a TaskbarCreated test hook on the bar window, which is Frame's; post it to
+  Mantle's own window only, the pattern of `Surfaces/Desktop/ShellWatch.cs`), BAR-215 / 323 / 330 (wait for Mantle's own
+  apps on the native bar, BAR-291..296), BAR-329's dark styling and reduced-motion parts, the off switch for jump lists
+  (BAR-317), the overflow badge counts (Helm counts, BAR-255..257).
+
 ## Part 2 starts here
 
 Previews are done except BAR-233 (re-place on a bar width change or the island's move) and BAR-313 (the Alt+Tab

@@ -177,4 +177,17 @@ public sealed class JumpListTests
         Assert.Equal(2, r.Overlay.Add.Count);
         Assert.Throws<InvalidOperationException>(() => PinOverlayEdit.Pin(PinOverlay.Empty, new PinOverlayEdit.App("z", "Z", null, null)));
     }
+
+    [Fact]
+    public void The_arrow_keys_wrap_and_Home_End_go_to_the_ends()
+    {
+        Assert.Equal(0, JumpRules.Step(-1, 5, JumpRules.Move.Down));
+        Assert.Equal(4, JumpRules.Step(-1, 5, JumpRules.Move.Up));
+        Assert.Equal(3, JumpRules.Step(2, 5, JumpRules.Move.Down));
+        Assert.Equal(0, JumpRules.Step(4, 5, JumpRules.Move.Down));   // wraps
+        Assert.Equal(4, JumpRules.Step(0, 5, JumpRules.Move.Up));     // wraps
+        Assert.Equal(0, JumpRules.Step(3, 5, JumpRules.Move.Home));
+        Assert.Equal(4, JumpRules.Step(1, 5, JumpRules.Move.End));
+        Assert.Equal(-1, JumpRules.Step(0, 0, JumpRules.Move.Down));
+    }
 }
