@@ -83,14 +83,54 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
 - **Widgets on/off** is kept in `features\deskmenu.json` (the feature's settings), not the page's localStorage (there
   is no page).
 
+## Round 3 (lane native-r7-desktop-3)
+
+- **Screenshot pair** (run 43042794903, SSIM, no masks; before = run 43025045944): System 0.8572 / 0.8346 (was
+  0.7171 / 0.7136), Needs attention 0.6240 / 0.6796 (was 0.5438 / 0.4635), menu 0.9526 / 0.9496 (was 0.7285 / 0.7055),
+  light / dark. Floors in ci.ps1 about 0.02-0.03 under.
+- **Bench fix:** a live (or bench) layer is held hidden until it is under the icons; before, a refused attach (the
+  bench's passive sidecar) left a full-screen window over every app and the bench's focus checks failed (run
+  43038770664). Bench ok in run 43042794903.
+- **Pane heights:** each native pane was 2-3 DIP taller than Electron's. Two causes: the Border's 1 DIP hairline took
+  layout room (Electron draws it inside, ::after), so the padding now gives it back; and a 13 px Segoe UI line is 18 DIP
+  in WinUI (DirectWrite rounds ascent + descent up) but 17 in Chromium (each rounded), so the date and the System values
+  trim it below the line (`DesktopLayer.LineTrim`, unit-tested). The System rows also carry Electron's 1 px border-top
+  inside the row, and dt / dd sit on one baseline.
+- **Menu:** Bahnschrift (tokens.css --ui-font; the "bolder" text was this font, in both themes), padding 4 + the 1 DIP
+  border, and deskmenu.css --dm-shadow drawn by `Osd/CssShadow` (the CSS formula into a bitmap) in the 20 DIP margin. The
+  --lg-lip-up 1 px highlight under the top hairline is not drawn.
+- **Menu keys (DESK-118..120):** `DeskMenuKeys`, a WH_KEYBOARD_LL hook on its own thread, armed only while the menu is
+  open, hands it bare Up / Down / Home / End / Enter and swallows them with their key-ups (`DeskMenu.NavVerdict`, the
+  sidecar's PopWatch rule); never while a Mantle window is in front. A --test run arms it only with
+  MANTLE_TEST_DESKMENU_KEYS=1 (it then swallows too, so a test's Enter never reaches the runner's desktop). The highlight
+  is the row's ItemStatus plus a UIA notification.
+- **DESK-124:** the helper's fallback is said in words (`DeskMenu.Fallback`); a stand-down sets the health row and the
+  hook re-arms after 30 s. The 1 s ack and the replay to Windows' menu are the sidecar's (DeskClick.cs).
+- **ShellWatch:** a hidden top-level window on its own thread hears WM_DISPLAYCHANGE / WM_DPICHANGED / the work-area
+  change and TaskbarCreated: the layer, a child of Progman once attached, hears neither. Tests post to this window only
+  (found by its title in Mantle's process); nothing is broadcast and Explorer is never restarted.
+- **DESK-016:** a burst of display changes is one fit now and one after 400 ms quiet; `FitVerdict` (skip in --test,
+  when put back, or with no layer; later while held hidden); live: desktop {fit:true}, then `PageFill` (content vs the
+  main display at its effective DPI), one 1 px resize to make it re-read the scale, words if that does not help.
+- **DESK-011..013:** `DesktopSurface.Remake.cs`. A layer window that closes while Mantle runs is made again on the
+  back-off (`Verdict`, at most 5 in ten minutes), held hidden until under the icons (fitted first if a display change
+  waited), closed and never shown over the apps when the tries run out (`GaveUp`). Explorer back: try now / make / wait
+  / recheck (`ShellBack`, one per 3 s). Put back from the tray: `DesktopSurface.Releases()` (desktop {detach:true}) runs in
+  MoreReleases, and a layer closing then is not made again.
+- **CORN-053/054:** `CornersFeature.ToggleQs` (App.xaml.cs) runs `BarWindow.ToggleQuickSettingsFromCorner` on the bar's
+  thread (the panel on the right cluster, like Win+A twice); `CornerQs.Within` answers "the bar did not answer within
+  1500 ms" and clips a bar's reason to one line of 160 characters.
+- **Shared files touched:** App.xaml.cs (the desktop wiring block: Wire gets the tray's Paused, ToggleQs; MoreReleases
+  adds the desktop detach), Surfaces/Bar/QuickSettings/BarWindow.QuickSettings.cs (one method), ci.ps1 (the desktop floors).
+
 ## Not built yet (left for later rounds)
 
-- Display-change refit (DESK-016) and the Explorer-restart remake wiring (DESK-011..013: the verdict rules exist and
-  are unit-tested, nothing calls them on a real Explorer restart yet).
-- The menu's keyboard hand-over (DESK-118..120: `DeskMenu.Step` exists and is tested, no key reaches it) and the 1 s
-  ack fallback to Windows' own menu (DESK-124).
-- Widget hiding under windows (DESK-091..103, except the page-rect check DESK-102 and the rect conversion DESK-095).
-- The wallpaper player and backdrop (DESK-046..072) and the Mission Control live view (WebView2, DESK-036): the
-  wallpapers round.
-- Quick settings' Hot corners row (CORN-061..085), Mantle Settings' rows (CORN-099..104) and the claim table's
-  consumers in the bar (the top-bar lane reads `CornerClaims.Live`).
+- Widget hiding under windows (DESK-091..103, except DESK-095 and DESK-102). Electron: the page reports pane rects,
+  lib/features/widgethide.js hands physical-px areas to the sidecar (widgethide.watch {on, areas}), sidecar/WidgetCover.cs
+  rides WinEvent hooks and pushes {covered, by}; the page fades covered panes (260 ms out, 560 ms in, no layout shift,
+  no clicks); it fails open with health words. The native pane rects are already logged ("panes (physical px on screen)").
+- Not run live by any test: the sidecar fit and rescale (DESK-016), the live remake attach / give-up and the Explorer-back
+  try-now / make / recheck paths (DESK-011/012), the put-back detach (DESK-013), the 30 s re-arm (DESK-124), a live corner
+  opening the quick settings panel (CORN-053).
+- The wallpaper player and backdrop (DESK-046..072) and the Mission Control live view (WebView2, DESK-036).
+- Quick settings' Hot corners row (CORN-061..085), Mantle Settings' rows (CORN-099..104).

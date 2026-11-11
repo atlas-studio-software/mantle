@@ -205,7 +205,7 @@ public class DesktopSurfaceTests
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessageW(string name);
     [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
-    [DllImport("user32.dll")] static extern bool GetCursorPos(out Pt p);
+    [DllImport("user32.dll", EntryPoint = "GetCursorPos")] static extern bool CursorAt(out Pt p);
     [StructLayout(LayoutKind.Sequential)] struct Pt { public int X, Y; }
     [DllImport("user32.dll")] static extern uint SendInput(uint n, MouseInput[] inputs, int size);
     /// INPUT with its MOUSEINPUT (x64: the union starts at 8, 40 bytes in all).
@@ -224,7 +224,7 @@ public class DesktopSurfaceTests
     /// A REAL pointer move (SendInput, absolute, 10 steps): WinUI hears pointer enter and exit only from real input.
     static void MoveTo(int x, int y)
     {
-        GetCursorPos(out var from);
+        CursorAt(out var from);
         int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
         for (int i = 1; i <= 10; i++) {
             int px = from.X + (x - from.X) * i / 10, py = from.Y + (y - from.Y) * i / 10;
