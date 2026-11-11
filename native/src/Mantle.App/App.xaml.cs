@@ -289,6 +289,26 @@ public partial class MantleApp : Application
             if (!postUi(() => _window?.AttachQuickSettings(qsLink))) log("qs: the UI thread is gone, so the bar's panel was not attached");
         }
         // ---- end quick settings wiring
+        // ---- notifications wiring (lane native-r7-notif): notifs.get / seen / remove / clear / open, tray.list, tray.click and
+        // sys.keys (Features/Notifications), and the "notifications" and "tray" events (replayed). A --test run never reads or
+        // changes Windows' notifications or tray: MANTLE_TEST_NOTIFS and MANTLE_TEST_TRAY are the lists, and every dismiss,
+        // open, click and key press is a dry run (logged, nothing sent).
+        {
+            var notifs = new Mantle.Core.Features.Notifications.NotificationCentre(new() {
+                Platform = _platform, Events = _events, Clock = clock, Test = test, Log = log, State = _hub,
+                Files = Host.Files, SeenFile = System.IO.Path.Combine(Host.Paths.DataRoot, "notifications-seen.json"),
+                Fixture = test ? Host.Env("MANTLE_TEST_NOTIFS") : null,
+                AccessProblem = () => Mantle.App.Surfaces.Bar.Frame.Chips.NotificationAccess()?.Reason,
+            });
+            var area = new Mantle.Core.Features.Notifications.NotificationArea(new() {
+                Platform = _platform, Events = _events, Clock = clock, Test = test, Log = log,
+                Fixture = test ? Host.Env("MANTLE_TEST_TRAY") : null, OwnExe = Environment.ProcessPath,
+            });
+            _offs.Add(Mantle.Core.Features.Notifications.NotificationCommands.Register(_bus, new(notifs, area)));
+            _offs.Add(notifs); _offs.Add(area);
+            notifs.Start(); area.Start();
+        }
+        // ---- end notifications wiring
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
         // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
         // are kept, as Electron keeps them.
