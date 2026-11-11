@@ -1,7 +1,7 @@
 <Project Sdk="Microsoft.NET.Sdk">
   <!--
     A stand-in Mantle.Sidecar.exe for one UI test (Sidecar/SidecarJobUiTests.cs, lane native-r7-sidecar),
-    given to the app through MANTLE_SIDECAR_EXE (honoured only with --test). It ignores stdin, its
+    given to the app through MANTLE_SIDECAR_EXE (honoured only in a test run). It ignores stdin, its
     end, and the parent PID, so when the app is killed nothing but the app's own job can end it.
     Never shipped, never in the installer.
   -->
