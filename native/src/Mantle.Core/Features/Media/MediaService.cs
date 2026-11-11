@@ -184,7 +184,7 @@ public sealed class MediaService
             string? prot = ProtectedOf(s);
             string? aumid = Str(s["aumid"]);
             var app = OwnApp(aumid) ?? (s["app"] is JsonObject a ? new JsonObject { ["name"] = a["name"]?.DeepClone(), ["icon"] = a["icon"]?.DeepClone() } : null);
-            rows.Add(new JsonObject {
+            rows.Add((JsonNode)new JsonObject {
                 ["aumid"] = aumid, ["app"] = app, ["title"] = Str(s["title"]), ["artist"] = Str(s["artist"]),
                 ["status"] = Str(s["status"]) ?? "unknown", ["playing"] = Bool(s["playing"]), ["current"] = Bool(s["current"]),
                 ["protectedApp"] = prot != null, ["label"] = prot != null ? Guard().Label : null,
