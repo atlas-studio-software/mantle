@@ -217,6 +217,23 @@ deliberate deviation for safety.
   apps on the native bar, BAR-291..296), BAR-329's dark styling and reduced-motion parts, the off switch for jump lists
   (BAR-317), the overflow badge counts (Helm counts, BAR-255..257).
 
+## Round 7, part 3: pin beside a count, Explorer restart, "+N" counts, the dark menu (native-r7-strip-3)
+
+- Pin beside a count: `OnTopWords.PinOnLeft` / `PinMargin` (helmbadge.css `.cell.hb-on .ontop-badge`); `CellVm.OnTopAlign`
+  / `OnTopMargin` in `BarWindow.Tasks.cs`; the pin glyph is `bar.ontop.pin`. The media lane's `SetBadge` calls
+  `CellVm.BadgeMoved()` (one line), which also tells the bar a count changed (`OnBadge`).
+- Explorer restart (BAR-158, 161, 163): `Mantle.Core/Features/WindowList/BarShellBack.cs` (once per 3 s, steps, words);
+  `Tasks/BarWindow.ShellBack.cs`; one line in `Frame/BarWindow.Frame.cs` SubProc (`HeardShellBack(msg)`). Dock asks for
+  the app bar again, an up bar that is watching re-makes the Windows-taskbar watch, an up bar is raised; a hidden bar
+  waits for its next reveal. Test: TaskbarCreated posted to the bar's own hwnd in a --dock test run.
+- "+N" counts (BAR-257, 1030): `Mantle.Core/Features/WindowList/OverflowBadge.cs`; `Tasks/BarWindow.OverflowBadge.cs`
+  ("+N"'s face is now a 24 DIP grid: label + two discs, `bar.apps.more.count`; tiles get `bar.ovf.count`, their tooltip
+  and status refreshed). Count changes are coalesced into one paint (TryEnqueue), no timer.
+- The dark menu (BAR-329): `Mantle.Core/Features/JumpList/JumpLook.cs`; `JlRowTemplateOf(look)` and `JlLook` in
+  `BarWindow.JumpList.cs`. A --test run logs "bar tasks: menu: look ...". Not done: the dark header (.jl-h 6 10 4, 11 px),
+  the sub-list's 27 px inset and the close row's warn hover.
+- Left: BAR-215 / 323 / 330 (Mantle's own apps on the native bar, BAR-291..296), BAR-317 (the jump list off switch).
+
 ## Part 2 starts here
 
 Previews are done except BAR-233 (re-place on a bar width change or the island's move) and BAR-313 (the Alt+Tab
