@@ -209,6 +209,9 @@ public partial class MantleApp : Application
         // the ONE write gate) and finds tools/restore-banners.ps1. ToastsFeature makes its owner only in a --live run.
         Mantle.Core.Features.Toasts.ToastsFeature.Configure(new(Host.Paths.DataRoot, Host.Files,
             System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "restore-banners.ps1")));
+        // ---- calendar wiring, part 1 (lane native-r7-calendar): [Feature("gcal")] keeps its files in <userData>\gcal (token.bin,
+        // client.bin, cache.json) through the ONE write gate; a --test run never sends anything to Google (GcalFeature).
+        Mantle.Core.Features.Calendar.GcalFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
 
         // the feature host on the ONE write gate's stores
         _stores = Stores.For(Host.Paths, Host.Gate, Host.Log);
@@ -300,6 +303,28 @@ public partial class MantleApp : Application
             if (!postUi(() => _window?.AttachQuickSettings(qsLink))) log("qs: the UI thread is gone, so the bar's panel was not attached");
         }
         // ---- end quick settings wiring
+        // ---- calendar wiring, part 2 (lane native-r7-calendar): the clock's flyout hears gcal.status / gcal.events and calls
+        // gcal.* through its own SurfaceLink (caller "bar"); "Notifications" presses win+n through the sidecar until Mantle's
+        // own centre is native (a --test run logs a dry run and presses nothing).
+        {
+            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            var calLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
+            var calPlatform = _platform!;
+            // asked from the UI thread, run on the host thread (the platform's own), answered back
+            Func<string, System.Threading.Tasks.Task<string?>> keys = combo => {
+                var tcs = new System.Threading.Tasks.TaskCompletionSource<string?>(System.Threading.Tasks.TaskCreationOptions.RunContinuationsAsynchronously);
+                async System.Threading.Tasks.Task Press()
+                {
+                    try {
+                        var r = await calPlatform.CallAsync("keys", new System.Text.Json.Nodes.JsonObject { ["combo"] = combo }, TimeSpan.FromMilliseconds(3000)).ConfigureAwait(true);
+                        tcs.TrySetResult(r.Ok ? null : r.Error ?? "the sidecar did not answer");
+                    } catch (Exception e) { tcs.TrySetResult(e.Message); }
+                }
+                loop.Post(() => { _ = Press(); });
+                return tcs.Task;
+            };
+            if (!postUi(() => _window?.AttachCalendar(calLink, keys))) log("cal: the UI thread is gone, so the bar's calendar was not attached");
+        }
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
         // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
         // are kept, as Electron keeps them.
