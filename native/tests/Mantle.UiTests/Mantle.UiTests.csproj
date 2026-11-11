@@ -20,4 +20,8 @@
     <PackageReference Include="FlaUI.UIA3" Version="4.0.0" />
     <PackageReference Include="System.Drawing.Common" Version="9.0.0" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- built first, never referenced as code: the stand-in sidecar Sidecar/SidecarJobUiTests.cs runs from its own bin -->
+    <ProjectReference Include="..\Mantle.SidecarStub\Mantle.SidecarStub.csproj" ReferenceOutputAssembly="false" />
+  </ItemGroup>
 </Project>

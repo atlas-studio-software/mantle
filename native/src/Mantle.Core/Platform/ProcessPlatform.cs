@@ -166,6 +166,8 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
         catch (Exception e) { SetStatus(PlatformState.Down, "sidecar would not start: " + e.Message); return; }
         SpawnCount++;
         _proc = p;
+        // the pid and its job, every start and every restart (lane native-r7-sidecar; the UI test reads this line)
+        _o.Log("info", $"started the sidecar, pid {p.Pid}{(p.Containment is { Length: > 0 } c ? ", " + c : "")}");
         _startedAt = _host.NowMs;
         _readyAt = 0;
         _hadReady = false;

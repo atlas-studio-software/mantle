@@ -37,8 +37,8 @@ namespace Mantle.App.Surfaces.TopBar;
 // with TopBarModel.FitTitles (the app name gives way first, then "»"); on the right the stat cells (CPU, RAM, GPU,
 // NET, PING) and the two tool buttons (timer, notes). Light: --lg-fill-fb over what is behind with the inset
 // --lg-edge-out line at its bottom; dark: --lg-fill-pop, no line (the dark glass and colour under are later parts).
-// The dropdowns and their keys are TopBarSurface.Menus.cs. Not drawn yet (docs/lanes/topbar.md "Left"): the stats
-// dropdowns, the "stats paused" item, the menus' motion and glass.
+// The dropdowns and their keys are TopBarSurface.Menus.cs, the stat dropdowns TopBarSurface.Stats.cs. Not drawn yet
+// (docs/lanes/topbar.md "Left"): app power, the ping test, the menus' motion and glass.
 [Surface("topbar", AtStart = true)]
 internal sealed partial class TopBarSurface : ISurface
 {
@@ -256,8 +256,13 @@ internal sealed partial class TopBarSurface : ISurface
         _right.Children.Clear();
         _cells.Clear();
         if (_note != null) _right.Children.Add(NoteView(_note));
-        if (_stats == null && _paused != null)
-            _right.Children.Add(new TextBlock { Text = "Stats paused", Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+        if (_paused != null)   // TOP-099: "stats paused", the reason as its tooltip
+        {
+            var p = new TextBlock { Text = TopBarStatMenu.PausedWords, Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = _dark ? 12 : 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            ToolTipService.SetToolTip(p, _paused);
+            AutomationProperties.SetAutomationId(p, "topbar.stats.paused"); AutomationProperties.SetName(p, TopBarStatMenu.PausedWords + ": " + _paused);
+            _right.Children.Add(p);
+        }
         else
         {
             double ch = Ch();
@@ -278,6 +283,7 @@ internal sealed partial class TopBarSurface : ISurface
                 var tip = c.Title ?? c.Why ?? "";
                 if (tip.Length > 0) ToolTipService.SetToolTip(b, tip);
                 _cells[c.Key] = new Cell { B = b, V = run, T = v, Ink = ink, Name = c.Label + " " + c.Value, Tip = tip };
+                if (IsOpen(b)) b.Background = Br("LgPress");
                 b.Click += (_, _) => OnStat(c.Key);
                 _right.Children.Add(b);
             }
@@ -349,12 +355,7 @@ internal sealed partial class TopBarSurface : ISurface
 
     // ------------------------------------------------------------------ the controls (the dropdowns are a later part)
     /// TOP-030: with a menu open, hovering another title opens that one (not from a stat or tool dropdown).
-    void Slide(int ti) { if (_open != null && _open.Tool == null && _open.Ti != ti) OpenMenu(ti); }
-    async void OnStat(string key)
-    {
-        var r = await _ctx.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = key });
-        _ctx.Log.Line($"stat pressed: {key}" + (r.Ok ? "" : $" (its dropdown is not drawn yet: {r.Error})"));
-    }
+    void Slide(int ti) { if (_open != null && _open.Tool == null && _open.Stat == null && _open.Ti != ti) OpenMenu(ti); }
     async void OnTool(string tool)
     {
         var r = await _ctx.CallAsync(tool == "notes" ? "notes.toggle" : "timer.state");
@@ -414,9 +415,21 @@ internal sealed partial class TopBarSurface : ISurface
     }
     void OnStats(TopBarStats s)
     {
-        _stats = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
-        _paused = s.Paused;
-        if (_cells.Count > 0 && !(_stats == null && _paused != null)) { UpdateCells(); return; }   // cells stay cells: words only
+        var j = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
+        // TOP-099: a paused push (or the sampler off with its reason) keeps the last readings and shows "stats paused"
+        string? paused = TopBarStatMenu.Paused(j) ?? (j == null ? s.Paused : null);
+        if (paused != null)
+        {
+            bool same = _paused == paused;
+            _paused = paused;
+            if (TopBarStatMenu.Paused(j) == null) _stats = null;
+            if (!same || _cells.Count > 0) { RenderRight(); Fit(); }
+            return;
+        }
+        bool wasPaused = _paused != null;
+        _stats = j; _paused = null;
+        if (_open is { Stat: not null } o && _stats != null) { RenderStatMenu(o); RenewDetail(o); }   // in place: same element, scroll kept (TOP-102)
+        if (_cells.Count > 0 && !wasPaused) { UpdateCells(); return; }   // cells stay cells: words only
         RenderRight();
         Fit();
     }

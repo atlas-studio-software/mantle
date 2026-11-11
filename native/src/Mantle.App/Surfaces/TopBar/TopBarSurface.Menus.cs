@@ -76,7 +76,7 @@ internal sealed partial class TopBarSurface
     /// TOP-029: a press on a title opens its menu; on the open title it closes it and gives the app the keyboard back.
     void OnTitlePress(int ti)
     {
-        if (_open != null && _open.Ti == ti) { CloseAll(true, "the open title pressed again"); _ctx.Log.Line($"title pressed: {KeyOf(ti)} (closed; refocus)"); return; }
+        if (_open != null && _open.Stat == null && _open.Ti == ti) { CloseAll(true, "the open title pressed again"); _ctx.Log.Line($"title pressed: {KeyOf(ti)} (closed; refocus)"); return; }
         OpenMenu(ti);
         _ctx.Log.Line($"title pressed: {KeyOf(ti)} ({(_open != null ? "open; " + _open.Top.Items.Count + " rows" : "closed; nothing to open")})");
     }
@@ -154,7 +154,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         _open = null; _openKey = null;
-        _hoverT?.Stop(); _waitT?.Stop(); _editBox = null;
+        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null;
         _menus.Children.Clear(); _dds.Clear();
         _menus.Visibility = Visibility.Collapsed; _away.Visibility = Visibility.Collapsed;
         _asked = -1;
@@ -167,6 +167,7 @@ internal sealed partial class TopBarSurface
     void PaintTitles()
     {
         foreach (var b in _left.Children.OfType<Button>()) b.Background = IsOpen(b) ? Br("LgPress") : ClearBrush();
+        foreach (var c in _cells.Values) c.B.Background = IsOpen(c.B) ? Br("LgPress") : ClearBrush();   // TOP-100: the open stat's pressed wash
     }
 
     // ------------------------------------------------------------------ steps
@@ -260,6 +261,8 @@ internal sealed partial class TopBarSurface
     void RenderMenus()
     {
         var o = _open;
+        if (o?.Stat != null) { RenderStatMenu(o); return; }   // TopBarSurface.Stats.cs
+        _statView = null;
         foreach (var d in _dds) d.Lv.Scroll = d.Sv.VerticalOffset;   // TOP-079: each level keeps its scroll
         _menus.Children.Clear(); _dds.Clear(); _editBox = null;
         if (o == null) return;
@@ -309,8 +312,9 @@ internal sealed partial class TopBarSurface
         dd.Sv = new ScrollViewer { Content = dd.Rows, VerticalScrollBarVisibility = ScrollBarVisibility.Auto, HorizontalScrollMode = ScrollMode.Disabled, IsTabStop = false };
         dd.Box = new Border
         {
-            Child = dd.Sv, Padding = new Thickness(5), MinWidth = 220, MaxWidth = 420, BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = Br("LgFillPop"), BorderBrush = Br("LgEdgeOut"),
+            // TOP-188: dark is Helm's menu (padding 4, min width 180); light 5 / 220
+            Child = dd.Sv, Padding = new Thickness(_dark ? 4 : 5), MinWidth = _dark ? 180 : 220, MaxWidth = 420, BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = MenuFace(), BorderBrush = Br("LgEdgeOut"),
         };
         AutomationProperties.SetAutomationId(dd.Sv, $"topbar.menu.{level}");   // a Border has no automation peer; the ScrollViewer has
         AutomationProperties.SetName(dd.Sv, level == 0 ? (o.IsMore ? "More menus" : KeyOf(o.Ti)) : "Submenu");
@@ -318,9 +322,19 @@ internal sealed partial class TopBarSurface
         return dd;
     }
 
+    /// TOP-187 --hud-face: light dropdowns are three layers of --lg-fill-strong, drawn as one fill of the composite
+    /// alpha (1 - (1 - a)^3: #B8 white reads #F9); dark: --lg-fill-pop (no picture under it yet, TOP-184).
+    Brush MenuFace()
+    {
+        if (_dark || Tok("LgFillStrong") is not SolidColorBrush one) return Br("LgFillPop");
+        var c = one.Color;
+        c.A = (byte)Math.Round(255 * (1 - Math.Pow(1 - c.A / 255.0, 3)));
+        return new SolidColorBrush(c);
+    }
+
     TextBlock Info(string text, bool bad, string id)
     {
-        var t = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 380, FontSize = 11.5, FontFamily = TextFont, Padding = new Thickness(8, 5, 8, 4), Foreground = Br(bad ? "LgWarn" : "LgInk3") };
+        var t = new TextBlock { Text = text, TextWrapping = TextWrapping.Wrap, MaxWidth = 380, FontSize = _dark ? 12 : 11.5, FontFamily = TextFont, Padding = _dark ? new Thickness(10, 5, 10, 4) : new Thickness(8, 5, 8, 4), Foreground = Br(bad ? "LgWarn" : "LgInk3") };
         AutomationProperties.SetAutomationId(t, id);
         AutomationProperties.SetName(t, text);
         return t;
@@ -329,14 +343,15 @@ internal sealed partial class TopBarSurface
     (FrameworkElement El, Button? Btn) MakeRow(TopBarMenu o, MenuLevel lv, int level, int i)
     {
         var it = lv.Items[i];
-        if (it.T == "sep") return (new Border { Height = 1, Margin = new Thickness(8, 4, 8, 4), Background = Br("LgSunk") }, null);
+        if (it.T == "sep") return (new Border { Height = 1, Margin = _dark ? new Thickness(6, 4, 6, 4) : new Thickness(8, 4, 8, 4), Background = Br(_dark ? "LgDivider" : "LgSunk") }, null);
         if (it.T == "info") return (Info(it.Label ?? "", false, $"topbar.menu.{level}.{i}"), null);
         bool armed = o.Armed is { } a && ReferenceEquals(a.Item, it);
         var (label, check, key, arrow, off) = TopBarMenu.Row(it, armed);
         var b = (Button)XamlReader.Load($"<Button {Ns} Height='24' Padding='6,0,8,0' HorizontalAlignment='Stretch' HorizontalContentAlignment='Stretch' ClickMode='Release' IsTabStop='False' UseSystemFocusVisuals='False'>"
             + "<Button.Template><ControlTemplate TargetType='Button'><Border Background='{TemplateBinding Background}' CornerRadius='6' Padding='{TemplateBinding Padding}'>"
             + "<ContentPresenter Content='{TemplateBinding Content}' Foreground='{TemplateBinding Foreground}' VerticalAlignment='Center' HorizontalAlignment='Stretch'/></Border></ControlTemplate></Button.Template></Button>");
-        var g = new Grid { ColumnSpacing = 6 };
+        if (_dark) { b.Height = double.NaN; b.MinHeight = 30; b.Padding = new Thickness(10, 5, 10, 5); }   // TOP-188: rows >= 30 px, 5 / 10 padding
+        var g = new Grid { ColumnSpacing = _dark ? 10 : 6 };
         foreach (var wd in new[] { new GridLength(16), new GridLength(1, GridUnitType.Star), GridLength.Auto, new GridLength(12) }) g.ColumnDefinitions.Add(new ColumnDefinition { Width = wd });
         string ink = armed ? "LgWarn" : off ? "LgInk3" : "LgInk";
         TextBlock T(string s, int col, string br, double size)
@@ -345,7 +360,7 @@ internal sealed partial class TopBarSurface
             Grid.SetColumn(t, col); g.Children.Add(t); return t;
         }
         bool editing = o.Edit is { } ed && ReferenceEquals(ed.Item, it);
-        T(check, 0, off ? "LgInk3" : "LgInk2", 11).HorizontalAlignment = HorizontalAlignment.Center;
+        T(check, 0, off ? "LgInk3" : "LgInk2", _dark ? 12 : 11).HorizontalAlignment = HorizontalAlignment.Center;
         if (editing)
         {
             // TOP-042/082: the name box, typed in the menu itself
@@ -357,8 +372,8 @@ internal sealed partial class TopBarSurface
             _editBox = box;
         }
         else T(label, 1, ink, _dark ? 13 : 12.5);
-        T(key, 2, "LgInk3", 11.5).Margin = new Thickness(18, 0, 0, 0);
-        T(arrow, 3, "LgInk3", 10).HorizontalAlignment = HorizontalAlignment.Right;
+        T(key, 2, "LgInk3", _dark ? 12 : 11.5).Margin = new Thickness(18, 0, 0, 0);
+        T(arrow, 3, "LgInk3", _dark ? 11 : 10).HorizontalAlignment = HorizontalAlignment.Right;
         b.Content = g;
         b.Background = i == lv.Sel || editing ? Br("LgHover") : ClearBrush();
         b.Foreground = Br(ink);
