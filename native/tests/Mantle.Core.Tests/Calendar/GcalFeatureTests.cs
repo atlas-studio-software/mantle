@@ -92,7 +92,7 @@ public class GcalFeatureTests
     });
 
     [Fact]
-    public void The_fixture_is_drawn_never_Googles_and_a_rows_link_stays_in_the_feature() => T(async (r, _, opened) =>
+    public void The_fixture_is_drawn_never_Googles_and_a_rows_link_stays_in_the_feature() => T(async (r, _d, opened) =>
     {
         r.Host.Load(new[] { D() });
         await r.Host.Installed;
