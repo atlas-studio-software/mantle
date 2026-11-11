@@ -30,7 +30,11 @@ public partial class StripTests
         _profile = profile;
         string tag = Guid.NewGuid().ToString("N")[..6];
         const int total = 30;
-        var pins = PinFolder("ovf-" + tag, Enumerable.Range(1, total).Select(i => ($"Ovf {i:00}", CharmapExe)).ToArray());
+        // one pin per app: 30 pins of the same exe are one app on the strip, so each pin gets its own copy of charmap.exe
+        string exes = Path.Combine(Path.GetTempPath(), "mantle-native-uitest-ovf-exes-" + tag);
+        Directory.CreateDirectory(exes);
+        var targets = Enumerable.Range(1, total).Select(i => { string t = Path.Combine(exes, $"ovf{i:00}.exe"); File.Copy(CharmapExe, t, true); return t; }).ToArray();
+        var pins = PinFolder("ovf-" + tag, Enumerable.Range(1, total).Select(i => ($"Ovf {i:00}", targets[i - 1])).ToArray());
         string fx = Path.Combine(Path.GetTempPath(), "mantle-jl-fixture-ovf-" + tag + ".json");
         File.WriteAllText(fx, "{\"apps\":{\"*\":{\"sections\":[],\"none\":\"this app doesn't publish one\"}}}");
         using var app = BarApp.Launch(profile, env: new Dictionary<string, string> {
@@ -49,12 +53,12 @@ public partial class StripTests
         cs = Cells(app);
         more = Find(app.Window, "bar.apps.more")!;
         int hidden = int.Parse(more.Name.Split(' ')[0]);
-        int keep = cs.Count;
-        Assert.AreEqual(total, keep + hidden, $"\"{more.Name}\" and {keep} icons on the strip do not add up to {total}; cells: {Describe(cs)}");
+        int keep = cs.Count, all = keep + hidden;   // the 30 pins, then any running-only app the runner has (after them)
+        Assert.IsTrue(all >= total && keep < total, $"\"{more.Name}\" and {keep} icons on the strip: not the {total} pins with the tail behind \"+N\"; cells: {Describe(cs)}");
         Assert.AreEqual(hidden == 1 ? "1 more app that do not fit" : $"{hidden} more apps that do not fit", more.Name);
         CollectionAssert.AreEqual(Enumerable.Range(0, keep).ToArray(), cs.Select(c => c.Index).ToArray(), $"the icons on the strip are not the order's head: {Describe(cs)}");
         CollectionAssert.AreEqual(Enumerable.Range(1, keep).Select(i => $"Ovf {i:00}").ToArray(), cs.Select(c => c.Name).ToArray(), "the strip's order");
-        Host.LogContains(log, $"bar tasks: fit: {keep} of {total} on the strip, {hidden} behind \"+{hidden}\"", "the fit was not logged");
+        Host.LogContains(log, $"bar tasks: fit: {keep} of {all} on the strip, {hidden} behind \"+{hidden}\"", "the fit was not logged");
         var start = Find(app.Window, "bar.start")!.BoundingRectangle;
         var wall = Find(app.Window, "bar.downloads")!.BoundingRectangle;
         var mr = more.BoundingRectangle;
@@ -81,7 +85,8 @@ public partial class StripTests
         var tiles = Host.Until(() => { var t = pw.FindAllDescendants(cf => cf.ByControlType(FlaUI.Core.Definitions.ControlType.Button)).Where(e => (e.AutomationId ?? "").StartsWith("bar.ovf.", StringComparison.Ordinal)).ToList(); return t.Count == hidden ? t : null; }, 3000);
         Assert.IsNotNull(tiles, $"the panel does not hold {hidden} tiles");
         CollectionAssert.AreEqual(Enumerable.Range(keep, hidden).Select(i => "bar.ovf." + i).ToArray(), tiles!.Select(t => t.AutomationId).ToArray(), "the tiles are not the hidden apps in order");
-        CollectionAssert.AreEqual(Enumerable.Range(keep + 1, hidden).Select(i => $"Ovf {i:00}").ToArray(), tiles.Select(t => t.Name).ToArray(), "every tile names its app");
+        CollectionAssert.AreEqual(Enumerable.Range(keep + 1, total - keep).Select(i => $"Ovf {i:00}").ToArray(), tiles.Take(total - keep).Select(t => t.Name).ToArray(), "every tile names its app, in order");
+        Assert.IsTrue(tiles.All(t => !string.IsNullOrEmpty(t.Name)), "a tile has no name");
         int cols = Math.Min(4, hidden);
         var tr = tiles.Select(t => t.BoundingRectangle).ToList();
         Assert.AreEqual(cols, tr.Select(r => r.X).Distinct().Count(), $"the panel is not {cols} column(s) wide: {string.Join(" ", tr)}");
