@@ -49,7 +49,7 @@
   in <Out>/logs/<stage>.log.
 #>
 param(
-  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar'),
+  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
@@ -59,7 +59,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop')
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -679,10 +679,40 @@ function Stage-topbar {
   return "ok ($scored of $of scored, lowest ssim $($got -join ', '))"
 }
 
+# ---- lane native-r7-desktop-2: stage desktop, the desktop layer's System widget, Needs attention strip and right-click
+# menu (tools/parity/desktop/run-desk-parity.ps1, Electron's ui/desktop page over a fake bridge vs native, one fixture,
+# light and dark), gated on "DESK-PARITY summary: 6 scored of 6" and these floors (a little under what it reached;
+# docs/lanes/desktop.md says what the rest of the difference is)
+$DeskFloors = @{ 'light-stats' = 0.83; 'light-strip' = 0.60; 'light-menu' = 0.93; 'dark-stats' = 0.81; 'dark-strip' = 0.65; 'dark-menu' = 0.92 }   # 0.8572 / 0.6240 / 0.9526 / 0.8346 / 0.6796 / 0.9496 (run 43042794903, lane native-r7-desktop-3: pane heights as Electron's, the menu's Bahnschrift, padding and shadow); was 0.7171 / 0.5438 / 0.7285 / 0.7136 / 0.4635 / 0.7055 (run 43025045944)
+function Stage-desktop {
+  $out = Join-Path $Out 'parity\desk'
+  $code = Lane-Script 'desktop' 'tools\parity\desktop\run-desk-parity.ps1' @('-Exe', $exe, '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/desktop/run-desk-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'desktop.log'
+  $rows = Scores $log '^DESK-PARITY desk-([\w-]+): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^DESK-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^DESK-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if (-not $sum.Count) { return "FAILED (no DESK-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
+  $bad = @(); $got = @()
+  $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
+  if ($scored -lt 6 -or $of -ne 6) { $bad += "$scored of $of desktop shots scored" }
+  foreach ($t in @($DeskFloors.Keys | Sort-Object)) {
+    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $DeskFloors[$t]
+    if (-not $r.Count) { $bad += "$t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
+  }
+  if ($code -ne 0) { $bad += "exit $code" }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok ($scored of $of scored, ssim $($got -join ', '))"
+}
+# ---- end lane native-r7-desktop-2
+
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media', 'topbar')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media', 'topbar', 'desktop')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -736,6 +766,7 @@ foreach ($s in $Stages) {
       'notifs'  { Stage-notifs }   # lane native-r7-notif
       'media'   { Stage-media }    # lane native-r7-media
       'topbar'  { Stage-topbar }   # lane native-r7-topbar
+      'desktop' { Stage-desktop }   # lane native-r7-desktop-2
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result
   } catch {
