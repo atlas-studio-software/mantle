@@ -73,7 +73,8 @@ public sealed class TopBarMenuTests
     [Fact]
     public void App_menus_new_window_and_window_actions_and_the_desktop_TOP_052_053_054_055_056_057_058_059_060()
     {
-        var chrome = TopBarModel.Titles(Chrome, null);
+        var c0 = (JsonObject)Chrome.DeepClone(); c0["zoomed"] = false; c0["topmost"] = false;   // the fixture window is zoomed
+        var chrome = TopBarModel.Titles(c0, null);
         var m = Open(chrome, 1);
         Assert.Equal(new[] { "New window", null, "Minimize", "Zoom", "Always on top", null, "Close window", "Quit Google Chrome" }, m.Top.Items.Select(i => i.T == "sep" ? null : i.Label));
         var nw = m.Activate(0, 0, 0, Chrome, null).Call!;
