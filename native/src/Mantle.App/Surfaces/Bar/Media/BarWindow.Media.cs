@@ -95,7 +95,7 @@ public sealed partial class BarWindow
         bool playing = MediaService.Bool(s["playing"]);
         string? art = MediaService.Str(s["artwork"]);
         string? src = art ?? MediaService.Str(s["app"]?["icon"]);
-        _mart.Background = Tok("LgTile");
+        _mart.Background = MTok("LgTile");
         if (src != _martSrc) { _martSrc = src; _ = ChipArt(src, art != null ? 20 : 14); }
         string tip = MediaView.ChipTip(s);
         ToolTipService.SetToolTip(_mchip, tip);
@@ -107,7 +107,7 @@ public sealed partial class BarWindow
         if (!guarded) {
             var can = MediaView.Can(s, "toggle");
             string g = playing ? "pause" : "play";
-            var glyph = MediaPics.Glyph(g, 12, Tok(can.Ok ? "LgInk" : "LgInk3"));
+            var glyph = MediaPics.Glyph(g, 12, MTok(can.Ok ? "LgInk" : "LgInk3"));
             if (!can.Ok) glyph.Opacity = .5;
             _mtog.Content = glyph;
             string tt = MediaView.ToggleTip(s);
@@ -124,7 +124,7 @@ public sealed partial class BarWindow
         var img = await MediaPics.Load(src);
         if (_mart == null || src != _martSrc) return;
         _mart.Child = img != null ? new Image { Source = img, Width = size, Height = size, Stretch = size >= 20 ? Stretch.UniformToFill : Stretch.Uniform }
-            : MediaPics.Glyph("note", 12, Tok("LgInk2"));
+            : MediaPics.Glyph("note", 12, MTok("LgInk2"));
     }
 
     /// mediaDo(): a press the app does not accept says why (in the card, or a chip from the bar); a second press while
@@ -220,7 +220,7 @@ public sealed partial class BarWindow
     }
 
     /// The bar theme's --lg-* token, read in code.
-    Brush Tok(string key)
+    Brush MTok(string key)
     {
         string theme = Dark ? "Dark" : "Light";
         foreach (var d in Application.Current.Resources.MergedDictionaries)

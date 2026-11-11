@@ -55,7 +55,7 @@ public sealed class MediaService
     MediaPickDropped? _dropped;
     IDisposable? _pickTimer, _pollTimer;
     Task<JsonObject?>? _reading;
-    bool _again;
+    bool _again, _busy;
     readonly List<Action<JsonObject>> _listeners = new();
     readonly JsonObject? _fixture;
     long _fixtureRev = 1;
@@ -257,9 +257,12 @@ public sealed class MediaService
     /// mediaPush(why): read and publish. Coalesces: triggers during a read cause exactly one more read.
     public Task<JsonObject?> Push(string why)
     {
-        if (_reading != null) { _again = true; return _reading; }
-        _reading = PushLoop(why);
-        return _reading;
+        if (_busy) { _again = true; return _reading ?? Task.FromResult(_last); }
+        _busy = true;
+        var t = PushLoop(why);
+        // a read that finished at once (its finally already ran) must not be kept as "in flight"
+        _reading = t.IsCompleted ? null : t;
+        return t;
     }
 
     async Task<JsonObject?> PushLoop(string why)
@@ -279,6 +282,7 @@ public sealed class MediaService
         } catch (Exception e) {
             _o.Log($"mantle: the media push ({why}) threw: {e}");
         } finally {
+            _busy = false;
             _reading = null;
         }
         return _last;

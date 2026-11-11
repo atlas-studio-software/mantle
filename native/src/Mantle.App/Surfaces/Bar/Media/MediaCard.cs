@@ -169,7 +169,7 @@ internal sealed class MediaCard
                 var glyph = MediaPics.Glyph(g, a == "toggle" ? 16 : 14, ink);
                 if (!can.Ok) glyph.Opacity = .45;
                 b.Content = glyph;
-                b.Background = a == "toggle" ? B("LgSunk") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+                b.Background = a == "toggle" ? B("LgSunk") : new SolidColorBrush();
                 b.CornerRadius = new CornerRadius(6);
                 b.Opacity = Busy == a ? .55 : 1;
                 string label = a == "toggle" ? (playing ? "Pause" : "Play") : a == "next" ? "Next track" : "Previous track";
@@ -250,7 +250,7 @@ internal sealed class MediaCard
         if (name != null) { var ico = new Border { Width = 16, Height = 16, CornerRadius = new CornerRadius(4) }; SetIcon(ico, icon, name); row.Children.Add(ico); }
         row.Children.Add(new TextBlock { Text = text, FontSize = 12.5, TextTrimming = TextTrimming.CharacterEllipsis, Foreground = B(on ? "LgAcc" : "LgInk2") });
         b.Content = row;
-        b.Background = on ? B("LgAccSoft") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        b.Background = on ? B("LgAccSoft") : new SolidColorBrush();
         ToolTipService.SetToolTip(b, tip);
         AutomationProperties.SetName(b, text);
         AutomationProperties.SetHelpText(b, tip);
