@@ -173,6 +173,7 @@ public sealed partial class BarWindow
                 bool inBand = BarIntent.InBand(g, pt.X, pt.Y);
                 if (!_revealed && !inBand) continue;
                 if (Interlocked.Exchange(ref _tickPending, 1) == 1) continue;   // one tick queued at a time
+                Mantle.Core.Lifecycle.IdleTally.Hit("ui post (hover poll)");
                 DispatcherQueue.TryEnqueue(() => { Volatile.Write(ref _tickPending, 0); HoverTick(pt, inBand); });
             }
         }) { IsBackground = true, Name = "bar hover poll" }.Start();

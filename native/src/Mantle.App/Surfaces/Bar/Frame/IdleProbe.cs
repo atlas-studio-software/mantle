@@ -92,6 +92,7 @@ internal static unsafe class IdleProbe
         try {
             string key = $"{how} {MsgName(msg)} to {(hwnd == IntPtr.Zero ? "the thread" : ClassOf(hwnd))}";
             if (msg == 0x0113 || msg == 0x0118) key += $" (timer id 0x{wp.ToInt64():x}, proc {ModuleOf(lp)})";
+            else if (msg == 0x0060) key += $" (wParam 0x{wp.ToInt64():x}, lParam 0x{lp.ToInt64():x})";
             Msgs[key] = Msgs.TryGetValue(key, out int n) ? n + 1 : 1;
         } catch (Exception) { _errors++; }
     }

@@ -88,7 +88,7 @@ public sealed partial class BarWindow : Window
 
         _clock = DispatcherQueue.CreateTimer();
         _clock.IsRepeating = false;
-        _clock.Tick += (_, _) => Tick();
+        _clock.Tick += (_, _) => { Mantle.Core.Lifecycle.IdleTally.Hit("ui timer (bar clock)"); Tick(); };
 
         CompositionTarget.Rendering += OnFirstRender;
         Closed += (_, _) => StopTasks();

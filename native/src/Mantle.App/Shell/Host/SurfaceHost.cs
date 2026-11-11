@@ -36,6 +36,7 @@ internal sealed class SurfaceHost
     /// list of the surfaces made now (<see cref="Made"/>) is taken again, so the host thread reads it without a hop.
     public bool PostUi(Action work)
     {
+        Mantle.Core.Lifecycle.IdleTally.Hit("ui post (surfaces)", work);   // test runs only (the idle probe)
         try { return _q.TryEnqueue(() => { try { work(); } finally { Snap(); } }); } catch (Exception) { return false; }
     }
 

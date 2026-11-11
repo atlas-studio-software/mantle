@@ -309,7 +309,7 @@ public partial class MantleApp : Application
         });
         _offs.Add(Mantle.Core.Features.QuickSettings.QsCommands.Register(_bus, new Mantle.Core.Features.QuickSettings.QsCommands(qs)));
         {
-            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            Func<Action, bool> postUi = a => { Mantle.Core.Lifecycle.IdleTally.Hit("ui post (bar link)", a); return _queue?.TryEnqueue(() => a()) ?? false; };
             var qsLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
             if (!postUi(() => _window?.AttachQuickSettings(qsLink))) log("qs: the UI thread is gone, so the bar's panel was not attached");
         }
@@ -318,7 +318,7 @@ public partial class MantleApp : Application
         // gcal.* through its own SurfaceLink (caller "bar"); "Notifications" presses win+n through the sidecar until Mantle's
         // own centre is native (a --test run logs a dry run and presses nothing).
         {
-            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            Func<Action, bool> postUi = a => { Mantle.Core.Lifecycle.IdleTally.Hit("ui post (bar link)", a); return _queue?.TryEnqueue(() => a()) ?? false; };
             var calLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
             var calPlatform = _platform!;
             // asked from the UI thread, run on the host thread (the platform's own), answered back
@@ -363,7 +363,7 @@ public partial class MantleApp : Application
             _offs.Add(notifs); _offs.Add(area);
             notifs.Start(); area.Start();
             // the bar's bell, centre, tray strip, chips and More menu reach them through their own link (caller "bar")
-            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            Func<Action, bool> postUi = a => { Mantle.Core.Lifecycle.IdleTally.Hit("ui post (bar link)", a); return _queue?.TryEnqueue(() => a()) ?? false; };
             // its own state feed (the surfaces' one is made later, in StartSurfaces): the chips follow every state change
             var r7Feed = new StateFeed(_hub!.Current, postUi, log);
             _offs.Add(_hub.OnChange(r7Feed.Push));
@@ -381,7 +381,7 @@ public partial class MantleApp : Application
         });
         _offs.Add(Mantle.Core.Features.Media.MediaCommands.Register(_bus, new Mantle.Core.Features.Media.MediaCommands(media)));
         {
-            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            Func<Action, bool> postUi = a => { Mantle.Core.Lifecycle.IdleTally.Hit("ui post (bar link)", a); return _queue?.TryEnqueue(() => a()) ?? false; };
             var mediaLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
             if (!postUi(() => _window?.AttachMedia(mediaLink))) log("media: the UI thread is gone, so the bar's chip was not attached");
         }
