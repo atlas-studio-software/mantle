@@ -107,7 +107,7 @@ internal sealed class TopBarSurface : ISurface
 
     void Build()
     {
-        _root = new Grid { Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), VerticalAlignment = VerticalAlignment.Top };
+        _root = new Grid { Background = ClearBrush(), VerticalAlignment = VerticalAlignment.Top };
         _bar = new Grid { Height = TopBarRules.BarDip, VerticalAlignment = VerticalAlignment.Top, Padding = new Thickness(Pad, 0, Pad, 0), ColumnSpacing = Gap };
         AutomationProperties.SetName(_bar, "Menu bar");
         AutomationProperties.SetAutomationId(_bar, "topbar.bar");
@@ -143,6 +143,9 @@ internal sealed class TopBarSurface : ISurface
         return null;
     }
     Brush Br(string key) => Tok(key) as Brush ?? new SolidColorBrush();
+    /// A clear brush that still takes clicks (a null Background would not hit-test). A new SolidColorBrush's colour is
+    /// all-zero ARGB, so no colour literal is needed.
+    static Brush ClearBrush() => new SolidColorBrush();
     double Dbl(string key, double dflt) => Tok(key) is double v ? v : dflt;
 
     void SetTheme(bool dark)
@@ -164,13 +167,13 @@ internal sealed class TopBarSurface : ISurface
         var b = new Button
         {
             Template = tpl, Height = 22, Padding = new Thickness(9, 0, 9, 0), CornerRadius = new CornerRadius(Dbl("LgRCtl", 6)), VerticalAlignment = VerticalAlignment.Center,
-            Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent), Foreground = Br("LgInk"), FontFamily = TextFont, FontSize = _dark ? 13 : 12.5,
+            Background = ClearBrush(), Foreground = Br("LgInk"), FontFamily = TextFont, FontSize = _dark ? 13 : 12.5,
             FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal, ClickMode = ClickMode.Press, IsTabStop = true, UseSystemFocusVisuals = false,
         };
         AutomationProperties.SetAutomationId(b, id);
         AutomationProperties.SetName(b, name);
         b.PointerEntered += (_, _) => { if (!IsOpen(b)) b.Background = Br("LgHover"); };
-        b.PointerExited += (_, _) => { if (!IsOpen(b)) b.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent); };
+        b.PointerExited += (_, _) => { if (!IsOpen(b)) b.Background = ClearBrush(); };
         return b;
     }
     bool IsOpen(Button b) => _openKey != null && (b.Tag as string) == _openKey;
@@ -287,7 +290,7 @@ internal sealed class TopBarSurface : ISurface
     {
         _openKey = _openKey == t.Key ? null : t.Key;   // TOP-029: mouse-down opens it; on the open title it closes
         _ctx.Log.Line($"title pressed: {t.Key} ({(_openKey != null ? "open" : "closed")}; its dropdown is not drawn yet)");
-        foreach (var b in _left.Children.OfType<Button>()) b.Background = IsOpen(b) ? Br("LgPress") : new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        foreach (var b in _left.Children.OfType<Button>()) b.Background = IsOpen(b) ? Br("LgPress") : ClearBrush();
         if (_openKey == null) Fit();
     }
     async void OnStat(string key)

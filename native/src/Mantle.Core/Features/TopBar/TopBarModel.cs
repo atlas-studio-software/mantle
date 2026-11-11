@@ -162,7 +162,15 @@ public static class TopBarModel
     }
 
     // ---- stats: fixed decimals, so a figure never changes width
-    static double? Num(JsonNode? n) => n is JsonValue v && v.TryGetValue<double>(out var d) && double.IsFinite(d) ? d : null;
+    /// Any JSON number: parsed JSON reads as double, but a built JsonValue keeps its CLR type (an int 23 does not
+    /// TryGetValue as double), so the integer kinds are read too.
+    static double? Num(JsonNode? n)
+    {
+        if (n is not JsonValue v) return null;
+        double? d = v.TryGetValue<double>(out var x) ? x : v.TryGetValue<long>(out var l) ? l : v.TryGetValue<int>(out var i) ? i
+            : v.TryGetValue<float>(out var f) ? f : v.TryGetValue<decimal>(out var m) ? (double)m : null;
+        return d is double r && double.IsFinite(r) ? r : null;
+    }
     /// JS Math.round (halves up, toward +inf).
     public static double JsRound(double v) => Math.Floor(v + 0.5);
     /// JS toFixed for these magnitudes: half away from zero on the decimal string.

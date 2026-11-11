@@ -117,7 +117,7 @@ public sealed class TopBarFeatureTests
         int before = Calls(r, "topbar.reserve");
         await Tick(r, 6500);
         Assert.Equal(before + 2, Calls(r, "topbar.reserve"));   // the 1.5 s and 6 s re-checks
-    });
+    }, test: false);
 
     [Fact]
     public void Live_a_work_area_that_ignores_the_strip_fails_health_and_registers_afresh_once_TOP_243_249() => T(async (r, s) =>
@@ -130,7 +130,7 @@ public sealed class TopBarFeatureTests
         Assert.Contains(r.Platform.Calls, c => c.Verb == "topbar.release");
         Assert.False(r.Hub.Piece("topbar").Ok);
         Assert.Contains("maximised windows can go under the top bar", r.Hub.Piece("topbar").Reason);
-    });
+    }, test: false);
 
     [Fact]
     public void Live_hidden_by_hand_lets_the_strip_go_and_shown_takes_it_back_TOP_282_283_287_BAR_348() => T(async (r, s) =>
@@ -155,7 +155,7 @@ public sealed class TopBarFeatureTests
         Assert.True(r.Logged("back (quick settings): shown by hand"));
         Assert.True(Vis(r)[^1].Show);
         Assert.False(f.PeekWatching);
-    });
+    }, test: false);
 
     [Fact]
     public void Hidden_is_kept_across_a_restart_no_strip_no_show_and_the_edge_is_watched_TOP_286() => T(async (r, s) =>
