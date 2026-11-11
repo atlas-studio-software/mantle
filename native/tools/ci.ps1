@@ -177,7 +177,10 @@ if ($Mode -eq 'uia') {
   $AE = [System.Windows.Automation.AutomationElement]
   $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $TargetPid)
   $win = $null
-  for ($i = 0; $i -lt 20 -and $null -eq $win; $i++) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond); if ($null -eq $win) { Start-Sleep -Milliseconds 250 } }
+  # the bar's own window by name: the top bar (lane native-r7-topbar) is another top-level window of the same process
+  $named = New-Object System.Windows.Automation.AndCondition($cond, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Mantle bar')))
+  for ($i = 0; $i -lt 20 -and $null -eq $win; $i++) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $named); if ($null -eq $win) { Start-Sleep -Milliseconds 250 } }
+  if ($null -eq $win) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond) }
   if ($null -eq $win) { '{"error":"no top-level UI Automation element for the process"}'; exit }
   $items = @()
   foreach ($e in $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {

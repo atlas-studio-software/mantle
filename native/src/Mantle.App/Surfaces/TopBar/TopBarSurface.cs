@@ -10,6 +10,7 @@ using Mantle.App.Surfaces.Bar.Frame;
 using Mantle.App.Surfaces.Osd;
 using Mantle.Core.Features.TopBar;
 using Mantle.Core.Look;
+using Microsoft.UI.Dispatching;
 using Microsoft.UI.Text;
 using Microsoft.UI.Windowing;
 using Microsoft.UI.Xaml;
@@ -113,6 +114,7 @@ internal sealed class TopBarSurface : ISurface
         _subs.Add(ctx.On<TopBarFocus>("topbar.focus", OnFocus));
         _subs.Add(ctx.On<TopBarStats>("topbar.stats", OnStats));
         _subs.Add(ctx.On<TopBarClose>("topbar.close", c => { if (_openKey != null) { _openKey = null; Render(); } }));
+        _subs.Add(ctx.On<TopBarNote>("topbar.note", n => SetNote(n.Text)));
         Place("made");
         ctx.Log.Line("made hidden and parked (" + (Host.Quiet ? "test: quiet" : _test ? "test: visible" : "live") + ")");
     }
@@ -248,6 +250,7 @@ internal sealed class TopBarSurface : ISurface
     {
         _right.Children.Clear();
         _cells.Clear();
+        if (_note != null) _right.Children.Add(NoteView(_note));
         if (_stats == null && _paused != null)
             _right.Children.Add(new TextBlock { Text = "Stats paused", Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
         else
@@ -355,6 +358,45 @@ internal sealed class TopBarSurface : ISurface
     {
         var r = await _ctx.CallAsync(tool == "notes" ? "notes.toggle" : "timer.state");
         _ctx.Log.Line($"tool pressed: {tool}" + (r.Ok ? "" : $" ({r.Error})"));
+    }
+
+    // ------------------------------------------------------------------ the strip note (TOP-175)
+    const string WarnPath = "M8,2.2 L14.2,13.1 H1.8 Z M8,6.4 V9.4 M8,11.2 V11.21";
+    string? _note; DispatcherQueueTimer? _noteT;
+
+    /// A note on the right before the stats (ui/topbar/topbar.js#setNote): it clears itself after 8 s if unchanged.
+    void SetNote(string? text)
+    {
+        if (string.IsNullOrEmpty(text) && _note == null) return;   // the replay of "no note" at subscribe
+        _note = string.IsNullOrEmpty(text) ? null : text;
+        _noteT?.Stop();
+        RenderRight(); Fit();
+        _ctx.Log.Line(_note == null ? "note cleared" : $"note: {_note}");
+        if (_note == null) return;
+        string shown = _note;
+        _noteT = _ctx.Dispatcher.CreateTimer();
+        _noteT.Interval = TimeSpan.FromSeconds(8); _noteT.IsRepeating = false;
+        _noteT.Tick += (t, _) => { t.Stop(); if (_note == shown) { _note = null; RenderRight(); Fit(); _ctx.Log.Line("note cleared after 8 s"); } };
+        _noteT.Start();
+    }
+
+    /// The warn glyph and the words in ink, one line, cut at 60 characters with "…", the whole text as the tooltip
+    /// (.warn: max-width min(360px, 28vw)).
+    FrameworkElement NoteView(string text)
+    {
+        var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 4, Padding = new Thickness(7, 2, 7, 2), VerticalAlignment = VerticalAlignment.Center };
+        row.Children.Add(Glyph(WarnPath, 12, Br("LgWarn"), 1.3));
+        double vw = _root.ActualWidth > 0 ? _root.ActualWidth : 1280;
+        row.Children.Add(new TextBlock
+        {
+            Text = text.Length > 60 ? text[..57] + "…" : text, FontFamily = TextFont, FontSize = 11.5, Foreground = Br("LgInk"),
+            TextWrapping = TextWrapping.NoWrap, TextTrimming = TextTrimming.CharacterEllipsis, MaxWidth = Math.Min(360, vw * 0.28) - 30,
+            VerticalAlignment = VerticalAlignment.Center,
+        });
+        ToolTipService.SetToolTip(row, text);
+        AutomationProperties.SetAutomationId(row, "topbar.note");
+        AutomationProperties.SetName(row, text);
+        return row;
     }
 
     // ------------------------------------------------------------------ the feature's pushes
@@ -494,6 +536,7 @@ internal sealed class TopBarSurface : ISurface
     {
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
+        _noteT?.Stop(); _noteT = null;
         try { _win?.Close(); } catch (Exception) { /* already gone */ }
         _shown = false;
         _ctx?.Log.Line("destroyed (" + why + ")");

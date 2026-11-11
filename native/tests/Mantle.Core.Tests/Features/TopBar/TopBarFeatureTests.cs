@@ -16,7 +16,7 @@ namespace Mantle.Core.Tests.Features.TopBar;
 /// surface's own commands (topbar.placed). A --test run never asks for the app bar; a live run does, with the size in
 /// the sidecar's units. Nothing touches the real screen.
 /// </summary>
-public sealed class TopBarFeatureTests
+public sealed partial class TopBarFeatureTests
 {
     sealed class FakeScreen : ITopBarScreen
     {
@@ -29,10 +29,10 @@ public sealed class TopBarFeatureTests
 
     static void T(Func<Rig, FakeScreen, Task> body, bool test = true) => HostLoop.Run(async (_, time) => await body(new Rig(time, test), new FakeScreen()));
 
-    static FeatureDescriptor D(Rig r, FakeScreen s, Action<TopBarFeature>? made = null)
+    static FeatureDescriptor D(Rig r, FakeScreen s, Action<TopBarFeature>? made = null, ITopBarShell? shell = null)
     {
         var a = typeof(TopBarFeature).GetCustomAttribute<FeatureAttribute>()!;
-        return FeatureDescriptor.Of(a, () => { var f = new TopBarFeature(new HostClock(r.Time, SynchronizationContext.Current), s); made?.Invoke(f); return f; }, TopBarFeature.Options);
+        return FeatureDescriptor.Of(a, () => { var f = new TopBarFeature(new HostClock(r.Time, SynchronizationContext.Current), s, shell); made?.Invoke(f); return f; }, TopBarFeature.Options);
     }
 
     static void Sidecar(Rig r)
@@ -52,11 +52,11 @@ public sealed class TopBarFeatureTests
         for (int i = 0; i < 20; i++) await Task.Yield();
     }
 
-    static async Task<TopBarFeature> Up(Rig r, FakeScreen s, string hwnd = "123")
+    static async Task<TopBarFeature> Up(Rig r, FakeScreen s, string hwnd = "123", ITopBarShell? shell = null)
     {
         TopBarFeature? f = null;
         Sidecar(r);
-        r.Host.Load(new[] { D(r, s, x => f = x) });
+        r.Host.Load(new[] { D(r, s, x => f = x, shell) });
         await r.Host.Installed;
         await Tick(r, 50);
         await r.Bus.CallAsync("topbar.placed", new JsonObject { ["hwnd"] = hwnd, ["scale"] = 1.5 });

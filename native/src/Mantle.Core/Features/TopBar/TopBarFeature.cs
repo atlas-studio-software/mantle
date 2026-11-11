@@ -32,9 +32,10 @@ public sealed record TopBarFocus(string? Json, string? MenuJson, bool Fixture);
 public sealed record TopBarStats(string? Json, string? Paused);
 public sealed record TopBarPlace(int Height, string Why);
 public sealed record TopBarClose(string Why);
+public sealed record TopBarNote(string? Text);
 
 [Feature("topbar", "Top menu bar", true, Chords = new[] { TopBarRules.HideChord }, Rest = true)]
-public sealed class TopBarFeature : IFeature
+public sealed partial class TopBarFeature : IFeature
 {
     public static readonly IReadOnlyList<FeatureOption> Options = new[]
     {
@@ -70,9 +71,9 @@ public sealed class TopBarFeature : IFeature
     string? _peekBlocked; bool _peekLooked;
     (double X, double Y)? _fakeCursor; bool _fakeSource;
 
-    public TopBarFeature() { _screen = new Win32TopBarScreen(); _reserve = new(false, "not reserved yet"); }
+    public TopBarFeature() { _screen = new Win32TopBarScreen(); _shell = new ProcessTopBarShell(); _reserve = new(false, "not reserved yet"); }
     /// For the tests: a clock on manual time and a fake screen.
-    public TopBarFeature(HostClock clock, ITopBarScreen screen) { _clock = clock; _screen = screen; _reserve = new(false, "not reserved yet"); }
+    public TopBarFeature(HostClock clock, ITopBarScreen screen, ITopBarShell? shell = null) { _clock = clock; _screen = screen; _shell = shell ?? new ProcessTopBarShell(); _reserve = new(false, "not reserved yet"); }
 
     // read by the tests
     public bool Hidden => _hidden;
@@ -115,10 +116,11 @@ public sealed class TopBarFeature : IFeature
         ctx.Command("hello", _ => Ok(new JsonObject
         {
             ["focus"] = _focus?.DeepClone(), ["stats"] = _stats?.DeepClone(), ["stepAside"] = _stepAside, ["overGames"] = _overGames,
-            ["hidden"] = _hidden, ["peek"] = _peekShown, ["test"] = _test,
+            ["hidden"] = _hidden, ["peek"] = _peekShown, ["test"] = _test, ["note"] = _note,
         }));
         ctx.Command("hidden", async c => Answer(await SetHidden(Bool(c.Args, "on"), Str(c.Args, "via") ?? "the menu")));
         ctx.Command("state", _ => Ok(ViewObj()));
+        InstallMenuCommands(ctx);   // TopBarFeature.Commands.cs: about, settings, winSettings, taskmgr, newWindow
         ctx.Command("status", _ => Ok(Status()));
         ctx.Command("overGames", async c =>
         {
@@ -484,7 +486,7 @@ public sealed class TopBarFeature : IFeature
         var r = await _ctx.Platform.CallAsync("topbar.guard", new JsonObject { ["on"] = true, ["bar"] = new JsonArray(p.X, p.Y, p.X + p.W, p.Y + h) });
         bool passive = r.Ok && r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("passive", out var pv) && pv.ValueKind == JsonValueKind.True;
         _guard = (r.Ok, r.Ok ? (passive ? "passive: drags into the strip are measured and logged, nothing is moved" : null) : r.Error);
-        if (!r.Ok) Broadcast("topbar.note", $"A window dragged into the top bar will not be put back: {r.Error}");
+        if (!r.Ok) Note($"A window dragged into the top bar will not be put back: {r.Error}");
     }
 
     async Task StatsOn(bool on, string? why)
