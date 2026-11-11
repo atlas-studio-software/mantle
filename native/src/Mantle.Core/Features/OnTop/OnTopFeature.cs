@@ -86,7 +86,7 @@ public sealed class OnTopFeature : IFeature
         }, ctx.Flags.Test);
         _core.Changed += _ => { if (!_stopped) ctx.Broadcast(StateEvent, El(State())); if (!_stopping) Arm(); };
         ctx.Replay(StateEvent, () => El(State()));
-        ctx.OnChord(Chord, _ => _ = ChordAsync());
+        ctx.OnChord(Chord, c => _ = ChordAsync());
         ctx.Command("set", c => SetAsync(c.Args));
         ctx.Command("state", _ => {
             var s = State(); s["ok"] = true; s["suspended"] = _suspended?.Count ?? 0;
