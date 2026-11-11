@@ -148,4 +148,26 @@ public sealed class HoverTests
         Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more:\n" + Named("hidden at rest"));
         Assert.IsTrue(worst["shown light"] < 20 && worst["shown dark"] < 20, "shown idle costs 20 % of a core or more:\n" + Named("shown idle"));
     }
+
+    /// TEMPORARY (lane r7-idle diagnosis): the idle probe under a few start variants, 20 s each, into idle-variants.txt.
+    [TestMethod]
+    public void Idle_probe_variants_diagnostic()
+    {
+        var outp = new List<string>();
+        var variants = new (string Tag, Dictionary<string, string> Env)[] {
+            ("base", new()), ("no-launcher", new() { ["MANTLE_NO_LAUNCHER"] = "1" }), ("quiet", new() { ["MANTLE_TEST_VISIBLE"] = "0" }),
+        };
+        foreach (var (tag, env) in variants)
+        {
+            env["MANTLE_TEST_IDLE_PROBE"] = "2000,20000";
+            var (app, _, dir) = Hover("var-" + tag, "light", env);
+            using var _a = app;
+            var t = ThreadCpu.Measure(app.Proc.Id, 23000);
+            FrameProbe.LogHas(dir, "idle probe: done", 8000);
+            outp.Add($"== {tag}: {t.CyclePct} % by cycles, {t.Switches} wakeups");
+            outp.AddRange(FrameProbe.Log(dir).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Contains("idle probe:", StringComparison.Ordinal) && !l.Contains(" 1 x ", StringComparison.Ordinal) && !l.Contains(" 2 x ", StringComparison.Ordinal)));
+            Host.KillAll();
+        }
+        File.WriteAllLines(Path.Combine(Host.OutDir, "idle-variants.txt"), outp);
+    }
 }

@@ -18,6 +18,7 @@ internal static unsafe class IdleProbe
 {
     static readonly Dictionary<string, int> Msgs = new(StringComparer.Ordinal);
     static readonly Dictionary<IntPtr, string> Classes = new();
+    static readonly Dictionary<string, (uint Last, List<uint> Gaps)> Times = new(StringComparer.Ordinal);
     static IntPtr _get, _call;
     static int _errors;
 
@@ -51,6 +52,8 @@ internal static unsafe class IdleProbe
         _get = SetWindowsHookExW(WH_GETMESSAGE, (IntPtr)(void*)(delegate* unmanaged<int, IntPtr, IntPtr, IntPtr>)&OnGet, IntPtr.Zero, tid);
         _call = SetWindowsHookExW(WH_CALLWNDPROC, (IntPtr)(void*)(delegate* unmanaged<int, IntPtr, IntPtr, IntPtr>)&OnCall, IntPtr.Zero, tid);
         IdleTally.Start();
+        Times.Clear();
+        Windows(tid);
         string res = NtQueryTimerResolution(out uint coarsest, out uint finest, out uint now) == 0 ? $"; the timer resolution is {now / 10000.0:0.###} ms now ({finest / 10000.0:0.###} to {coarsest / 10000.0:0.###})" : "";
         Host.Log.Line($"idle probe: counting for {window} ms (queue hook {(_get != IntPtr.Zero ? "on" : "FAILED")}, sent-message hook {(_call != IntPtr.Zero ? "on" : "FAILED")}){res}");
         Once(q, window, End);
@@ -64,6 +67,7 @@ internal static unsafe class IdleProbe
         var host = IdleTally.Stop();
         foreach (var kv in Msgs.OrderByDescending(k => k.Value).ThenBy(k => k.Key, StringComparer.Ordinal)) Host.Log.Line($"idle probe: ui {kv.Value} x {kv.Key}");
         foreach (var kv in host) Host.Log.Line($"idle probe: host {kv.Value} x {kv.Key}");
+        foreach (var (key, t) in Times) if (t.Gaps.Count >= 10) { var g = t.Gaps.OrderBy(x => x).ToList(); Host.Log.Line($"idle probe: gaps {key}: median {g[g.Count / 2]} ms, 10th {g[g.Count / 10]} ms, 90th {g[g.Count * 9 / 10]} ms"); }
         Host.Log.Line($"idle probe: done ({Msgs.Values.Sum()} UI-thread messages, {host.Sum(k => k.Value)} host-side hits{(_errors > 0 ? $", {_errors} hook errors" : "")})");
     }
 
@@ -72,7 +76,8 @@ internal static unsafe class IdleProbe
     {
         if (code >= 0 && wParam == (IntPtr)1) {   // PM_REMOVE: taken off the queue (a PM_NOREMOVE peek is not a wake)
             var m = (MSG*)lParam;
-            Count("queued", m->message, m->hwnd, m->wParam, m->lParam);
+            string k = Count("queued", m->message, m->hwnd, m->wParam, m->lParam);
+            if (k.Length > 0) Gap(k, m->time);
         }
         return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
     }
@@ -87,14 +92,15 @@ internal static unsafe class IdleProbe
         return CallNextHookEx(IntPtr.Zero, code, wParam, lParam);
     }
 
-    static void Count(string how, uint msg, IntPtr hwnd, IntPtr wp, IntPtr lp)
+    static string Count(string how, uint msg, IntPtr hwnd, IntPtr wp, IntPtr lp)
     {
         try {
             string key = $"{how} {MsgName(msg)} to {(hwnd == IntPtr.Zero ? "the thread" : ClassOf(hwnd))}";
             if (msg == 0x0113 || msg == 0x0118) key += $" (timer id 0x{wp.ToInt64():x}, proc {ModuleOf(lp)})";
             else if (msg == 0x0060) key += $" (wParam 0x{wp.ToInt64():x}, lParam 0x{lp.ToInt64():x})";
             Msgs[key] = Msgs.TryGetValue(key, out int n) ? n + 1 : 1;
-        } catch (Exception) { _errors++; }
+            return key;
+        } catch (Exception) { _errors++; return ""; }
     }
 
     static string MsgName(uint m) => m switch {
@@ -134,6 +140,36 @@ internal static unsafe class IdleProbe
         string path = n > 0 ? new string(b, 0, n) : "?";
         return $"{System.IO.Path.GetFileName(path)}+0x{addr.ToInt64() - mod.ToInt64():x}";
     }
+
+    static void Gap(string key, uint time)
+    {
+        if (!Times.TryGetValue(key, out var t)) { Times[key] = (time, new List<uint>()); return; }
+        t.Gaps.Add(time - t.Last);
+        Times[key] = (time, t.Gaps);
+    }
+
+    /// The UI thread's windows (class, visible, size) and its focus and caret, once at the start of the window.
+    static void Windows(uint tid)
+    {
+        var list = new List<string>();
+        EnumThreadWindows(tid, (h, _) => {
+            GetWindowRect(h, out var r);
+            list.Add($"{ClassOf(h)} {(IsWindowVisible(h) ? "visible" : "hidden")} {r.R - r.L}x{r.B - r.T}");
+            return true;
+        }, IntPtr.Zero);
+        Host.Log.Line($"idle probe: {list.Count} UI-thread windows: {string.Join("; ", list)}");
+        var gi = new GUITHREADINFO { cbSize = (uint)sizeof(GUITHREADINFO) };
+        if (GetGUIThreadInfo(tid, ref gi))
+            Host.Log.Line($"idle probe: focus {(gi.hwndFocus == IntPtr.Zero ? "none" : ClassOf(gi.hwndFocus))}, active {(gi.hwndActive == IntPtr.Zero ? "none" : ClassOf(gi.hwndActive))}, caret {(gi.hwndCaret == IntPtr.Zero ? "none" : ClassOf(gi.hwndCaret))}, flags 0x{gi.flags:x}");
+    }
+
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [StructLayout(LayoutKind.Sequential)] struct RECT { public int L, T, R, B; }
+    [StructLayout(LayoutKind.Sequential)] struct GUITHREADINFO { public uint cbSize, flags; public IntPtr hwndActive, hwndFocus, hwndCapture, hwndMenuOwner, hwndMoveSize, hwndCaret; public RECT rcCaret; }
+    [DllImport("user32.dll")] static extern bool EnumThreadWindows(uint tid, EnumProc proc, IntPtr l);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool GetGUIThreadInfo(uint tid, ref GUITHREADINFO gi);
 
     const int WH_GETMESSAGE = 3, WH_CALLWNDPROC = 4;
     [StructLayout(LayoutKind.Sequential)] struct MSG { public IntPtr hwnd; public uint message; public IntPtr wParam; public IntPtr lParam; public uint time; public int x, y; }
