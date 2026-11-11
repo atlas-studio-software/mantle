@@ -108,3 +108,29 @@ Log lines the tests read: `media: the chip shows <app> (<playing|paused>[, contr
 Rows whose rule is ported and unit-tested but which no running feature uses yet (game mode, Downloads, the Helm badge,
 quick links: no service, no surface) stay `todo` with a note naming the class and test, so the ledger never says native
 does something it does not. Only rows a passing test covers end to end are `tested:`.
+
+### Results
+
+- Run 43012883434 (build, unit, ui, media): `NATIVE-CI: ok (4 ok, 0 skipped)`; unit 667/667, ui 49/49 (the three
+  MediaTests among them), media light 0.5596 / dark 0.6158.
+- Fixed on the way: the card's source list read its place before layout at paint, so the first click after a paint
+  was refused ("the list moved 0 ms ago"); it now reads it after each layout pass too (MediaCard.cs).
+- bar.md: 21 media rows flipped `ported:` -> `tested:` (MediaTests); the rest rows BAR-717..721, 723, 724, 727..729
+  `tested:` against core-6's RestCoordinatorTests / ShellRestPartsTests / FeatureHostTests / RestTests. Not marked:
+  BAR-722 (a slow or throwing onRest handler: no test), BAR-725/726 (the edge and hover poll during a game rest: bar
+  shell). 43 rows `todo` with the class and test of their ported rule (game mode 27, Downloads 8, Helm badge 6, quick links 2).
+- The pair (tools/parity/media): the card's layout, art box, head lines, app line and transport match; the gap is
+  text rasterisation, and the progress reason's size (11.5 -> 12.5 px, line-height 1.45 as bar.css after that run).
+  The dark toggle's sunk fill reads a little darker natively. Floors: light 0.53, dark 0.59.
+
+### Left (part 3)
+
+- Game mode as a feature: the service (lib/features/gamemode.js: the scan tick, power and Energy saver steps, easing
+  and restore through the helper, the restore record and crash put-back, the boost's timing, Lively, the rest
+  hand-off to RestCoordinator) and the quick-settings tile (ui/bar/gamemode.js). Every Windows change a dry run in
+  --test; MANTLE_GAMEMODE_TEST_GAME stand-ins. Then the game mode half of the screenshot pair.
+- Downloads: the feature (folder watch, seenAt, downloads.* commands, the token rows, dry-run open/reveal) and the
+  shelf pop-up; DownloadsList is its pure half.
+- Helm badge: the file watch and the disc on bar cells (HelmBadge is its pure half; tests point
+  MANTLE_HELM_BADGE_FILE at a fixture, never the real Helm). Quick links: Win+X mode in the launcher (WinXLinks).
+- Spotify (unchanged from part 1).

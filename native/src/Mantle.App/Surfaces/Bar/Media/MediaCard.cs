@@ -26,7 +26,7 @@ internal sealed class MediaCard
     public readonly Grid Root = new();
     readonly StackPanel _stack = new() { Width = WidthDip - 2 * PadX };
     readonly Border _art = new() { Width = 72, Height = 72, CornerRadius = new CornerRadius(10), BorderThickness = new Thickness(1) };
-    readonly TextBlock _title = T(14), _artist = T(12.5), _appTxt = T(12.5), _now = T(11.5), _dur = T(11.5), _progWhy = T(11.5),
+    readonly TextBlock _title = T(14), _artist = T(12.5), _appTxt = T(12.5), _now = T(12.5), _dur = T(12.5), _progWhy = T(12.5),
         _lockHead = T(12.5), _lockHow = T(11.5), _note = T(12.5), _srcWhy = T(11.5), _foot = T(11.5);
     readonly Border _appIco = new() { Width = 14, Height = 14, CornerRadius = new CornerRadius(3) };
     readonly StackPanel _app = new() { Orientation = Orientation.Horizontal, Spacing = 6, Margin = new Thickness(0, 6, 0, 0) };
@@ -86,7 +86,7 @@ internal sealed class MediaCard
         Uia(_prog, "media.card.prog", "Progress"); Uia(_now, "media.card.now", ""); Uia(_dur, "media.card.dur", "");
         _prog.Children.Add(_track); _prog.Children.Add(times);
         _stack.Children.Add(_prog);
-        _progWhy.Margin = new Thickness(0, 10, 0, 0); _progWhy.TextWrapping = TextWrapping.Wrap;
+        _progWhy.Margin = new Thickness(0, 10, 0, 0); _progWhy.TextWrapping = TextWrapping.Wrap; _progWhy.LineHeight = 12.5 * 1.45;   // bar.css .mc-progwhy: the pop-up's 12.5px, line-height 1.45
         Uia(_progWhy, "media.card.progwhy", "");
         _stack.Children.Add(_progWhy);
         // transport
