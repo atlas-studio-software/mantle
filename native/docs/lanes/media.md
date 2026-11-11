@@ -135,3 +135,60 @@ does something it does not. Only rows a passing test covers end to end are `test
 - Helm badge: the file watch and the disc on bar cells (HelmBadge is its pure half; tests point
   MANTLE_HELM_BADGE_FILE at a fixture, never the real Helm). Quick links: Win+X mode in the launcher (WinXLinks).
 - Spotify (unchanged from part 1).
+
+## Part 3 (lane native-r7-media3)
+
+### What is built
+
+- `Mantle.Core/Features/GameMode/GameModeFeature.cs`: [Feature("gamemode")], lib/features/gamemode.js around the pure
+  GameModePlan: the scan tick (3 s idle, 5 s on, 5 s resting, 12 s backstop; one at a time), the power and Energy saver
+  steps, easing through gamemode.apply (chunks of 40), the 30 s replan, the boost (baseline at on, one trim through
+  gamemode.trimbg a minute in, never twice per game; the mid-game switch puts the eased apps back), wallpaper hold and
+  Lively, the restore record (`<data root>\gamemode-restore.json`, through the ONE write gate), crash put-back at the
+  first ready, what could not be put back kept and tried every 30 s (20 tries), the shared game watch it drives
+  (GameWatch.Drive / Whole / Publish), and the rest hand-off (IFeatureHostServices.RestAsync -> RestCoordinator).
+  Commands gamemode.state / set / auto / liftSaver / boost; the event `gamemode.state` (replayed). Options auto,
+  liftSaver, boost. `GameModeJson.cs`: the scan reply read into the plan's records, applyItem / restoreItem / recordEntry.
+- `GameModeView.cs`: ui/bar/gamemode.js view() (pure). `Mantle.App/Surfaces/Bar/GameMode/GameModeRow.cs`: the row in
+  quick settings (before the notes, as bar.js attaches it); hook: four lines in QsPanel.cs (marked "game mode").
+- Wiring: App.xaml.cs "game mode wiring" (one Configure line: data root, own pid, the write gate).
+- The pair: tools/parity/media now also shoots the Game mode row (head + switch line) from Electron's mock (?gm=off)
+  and native; ci.ps1 stage media gates on 4 of 4 and the `gamemode light/dark` floors.
+
+### A --test run never changes Windows
+
+- Every write (gamemode.apply / power / saver / trimbg, Lively's command) is logged as
+  `gamemode: dry run (--test): would ask the sidecar <verb> {...}; nothing was sent` and never sent; reads are reads.
+- Deviation: Electron skipped the crash put-back in a test run. Native runs it as a DRY RUN against the TEST profile's
+  record (refused outright if the data root is %APPDATA%\mantle) and drops that record, so a test proves it:
+  `gamemode: test run: the restore record was read from the test profile and dropped; nothing was sent`.
+- MANTLE_GAMEMODE_TEST_GAME (test only): stand-in exe names counted as known games running (the rest end to end).
+- The wallpaper hold is not wired natively yet (the desktop layer is another lane's), so the Wallpaper row says
+  "this version of Mantle cannot pause its wallpaper for games" (blocked), never a silent skip.
+
+### UI Automation ids (the row)
+
+`qs.gamemode` (group), `qs.gamemode.sub`, `qs.gamemode.switch` (Name "Game mode: Turn on|Turn off", ItemStatus
+`on|off[; pending][; dead]`), `qs.gamemode.more` (ItemStatus expanded/collapsed), `qs.gamemode.why` (ItemStatus `warn`),
+`qs.gamemode.list`, `qs.gamemode.row.<key>` (plan rows `qs.gamemode.row.plan.<label-with-dashes>`; ItemStatus = status),
+`qs.gamemode.last`, `qs.gamemode.opts`, `qs.gamemode.opt.auto|liftSaver|boost`.
+Log: `qs: game mode row: switched on|off (...)`, `qs: game mode row: details open|closed`, `gamemode: on (<how>[, DRY RUN]): ...`,
+`gamemode: off: <why>`, `gamemode: restore (<why>): <text>`.
+
+### Results (part 3)
+
+- Run 43037040342 (build, unit, ui, media; the unit project did not build there): media 4 of 4, the Game mode row's
+  pair light 0.7076 / dark 0.6493 (floors 0.68 / 0.62); the card pair unchanged (0.7717 / 0.7190).
+- Run on d329b870 (build, unit, ui): NATIVE-CI ok (3 ok, 0 skipped); unit 731/731 (GameModeFeatureTests, 11),
+  ui 58/58 (GameModeTests, 2).
+- bar.md: 17 game mode rows tested (BAR-751, 758, 761, 762, 768, 769, 770, 775, 782, 783, 794, 795, 797, 799, 801,
+  805, 807). The other game mode rows stay todo: the service and row now do them, but no test checks that row yet
+  (for example BAR-781 the 30 s replan, BAR-786 the waiting line, BAR-808 the double click, BAR-812/813 every Details
+  row, BAR-815 Escape, BAR-818 reduced motion).
+- The pair's gap: text rasterisation, the native track and knob drawn as Borders (no knob shadow), the dark switch fill.
+
+### Left (part 4)
+
+- Downloads (feature + shelf pop-up; DownloadsList is its pure half), the Helm badge (file watch + the disc on bar
+  cells), quick links (Win+X mode in the launcher, WinXLinks), Spotify: not started in part 3.
+- Game mode: the wallpaper hold (needs the desktop layer's hold), tests for the rows above, Escape in Details.
