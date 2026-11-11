@@ -219,4 +219,18 @@ public class DesktopRulesTests
         Assert.Null(DeskFixture.Parse("[1]", out err)); Assert.Contains("not a JSON object", err);
         Assert.Null(DeskFixture.Parse("{", out err)); Assert.Contains("could not be read", err);
     }
+
+    [Fact]
+    public void Strip_is_the_same_only_with_the_same_rows_in_order_and_the_same_badge()
+    {
+        var a = new[] { new DeskRow("Sidecar", "it exited"), new DeskRow("Desktop layer", "floating") };
+        var b = new List<DeskRow> { new("Sidecar", "it exited"), new("Desktop layer", "floating") };
+        Assert.True(DeskStrip.Same(a, false, b, false));
+        Assert.False(DeskStrip.Same(null, false, b, false));                       // never drawn: draw it
+        Assert.False(DeskStrip.Same(a, false, b, true));                           // the test badge changed
+        Assert.False(DeskStrip.Same(a, false, b.AsEnumerable().Reverse().ToList(), false));
+        Assert.False(DeskStrip.Same(a, false, new[] { a[0], new DeskRow("Desktop layer", "under the icons") }, false));
+        Assert.False(DeskStrip.Same(a, false, a.Take(1).ToList(), false));
+        Assert.True(DeskStrip.Same(Array.Empty<DeskRow>(), false, new List<DeskRow>(), false));
+    }
 }

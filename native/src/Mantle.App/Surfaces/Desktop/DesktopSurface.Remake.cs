@@ -26,8 +26,11 @@ namespace Mantle.App.Surfaces.Desktop;
 // A --test run makes the layer again (shown as an ordinary window, never attached) and says the rest in words.
 internal sealed partial class DesktopSurface
 {
+    /// Once, at the first show (or, live, when the layer starts on its way under the icons): a layer that stays parked
+    /// (a --test run without MANTLE_TEST_DESKTOP) has no listening thread at all.
     void StartShellWatch()
     {
+        if (_shellWatch != null || _destroyed) return;
         var q = _ctx.Dispatcher;
         _shellWatch = new ShellWatch(why => q.TryEnqueue(() => DisplayChanged(why)), how => q.TryEnqueue(() => ShellBack(how)), _ctx.Log.Line);
         string? err = _shellWatch.Start();
@@ -44,6 +47,7 @@ internal sealed partial class DesktopSurface
         _win = null; _shown = false; _held = false;
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         _recheckT?.Stop();
+        Rest("its window closed");
         CloseMenu("the desktop layer closed");
         var v = DesktopLayer.Verdict(false, Paused(), _remakeAt, Environment.TickCount64);
         _remakeAt = v.At;
@@ -109,6 +113,7 @@ internal sealed partial class DesktopSurface
         var w = _win;
         _win = null; _held = false; _shown = false;
         _recheckT?.Stop();
+        Rest("given up on");
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         try { w?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
         SetDesktopPiece(new DesktopPiece(false, null, DesktopLayer.GaveUp(tries, why, when)));
@@ -122,8 +127,7 @@ internal sealed partial class DesktopSurface
         Strip(_ctx.State);
         PaintClock();
         if ((_fx?.Stats ?? _lastStats) is { } st) _panes?.SetStats(st);
-        StartMc("made again");
-        _panes?.SetWidgets(_widgetsOn);
+        _panes?.SetWidgets(_widgetsOn);   // the Mission Control check starts again when the new layer is shown (Wake)
     }
 
     // ---- Explorer came back ----

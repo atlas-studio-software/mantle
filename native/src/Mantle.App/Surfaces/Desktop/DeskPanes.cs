@@ -37,6 +37,7 @@ internal sealed class DeskPanes
     readonly ScrollViewer _stripScroll;
     bool _dark, _short;
     IReadOnlyList<DeskRow> _stripRows = Array.Empty<DeskRow>();
+    bool _stripSet, _stripTest;
     bool _batShown;
 
     public DeskPanes(Func<string, Brush> brush)
@@ -144,29 +145,40 @@ internal sealed class DeskPanes
         string mer = " " + p.Mer;
         if (_mer.Text != mer) _mer.Text = mer;
         if (_date.Text != date) _date.Text = date;
-        AutomationProperties.SetName(_clock, p.Text);
+        if (_clockName != p.Text) { _clockName = p.Text; AutomationProperties.SetName(_clock, p.Text); }
     }
+    string? _clockName;
+
+    /// Text and visibility set only when they change: a property set to the same value still costs a layout pass (and,
+    /// for a name, a UI Automation event) on a widget that reads the same as before.
+    static void Text(TextBlock t, string v) { if (t.Text != v) t.Text = v; }
+    static void Shown(UIElement e, bool on) { var v = on ? Visibility.Visible : Visibility.Collapsed; if (e.Visibility != v) e.Visibility = v; }
 
     public void SetStats(DeskStats.View v)
     {
-        _cpu.Text = v.Cpu; _mem.Text = v.Mem;
+        Text(_cpu, v.Cpu); Text(_mem, v.Mem);
         bool bat = v.Battery != null;
-        if (bat) _bat.Text = v.Battery!;
+        if (bat) Text(_bat, v.Battery!);
         if (bat != _batShown) { _batShown = bat; LayoutRows(); Paint(_dark, _short); }
-        _statsNote.Text = v.Note ?? "";
-        _statsNote.Visibility = v.Note != null ? Visibility.Visible : Visibility.Collapsed;
+        Text(_statsNote, v.Note ?? "");
+        Shown(_statsNote, v.Note != null);
     }
 
     public void SetMc(bool live, string? note)
     {
-        _mcLive.Text = live ? "· live" : "";
-        _mcNote.Text = note ?? "";
-        _mcNote.Visibility = note != null ? Visibility.Visible : Visibility.Collapsed;
-        AutomationProperties.SetItemStatus(Mc, live ? "live" : "offline");
+        string tag = live ? "· live" : "";
+        if (_mcLive.Text != tag) _mcLive.Text = tag;   // a Run, not a TextBlock
+        Text(_mcNote, note ?? "");
+        Shown(_mcNote, note != null);
+        string st = live ? "live" : "offline";
+        if (AutomationProperties.GetItemStatus(Mc) != st) AutomationProperties.SetItemStatus(Mc, st);
     }
 
-    public void SetStrip(IReadOnlyList<DeskRow> rows, bool test)
+    /// False when the strip already shows these rows (nothing rebuilt, nothing repainted).
+    public bool SetStrip(IReadOnlyList<DeskRow> rows, bool test)
     {
+        if (DeskStrip.Same(_stripSet ? _stripRows : null, _stripTest, rows, test)) return false;
+        _stripSet = true; _stripTest = test;
         _stripRows = rows;
         _stripList.Children.Clear();
         Strip.Visibility = rows.Count == 0 ? Visibility.Collapsed : Visibility.Visible;
@@ -188,6 +200,7 @@ internal sealed class DeskPanes
             _stripList.Children.Add(g);
         }
         Paint(_dark, _short);
+        return true;
     }
 
     /// Widgets off: every pane hidden in place (visibility:hidden: nothing moves).

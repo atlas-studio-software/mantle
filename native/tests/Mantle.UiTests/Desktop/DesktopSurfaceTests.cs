@@ -136,10 +136,12 @@ public class DesktopSurfaceTests
             // parked and shown again (the surface host's verbs)
             Second(app, "--test-surface=hide:desktop");
             Host.LogContains(() => app.Log, "desktop: parked, hidden", "parked");
+            Host.LogContains(() => app.Log, "desktop: widgets resting: no clock tick, no System read and no Mission Control check while it is hidden", "a parked layer runs no widget timer");
             Assert.IsTrue(Host.Until(() => !Win32.IsWindowVisible(h), 3000), "parked = not visible");
             Assert.IsTrue(Win32.IsWindow(h), "parked, not destroyed");
             Second(app, "--test-surface=show:desktop");
             Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(h), 3000), "shown again");
+            Assert.IsTrue(Host.Until(() => Regex.Matches(app.Log, "desktop: widgets awake").Count >= 2, 3000), "shown again, the widgets wake again");
             Host.Screenshot("desktop-layer-light");
         } finally { Keep(app, "desktop"); }
     }

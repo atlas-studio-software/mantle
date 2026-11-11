@@ -72,11 +72,11 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     IntPtr _hwnd;
     DeskPanes? _panes;
     DeskFixture? _fx;
-    bool _dark, _widgetsOn = true, _shown;
+    bool _dark, _widgetsOn = true, _shown, _awake;
     readonly List<IDisposable> _subs = new();
     DispatcherQueueTimer? _clockT, _statsT, _mcT, _recheckT, _reportT;
     int _mcFails, _mcChain;
-    readonly SysStats _stats = new();
+    SysStats _stats = new();
     string _lastRects = "";
     DeskMenuWindow? _menu;
     // made again (DESK-011..013) and fitted to the display (DESK-016)
@@ -113,10 +113,9 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         if (_fx?.WidgetsOff == true) SetWidgets(false, "MANTLE_TEST_DESKTOP");
         Paint();
         Strip(ctx.State);
-        StartClock(); StartStats(); StartMc("made");
+        PaintClock();
         SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
-        StartShellWatch();
-        ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
+        ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")}); the clock, the System numbers and the Mission Control check wait until it is shown");
         // shown here, before the bar's first show, so the bar lands in front of it (the app's front window is the bar's)
         // A --test run shows the layer only when it brings MANTLE_TEST_DESKTOP (the desktop's own tests and screenshot
         // pair): an ordinary 960x540 window in every other run became the app's front window ahead of the bar (ci smoke)
@@ -168,6 +167,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     void FirstShow()
     {
         if (_win == null) return;
+        StartShellWatch();
         if (_ctx.Test) {
             Show("Mantle started");
             _ctx.Log.Line("dry run (--test): would ask the sidecar to put the layer under the icons (desktop {hwnd}); nothing was sent, Explorer was not touched");
@@ -229,7 +229,8 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         var pos = _win.AppWindow.Position; var size = _win.AppWindow.Size;
         string where = _ctx.Test ? "as an ordinary window (a test run never puts it under the icons)" : "on the primary display";
         _ctx.Log.Line($"shown {where} at {pos.X},{pos.Y} {size.Width}x{size.Height} px, scale {(Win32.GetDpiForWindow(_hwnd) / 96.0).ToString("0.##", CultureInfo.InvariantCulture)} ({why})");
-        PaintClock();
+        StartShellWatch();
+        Wake(why);
         QueueReport("shown");
     }
 
@@ -240,6 +241,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _win.AppWindow.Hide();
         _shown = false;
         _ctx.Log.Line($"parked, hidden ({why})");
+        Rest(why);
     }
 
     public void Destroy(string why)
@@ -247,6 +249,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _destroyed = true;
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
+        _awake = false;
         foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT, _burstT, _attachT }) t?.Stop();
         _shellWatch?.Dispose(); _shellWatch = null;
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
@@ -321,15 +324,37 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         return t;
     }
 
+    /// The widgets run only while the layer is shown: the clock's tick, the System numbers' read every 5 s and the Mission
+    /// Control check start here, and a parked, held or closed layer has none of them (no timer, no read, no request).
+    /// Electron's page kept ticking under a hidden window; here a hidden layer costs nothing (the idle-CPU promise).
+    void Wake(string why)
+    {
+        if (_awake || _destroyed) return;
+        _awake = true;
+        StartClock(); StartStats(); StartMc(why);
+        _ctx.Log.Line($"widgets awake: the clock, the System numbers and the Mission Control check run while it is shown ({why})");
+    }
+
+    void Rest(string why)
+    {
+        if (!_awake) return;
+        _awake = false;
+        _clockT?.Stop(); _statsT?.Stop(); _mcT?.Stop();
+        _mcChain++;   // a check still out is stale when it lands
+        _ctx.Log.Line($"widgets resting: no clock tick, no System read and no Mission Control check while it is hidden ({why})");
+    }
+
     void StartClock()
     {
         PaintClock();
         if (_fx?.Now != null) { _ctx.Log.Line($"the clock is frozen at {DeskClock.Of(_fx.Now.Value).Text} (MANTLE_TEST_DESKTOP)"); return; }
-        _clockT = Timer(TimeSpan.FromMilliseconds(DeskClock.NextDelayMs(DateTime.Now)), () => {
+        _clockT ??= Timer(TimeSpan.FromMilliseconds(1000), () => {
+            if (!_awake) return;
             PaintClock();
             _clockT!.Interval = TimeSpan.FromMilliseconds(DeskClock.NextDelayMs(DateTime.Now));
             _clockT.Start();
         });
+        _clockT.Interval = TimeSpan.FromMilliseconds(DeskClock.NextDelayMs(DateTime.Now));
         _clockT.Start();
     }
 
@@ -342,11 +367,18 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     void StartStats()
     {
         if (_fx?.Stats != null) { _panes?.SetStats(_fx.Stats); return; }
-        _panes?.SetStats(DeskStats.Boot);
-        void Read() => _ = Task.Run(() => _stats.Read()).ContinueWith(t => _ctx.Dispatcher.TryEnqueue(() => { _lastStats = t.Result; _panes?.SetStats(t.Result); }), TaskScheduler.Default);
-        Read();
-        _statsT = Timer(TimeSpan.FromMilliseconds(DeskStats.EveryMs), Read, repeat: true);
+        _panes?.SetStats(_lastStats ?? DeskStats.Boot);
+        _stats = new SysStats();   // the CPU share is since the last read: after a rest that would be the whole rest, so sample afresh
+        ReadStats();
+        _statsT ??= Timer(TimeSpan.FromMilliseconds(DeskStats.EveryMs), ReadStats, repeat: true);
         _statsT.Start();
+    }
+
+    void ReadStats()
+    {
+        if (!_awake) return;
+        var s = _stats;
+        _ = Task.Run(() => s.Read()).ContinueWith(t => _ctx.Dispatcher.TryEnqueue(() => { _lastStats = t.Result; if (_awake) _panes?.SetStats(t.Result); }), TaskScheduler.Default);
     }
 
     void StartMc(string why)
@@ -363,6 +395,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
 
     async Task ProbeAsync(int chain)
     {
+        if (chain != _mcChain) return;   // rested or restarted since this check was planned
         bool ok = false; string reason = "";
         try {
             using var r = await Http.GetAsync(McProbe.Origin + "/", HttpCompletionOption.ResponseHeadersRead);
@@ -389,7 +422,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     {
         if (_panes == null) return;
         var rows = _fx?.Strip ?? DeskStrip.Rows(s);
-        _panes.SetStrip(rows, s.Mode == ShellMode.Test);
+        if (!_panes.SetStrip(rows, s.Mode == ShellMode.Test)) return;   // the same rows: no rebuild, no report
         string line = rows.Count == 0 ? "nothing" : string.Join("; ", System.Linq.Enumerable.Select(rows, r => r.Title));
         if (line != _stripSaid) { _stripSaid = line; _ctx.Log.Line($"strip: {(rows.Count == 0 ? "hidden (nothing needs attention)" : rows.Count + " row(s): " + line)}"); }
         QueueReport("the strip changed");

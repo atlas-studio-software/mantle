@@ -18,6 +18,15 @@ public static class DeskStrip
 {
     public const string NoReason = "no reason given, which is itself a bug";
 
+    /// The strip shows the same thing as before (same rows in the same order, same test badge): no rebuild, no
+    /// re-layout, no log line. Every ShellState change reaches the layer; most of them are not about the strip.
+    public static bool Same(IReadOnlyList<DeskRow>? before, bool beforeTest, IReadOnlyList<DeskRow> now, bool nowTest)
+    {
+        if (before == null || beforeTest != nowTest || before.Count != now.Count) return false;
+        for (int i = 0; i < now.Count; i++) if (!Equals(before[i], now[i])) return false;
+        return true;
+    }
+
     /// <param name="hasWall">Mantle's own wallpaper plays in the page: the pane-backdrop row is not said.</param>
     /// <param name="localBackdrop">The page's own picture failure, said only when main is not already saying it.</param>
     public static IReadOnlyList<DeskRow> Rows(ShellState s, bool hasWall = false, string? localBackdrop = null)
