@@ -417,7 +417,7 @@ $Floors = [ordered]@{
   'previews light' = 0.92   # 0.9545 / 0.9545 / 0.9418 (runs 42786941393, 42789738354, 42792223889; live DWM pictures)
   'previews dark'  = 0.94   # 0.9746 / 0.9746 / 0.9599 (same runs)
   # notifs (lane native-r7-notif): the notification centre and the tray strip
-  'notifs tray'    = 0.30   # first run pending
+  'notifs tray'    = 0.73   # light 0.9656, dark 0.7564 (run 43022192453, the tray really captured: lane native-r7-harness; dark 0.7564 in 4 runs)
   'notifs centre'  = 0.66   # light 0.7078 / 0.7078, dark 0.6999 / 0.6998 (runs 43003921718, 43011546830)
 }
 
