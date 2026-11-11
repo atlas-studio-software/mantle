@@ -129,6 +129,7 @@
                       AutomationProperties.HelpText="{x:Bind ExeName, Mode=OneWay}"
                       AutomationProperties.ItemStatus="{x:Bind Status, Mode=OneWay}"
                       ToolTipService.ToolTip="{x:Bind Tip, Mode=OneWay}">
+                <Grid>
                 <StackPanel Spacing="2" HorizontalAlignment="Center" VerticalAlignment="Center">
                   <Grid Width="24" Height="24" CornerRadius="6">
                     <Border Background="{ThemeResource LgTile}" Visibility="{x:Bind TileVisibility, Mode=OneWay}">
@@ -146,6 +147,14 @@
                             HorizontalAlignment="Center" Visibility="{x:Bind ActVisibility, Mode=OneWay}"/>
                   </Grid>
                 </StackPanel>
+                <!-- r7-strip, ui/bar/jumplist.css .cell .ontop-badge: a 13 DIP accent disc with a pin, top-right, while Mantle keeps one of its windows on top -->
+                <Border Width="13" Height="13" CornerRadius="6.5" Margin="0,-3,-9,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"
+                        Background="{ThemeResource LgAcc}" BorderBrush="{ThemeResource LgFillStrong}" BorderThickness="1.5"
+                        Visibility="{x:Bind OnTopVisibility, Mode=OneWay}">
+                  <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="7" Foreground="{ThemeResource LgAccOn}"
+                             HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                </Grid>
               </Button>
             </StackPanel>
           </DataTemplate>
