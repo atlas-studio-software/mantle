@@ -205,8 +205,15 @@ this area.
 - **Tests:** Core `TopBarStatMenuTests.cs` (7). UI `TopBar/TopBarStatTests.cs`: CPU's rows and its detail ask, the hang
   from the cell, Open Task Manager's dry run and note, PING's rows (no ask, no Task Manager), a second press closing it,
   and Right from a real click on CPU walking to the app's menu.
-- **Runs:** RUNS_HERE
-- **Ledger:** LEDGER_HERE
+- **Runs:**
+  - 43052113126 (43399828, build,unit,ui,topbar): unit failed 1 of 777 (the one statsDetail feature fact; the log has
+    no assertion text, so it is now three facts and the sidecar args are matched by content); ui 61/61 (the stat
+    dropdown test passed), topbar 4 of 4 scored.
+  - 43054136449 (7b5260b3, full): `NATIVE-CI: ok (16 ok, 0 skipped)`, unit 780/780, ui 61/61 (the idle-CPU test
+    included), bench ok, topbar 4 of 4 scored (light 0.6139 / 0.6337, dark 0.7344 / 0.6989 at 100 / 150 %: the strip
+    pairs are unchanged, there is no dropdown pair).
+- **Ledger:** `mark-topbar-rows.py native ui 7b5260b3` marked 24 rows (19 tested, 4 ported, 1 better: TOP-102). TOP
+  rows in shell.md after it: 133 tested, 19 ported, 2 better (TOP-102, TOP-218), 228 todo.
 
 ## Left (exact list, in order)
 
@@ -221,8 +228,8 @@ this area.
    - Tools (the timer / notes features); Strip note is ported (needs a UI test);
    - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only): all need a picture of what is under
      the bar (the desktop layer's strip, `glass.topbarMenu`, sidecar `underrow` / `underwatch` / `underpaint`). Done so
-     far: TOP-180 (dark with no picture is flat `--lg-fill-pop`), part of TOP-188 (its sizes, not the lip, the pressed row or the disabled opacity), TOP-187.s face (not its
-     `--lg-shadow`). A stat dropdown parity pair is not added: Electron's page needs a taller window and `&stat=cpu`,
+     far: TOP-180 (dark with no picture is flat `--lg-fill-pop`), part of TOP-188 (its sizes, not the lip, the
+     pressed row or the disabled opacity), TOP-187's face (not its `--lg-shadow`). A stat dropdown parity pair is not added: Electron's page needs a taller window and `&stat=cpu`,
      and native a fixture key that opens the dropdown at start plus a log line with its rect;
    - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about,
      settings, ...).
