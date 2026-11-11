@@ -349,6 +349,21 @@ public partial class MantleApp : Application
             if (!postUi(() => _window?.AttachNotifications(r7Link))) log("notifs: the UI thread is gone, so the bar's centre was not attached");
         }
         // ---- end notifications wiring
+        // ---- media wiring (lane native-r7-media): media.get / media.select / media.control / media.card and the replayed "media"
+        // payload (main.js mediaRead/mediaPush). A --test run's controls are dry runs; MANTLE_TEST_MEDIA (test only) replaces
+        // the sidecar's sessions with made-up ones. The bar's chip and card reach it through their own SurfaceLink.
+        var media = new Mantle.Core.Features.Media.MediaService(new Mantle.Core.Features.Media.MediaOptions {
+            Platform = _platform, Events = _events, Host = loop, Test = test, Log = log, DataDir = Host.Paths.DataRoot,
+            FlagGuard = Host.Args.Has("media-guard"), FlagControls = Host.Args.Has("media-controls"),
+            Fixture = test ? Host.Env("MANTLE_TEST_MEDIA") : null,
+        });
+        _offs.Add(Mantle.Core.Features.Media.MediaCommands.Register(_bus, new Mantle.Core.Features.Media.MediaCommands(media)));
+        {
+            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            var mediaLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });
+            if (!postUi(() => _window?.AttachMedia(mediaLink))) log("media: the UI thread is gone, so the bar's chip was not attached");
+        }
+        // ---- end media wiring
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
         // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
         // are kept, as Electron keeps them.

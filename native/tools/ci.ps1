@@ -29,6 +29,8 @@
              gated on its floors
              (the floors and why: tools/parity/README.md "CI floors"; the lanes' scripts are called, never edited here)
     unit     also runs node tools/parity/launcher/make-golden.cjs --check (Electron's ranking vs the checked-in golden)
+    media    tools/parity/media/run-media-parity.ps1 (the now-playing card, light and dark), gated on
+             "MEDIA-PARITY summary: 2 scored of 2" and its floors (set in the stage block)
     notifs   tools/parity/notifications/run-notifs-parity.ps1 (lane native-r7-notif: the notification centre and the
              tray strip, light and dark), gated on "NOTIFS-PARITY summary: 4 scored of 4" and its floors
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
@@ -45,7 +47,7 @@
   in <Out>/logs/<stage>.log.
 #>
 param(
-  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs'),
+  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
@@ -55,7 +57,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media')
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -617,11 +619,39 @@ function Stage-cal {
   return "ok ($scored of $of scored, ssim $($got -join ', '))"
 }
 # ---- end lane native-r7-calendar
+# ---- stage media (lane native-r7-media): the now-playing card pair, Electron vs native, light and dark
+# (tools/parity/media/run-media-parity.ps1). Floors a little under the lowest ssim seen; they only move up.
+$Floors['media light'] = 0.74   # 0.7717 (run 43014608940, after the text sizes matched bar.css; 0.5596 before)
+$Floors['media dark']  = 0.69   # 0.7190 (same run; 0.6158 before)
+function Stage-media {
+  $out = Join-Path $Out 'parity\media'
+  $code = Lane-Script 'media' 'tools\parity\media\run-media-parity.ps1' @('-Exe', $exe, '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/media/run-media-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'media.log'
+  $rows = Scores $log '^MEDIA-PARITY media-(\w+): ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^MEDIA-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^MEDIA-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if (-not $sum.Count) { return "FAILED (no MEDIA-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
+  $bad = @(); $got = @()
+  $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
+  if ($scored -lt 2 -or $of -ne 2) { $bad += "$scored of $of cards scored" }
+  foreach ($t in 'light', 'dark') {
+    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["media $t"]
+    if (-not $r.Count) { $bad += "$t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
+  }
+  if ($code -ne 0) { $bad += "exit $code" }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok ($scored of $of scored, ssim $($got -join ', '))"
+}
+# ---- end stage media
 
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -673,6 +703,7 @@ foreach ($s in $Stages) {
       'sidecar' { Stage-sidecar }
       'cal'     { Stage-cal }       # lane native-r7-calendar
       'notifs'  { Stage-notifs }   # lane native-r7-notif
+      'media'   { Stage-media }    # lane native-r7-media
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result
   } catch {

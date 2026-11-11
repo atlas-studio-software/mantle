@@ -161,6 +161,7 @@ public sealed partial class BarWindow : Window
         StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
         StartCalendar();        // lane native-r7-calendar: a left or right click on the clock opens the calendar (Surfaces/Bar/Calendar)
         StartNotifications();   // lane native-r7-notif: the bell + centre, the tray strip, the More menu (Surfaces/Bar/Notifications, Tray, Chips)
+        StartMedia();           // lane native-r7-media: the now-playing chip and its card (Surfaces/Bar/Media)
     }
 
     // ------------------------------------------------------------------ the glass
