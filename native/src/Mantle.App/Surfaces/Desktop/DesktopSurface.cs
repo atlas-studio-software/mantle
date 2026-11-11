@@ -101,6 +101,10 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         Place();
         _root.SizeChanged += (_, _) => { Fit(); QueueReport("a resize"); };
         _panes.Cluster.SizeChanged += (_, _) => QueueReport("a layout change");
+        // the strip's room is what the other three leave, so it follows their sizes too (the Mission Control tile shrinks
+        // from its 132 DIP frame to a note when the dashboard is down: the strip was left at the old room, cut short)
+        foreach (var pane in new FrameworkElement[] { _panes.Clock, _panes.Stats, _panes.Mc })
+            pane.SizeChanged += (_, _) => { if (_root != null && _root.ActualHeight > 0) _panes?.FitHeight(_root.ActualHeight); };
 
         _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.Theme == "dark"; Paint(); ctx.Log.Line($"theme {t.Theme}: the panes repainted"); }));
         _subs.Add(ctx.OnState(s => Strip(s)));
@@ -113,9 +117,17 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         StartClock(); StartStats(); StartMc("made");
         SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
         ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
+        // The first show (an Activate: WinUI starts drawing there) waits for the start-up work queued before it, the bar's
+        // first frame among it: activated in the middle of start-up the layer stayed a white sheet (CI 43019084229).
+        if (!ctx.Dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, FirstShow)) FirstShow();
+    }
+
+    void FirstShow()
+    {
+        if (_win == null) return;
         Show("Mantle started");
-        if (!ctx.Test) _ = AttachAsync("Mantle started");
-        else ctx.Log.Line("dry run (--test): would ask the sidecar to put the layer under the icons (desktop {hwnd}); nothing was sent, Explorer was not touched");
+        if (!_ctx.Test) _ = AttachAsync("Mantle started");
+        else _ctx.Log.Line("dry run (--test): would ask the sidecar to put the layer under the icons (desktop {hwnd}); nothing was sent, Explorer was not touched");
     }
 
     /// The window's place: the primary display's bounds live; an ordinary 960x540 window in --test, at the work area's corner + 40.

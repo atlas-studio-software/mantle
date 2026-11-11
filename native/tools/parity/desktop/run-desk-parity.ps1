@@ -40,6 +40,13 @@ if (-not (Test-Path $Exe)) { throw "no native app at $Exe (run with -Build)" }
 Add-Type -Path (Join-Path $root 'native/tools/parity/ParityNative.cs')
 Add-Type -AssemblyName System.Drawing
 [void][ParityNative]::DpiAware()
+# The test layer is an ordinary window, and its first show hands the foreground straight back to whatever had it (the
+# backdrop), which lifts the backdrop over it: the layer is put back on top (not topmost) once it is up.
+Add-Type -Namespace DeskPar -Name Z -MemberDefinition @'
+[DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string title);
+[DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
+public static bool Raise(string title) { IntPtr h = FindWindowW(null, title); return h != IntPtr.Zero && SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, 0x0013); }
+'@
 
 # ---- the fixture both sides draw (the UI tests' own: a frozen 4:15:32 PM, numbers, no dashboard, two strip rows)
 $now = '2026-11-06T16:15:32'
@@ -119,6 +126,7 @@ try {
     $m = $null
     for ($i = 0; $i -lt 150 -and -not $m; $i++) { Start-Sleep -Milliseconds 200; $all = [regex]::Matches((LogText $log), $re); if ($all.Count) { $m = $all[$all.Count - 1] } }
     if (-not $m) { $rows += "desk-$theme no score: the native layer never reported its panes in 30 s"; Copy-Item $log (Join-Path $Out "native-desk-$theme-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+    if (-not [DeskPar.Z]::Raise('Mantle desktop')) { Say 'the native layer could not be put over the backdrop' }
     Start-Sleep -Milliseconds 1500   # the last paint, then the rects again (a late layout pass re-reports them)
     $all = [regex]::Matches((LogText $log), $re); $m = $all[$all.Count - 1]
     $g = $m.Groups
