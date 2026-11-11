@@ -29,12 +29,15 @@ internal static unsafe class IdleProbe
             Host.Log.Line("idle probe: MANTLE_TEST_IDLE_PROBE is not <delay ms>,<window ms>: " + v);
             return;
         }
+        Host.Log.Line($"idle probe: armed: counting starts in {delay} ms and lasts {window} ms");
         Once(q, delay, () => Begin(q, window));
     }
 
+    static DispatcherQueueTimer? _timer;   // held: a timer nothing references can be collected before it fires
+
     static void Once(DispatcherQueue q, int ms, Action a)
     {
-        var t = q.CreateTimer();
+        var t = _timer = q.CreateTimer();
         t.Interval = TimeSpan.FromMilliseconds(ms);
         t.IsRepeating = false;
         t.Tick += (s, _) => { s.Stop(); a(); };
@@ -48,7 +51,8 @@ internal static unsafe class IdleProbe
         _get = SetWindowsHookExW(WH_GETMESSAGE, (IntPtr)(void*)(delegate* unmanaged<int, IntPtr, IntPtr, IntPtr>)&OnGet, IntPtr.Zero, tid);
         _call = SetWindowsHookExW(WH_CALLWNDPROC, (IntPtr)(void*)(delegate* unmanaged<int, IntPtr, IntPtr, IntPtr>)&OnCall, IntPtr.Zero, tid);
         IdleTally.Start();
-        Host.Log.Line($"idle probe: counting for {window} ms (queue hook {(_get != IntPtr.Zero ? "on" : "FAILED")}, sent-message hook {(_call != IntPtr.Zero ? "on" : "FAILED")})");
+        string res = NtQueryTimerResolution(out uint coarsest, out uint finest, out uint now) == 0 ? $"; the timer resolution is {now / 10000.0:0.###} ms now ({finest / 10000.0:0.###} to {coarsest / 10000.0:0.###})" : "";
+        Host.Log.Line($"idle probe: counting for {window} ms (queue hook {(_get != IntPtr.Zero ? "on" : "FAILED")}, sent-message hook {(_call != IntPtr.Zero ? "on" : "FAILED")}){res}");
         Once(q, window, End);
     }
 
@@ -140,6 +144,7 @@ internal static unsafe class IdleProbe
     [DllImport("user32.dll")] static extern int GetClassNameW(IntPtr h, char* buf, int len);
     [DllImport("user32.dll")] static extern int GetClipboardFormatNameW(uint f, char* buf, int len);
     [DllImport("kernel32.dll")] static extern uint GetCurrentThreadId();
+    [DllImport("ntdll.dll")] static extern int NtQueryTimerResolution(out uint coarsest, out uint finest, out uint current);
     [DllImport("kernel32.dll")] static extern bool GetModuleHandleExW(uint flags, IntPtr addr, out IntPtr mod);
     [DllImport("kernel32.dll")] static extern int GetModuleFileNameW(IntPtr mod, char* buf, int len);
 }

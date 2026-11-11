@@ -115,8 +115,8 @@ public sealed class HoverTests
             // the app's own idle probe counts the same window from inside (UI-thread messages, timers, sidecar lines)
             var (app, h, dir) = Hover("cpu-" + theme, theme, new Dictionary<string, string> { ["MANTLE_TEST_IDLE_PROBE"] = $"3000,{HiddenMs}" });
             using var _ = app;
+            int logFrom = FrameProbe.Log(dir).Length;   // from the first hide: the probe arms there and starts 3 s later
             Thread.Sleep(3000);
-            int logFrom = FrameProbe.Log(dir).Length;
             var hidden = FrameProbe.CpuThreads(app.Proc, HiddenMs);
             FrameProbe.LogHas(dir, "idle probe: done", 5000);
             var during = FrameProbe.Log(dir)[Math.Min(logFrom, FrameProbe.Log(dir).Length)..].Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToList();
