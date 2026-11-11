@@ -9,8 +9,12 @@ $exe = Join-Path $native 'out\bin\MantleNative\MantleNative.exe'
 function Probe([string]$proj, [string]$filter) {
   if (-not $filter) { return }
   $out = & dotnet test $proj -c Release -nologo --filter $filter --logger 'console;verbosity=normal' 2>&1
-  $out | Where-Object { $_ -match 'Passed |Failed |Error Message|Assert|Stack Trace|^\s+at Mantle|Total tests|Passed!|Failed!' } |
-    Where-Object { $_ -notmatch '^\s+at (System|Microsoft|Xunit|FlaUI)' } | Select-Object -First 120 | ForEach-Object { 'PROBE ' + $_ }
+  $msg = $false
+  foreach ($l in $out) {
+    $t = [string]$l
+    if ($t -match 'Error Message:') { $msg = $true } elseif ($t -match 'Stack Trace:') { $msg = $false }
+    if ($msg -or $t -match 'Passed |Failed |^\s+at Mantle|Total tests') { 'PROBE ' + $t.Substring(0, [Math]::Min(400, $t.Length)) }
+  }
 }
 $env:MANTLE_NATIVE_EXE = $exe; $env:MANTLE_TEST_VISIBLE = '1'
 Probe (Join-Path $native 'tests\Mantle.Core.Tests\Mantle.Core.Tests.csproj') $Unit

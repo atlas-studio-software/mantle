@@ -222,7 +222,7 @@ internal sealed class GameModeRow
         _list.Children.Clear();
         if (!_open) return;
         var rows = v.Rows.Count > 0 ? v.Rows : v.Plan ?? new List<GameModeRowView>();
-        if (v.Rows.Count == 0 && v.Plan != null) { var lh = Text("When it is on", 11); lh.Foreground = _b("LgInk3"); lh.Margin = new Thickness(8, 4, 8, 0); _list.Children.Add(lh); }
+        if (v.Rows.Count == 0 && v.Plan != null) { var lh = Text("When it is on", 11); lh.Foreground = _b("LgInk3"); lh.Margin = new Thickness(8, 4, 8, 0); AutomationProperties.SetAutomationId(lh, "qs.gamemode.plan.head"); AutomationProperties.SetName(lh, lh.Text); _list.Children.Add(lh); }
         foreach (var r in rows)
         {
             var a = new StackPanel { Padding = new Thickness(8, 4, 8, 4) };

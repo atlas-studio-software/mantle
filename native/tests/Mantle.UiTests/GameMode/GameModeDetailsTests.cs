@@ -51,7 +51,7 @@ public class GameModeDetailsTests
         // BAR-812: Details while off: "When it is on" and the six plan rows
         ClickEl(El(w, "qs.gamemode.more"));
         Has(dir, "qs: game mode row: details open", "Details did not open");
-        Assert.IsNotNull(Host.Until(() => El(w, "qs.gamemode.list").FindFirstDescendant(cf => cf.ByName("When it is on")), 3000), "no \"When it is on\" heading");
+        Assert.AreEqual("When it is on", El(w, "qs.gamemode.plan.head").Name, "the plan's heading");
         foreach (var id in new[] { "power-mode", "background-apps", "mantle-itself", "boost", "wallpaper", "mantle-resting" })
             Assert.AreEqual("plan", Status(El(w, "qs.gamemode.row.plan." + id)), "the plan row " + id);
 
@@ -84,7 +84,7 @@ public class GameModeDetailsTests
         Assert.IsTrue(new[] { "dry", "same", "blocked", "failed" }.Contains(Status(power)), $"the power row's status is {Status(power)}");
         Assert.AreEqual("info", Status(El(w, "qs.gamemode.row.game")), "no row for the game itself");
         Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId("qs.gamemode.row.why")), "a game turned on by hand has a \"Why it is on\" row");
-        Assert.IsNull(w.FindFirstDescendant(cf => cf.ByName("When it is on")), "the plan heading is still there while on");
+        Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId("qs.gamemode.plan.head")), "the plan heading is still there while on");
 
         // BAR-781: while on, the plan is redone (the interval injected: 1 s here, 30 s live)
         Has(dir, "gamemode: replan 2: the plan was redone while on (every 1000 ms)", "the plan was not redone while on", 20000);
