@@ -17,7 +17,7 @@ namespace Mantle.UiTests.TopBar;
 /// (Notepad++) and stats, so nothing is read from the runner's own windows for the strip.
 /// </summary>
 [TestClass]
-public class TopBarSurfaceTests
+public partial class TopBarSurfaceTests
 {
     const string Title = "Mantle top bar";
 

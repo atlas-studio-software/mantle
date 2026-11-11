@@ -36,6 +36,27 @@ C = 'Mantle.Core.Tests/Features/TopBar/TopBarCommandsTests.cs#'
 put(['TOP-316'], 'tested:' + C + 'About_pushes_one_line_about_Mantle_and_the_machine_and_hello_drops_it_after_8_s_TOP_316')
 put(['TOP-318', 'TOP-319'], 'tested:' + C + 'Settings_winSettings_and_taskmgr_are_dry_runs_in_test_and_open_or_run_live_TOP_317_318_319')
 put(['TOP-314'], 'tested:' + C + 'New_window_takes_only_the_known_args_of_an_app_on_disk_and_is_a_dry_run_in_test_TOP_314')
+M = 'Mantle.Core.Tests/Features/TopBar/TopBarMenuTests.cs#'
+MC = 'Mantle.Core.Tests/Features/TopBar/TopBarMenuCommandsTests.cs#'
+put(['TOP-031', 'TOP-032', 'TOP-033', 'TOP-034', 'TOP-035', 'TOP-036', 'TOP-046', 'TOP-047', 'TOP-050'], 'tested:' + M + 'Mantle_menu_order_and_what_each_row_calls_TOP_031_032_033_034_035_036_046_047_050')
+put(['TOP-048', 'TOP-049', 'TOP-051'], 'tested:' + M + 'Restart_and_shut_down_arm_first_disarm_after_4_s_and_a_double_click_is_not_two_decisions_TOP_048_049_051')
+put(['TOP-052', 'TOP-053', 'TOP-054', 'TOP-055', 'TOP-056', 'TOP-057', 'TOP-058', 'TOP-059', 'TOP-060'], 'tested:' + M + 'App_menus_new_window_and_window_actions_and_the_desktop_TOP_052_053_054_055_056_057_058_059_060')
+put(['TOP-062', 'TOP-063', 'TOP-064', 'TOP-065', 'TOP-069'], 'tested:' + M + 'Own_menus_rows_separators_win32_and_uia_picks_and_nothing_to_run_TOP_062_063_064_065_069')
+put(['TOP-061', 'TOP-067', 'TOP-068'], 'tested:' + M + 'A_title_refreshes_and_lazy_submenus_ask_and_say_why_they_are_empty_TOP_061_067_068')
+put(['TOP-070'], 'tested:' + M + 'More_lists_the_hidden_titles_and_opens_each_as_a_submenu_TOP_070')
+put(['TOP-072', 'TOP-073', 'TOP-074', 'TOP-079'], 'tested:' + M + 'Dropdowns_flip_pull_in_cap_and_size_the_window_TOP_072_073_074_079')
+put(['TOP-076', 'TOP-081'], 'tested:' + M + 'Result_cut_off_and_cannot_show_notes_TOP_074_076_081')
+put(['TOP-044', 'TOP-082'], 'tested:' + M + 'Layout_menus_restore_rename_delete_save_and_the_name_box_TOP_037_038_039_040_041_042_043_044_082')
+put(['TOP-083'], 'tested:' + M + 'Arrow_keys_skip_separators_and_disabled_rows_and_wrap_TOP_083')
+put(['TOP-084', 'TOP-085', 'TOP-086', 'TOP-087'], 'tested:' + M + 'Right_left_escape_enter_and_space_TOP_084_085_086_087')
+put(['TOP-088', 'TOP-089'], 'tested:' + M + 'A_letter_runs_its_mnemonic_or_first_label_row_and_tool_menus_keep_left_right_TOP_088_089')
+put(['TOP-077'], 'tested:' + MC + 'Live_runs_send_window_invoke_power_and_refocus_through_the_sidecar_and_shell_TOP_077_311_313')
+put(['TOP-308', 'TOP-309', 'TOP-311', 'TOP-312', 'TOP-313', 'TOP-333'], 'tested:' + MC + 'Page_requests_name_only_the_windows_they_were_given_and_refusals_are_plain_words_TOP_308_309_311_312_313_333')
+if ui:
+    put(['TOP-029', 'TOP-075'], 'tested:' + U + 'Menus_open_grow_the_window_pick_with_dry_runs_confirm_open_submenus_and_follow_the_keys')
+# ported, no test of their own: the layouts rows wait for a native layouts feature (no layouts.state yet, so the
+# submenus say "not running"); the fit freeze, the title slide, a lazy UIA title, the hover delay, click-away and blur
+if len(sys.argv) > 3: put(['TOP-026', 'TOP-030', 'TOP-037', 'TOP-038', 'TOP-039', 'TOP-040', 'TOP-041', 'TOP-042', 'TOP-043', 'TOP-045', 'TOP-066', 'TOP-071', 'TOP-078'], 'ported:' + sys.argv[3])
 # TOP-317: the Win+I delivered branch (Mantle Settings opening) has no test yet, only the fallback and the dry runs
 if len(sys.argv) > 3: put(['TOP-317', 'TOP-175'], 'ported:' + sys.argv[3])   # TOP-175: the strip note is drawn, no UI test triggers one yet
 if ui:

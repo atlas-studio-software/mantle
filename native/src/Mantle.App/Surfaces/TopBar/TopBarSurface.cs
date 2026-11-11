@@ -37,10 +37,10 @@ namespace Mantle.App.Surfaces.TopBar;
 // with TopBarModel.FitTitles (the app name gives way first, then "»"); on the right the stat cells (CPU, RAM, GPU,
 // NET, PING) and the two tool buttons (timer, notes). Light: --lg-fill-fb over what is behind with the inset
 // --lg-edge-out line at its bottom; dark: --lg-fill-pop, no line (the dark glass and colour under are later parts).
-// Not drawn yet (docs/lanes/topbar.md "Left"): the dropdown menus (a title press shows the pressed wash and logs; it
-// opens nothing), the » menu's list, the stats dropdowns, the note and "stats paused" items, the motion.
+// The dropdowns and their keys are TopBarSurface.Menus.cs. Not drawn yet (docs/lanes/topbar.md "Left"): the stats
+// dropdowns, the "stats paused" item, the menus' motion and glass.
 [Surface("topbar", AtStart = true)]
-internal sealed class TopBarSurface : ISurface
+internal sealed partial class TopBarSurface : ISurface
 {
     const string Ns = "xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'";
     const double Pad = 8, Gap = 10;
@@ -110,11 +110,12 @@ internal sealed class TopBarSurface : ISurface
         SetTheme(false);   // the theme event (replayed at once) repaints in dark
         _subs.Add(ctx.On<ThemePayload>("theme", t => SetTheme(t.View.Theme == "dark")));
         _subs.Add(ctx.On<TopBarVisible>("topbar.visible", OnVisible));
-        _subs.Add(ctx.On<TopBarPlace>("topbar.place", pl => { _height = pl.Height; Place(pl.Why); }));
+        _subs.Add(ctx.On<TopBarPlace>("topbar.place", pl => { _height = pl.Height; Place(pl.Why); if (_open != null) Reveal(); }));
         _subs.Add(ctx.On<TopBarFocus>("topbar.focus", OnFocus));
         _subs.Add(ctx.On<TopBarStats>("topbar.stats", OnStats));
-        _subs.Add(ctx.On<TopBarClose>("topbar.close", c => { if (_openKey != null) { _openKey = null; Render(); } }));
+        _subs.Add(ctx.On<TopBarClose>("topbar.close", c => CloseAll(false, c.Why)));
         _subs.Add(ctx.On<TopBarNote>("topbar.note", n => SetNote(n.Text)));
+        InstallMenus();
         Place("made");
         ctx.Log.Line("made hidden and parked (" + (Host.Quiet ? "test: quiet" : _test ? "test: visible" : "live") + ")");
     }
@@ -137,6 +138,7 @@ internal sealed class TopBarSurface : ISurface
         _bar.Children.Add(_left); _bar.Children.Add(_right);
         _root.Children.Add(faceGrid);
         _root.Children.Add(_bar);
+        BuildMenus();
         _root.SizeChanged += (_, _) => Fit();
         _root.RequestedTheme = ElementTheme.Light;
     }
@@ -224,17 +226,20 @@ internal sealed class TopBarSurface : ISurface
     void Render()
     {
         if (_ctx == null) return;
-        _titles = TopBarModel.Titles(_focus, _menu);
+        _titles = TopBarModel.Titles(_focus, _menu, _overGames, _peeking);
         _left.Children.Clear();
-        foreach (var t in _titles)
+        _fitShown = int.MaxValue;
+        for (int ti = 0; ti < _titles.Count; ti++)
         {
+            var t = _titles[ti]; int idx = ti;
             var b = MakeButton("topbar.title." + t.Key, t.Glyph ? "Mantle" : t.Label, t.Bold);
             b.Tag = t.Key;
             if (t.Glyph) { b.Padding = new Thickness(8, 0, 8, 0); b.Content = Glyph(GlyphPath, 14, Br("LgInk")); ToolTipService.SetToolTip(b, "Mantle"); }
             else b.Content = new TextBlock { Text = t.Label, TextTrimming = TextTrimming.CharacterEllipsis, TextWrapping = TextWrapping.NoWrap, FontWeight = b.FontWeight };
             if (!t.Enabled) b.Foreground = Br("LgInk3");   // TOP-021: a disabled title is dimmed
             if (IsOpen(b)) b.Background = Br("LgPress");
-            b.Click += (_, _) => OnTitle(t);
+            b.Click += (_, _) => OnTitlePress(idx);
+            b.PointerEntered += (_, _) => Slide(idx);
             _left.Children.Add(b);
         }
         RenderRight();
@@ -335,20 +340,16 @@ internal sealed class TopBarSurface : ISurface
         var fit = TopBarModel.FitTitles(w, more.DesiredSize.Width, avail);
         if (fit.AppW is double aw && btns.Count > 1) btns[1].MaxWidth = aw;
         for (int i = fit.Shown; i < btns.Count; i++) btns[i].Visibility = Visibility.Collapsed;
-        if (fit.Shown < fit.N) { more.Click += (_, _) => OnTitle(new TopBarTitle("more", "»")); _left.Children.Insert(fit.Shown, more); }
+        _fitShown = fit.Shown;
+        if (fit.Shown < fit.N) { int mi = fit.Shown; more.Click += (_, _) => OnTitlePress(mi); more.PointerEntered += (_, _) => Slide(mi); _left.Children.Insert(fit.Shown, more); }
         if (_test) Note($"fit: {fit.Shown} of {fit.N} titles shown{(fit.AppW is double a ? $", app name at most {a:0} DIP" : "")}{(fit.Shown < fit.N ? ", the rest in »" : "")} ({avail:0} DIP of room)");
     }
     string _lastFit = "";
     void Note(string line) { if (line == _lastFit) return; _lastFit = line; _ctx.Log.Line(line); }
 
     // ------------------------------------------------------------------ the controls (the dropdowns are a later part)
-    void OnTitle(TopBarTitle t)
-    {
-        _openKey = _openKey == t.Key ? null : t.Key;   // TOP-029: mouse-down opens it; on the open title it closes
-        _ctx.Log.Line($"title pressed: {t.Key} ({(_openKey != null ? "open" : "closed")}; its dropdown is not drawn yet)");
-        foreach (var b in _left.Children.OfType<Button>()) b.Background = IsOpen(b) ? Br("LgPress") : ClearBrush();
-        if (_openKey == null) Fit();
-    }
+    /// TOP-030: with a menu open, hovering another title opens that one (not from a stat or tool dropdown).
+    void Slide(int ti) { if (_open != null && _open.Tool == null && _open.Ti != ti) OpenMenu(ti); }
     async void OnStat(string key)
     {
         var r = await _ctx.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = key });
@@ -403,8 +404,11 @@ internal sealed class TopBarSurface : ISurface
     void OnFocus(TopBarFocus f)
     {
         if (!_reported) Report();
+        var was = _focus?["hwnd"]?.ToJsonString();
         _focus = f.Json != null ? JsonNode.Parse(f.Json) as JsonObject : null;
         _menu = f.MenuJson != null ? JsonNode.Parse(f.MenuJson) as JsonObject : null;
+        if (_open != null && was != _focus?["hwnd"]?.ToJsonString()) CloseAll(false, "another app came to the front");
+        if (_open != null) { _focusDirty = true; RefreshTitles(); return; }   // the open menu and its title stay put; redrawn on close
         Render();
         _ctx.Log.Line($"focus: {(_focus == null ? "none" : TopBarModel.AppName(_focus))}, {_titles.Count} titles{(f.Fixture ? " (test fixture)" : "")}");
     }
@@ -466,7 +470,7 @@ internal sealed class TopBarSurface : ISurface
         if (!_shown && !Win32.IsWindowVisible(_hwnd)) return;
         Win32.ShowWindow(_hwnd, 0 /* SW_HIDE */);
         _shown = false;
-        _openKey = null;
+        CloseAll(false, "the bar was hidden");
         _ = _ctx.CallAsync("topbar.shown", new JsonObject { ["on"] = false });
         _ctx.Log.Line("hidden (" + why + ")");
     }
@@ -489,6 +493,8 @@ internal sealed class TopBarSurface : ISurface
         // TOP-218: a window Windows keeps taller than the bar is cropped to it, so nothing below draws or takes clicks
         string shape = "";
         if (gh > h) { WindowKinds.ClipToShape(_hwnd, 0, 0, got.Right - got.Left, h, 0); shape = $"; the window is {gh} px tall, cropped to {h}"; }
+        Uncrop(gh, h);
+        _workBottom = (mi.rcWork.Bottom - got.Top) / s;
         string line = $"placed at {got.Left},{got.Top} {got.Right - got.Left}x{h} px at {Math.Round(s * 100)} % (dpi {dpi}){shape}";
         if (line != _lastPlaced || why.StartsWith("display", StringComparison.Ordinal)) { _lastPlaced = line; _ctx.Log.Line(line + " (" + why + ")"); }
         _report = new JsonObject { ["hwnd"] = _hwnd.ToInt64().ToString(CultureInfo.InvariantCulture), ["scale"] = s, ["x"] = got.Left, ["y"] = got.Top, ["w"] = got.Right - got.Left, ["h"] = h };

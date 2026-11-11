@@ -9,6 +9,7 @@ using System.Runtime.InteropServices;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Mantle.Core.Commands;
+using Mantle.Core.Platform;
 
 namespace Mantle.Core.Features.TopBar;
 
@@ -135,6 +136,165 @@ public sealed partial class TopBarFeature
         });
 
         ctx.Command("newWindow", c => new(NewWindow(c.Args)));
+        // the dropdowns' commands (TOP-061/064/065/054..058, TOP-046..049): every handle the surface names is checked
+        // first (CheckArgs), so a menu command, a window action or a UI Automation click never reaches another window
+        ctx.Command("menus", async c => await Menus(c.Args));
+        ctx.Command("invoke", async c => await Invoke(c.Args));
+        ctx.Command("uiaInvoke", async c => await UiaInvoke(c.Args));
+        ctx.Command("window", async c => await WindowAction(c.Args));
+        ctx.Command("power", async c => await Power(c.Args));
+    }
+
+    // ------------------------------------------------------------------ what the surface may ask for (TOP-308)
+    public static readonly string[] WindowActions = { "minimize", "zoom", "ontop", "close", "quit" };
+    const int MaxDepth = 8, MaxPos = 1000, MaxName = 260;
+
+    /// The handle as the sidecar's decimal string, or null when it is not a window handle at all.
+    public static string? HwndArg(JsonElement v)
+    {
+        if (v.ValueKind == JsonValueKind.Number) return v.TryGetInt64(out var n) && n > 0 && n <= 9007199254740991 ? n.ToString(CultureInfo.InvariantCulture) : null;
+        return v.ValueKind == JsonValueKind.String && System.Text.RegularExpressions.Regex.IsMatch(v.GetString()!, @"^[1-9][0-9]{0,19}$") ? v.GetString() : null;
+    }
+    static int[]? PosList(JsonElement v)
+    {
+        if (v.ValueKind != JsonValueKind.Array || v.GetArrayLength() is < 1 or > MaxDepth) return null;
+        var o = new List<int>();
+        foreach (var x in v.EnumerateArray()) { if (x.ValueKind != JsonValueKind.Number || !x.TryGetInt32(out var p) || p < 0 || p >= MaxPos) return null; o.Add(p); }
+        return o.ToArray();
+    }
+
+    /// lib/features/topbar.js checkArgs for the menu verbs: only the checked fields go on, or a reason in plain words.
+    public static (JsonObject? Args, string? Reason) CheckArgs(string verb, JsonElement a, IReadOnlySet<string> allowed)
+    {
+        static (JsonObject?, string?) No(string why) => (null, why);
+        string? hwnd = a.ValueKind == JsonValueKind.Object && a.TryGetProperty("hwnd", out var hv) ? HwndArg(hv) : null;
+        if (hwnd == null) return No("the app's window could not be identified, so nothing was sent to it");
+        if (!allowed.Contains(hwnd)) return No("that window is no longer the app in front, so nothing was sent to it; open the menu again");
+        JsonElement P(string k) => a.TryGetProperty(k, out var v) ? v : default;
+        switch (verb)
+        {
+            case "menus":
+                if (P("init").ValueKind is JsonValueKind.Undefined or JsonValueKind.Null) return (new JsonObject { ["hwnd"] = hwnd }, null);
+                return PosList(P("init")) is { } init ? (new JsonObject { ["hwnd"] = hwnd, ["init"] = Arr(init) }, null) : No("that menu could not be identified; open it again");
+            case "invoke":
+                return P("item") is { ValueKind: JsonValueKind.Number } it && it.TryGetInt32(out var id) && id is >= 0 and <= 0xFFFF
+                    ? (new JsonObject { ["hwnd"] = hwnd, ["item"] = id }, null) : No("that menu item could not be identified; open the menu again");
+            case "uiaInvoke":
+            {
+                var path = PosList(P("path"));
+                if (path == null) return No("that menu item could not be identified; open the menu again");
+                var names = new JsonArray();
+                var nv = P("names");
+                if (nv.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null))
+                {
+                    if (nv.ValueKind != JsonValueKind.Array || nv.GetArrayLength() > path.Length) return No("that menu item could not be identified; open the menu again");
+                    foreach (var n in nv.EnumerateArray())
+                    {
+                        if (n.ValueKind == JsonValueKind.Null) { names.Add((JsonNode?)null); continue; }
+                        if (n.ValueKind != JsonValueKind.String || n.GetString()!.Length > MaxName) return No("that menu item could not be identified; open the menu again");
+                        names.Add((JsonNode)JsonValue.Create(n.GetString()!)!);
+                    }
+                }
+                return (new JsonObject { ["hwnd"] = hwnd, ["path"] = Arr(path), ["names"] = names, ["expand"] = P("expand").ValueKind == JsonValueKind.True }, null);
+            }
+            case "window":
+            {
+                var act = P("action").ValueKind == JsonValueKind.String ? P("action").GetString() : null;
+                if (act == null || Array.IndexOf(WindowActions, act) < 0) return No("Mantle does not know that window action");
+                var on = P("on");
+                if (on.ValueKind is not (JsonValueKind.Undefined or JsonValueKind.Null or JsonValueKind.True or JsonValueKind.False)) return No("Mantle does not know that window action");
+                var o = new JsonObject { ["hwnd"] = hwnd, ["action"] = act };
+                if (on.ValueKind is JsonValueKind.True or JsonValueKind.False) o["on"] = on.ValueKind == JsonValueKind.True;
+                return (o, null);
+            }
+        }
+        return No("Mantle does not know that request");
+    }
+    static JsonArray Arr(int[] a) => new(a.Select(x => (JsonNode)JsonValue.Create(x)).ToArray());
+
+    /// Every handle the surface was handed: the app in front and its menu's owner.
+    HashSet<string> PageHwnds()
+    {
+        var s = new HashSet<string>(StringComparer.Ordinal);
+        void Add(JsonNode? n) { if (n is JsonValue v && HwndArg(JsonDocument.Parse(v.ToJsonString()).RootElement) is { } h) s.Add(h); }
+        Add(_focus?["hwnd"]); Add((_focus?["menu"] as JsonObject)?["hwnd"]);
+        return s;
+    }
+    (JsonObject? Args, string? Reason) Checked(string verb, JsonElement a)
+    {
+        var c = CheckArgs(verb, a, PageHwnds());
+        if (c.Reason != null) _ctx.Log($"refused a page request ({verb}): {c.Reason}");
+        return c;
+    }
+    static CommandResult NoWith(string why) => CommandResult.Success(J(new JsonObject { ["ok"] = false, ["reason"] = why }));
+    static CommandResult FromSidecar(PlatformReply r)
+        => r.Ok ? CommandResult.Success(r.Result) : NoWith(r.Error ?? "the Mantle helper gave no reason");
+
+    /// TOP-061/067: the app's menu again (WM_INITMENUPOPUP for init, live only). A --test fixture answers its own menu.
+    async System.Threading.Tasks.Task<CommandResult> Menus(JsonElement a)
+    {
+        var c = Checked("menus", a);
+        if (c.Args == null) return NoWith(c.Reason!);
+        if (_fixture != null) return CommandResult.Success(J(new JsonObject { ["menu"] = _focus?["menu"]?.DeepClone(), ["inited"] = 1 }));
+        if (_test) c.Args.Remove("init");   // a --test run sends no message into a real app
+        return FromSidecar(await _ctx.Platform.CallAsync("topbar.menus", c.Args));
+    }
+
+    /// TOP-064: a Win32 menu item (WM_COMMAND). A --test run only says what it would have sent.
+    async System.Threading.Tasks.Task<CommandResult> Invoke(JsonElement a)
+    {
+        var c = Checked("invoke", a);
+        if (c.Args == null) return NoWith(c.Reason!);
+        if (_test) return Refuse($"sent menu item {c.Args["item"]} to window {c.Args["hwnd"]}");
+        c.Args["focus"] = _live;
+        return FromSidecar(await _ctx.Platform.CallAsync("topbar.invoke", c.Args));
+    }
+
+    /// TOP-065/066: a UI Automation menu item. Never in --test (one activated a test window and took the keyboard).
+    async System.Threading.Tasks.Task<CommandResult> UiaInvoke(JsonElement a)
+    {
+        if (_test) return NoWith("a --test instance never runs a UI Automation action (one activated a test window and took the keyboard, 2026-09-24)");
+        var c = Checked("uiaInvoke", a);
+        if (c.Args == null) return NoWith(c.Reason!);
+        return FromSidecar(await _ctx.Platform.CallAsync("topbar.uiaInvoke", c.Args, TimeSpan.FromSeconds(15)));
+    }
+
+    /// TOP-054..058: minimize, zoom, always on top, close, quit. A --test run only says what it would have done.
+    async System.Threading.Tasks.Task<CommandResult> WindowAction(JsonElement a)
+    {
+        var c = Checked("window", a);
+        if (c.Args == null) return NoWith(c.Reason!);
+        if (_test) return Refuse($"run the window action {c.Args["action"]} on window {c.Args["hwnd"]}");
+        return FromSidecar(await _ctx.Platform.CallAsync("topbar.window", c.Args));
+    }
+
+    /// launcher-index.js power (TOP-046..049): Lock, Sleep, Restart (asks first), Shut down (asks first).
+    public static (string Name, bool Confirm, string? Exe, string[] Args)? PowerDef(string? action) => action switch
+    {
+        "lock" => ("Lock", false, "rundll32.exe", new[] { "user32.dll,LockWorkStation" }),
+        "sleep" => ("Sleep", false, null, Array.Empty<string>()),
+        "restart" => ("Restart", true, "shutdown.exe", new[] { "/r", "/t", "0" }),
+        "shutdown" => ("Shut down", true, "shutdown.exe", LauncherIndex.PowerRows.ShutdownArgs(null)),
+        _ => null,
+    };
+
+    async System.Threading.Tasks.Task<CommandResult> Power(JsonElement a)
+    {
+        var action = Str(a, "action");
+        if (PowerDef(action) is not { } def) return NoWith($"there is no power action called \"{action}\"");
+        if (def.Confirm && !Bool(a, "confirmed")) return NoWith(def.Name + " asks first: press Enter on it twice");
+        string sys32 = Environment.GetFolderPath(Environment.SpecialFolder.System);
+        if (def.Exe == null)
+        {
+            if (_test) return Refuse("put the PC to sleep (the Mantle helper's session sleep)");
+            var r = await _ctx.Platform.CallAsync("session", new JsonObject { ["action"] = action, ["dryRun"] = false }, TimeSpan.FromSeconds(4));
+            if (!r.Ok) return NoWith(def.Name + " did not happen: " + (r.Error ?? "the Mantle helper gave no reason"));
+            return CommandResult.Success(J(new JsonObject { ["ok"] = true }));
+        }
+        string exe = Path.Combine(sys32, def.Exe);
+        if (_test) return Refuse($"run {exe} {string.Join(' ', def.Args)}");
+        string? err = _shell.Spawn(exe, def.Args);
+        return err == null ? CommandResult.Success(J(new JsonObject { ["ok"] = true })) : NoWith(def.Name + " did not happen: " + err);
     }
 
     CommandResult WinSettings(string? why)

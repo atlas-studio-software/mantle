@@ -263,7 +263,16 @@ public sealed partial class TopBarFeature : IFeature
         double dispH = p is { } d ? d.H / d.Scale : 10000;
         _menuH = _menuOpen ? (int)Math.Max(TopBarRules.BarDip, Math.Min(Math.Ceiling(h), dispH)) : TopBarRules.BarDip;   // TOP-224
         Broadcast("topbar.place", new TopBarPlace(_menuH, _menuOpen ? "a menu opened" : "the menu closed"));
-        return Ok(new JsonObject { ["ok"] = true, ["height"] = _menuH });
+        // TOP-077: Escape, a pick or the open title again give the app its keyboard back (live only)
+        bool refocus = !_menuOpen && Bool(a, "refocus") && _live && S(_focus, "hwnd") != null;
+        if (!refocus) return Ok(new JsonObject { ["ok"] = true, ["height"] = _menuH, ["refocused"] = false });
+        return Refocus(S(_focus, "hwnd")!);
+    }
+    async ValueTask<CommandResult> Refocus(string hwnd)
+    {
+        var r = await _ctx.Platform.CallAsync("focus", new JsonObject { ["hwnd"] = hwnd });
+        return Answer(r.Ok ? new JsonObject { ["ok"] = true, ["height"] = _menuH, ["refocused"] = true }
+            : new JsonObject { ["ok"] = false, ["reason"] = $"the app could not be given the keyboard back: {r.Error}" });
     }
 
     // ------------------------------------------------------------------ display changes (TOP-233..239)
