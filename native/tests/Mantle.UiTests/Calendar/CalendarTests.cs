@@ -44,11 +44,18 @@ public class CalendarTests
 
     static void Has(string dir, string needle, string why, int ms = 5000) => Host.LogContains(() => FrameProbe.Log(dir), needle, why, ms);
 
+    static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 30))); }
+
+    /// The clock pressed once the host has attached the calendar (its first gcal.events push reached the bar); a click
+    /// that landed while the bar was still settling (no "opened" line after 2.5 s) is given once more.
     static AutomationElement Open(BarApp app, string dir)
     {
-        ClickEl(app.Find("bar.clock"));
+        Has(dir, "cal: gcal.events arrived (", "the host never attached the calendar", 15000);
         IntPtr h = IntPtr.Zero;
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Calendar")), 4000), "the calendar did not open from the clock");
+        bool shown() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Calendar"));
+        ClickEl(app.Find("bar.clock"));
+        if (!Host.Until(() => shown(), 2500) && !FrameProbe.Log(dir).Contains("cal: the calendar opened (")) ClickEl(app.Find("bar.clock"));
+        Assert.IsTrue(Host.Until(() => shown(), 4000), "the calendar did not open from the clock. Log:\n" + Tail(dir));
         Has(dir, "cal: the calendar opened (", "no opened line");
         var w = Host.Uia.FromHandle(h);
         Assert.IsNotNull(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("cal.panel")), 3000), "the pop-up has no cal.panel");
@@ -129,7 +136,8 @@ public class CalendarTests
         Host.Screenshot("cal-open-dark");
         Assert.AreEqual("November 2026", El(w, "cal.title").Name);
         Assert.AreEqual(42, Ids(w, "cal.day.").Distinct().Count());
-        Thread.Sleep(400);   // the keyboard is asked for after the first frame
+        Has(dir, "cal: the calendar has the keyboard; the selected day has focus", "the calendar never took the keyboard (MANTLE_TEST_CAL_KEYS=1)");
+        Thread.Sleep(200);
 
         Keyboard.Type(VirtualKeyShort.RIGHT);
         Has(dir, "cal: day 2026-11-12 selected", "Right did not move to the 12th");

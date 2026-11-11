@@ -559,7 +559,7 @@ function Stage-sidecar {
 # ---- lane native-r7-calendar: stage cal, the clock's calendar flyout (tools/parity/calendar/run-cal-parity.ps1, Electron's
 # ?gcal=events page vs native at one frozen instant, light and dark), gated on "CAL-PARITY summary: 2 scored of 2" and
 # these floors (a little under what it reached; docs/lanes/calendar.md says what the rest of the difference is)
-$CalFloors = @{ 'light' = 0.50; 'dark' = 0.50 }
+$CalFloors = @{ 'light' = 0.57; 'dark' = 0.55 }   # 0.5947 / 0.5793 (run 43001365502); the gap: the native pop-up is 4 px wider and 12-13 px taller (268x520 vs 264x507), so the bottom-aligned crops drift (docs/lanes/calendar.md)
 function Stage-cal {
   $out = Join-Path $Out 'parity\cal'
   $code = Lane-Script 'cal' 'tools\parity\calendar\run-cal-parity.ps1' @('-Exe', $exe, '-Out', $out)
