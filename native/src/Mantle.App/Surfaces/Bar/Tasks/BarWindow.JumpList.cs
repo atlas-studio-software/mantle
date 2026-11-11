@@ -39,20 +39,28 @@ public sealed partial class BarWindow
     const string GPin = "", GUnpin = "", GClose = "", GTask = "";
 
     // .pop.jl .jl-i: min 28 high, padding 4 8, radius 6, hover / press surfaces, a 1.5 accent ring on keyboard focus
-    const string JlRowTemplate =
+    static readonly string JlRowTemplate = JlRowTemplateOf(Mantle.Core.Features.JumpList.JumpLook.Light);
+    static readonly string JlRowTemplateDark = JlRowTemplateOf(Mantle.Core.Features.JumpList.JumpLook.Dark);
+    /// BAR-329: the menu's look follows the bar's theme when the menu is built (each open builds it).
+    Mantle.Core.Features.JumpList.JumpLook JlLook => Mantle.Core.Features.JumpList.JumpLook.For(_dark);
+
+    /// BAR-329: the row template in a look (light: the bar's own menu; dark: Helm's).
+    static string JlRowTemplateOf(Mantle.Core.Features.JumpList.JumpLook l) =>
         "<ControlTemplate " + JlNs + " TargetType='Button'>" +
-        "<Grid x:Name='Face' Background='Transparent' CornerRadius='6' BorderThickness='1.5' BorderBrush='Transparent' Padding='{TemplateBinding Padding}' MinHeight='{TemplateBinding MinHeight}'>" +
+        "<Grid x:Name='Face' Background='Transparent' CornerRadius='6' BorderThickness='" + l.RingW.ToString(System.Globalization.CultureInfo.InvariantCulture) + "' BorderBrush='Transparent' Padding='{TemplateBinding Padding}' MinHeight='{TemplateBinding MinHeight}'>" +
         "<VisualStateManager.VisualStateGroups><VisualStateGroup x:Name='CommonStates'>" +
         "<VisualState x:Name='Normal'/>" +
-        "<VisualState x:Name='PointerOver'><VisualState.Setters><Setter Target='Face.Background' Value='{ThemeResource LgHover}'/></VisualState.Setters></VisualState>" +
+        "<VisualState x:Name='PointerOver'><VisualState.Setters><Setter Target='Face.Background' Value='{ThemeResource " + l.Hover + "}'/></VisualState.Setters></VisualState>" +
         "<VisualState x:Name='Pressed'><VisualState.Setters><Setter Target='Face.Background' Value='{ThemeResource LgPress}'/></VisualState.Setters></VisualState>" +
         "<VisualState x:Name='Disabled'/>" +
         "</VisualStateGroup><VisualStateGroup x:Name='FocusStates'>" +
-        "<VisualState x:Name='Focused'><VisualState.Setters><Setter Target='Face.Background' Value='{ThemeResource LgHover}'/><Setter Target='Face.BorderBrush' Value='{ThemeResource LgAcc}'/></VisualState.Setters></VisualState>" +
+        "<VisualState x:Name='Focused'><VisualState.Setters><Setter Target='Face.Background' Value='{ThemeResource " + l.FocusFill + "}'/><Setter Target='Face.BorderBrush' Value='{ThemeResource " + l.FocusRing + "}'/></VisualState.Setters></VisualState>" +
         "<VisualState x:Name='Unfocused'/><VisualState x:Name='PointerFocused'/>" +
         "</VisualStateGroup></VisualStateManager.VisualStateGroups>" +
         "<ContentPresenter HorizontalAlignment='Stretch' VerticalAlignment='Center' Foreground='{TemplateBinding Foreground}'/>" +
         "</Grid></ControlTemplate>";
+
+    static string Px(double v) => v.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
     sealed class JlMenu
     {
@@ -150,11 +158,11 @@ public sealed partial class BarWindow
     Button JlRow(string text, string? glyph, string? iconUrl, string? letter, string id, Action<Button> run, string ink = "LgInk2", bool bold = false)
     {
         var b = (Button)XamlReader.Load(
-            "<Button " + JlNs + " HorizontalAlignment='Stretch' HorizontalContentAlignment='Stretch' Padding='8,4,8,4' MinHeight='28' IsTabStop='True' UseSystemFocusVisuals='False'" +
-            " Foreground='{ThemeResource " + ink + "}'><Button.Template>" + JlRowTemplate + "</Button.Template>" +
-            "<Grid ColumnSpacing='9'><Grid.ColumnDefinitions><ColumnDefinition Width='16'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" +
+            "<Button " + JlNs + " HorizontalAlignment='Stretch' HorizontalContentAlignment='Stretch' Padding='" + Px(JlLook.PadX) + "," + Px(JlLook.PadY) + "," + Px(JlLook.PadX) + "," + Px(JlLook.PadY) + "' MinHeight='" + Px(JlLook.MinH) + "' IsTabStop='True' UseSystemFocusVisuals='False'" +
+            " Foreground='{ThemeResource " + JlLook.RowInk(ink) + "}'><Button.Template>" + (_dark ? JlRowTemplateDark : JlRowTemplate) + "</Button.Template>" +
+            "<Grid ColumnSpacing='" + Px(JlLook.Gap) + "'><Grid.ColumnDefinitions><ColumnDefinition Width='16'/><ColumnDefinition Width='*'/></Grid.ColumnDefinitions>" +
             "<Image Width='16' Height='16' Visibility='Collapsed'/>" +
-            "<TextBlock FontSize='13' HorizontalAlignment='Center' VerticalAlignment='Center' Foreground='{ThemeResource LgInk3}'/>" +
+            "<TextBlock FontSize='13' HorizontalAlignment='Center' VerticalAlignment='Center' Foreground='{ThemeResource " + JlLook.IconInk + "}'/>" +
             "<TextBlock Grid.Column='1' FontSize='13' FontFamily='{ThemeResource LgFont}' TextTrimming='CharacterEllipsis' VerticalAlignment='Center'" + (bold ? " FontWeight='SemiBold'" : "") + "/>" +
             "</Grid></Button>");
         var g = (Grid)b.Content;
@@ -194,7 +202,8 @@ public sealed partial class BarWindow
     {
         var it = m.Item;
         string name = it.Name.Length > 0 ? it.Name : "App";
-        m.Body = new StackPanel { Padding = new Thickness(6), Spacing = 0 };
+        m.Body = new StackPanel { Padding = new Thickness(JlLook.BodyPad), Spacing = 0 };
+        if (Host.Args.Test) Host.Log.Line("bar tasks: menu: look " + JlLook.Describe(_dark));
         m.Root = new UiaGrid();
         m.Root.Children.Add(m.Body);
         AutomationProperties.SetAutomationId(m.Root, "bar.jl");
@@ -207,7 +216,7 @@ public sealed partial class BarWindow
         m.Note.Margin = new Thickness(8, 6, 8, 6);
         m.Note.Visibility = Visibility.Collapsed;
         m.Foot = new StackPanel();
-        var footBox = (Border)XamlReader.Load("<Border " + JlNs + " BorderThickness='0,1,0,0' BorderBrush='{ThemeResource LgEdgeOut}' Margin='0,2,0,0' Padding='0,4,0,0'/>");
+        var footBox = (Border)XamlReader.Load("<Border " + JlNs + " BorderThickness='0,1,0,0' BorderBrush='{ThemeResource " + JlLook.Divider + "}' Margin='0,2,0,0' Padding='0,4,0,0'/>");
         footBox.Child = m.Foot;
         m.FootBox = footBox;
         // the app itself: a new window (middle-click does the same; BAR-214, BAR-322)
@@ -316,7 +325,7 @@ public sealed partial class BarWindow
             m.List.Children.Add(head);
             foreach (var x in items) {
                 if (x.Sep) {
-                    m.List.Children.Add((UIElement)XamlReader.Load("<Rectangle " + JlNs + " Height='1' Margin='8,4,8,4' Fill='{ThemeResource LgEdgeOut}'/>"));
+                    m.List.Children.Add((UIElement)XamlReader.Load("<Rectangle " + JlNs + " Height='1' Margin='" + Px(JlLook.SepX) + ",4," + Px(JlLook.SepX) + ",4' Fill='{ThemeResource " + JlLook.Divider + "}'/>"));
                     continue;
                 }
                 m.List.Children.Add(JlItemRow(m, x, sec, n++));
