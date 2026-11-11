@@ -134,7 +134,7 @@ public class TopBarSurfaceTests
         Host.LogContains(() => app.Log, line, id + " was pressed but logged nothing", 4000);
     }
 
-    /// TOP-001/002/004/018..025/201/215/216/218/222/240: made, parked, shown at the top, the strip's controls, both themes.
+    /// TOP-001/002/215/216/222 and the titles of TOP-018..025: made, parked, shown at the top, every control pressed, both themes.
     [TestMethod]
     public void Top_bar_is_parked_then_shown_at_the_top_never_topmost_every_control_pressed_and_themed()
     {
@@ -188,7 +188,7 @@ public class TopBarSurfaceTests
         Assert.IsTrue(light > 140, $"the light strip reads {light:N0} (want > 140: a 62 % white fill over any backdrop)");
     }
 
-    /// TOP-203/282/283/286/287/289..296, BAR-348/349: Win+Alt+T hides it (the strip stays a dry run), the real cursor
+    /// TOP-281/292/293, BAR-348/349: Win+Alt+T hides it (the strip stays a dry run), the real cursor
     /// resting on the top edge peeks it and leaving hides it again, then Win+Alt+T shows it. Started in dark (--theme).
     [TestMethod]
     public void Win_Alt_T_hides_it_the_top_edge_peeks_it_and_Win_Alt_T_shows_it_again_in_dark()
@@ -232,7 +232,7 @@ public class TopBarSurfaceTests
         Assert.AreEqual(0, FrameProbe.WorkArea().Top, "showing it again moved the work area in --test");
     }
 
-    /// TOP-215/218/240/254..256: a scale change re-places the bar at once for the new dpi, round(28 x scale) px tall,
+    /// TOP-215/218/237: a scale change re-places the bar at once for the new dpi, round(28 x scale) px tall,
     /// without a restart. Ends back at 100 %.
     [TestMethod]
     public void A_scale_change_re_places_it_28_DIP_tall_at_150_percent_without_a_restart()

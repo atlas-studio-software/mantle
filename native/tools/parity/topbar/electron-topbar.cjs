@@ -1,6 +1,6 @@
 'use strict';
 /* electron-topbar.cjs (lane native-r7-topbar): Electron's top bar strip (ui/topbar/index.html over its own mock bridge,
- * ui/topbar/mock-mantle.js, app=npp&stats=ok) rendered by Electron itself in an offscreen window, one PNG per theme: the
+ * ui/topbar/mock-mantle.js, app=npp&stats=ok) rendered by Electron itself in a window that is never shown, one PNG per theme: the
  * 28 DIP strip at the screen's width, over ONE solid colour, so run-topbar-parity.ps1 can put the native strip over the
  * same colour and diff the two. Nothing of the user's is read; nothing is written outside <out>.
  *
@@ -11,7 +11,8 @@
  * before the first paint (this file is also the window's preload, as shoot.js's darkInit does). Like with like: no
  * ?flat= / ?scene=, so the dark strip is its own fill (--lg-fill-pop), not the dark glass over a desktop picture (the
  * Glass section is not native yet; docs/lanes/topbar.md).
- * Prints: ELECTRON-TOPBAR <theme>-<pct> <w>x<h> <file>.
+ * The window is a normal one that is never shown (offscreen rendering ignores the scale). Prints: ELECTRON-TOPBAR
+ * <theme>-<pct> <w>x<h> <file>.
  */
 const path = require('path');
 
@@ -39,8 +40,10 @@ if (process.type === 'renderer') {
     fs.mkdirSync(out, { recursive: true });
     for (const theme of ['light', 'dark']) {
       const win = new BrowserWindow({
-        show: false, width: cssW, height: 60, useContentSize: true, x: 0, y: 0,
-        webPreferences: { offscreen: true, sandbox: false, preload: __filename, additionalArguments: ['--topbar-theme=' + theme] },
+        show: false, frame: false, width: cssW, height: 60, useContentSize: true, x: 0, y: 0,
+        // a normal window that is never shown, not an offscreen one: offscreen rendering paints at scale 1 whatever
+        // force-device-scale-factor says (its 150 % shots came back 1280x28 for a 1920 px screen)
+        webPreferences: { sandbox: false, preload: __filename, additionalArguments: ['--topbar-theme=' + theme], backgroundThrottling: false },
       });
       const url = require('url').pathToFileURL(PAGE).href + '?app=npp&stats=ok';
       try { await win.loadURL(url); } catch (e) { await new Promise((r) => setTimeout(r, 300)); await win.loadURL(url); }
@@ -49,7 +52,7 @@ if (process.type === 'renderer') {
       await win.webContents.executeJavaScript(`document.querySelectorAll('*').forEach((e) => { e.style.animation = 'none'; e.style.transition = 'none'; }); true`);
       await new Promise((r) => setTimeout(r, 200));
       const got = await win.webContents.executeJavaScript(`(() => { const b = document.getElementById('bar').getBoundingClientRect(); return { w: b.width, h: b.height, theme: document.documentElement.getAttribute('data-theme'), inner: innerWidth }; })()`);
-      const img = await win.webContents.capturePage({ x: 0, y: 0, width: cssW, height: 28 });
+      const img = await win.webContents.capturePage({ x: 0, y: 0, width: cssW, height: 28 }, { stayHidden: true });
       const file = path.join(out, `electron-topbar-${theme}-${pct}.png`);
       fs.writeFileSync(file, img.toPNG());
       const sz = img.getSize();

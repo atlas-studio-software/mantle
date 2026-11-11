@@ -180,11 +180,12 @@ internal sealed class TopBarSurface : ISurface
 
     static Viewbox Glyph(string data, double size, Brush ink, double stroke = 1.5)
     {
-        var path = new Microsoft.UI.Xaml.Shapes.Path
-        {
-            Data = (Geometry)XamlBindingHelper.ConvertValue(typeof(Geometry), data), Stroke = ink, StrokeThickness = stroke,
-            StrokeStartLineCap = PenLineCap.Round, StrokeEndLineCap = PenLineCap.Round, StrokeLineJoin = PenLineJoin.Round, Width = 16, Height = 16,
-        };
+        // the path data through XAML (as QsPanel does): XamlBindingHelper.ConvertValue to Geometry threw "Specified cast is
+        // not valid" on the runner, so the surface was never made
+        var path = (Microsoft.UI.Xaml.Shapes.Path)XamlReader.Load($"<Path {Ns} Data='{data}'/>");
+        path.Stroke = ink; path.StrokeThickness = stroke;
+        path.StrokeStartLineCap = PenLineCap.Round; path.StrokeEndLineCap = PenLineCap.Round; path.StrokeLineJoin = PenLineJoin.Round;
+        path.Width = 16; path.Height = 16;
         var c = new Canvas { Width = 16, Height = 16 }; c.Children.Add(path);
         return new Viewbox { Width = size, Height = size, Child = c };
     }
