@@ -127,8 +127,10 @@ public sealed class NotificationCentre : IDisposable
                 Log($"MANTLE_TEST_NOTIFS is not JSON ({e.Message}), so the test list is empty");
             }
         }
+        if (!_fixture) LoadSeen();
     }
 
+    /// The seen ids are read once, at construction (a fixture run seeds them from the fixture instead).
     void Log(string line) => _log("notifs: " + line);
     void LogOnce(string line) { if (_lastLog != line) { _lastLog = line; Log(line); } }
 
@@ -144,7 +146,6 @@ public sealed class NotificationCentre : IDisposable
         if (_started) return;
         _started = true;
         _offs.Add(_o.Events.Replay<NotificationsPayload?>(Event, () => _last != null ? new NotificationsPayload(El(_last)) : null));
-        if (!_fixture) LoadSeen();
         if (_o.Test) {
             if (!_fixture) Log("a --test run never reads Windows' notifications: the list is empty (MANTLE_TEST_NOTIFS gives made-up ones)");
             _o.Clock.Post(() => _ = Push(_fixture ? "the test list" : "a test run"));
@@ -296,7 +297,7 @@ public sealed class NotificationCentre : IDisposable
             if (!File.Exists(_o.SeenFile)) return;
             var n = JsonNode.Parse(File.ReadAllText(_o.SeenFile));
             if (n is JsonObject o && o["ids"] is JsonArray a) {
-                foreach (var x in a) if (x is JsonValue v && v.TryGetValue<long>(out var id)) _seen.Add(id);
+                foreach (var x in a) if (Int(x) is long id) _seen.Add(id);
             } else {
                 _seenNote = Say.SeenRead;
                 Log("the seen list was not in the expected shape, so it was not used and older ones may show as new");
@@ -326,7 +327,7 @@ public sealed class NotificationCentre : IDisposable
         var ids = new List<long>();
         if (asked is not JsonArray a) return ids;
         foreach (var x in a.Take(MaxIds)) {
-            long? id = x is JsonValue v ? (v.TryGetValue<long>(out var l) ? l : v.TryGetValue<double>(out var d) && d == Math.Floor(d) && Math.Abs(d) < 9e15 ? (long)d : v.TryGetValue<string>(out var s) && long.TryParse(s, out var p) ? p : null) : null;
+            long? id = Int(x) ?? (x is JsonValue v && v.TryGetValue<string>(out var str) && long.TryParse(str, out var p) ? p : null);
             if (id is long k && shown.Contains(k) && !ids.Contains(k)) ids.Add(k);
         }
         return ids;
@@ -431,7 +432,11 @@ public sealed class NotificationCentre : IDisposable
 
     // ------------------------------------------------------------------ helpers
 
-    public static long? Id(JsonObject t) => t["id"] is JsonValue v && v.TryGetValue<long>(out var l) ? l : t["id"] is JsonValue d && d.TryGetValue<double>(out var x) && x == Math.Floor(x) ? (long)x : null;
+    public static long? Id(JsonObject t) => Int(t["id"]);
+    /// A JSON number that is a whole number (whatever .NET type backs the node: a parsed element, an int, a long, a double).
+    public static long? Int(JsonNode? n) =>
+        n is JsonValue v && v.GetValueKind() == JsonValueKind.Number && double.TryParse(v.ToJsonString(), System.Globalization.NumberStyles.Float, System.Globalization.CultureInfo.InvariantCulture, out var d)
+            && d == Math.Floor(d) && Math.Abs(d) < 9e15 ? (long)d : null;
     public static bool IsFalse(JsonNode? n) => n is JsonValue v && v.TryGetValue<bool>(out var b) && !b;
     public static string? Str(JsonNode? n) => n is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
     public static JsonElement El(JsonNode o) { using var d = JsonDocument.Parse(o.ToJsonString()); return d.RootElement.Clone(); }

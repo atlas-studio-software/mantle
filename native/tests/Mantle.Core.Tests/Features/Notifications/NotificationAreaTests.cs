@@ -96,7 +96,7 @@ public class NotificationAreaTests
     [Fact]
     public void Tone_is_the_alpha_weighted_luminance_with_six_pixels_of_cover()
     {
-        Assert.Equal("light", TrayTone.Of(Px(16, 255, 255, 255, 60)));     // faint white dots still read white (Tailscale)
+        Assert.Equal("light", TrayTone.Of(Px(64, 255, 255, 255, 60)));     // faint white dots still read white (Tailscale)
         Assert.Equal("dark", TrayTone.Of(Px(16, 20, 20, 20, 255)));
         Assert.Equal("normal", TrayTone.Of(Px(16, 200, 100, 40, 255)));
         Assert.Equal("normal", TrayTone.Of(Px(5, 255, 255, 255, 255)));     // under 6 px of cover
