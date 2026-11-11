@@ -70,6 +70,19 @@ internal sealed class TopBarSurface : ISurface
 
     public void Create(ISurfaceContext ctx)
     {
+        try { CreateCore(ctx); }
+        catch (Exception e)
+        {
+            // the host logs only the message; the frames say WHERE (a bare "Specified cast is not valid" said nothing)
+            var at = (e.StackTrace ?? "").Split('
+').Select(l => l.Trim()).Where(l => l.Length > 0).Take(4);
+            ctx.Log.Line($"made: failed: {e.GetType().Name}: {e.Message} at {string.Join(" < ", at)}");
+            throw;
+        }
+    }
+
+    void CreateCore(ISurfaceContext ctx)
+    {
         _ctx = ctx;
         _test = ctx.Test;
         Build();
@@ -226,9 +239,9 @@ internal sealed class TopBarSurface : ISurface
                 var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5 };
                 row.Children.Add(new TextBlock { Text = c.Label, FontSize = 11, FontWeight = FontWeights.SemiBold, CharacterSpacing = 20, Foreground = Br("LgInk2"), VerticalAlignment = VerticalAlignment.Center });
                 double min = c.Key switch { "cpu" or "gpu" => 4.6, "mem" => 11.5, "net" => 20.5, "ping" => 6.1, _ => 0 } * ch;
-                var v = new TextBlock { Text = c.Value, MinWidth = min, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+                var v = new TextBlock { MinWidth = min, TextAlignment = TextAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
                     Foreground = c.Why != null ? Br("LgInk2") : c.Warn ? Br("LgWarn") : Br("LgInk") };
-                Microsoft.UI.Xaml.Documents.Typography.SetNumeralAlignment(v, FontNumeralAlignment.Tabular);
+                v.Inlines.Add(Tabular(c.Value));
                 row.Children.Add(v);
                 b.Content = row;
                 var tip = c.Title ?? c.Why;
@@ -249,6 +262,21 @@ internal sealed class TopBarSurface : ISurface
         ToolTipService.SetToolTip(notes, nb.Title);
         notes.Click += (_, _) => OnTool("notes");
         _right.Children.Add(timer); _right.Children.Add(notes);
+    }
+
+    bool _tabularSaid;
+    /// font-variant-numeric: tabular-nums. Typography.NumeralAlignment set on a TextBlock threw "Specified cast is not
+    /// valid" on the runner (the attached property wants a text element), so it goes on a Run; a refusal is logged once
+    /// and the cell keeps its fixed MinWidth either way.
+    Microsoft.UI.Xaml.Documents.Run Tabular(string text)
+    {
+        var run = new Microsoft.UI.Xaml.Documents.Run { Text = text };
+        try { Microsoft.UI.Xaml.Documents.Typography.SetNumeralAlignment(run, FontNumeralAlignment.Tabular); }
+        catch (Exception e) when (e is InvalidCastException or System.Runtime.InteropServices.COMException)
+        {
+            if (!_tabularSaid) { _tabularSaid = true; _ctx.Log.Line($"stat figures: tabular numerals could not be set ({e.Message}); the cells keep their fixed widths"); }
+        }
+        return run;
     }
 
     double _ch;
