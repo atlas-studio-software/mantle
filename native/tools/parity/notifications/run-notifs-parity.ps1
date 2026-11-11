@@ -79,9 +79,10 @@ function FindId($procId, $id) {
   return $null
 }
 # one pair: the native grab vs Electron's file, centred, scored, saved side by side
-function Score($tag, $ef, $x, $y, $w0, $h0) {
+function Score($tag, $ef, $x, $y, $w0, $h0, $procId = 0) {
   if (-not (Test-Path $ef)) { return "$tag no score: no Electron shot" }
-  $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
+  # the bar hides itself from capture while its glass is re-shot: a clean grab waits that out (ParityNative.CleanGrab)
+  $nat = if ($procId) { ([ParityNative]::CleanGrab(@([int]$procId), $x, $y, $w0, $h0, 60, 5000)).Px } else { [ParityNative]::Grab($x, $y, $w0, $h0) }
   $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-$tag.png"))
   $eb = [System.Drawing.Bitmap]::FromFile($ef)
   $w = [Math]::Min($eb.Width, $nb.Width); $h = [Math]::Min($eb.Height, $nb.Height)
@@ -121,7 +122,7 @@ try {
     if (-not $strip) { $rows += "tray-$theme no score: no bar.tray in the native bar" }
     else {
       $r = $strip.Current.BoundingRectangle; Say "native strip at $($r.X),$($r.Y) $($r.Width)x$($r.Height)"
-      $line = Score "tray-$theme" (Join-Path $Out "electron-tray-$theme.png") ([int]$r.X - 4) ([int]$r.Y - 4) ([int]$r.Width + 8) ([int]$r.Height + 8)
+      $line = Score "tray-$theme" (Join-Path $Out "electron-tray-$theme.png") ([int]$r.X - 4) ([int]$r.Y - 4) ([int]$r.Width + 8) ([int]$r.Height + 8) $p.Id
       Write-Host $line; $rows += $line
       $mm = [regex]::Match($line, 'ssim=([\d.]+)'); if ($mm.Success -and [double]$mm.Groups[1].Value -lt $low.tray) { $low.tray = [double]$mm.Groups[1].Value }
     }

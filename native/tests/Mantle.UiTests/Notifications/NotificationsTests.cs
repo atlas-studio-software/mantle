@@ -183,13 +183,13 @@ public class NotificationsTests
         Assert.IsTrue(Host.Until(() => Status(hidden) == "normal off", 2000), "the hidden icon is not dimmed: " + Status(hidden));
         Host.Screenshot("more-menu-light");
         Press(hidden);
-        Assert.IsTrue(Host.Until(() => El(m, "more.hidwhy").Name.StartsWith("Tailscale is in Windows' hidden-icons flyout", StringComparison.Ordinal), 2000), "the hidden icon's click did not say why");
+        Assert.IsTrue(Host.Until(() => El(m, "more.hidwhy").Name.StartsWith("Tailscale is in Windows' hidden-icons flyout", StringComparison.Ordinal), 2000), "the hidden icon's click did not say why: " + El(m, "more.hidwhy").Name);
         Assert.IsFalse(FrameProbe.Log(dir).Contains("notification-area icon n:3"), "a hidden icon was sent a click");
         var quit = El(m, "more.quit");
-        ClickEl(quit);
+        Press(quit);
         Assert.IsTrue(Host.Until(() => Status(El(m, "more.quit")) == "armed", 2000), "Quit did not arm");
         Assert.AreEqual("Click again to quit", El(m, "more.quit").Name);
-        ClickEl(El(m, "more.settings"));
+        Press(El(m, "more.settings"));
         Host.LogContains(Log(dir), "more: dry run (--test): would open Settings (ms-settings:); nothing was opened");
         Assert.IsFalse(app.Proc.HasExited, "the test copy quit");
     }

@@ -418,7 +418,7 @@ $Floors = [ordered]@{
   'previews dark'  = 0.94   # 0.9746 / 0.9746 / 0.9599 (same runs)
   # notifs (lane native-r7-notif): the notification centre and the tray strip
   'notifs tray'    = 0.30   # first run pending
-  'notifs centre'  = 0.30   # first run pending
+  'notifs centre'  = 0.66   # light 0.7078 / 0.7078, dark 0.6999 / 0.6998 (runs 43003921718, 43011546830)
 }
 
 function Scores([string]$log, [string]$pattern) {
