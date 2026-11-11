@@ -100,37 +100,46 @@ public sealed class HoverTests
 
     /// The promise: idle CPU near zero. One run per theme: the bar + its glass hidden at rest, then shown and idle
     /// (cursor resting on the pill: light refreshes its glass 4 times a second while up, dark holds one still).
+    /// Hidden at rest is read over 45 s: Windows charges CPU in whole 15.6 ms clock ticks, so the old 15 s window moved
+    /// in steps of 0.104 % and a few stray ticks decided the 1 % line; 45 s moves in steps of 0.035 %. Each window is
+    /// also read thread by thread (cycles, wakeups, name, start module) into idle-threads.txt, and a failure names them.
     [TestMethod]
     public void Bar_and_glass_idle_cpu_hidden_at_rest_and_shown()
     {
+        const int HiddenMs = 45000;
         var lines = new List<string>();
+        var tables = new List<string>();
         var worst = new Dictionary<string, double>();
         foreach (var theme in new[] { "light", "dark" })
         {
             var (app, h, dir) = Hover("cpu-" + theme, theme);
             using var _ = app;
             Thread.Sleep(3000);
-            var hidden = FrameProbe.Cpu(app.Proc, 15000);
+            var hidden = FrameProbe.CpuThreads(app.Proc, HiddenMs);
             FrameProbe.CursorToEdge();
             Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(h), 1500), "no reveal for the shown measurement");
             FrameProbe.GetWindowRect(h, out var r);
             FrameProbe.SetCursorPos((r.Left + r.Right) / 2, r.Bottom - (int)Math.Round(14 * Win32.GetDpiForWindow(h) / 96.0) - 10);
             Thread.Sleep(2000);
-            var shown = FrameProbe.Cpu(app.Proc, 15000);
+            var shown = FrameProbe.CpuThreads(app.Proc, 15000);
             bool stillUp = Win32.IsWindowVisible(h);
             FrameProbe.CursorAway();
             Host.Until(() => !Win32.IsWindowVisible(h), 2000);
             Thread.Sleep(500);
             int pics = FrameProbe.Count(dir, "glass: stopped");
             var after = FrameProbe.Cpu(app.Proc, 5000);
-            string line = $"IDLE-CPU {theme}: hidden at rest {hidden.App} % of one core (dwm {hidden.Dwm} %), shown idle {shown.App} % (dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
+            string line = $"IDLE-CPU {theme}: hidden at rest {hidden.App} % of one core over {HiddenMs / 1000} s ({hidden.Threads.CyclePct} % by cycles, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
             lines.Add(line); Console.WriteLine(line);
+            tables.Add($"{theme}, hidden at rest:\n{hidden.Threads.Table()}");
+            tables.Add($"{theme}, shown idle:\n{shown.Threads.Table()}");
             worst["hidden " + theme] = hidden.App; worst["shown " + theme] = shown.App;
             Assert.IsTrue(stillUp, "the bar hid during the shown measurement: " + line);
             if (theme == "light") Assert.IsTrue(pics >= 1, "light glass never logged its stop on hide: " + line);
         }
         File.WriteAllLines(Path.Combine(Host.OutDir, "idle-cpu.txt"), lines);
-        Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more:\n" + string.Join("\n", lines));
-        Assert.IsTrue(worst["shown light"] < 20 && worst["shown dark"] < 20, "shown idle costs 20 % of a core or more:\n" + string.Join("\n", lines));
+        File.WriteAllText(Path.Combine(Host.OutDir, "idle-threads.txt"), string.Join("\n\n", tables) + "\n");
+        string Named(string which) => string.Join("\n", lines) + "\n" + string.Join("\n", tables.Where(t => t.Contains(which, StringComparison.Ordinal)));
+        Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more:\n" + Named("hidden at rest"));
+        Assert.IsTrue(worst["shown light"] < 20 && worst["shown dark"] < 20, "shown idle costs 20 % of a core or more:\n" + Named("shown idle"));
     }
 }
