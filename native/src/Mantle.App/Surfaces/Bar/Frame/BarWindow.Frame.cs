@@ -384,6 +384,7 @@ public sealed partial class BarWindow
     // ------------------------------------------------------------------ display, DPI, wallpaper (BAR-088)
     IntPtr SubProc(IntPtr h, uint msg, IntPtr wp, IntPtr lp, UIntPtr id, IntPtr data)
     {
+        HeardShellBack(msg);   // Explorer came back: TaskbarCreated (Tasks/BarWindow.ShellBack.cs, lane native-r7-strip-3)
         switch (msg) {
             case 0x02E0: {   // WM_DPICHANGED: WinUI's own handler first (its rasterization scale), then our geometry
                 IntPtr res = FrameNative.DefSubclassProc(h, msg, wp, lp);
