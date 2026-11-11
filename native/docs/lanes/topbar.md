@@ -137,10 +137,46 @@ this area.
   (warn glyph, cut at 60 characters, tooltip, AutomationId `topbar.note`) and clears it after 8 s. No UI test triggers
   a note yet: a `note=` key in `MANTLE_TEST_TOPBAR` would let one.
 
+## Part 4 (lane native-r7-topbar-4, same branch): the dropdowns and their keys
+
+- **Core:** `TopBarMenu.cs` is topbar.js's S.open / S.armed / S.edit and activate / move / stepTitle / openSub /
+  refreshLevel / the keydown switch as a pure machine ("now" passed in). Each call returns a `MenuStep` (Render,
+  OpenSub, OpenTitle, Armed, Call, Close, Commit) that the surface carries out. Also the geometry (`Left` flip and
+  pull-in, `FitDown`, `WindowHeight`, `KeepVisible`) and the strip notes. `TopBarModel` gained `Item` / `FromJson`
+  (the app's own rows: id, pos, radio, ownerDraw, lazy, cleaned recursively), `LayoutItems`, and the New window
+  item's exe and args. The Notepad++ fixture carries Electron's mock W32 tree (ids 100 + pos).
+- **Feature:** `CheckArgs` (TOP-308: only handles the surface was given, i.e. the app in front and its menu's owner;
+  there is no UIA read natively yet, so that third handle never exists). Commands `menus`, `invoke`, `uiaInvoke`,
+  `window` and `power` are added, and `menuState` refocuses the app (sidecar `focus`, live only).
+  - **Deviation (safer):** in --test, `invoke`, `window` and `power` answer a dry run from Core and never call the
+    sidecar. Electron passed `dryRun` to the sidecar for `window` and sent `invoke` for real. `menus` drops `init`
+    (no WM_INITMENUPOPUP into a real app), and a fixture answers its own menu.
+  - **Power:** Lock, Sleep, Restart and Shut down only. Shut down is always `/s /t 0`, because no fast-startup read
+    is wired. Hibernate and Sign out are not here, so TOP-315 stays todo.
+- **Surface:** `TopBarSurface.Menus.cs` (the class is now partial).
+  - **Drawing:** the dropdowns are drawn on a Canvas over the bar. Under it sits a clear click-away layer, below the
+    bar only. Each dropdown is a Border > ScrollViewer > rows. Rows are XamlReader buttons; AutomationIds are
+    `topbar.menu.<level>.<row>`, the ScrollViewer is `topbar.menu.<level>`, info rows are `topbar.menu.<level>.info`
+    and the name box is `topbar.menu.namebox`.
+  - **Window size:** the window grows through menuState → `topbar.place` and shrinks on close. A window region left
+    by an earlier crop is cleared once the window is as tall as asked.
+  - **Hover:** a hover re-paints the selection in place (no rebuild). A row with a submenu opens it after 110 ms.
+  - **Keys:** `PreviewKeyDown` on the root.
+  - **Closing:** blur (`Window.Activated` Deactivated) closes the menu, and so does another app coming to the front.
+  - **While open:** a focus push on the same app does not rebuild the bar, so the keyboard focus stays; the bar is
+    redrawn on close.
+  - **Cost while closed:** no element, no timer.
+- **Not done:** TOP-080 (motion), TOP-028 (focus ring), the dark menu glass, `layouts.state` (no native layouts
+  feature: the submenus say "Window layouts are not running"), TOP-090/091 (stat dropdown keys, ping test / app power
+  routing), and the press-drag-release pick (a row button clicks on release only when pressed on itself).
+- **Tests:** Core: `TopBarMenuTests.cs` (12) and `TopBarMenuCommandsTests.cs` (3). UI: `TopBar/TopBarMenuTests.cs`
+  checks the Mantle menu's rows, the window growing and shrinking, About's note, Restart's second click, File >
+  Recent Files > notes.txt as a dry run, and then, after a real click, Down x3 + Enter, Right and Escape.
+- **Ledger:** `mark-topbar-rows.py native ui <sha>` holds the new rows.
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
-   - Menus (TOP-031..), Keyboard;
    - Stats dropdowns, App power, Ping, Tools (the timer / notes features); Strip note is ported (needs a UI test);
    - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only);
    - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about,
