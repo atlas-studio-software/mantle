@@ -52,6 +52,7 @@ internal sealed partial class TopBarSurface
         _win.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus"); };
         _subs.Add(_ctx.On<bool>("topbar.peek", on => { _peeking = on; RefreshTitles(); }));
         InstallPingTest();   // TopBarSurface.PingTest.cs
+        InstallDragEnd();    // TopBarSurface.Motion.cs
         _subs.Add(_ctx.On<JsonElement>("topbar.state", st =>
         {
             if (st.ValueKind == JsonValueKind.Object && st.TryGetProperty("overGames", out var og) && og.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -385,6 +386,7 @@ internal sealed partial class TopBarSurface
         if (it.Checked) AutomationProperties.SetItemStatus(b, it.Radio ? "radio checked" : "checked");
         int li = level, ri = i;
         b.Click += (_, _) => { if (_open == o) Do(o.Activate(li, ri, NowMs, _focus, MenuSource())); };
+        if (!off) DragPick(b, () => { if (_open == o) Do(o.Activate(li, ri, NowMs, _focus, MenuSource())); });   // press on a title, release here
         b.PointerEntered += (_, _) => Hover(o, li, ri);
         return (b, b);
     }
@@ -444,6 +446,7 @@ internal sealed partial class TopBarSurface
             bool fits = d.Bottom <= _height + 0.5 || _open.GaveUp;
             d.Box.Opacity = fits ? 1 : 0;
             d.Box.IsHitTestVisible = fits;
+            if (fits) PopIn(d.Box, d.Lv);   // TOP-080 (TopBarSurface.Motion.cs)
             if (!fits) waiting++;
         }
         if (waiting == 0) { _waitT?.Stop(); return; }

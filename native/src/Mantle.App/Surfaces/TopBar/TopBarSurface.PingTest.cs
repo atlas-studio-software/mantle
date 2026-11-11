@@ -97,6 +97,7 @@ internal sealed partial class TopBarSurface
         if (height > 0) b.Height = height;
         b.Padding = pad; b.CornerRadius = radius; b.Background = ClearBrush(); b.Foreground = Br("LgInk");
         b.Click += (_, _) => { _ctx.Log.Line($"ping test row: {act}"); _ = _pt!.Act(act); };
+        DragPick(b, () => { _ctx.Log.Line($"ping test row: {act}"); _ = _pt!.Act(act); });
         return b;
     }
 

@@ -196,6 +196,7 @@ internal sealed partial class TopBarSurface
                 b.PointerEntered += (_, _) => b.Background = Br("LgHover");
                 b.PointerExited += (_, _) => b.Background = ClearBrush();
                 b.Click += (_, _) => { CloseAll(false, "Open Task Manager"); OpenTaskMgr(); };
+                DragPick(b, () => { CloseAll(false, "Open Task Manager"); OpenTaskMgr(); });
                 AutomationProperties.SetAutomationId(b, id); AutomationProperties.SetName(b, r.Text);
                 return (b, (null, null, r, null));
             }
