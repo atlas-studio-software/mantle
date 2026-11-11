@@ -120,7 +120,7 @@ public sealed class GameModeFeature : IFeature
         ctx.Command("boost", c => Wrap(BoostSwitchAsync(c.Args)));
         ctx.OnOption("*", (_, _) => { _ = SyncBoost("Settings"); Push(); });
         ctx.Platform.On("topbar", e => { if (e.Body.ValueKind == JsonValueKind.Object && e.Body.TryGetProperty("kind", out var k) && k.ValueKind == JsonValueKind.String && k.GetString() == "focus") { if (ctx.Enabled) Schedule(150); else WatchSchedule(150); } });
-        ctx.Platform.On("powermode", _ => { if (_on && _busy == null && _record != null) _ = ApplyPowerThenPush(); });
+        ctx.Platform.On("powermode", ev => { if (_on && _busy == null && _record != null) _ = ApplyPowerThenPush(); });
         ctx.Platform.OnReady(() => _ = OnReadyAsync());
         ctx.OnEnabled(on => {
             if (on) Schedule(0);

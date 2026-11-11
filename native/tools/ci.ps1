@@ -30,7 +30,7 @@
              (the floors and why: tools/parity/README.md "CI floors"; the lanes' scripts are called, never edited here)
     unit     also runs node tools/parity/launcher/make-golden.cjs --check (Electron's ranking vs the checked-in golden)
     media    tools/parity/media/run-media-parity.ps1 (the now-playing card, light and dark), gated on
-             "MEDIA-PARITY summary: 2 scored of 2" and its floors (set in the stage block)
+             "MEDIA-PARITY summary: 4 scored of 4" (card + game mode row) and its floors (set in the stage block)
     notifs   tools/parity/notifications/run-notifs-parity.ps1 (lane native-r7-notif: the notification centre and the
              tray strip, light and dark), gated on "NOTIFS-PARITY summary: 4 scored of 4" and its floors
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
@@ -623,6 +623,8 @@ function Stage-cal {
 # (tools/parity/media/run-media-parity.ps1). Floors a little under the lowest ssim seen; they only move up.
 $Floors['media light'] = 0.74   # 0.7717 (run 43014608940, after the text sizes matched bar.css; 0.5596 before)
 $Floors['media dark']  = 0.69   # 0.7190 (same run; 0.6158 before)
+$Floors['gamemode light'] = 0.30   # lane native-r7-media3: the quick-settings Game mode row (head + switch line); first run sets it
+$Floors['gamemode dark']  = 0.30
 function Stage-media {
   $out = Join-Path $Out 'parity\media'
   $code = Lane-Script 'media' 'tools\parity\media\run-media-parity.ps1' @('-Exe', $exe, '-Out', $out)
@@ -630,18 +632,20 @@ function Stage-media {
   if ($code -is [string]) { return $code }
   $log = Join-Path $logs 'media.log'
   $rows = Scores $log '^MEDIA-PARITY media-(\w+): ssim=([\d.]+)'
+  $gmRows = Scores $log '^MEDIA-PARITY gamemode-(\w+): ssim=([\d.]+)'
   Select-String -Path $log -Pattern '^MEDIA-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
   $sum = @(Select-String -Path $log -Pattern '^MEDIA-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
   if (-not $sum.Count) { return "FAILED (no MEDIA-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
   $bad = @(); $got = @()
   $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
-  if ($scored -lt 2 -or $of -ne 2) { $bad += "$scored of $of cards scored" }
-  foreach ($t in 'light', 'dark') {
-    $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["media $t"]
-    if (-not $r.Count) { $bad += "$t not scored" }
-    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
-    else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
-  }
+  if ($scored -lt 4 -or $of -ne 4) { $bad += "$scored of $of pairs scored" }
+  foreach ($k in 'media', 'gamemode') { foreach ($t in 'light', 'dark') {
+    $src = if ($k -eq 'media') { $rows } else { $gmRows }
+    $r = @($src | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["$k $t"]
+    if (-not $r.Count) { $bad += "$k $t not scored" }
+    elseif ($r[0].Ssim -lt $f) { $bad += ("{0} {1} ssim {2:N4} under its floor {3}" -f $k, $t, $r[0].Ssim, $f) }
+    else { $got += ("{0} {1} {2:N4} >= {3}" -f $k, $t, $r[0].Ssim, $f) }
+  } }
   if ($code -ne 0) { $bad += "exit $code" }
   if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
   return "ok ($scored of $of scored, ssim $($got -join ', '))"
