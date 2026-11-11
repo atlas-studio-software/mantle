@@ -154,6 +154,15 @@
                   <TextBlock Text="&#xE718;" FontFamily="Segoe Fluent Icons, Segoe MDL2 Assets" FontSize="7" Foreground="{ThemeResource LgAccOn}"
                              HorizontalAlignment="Center" VerticalAlignment="Center"/>
                 </Border>
+                <!-- media4, ui/bar/helmbadge.css .hb-badge: the app's count (Helm: chats that need the user), accent, warn when one stopped on an error -->
+                <Border MinWidth="15" Height="15" CornerRadius="7.5" Padding="{x:Bind BadgePad, Mode=OneWay}" Margin="0,-2,-8,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"
+                        Background="{ThemeResource LgAcc}" BorderBrush="{ThemeResource LgFillStrong}" BorderThickness="1.5" Visibility="{x:Bind BadgeAccVisibility, Mode=OneWay}">
+                  <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource LgAccOn}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
+                <Border MinWidth="15" Height="15" CornerRadius="7.5" Padding="{x:Bind BadgePad, Mode=OneWay}" Margin="0,-2,-8,0" HorizontalAlignment="Right" VerticalAlignment="Top" IsHitTestVisible="False"
+                        Background="{ThemeResource LgWarn}" BorderBrush="{ThemeResource LgFillStrong}" BorderThickness="1.5" Visibility="{x:Bind BadgeWarnVisibility, Mode=OneWay}">
+                  <TextBlock Text="{x:Bind BadgeText, Mode=OneWay}" FontSize="10" FontWeight="SemiBold" Foreground="{ThemeResource LgAccOn}" HorizontalAlignment="Center" VerticalAlignment="Center"/>
+                </Border>
                 </Grid>
               </Button>
             </StackPanel>

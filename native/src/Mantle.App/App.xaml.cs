@@ -367,6 +367,7 @@ public partial class MantleApp : Application
             if (!postUi(() => _window?.AttachMedia(mediaLink))) log("media: the UI thread is gone, so the bar's chip was not attached");
             // lane native-r7-media4: the Downloads shelf ([Feature("downloads")]) on the same link
             if (!postUi(() => _window?.AttachDownloads(mediaLink))) log("downloads: the UI thread is gone, so the bar's shelf was not attached");
+            if (!postUi(() => _window?.AttachHelmBadge(mediaLink))) log("helmbadge: the UI thread is gone, so the bar's count discs were not attached");
         }
         // ---- end media wiring
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
