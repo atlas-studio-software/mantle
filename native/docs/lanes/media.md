@@ -74,3 +74,14 @@ Log lines the tests read: `media: the chip shows <app> (<playing|paused>[, contr
   (BAR-717..729) are built by core-6's RestCoordinator and only need their coverage confirmed and marked.
 - Downloads (41 + 1), Helm badge (11), Quick links (9), Badges (4).
 - The screenshot pair script `native/tools/parity/media/` (media widget + game mode, light and dark) and its ci.ps1 stage.
+
+## State at handoff (part 1)
+
+- bar.md: 24 rows `tested:` (unit tests, green in cloud runs: unit 638/638); 44 rows `ported:412781b`. The 22 rows
+  the UI tests cover (Mantle.UiTests/Media/MediaTests.cs) are still `ported:` because no UI run of the final tip has
+  been read yet: the last full run (GitHub run 43004490866) lost contact on an API rate limit. Earlier UI runs passed
+  the chip, toggle dry run, card, transport and note checks; the one remaining failure was the source-row pick (the
+  tests now click again when the card refuses a click because the list just moved, and the card logs
+  `media: the card picked <label> (<aumid>)`). Re-run, then flip those rows to `tested:` with the test names.
+- Unit flakes seen in one run (not this lane's): LookShellTests.Another_apps_theme..., BannerCrashRestoreTests.
+- previews failed once with light SSIM 0.8196 (known Electron reference flake; this lane does not touch previews).
