@@ -48,6 +48,12 @@ public static class TopBarStatMenu
          : dryRun ? $"Task Manager: Mantle's did not open ({why}); {reason ?? "dry run (--test)"}"
          : $"Opened Windows' Task Manager: Mantle's did not open ({why})";
 
+    /// TOP-099: a sample that says the sampler paused ({paused: true, reason}) replaces the cells with "stats paused"
+    /// (its reason as the tooltip) and keeps the last readings; null = a sample to draw.
+    public static string? Paused(JsonObject? sample)
+        => sample?["paused"] is JsonValue p && p.TryGetValue<bool>(out var on) && on ? S(sample, "reason") ?? "paused" : null;
+    public const string PausedWords = "stats paused";
+
     static string? S(JsonObject? o, string k) => o?[k] is JsonValue v && v.TryGetValue<string>(out var s) ? s : null;
     static double? N(JsonNode? n)
     {

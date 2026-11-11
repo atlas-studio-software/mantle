@@ -91,7 +91,7 @@ internal sealed partial class TopBarSurface
         dd.Box = new Border
         {
             Child = dd.Sv, Padding = new Thickness(5), MinWidth = TopBarStatMenu.MinW, MaxWidth = _dark ? TopBarStatMenu.MaxWDark : TopBarStatMenu.MaxWLight,
-            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = Br("LgFillPop"), BorderBrush = Br("LgEdgeOut"),
+            BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = MenuFace(), BorderBrush = Br("LgEdgeOut"),
         };
         AutomationProperties.SetAutomationId(dd.Sv, "topbar.menu.0");
         AutomationProperties.SetName(dd.Sv, "stat:" + o.Stat);

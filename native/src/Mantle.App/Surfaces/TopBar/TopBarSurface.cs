@@ -256,8 +256,13 @@ internal sealed partial class TopBarSurface : ISurface
         _right.Children.Clear();
         _cells.Clear();
         if (_note != null) _right.Children.Add(NoteView(_note));
-        if (_stats == null && _paused != null)
-            _right.Children.Add(new TextBlock { Text = "Stats paused", Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center });
+        if (_paused != null)   // TOP-099: "stats paused", the reason as its tooltip
+        {
+            var p = new TextBlock { Text = TopBarStatMenu.PausedWords, Foreground = Br("LgInk2"), FontFamily = TextFont, FontSize = _dark ? 12 : 11.5, Margin = new Thickness(8, 0, 8, 0), VerticalAlignment = VerticalAlignment.Center };
+            ToolTipService.SetToolTip(p, _paused);
+            AutomationProperties.SetAutomationId(p, "topbar.stats.paused"); AutomationProperties.SetName(p, TopBarStatMenu.PausedWords + ": " + _paused);
+            _right.Children.Add(p);
+        }
         else
         {
             double ch = Ch();
@@ -410,10 +415,21 @@ internal sealed partial class TopBarSurface : ISurface
     }
     void OnStats(TopBarStats s)
     {
-        _stats = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
-        _paused = s.Paused;
+        var j = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
+        // TOP-099: a paused push (or the sampler off with its reason) keeps the last readings and shows "stats paused"
+        string? paused = TopBarStatMenu.Paused(j) ?? (j == null ? s.Paused : null);
+        if (paused != null)
+        {
+            bool same = _paused == paused;
+            _paused = paused;
+            if (TopBarStatMenu.Paused(j) == null) _stats = null;
+            if (!same || _cells.Count > 0) { RenderRight(); Fit(); }
+            return;
+        }
+        bool wasPaused = _paused != null;
+        _stats = j; _paused = null;
         if (_open is { Stat: not null } o && _stats != null) { RenderStatMenu(o); RenewDetail(o); }   // in place: same element, scroll kept (TOP-102)
-        if (_cells.Count > 0 && !(_stats == null && _paused != null)) { UpdateCells(); return; }   // cells stay cells: words only
+        if (_cells.Count > 0 && !wasPaused) { UpdateCells(); return; }   // cells stay cells: words only
         RenderRight();
         Fit();
     }

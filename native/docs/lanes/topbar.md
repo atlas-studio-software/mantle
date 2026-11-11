@@ -180,11 +180,50 @@ this area.
 - **Ledger:** `mark-topbar-rows.py native ui ac023952` marked 67 rows (54 tested, 13 ported). TOP rows in shell.md
   after it: 114 tested, 15 ported, 1 better (TOP-218), 252 todo.
 
+## Part 5 (lane native-r7-topbar-5, same branch): the stat dropdowns
+
+- **Core:** `TopBarStatMenu.cs` is renderStatMenu's rows (`StatRow`: Head, Row, Cores, Info, Sep, TaskMgr) per meter,
+  askDetail / renewDetail's timing (`AsksDetail`, `RenewDue`: 5 s, 450 ms after a sample, never for ping), the hang
+  from the cell's right edge (`Left`), openTaskMgr's notes (`TaskMgrNote`), statsDetail's step-aside refusal and the
+  paused push (`Paused`, "stats paused"). `TopBarMenu.ForStat` opens a meter's dropdown with Ti 0, so Left / Right walk
+  the titles from the first (TOP-090); Escape closes with refocus; other keys do nothing (as Electron with no app power).
+- **Feature:** `statsDetail` (kind checked; refused while stepped aside and not peeking; a fixture run answers itself;
+  live it asks the sidecar `topbar.stats {on, detail}`). The stats fixture now carries Electron's mock details (cores,
+  top processes, commit, engines, adapters, the ping server and pick), and `stats=paused` is mock-mantle.js's paused push.
+- **Surface:** `TopBarSurface.Stats.cs`. The dropdown is drawn once per shape; a sample of the same shape sets only the
+  words and core bars that changed (no re-measure, no re-place, no resize). The renewal timer is made on first use and
+  stopped on close, so a closed dropdown has no element and no timer. The open cell gets the pressed wash. "Open Task
+  Manager" closes the dropdown, asks `taskmgr.open {view: 'apps'}` (no native Task Manager yet, so the host answers
+  that the command does not exist) and then `topbar.taskmgr` (a dry run in --test); the strip says which.
+  - **Deviation:** a --test dry run of Windows' Task Manager says "Task Manager: Mantle's did not open (...); dry run
+    (--test): would have run ...", not "Opened Windows' Task Manager".
+- **Also:** the sidecar's paused push (`{paused, reason}`) was stored as a sample, so the cells read "--"; it now shows
+  "stats paused" with the reason as its tooltip and keeps the last readings (TOP-099). Dark dropdowns take Helm's menu
+  metrics (TOP-188's sizes: padding 4, min width 180, rows at least 30 px with 5 / 10 padding, 12 px key text,
+  `--lg-divider` separators); light dropdowns take `--hud-face` (three layers of `--lg-fill-strong`, drawn as one fill
+  of the composite alpha) instead of `--lg-fill-pop`.
+- **Tests:** Core `TopBarStatMenuTests.cs` (7). UI `TopBar/TopBarStatTests.cs`: CPU's rows and its detail ask, the hang
+  from the cell, Open Task Manager's dry run and note, PING's rows (no ask, no Task Manager), a second press closing it,
+  and Right from a real click on CPU walking to the app's menu.
+- **Runs:** RUNS_HERE
+- **Ledger:** LEDGER_HERE
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
-   - Stats dropdowns, App power, Ping, Tools (the timer / notes features); Strip note is ported (needs a UI test);
-   - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only);
+   - **App power (TOP-111..135): blocked.** Its rows only appear when main decorates the top processes (`ctl`, and
+     `stats.apppower` caps), and every control calls `apppower.set / trim / reset / remember`. That is the `apppower`
+     feature (apps.md APW-001..), which is not native yet and is not this lane's file scope. Port it first, then the UI.
+   - **Ping test + history (TOP-139..159):** the PING dropdown's rows are done (TOP-138); the test needs
+     `topbar.pingTest` (sidecar PingTest.cs is linked), its `pingtest` pushes and the history file
+     (`ping-tests.json` in the profile, lib/features/_pingtest-history.js). TOP-091 (the key order: ping name box, app
+     power, the in-menu name box) waits for both.
+   - Tools (the timer / notes features); Strip note is ported (needs a UI test);
+   - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only): all need a picture of what is under
+     the bar (the desktop layer's strip, `glass.topbarMenu`, sidecar `underrow` / `underwatch` / `underpaint`). Done so
+     far: TOP-180 (dark with no picture is flat `--lg-fill-pop`), part of TOP-188 (its sizes, not the lip, the pressed row or the disabled opacity), TOP-187.s face (not its
+     `--lg-shadow`). A stat dropdown parity pair is not added: Electron's page needs a taller window and `&stat=cpu`,
+     and native a fixture key that opens the dropdown at start plus a log line with its rect;
    - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about,
      settings, ...).
 2. **Parts of started sections not ported:**

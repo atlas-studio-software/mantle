@@ -78,7 +78,7 @@ public static class TopBarFixtures
     const double GiB = 1073741824, MiB = 1048576;
     public static JsonObject? Stats(string? which)
     {
-        if (which == "paused") return null;
+        if (which == "paused") return new JsonObject { ["paused"] = true, ["reason"] = "the screen is locked" };   // mock-mantle.js's paused push
         var s = new JsonObject
         {
             ["t"] = 1,

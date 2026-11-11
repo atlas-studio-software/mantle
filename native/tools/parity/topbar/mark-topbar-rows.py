@@ -59,6 +59,20 @@ if ui:
 if len(sys.argv) > 3: put(['TOP-026', 'TOP-030', 'TOP-037', 'TOP-038', 'TOP-039', 'TOP-040', 'TOP-041', 'TOP-042', 'TOP-043', 'TOP-045', 'TOP-066', 'TOP-071', 'TOP-078'], 'ported:' + sys.argv[3])
 # TOP-317: the Win+I delivered branch (Mantle Settings opening) has no test yet, only the fallback and the dry runs
 if len(sys.argv) > 3: put(['TOP-317', 'TOP-175'], 'ported:' + sys.argv[3])   # TOP-175: the strip note is drawn, no UI test triggers one yet
+# part 5: the stat cells (an older Core test) and the stat dropdowns
+put(['TOP-092', 'TOP-093', 'TOP-094', 'TOP-095', 'TOP-096', 'TOP-136', 'TOP-137'], 'tested:' + P + 'Stat_cells_fixed_decimals_and_reasons')
+S = 'Mantle.Core.Tests/Features/TopBar/TopBarStatMenuTests.cs#'
+put(['TOP-103', 'TOP-104', 'TOP-105', 'TOP-106', 'TOP-138'], 'tested:' + S + 'Stat_dropdowns_say_what_Electrons_say_for_each_meter_TOP_103_104_105_106_108_138')
+put(['TOP-107'], 'tested:' + S + 'Until_the_details_come_the_dropdown_says_so_and_a_missing_reading_is_a_warn_line_TOP_107')
+put(['TOP-099'], 'tested:' + S + 'A_paused_push_says_stats_paused_with_its_reason_and_a_sample_draws_cells_TOP_099')
+put(['TOP-101', 'TOP-109'], 'tested:' + S + 'Details_are_asked_on_open_renewed_after_5_s_never_for_ping_and_samples_keep_the_shape_TOP_100_101_102_109')
+put(['TOP-102'], 'better:the kept rows get only the words that changed, so a 1 s sample re-measures nothing (Electron rewrote the dropdown HTML every second); ' + S + 'Details_are_asked_on_open_renewed_after_5_s_never_for_ping_and_samples_keep_the_shape_TOP_100_101_102_109')
+put(['TOP-090'], 'tested:' + S + 'From_a_stat_dropdown_left_and_right_walk_the_titles_from_the_first_and_escape_closes_TOP_090')
+if ui:
+    put(['TOP-100', 'TOP-108'], 'tested:Mantle.UiTests/TopBar/TopBarStatTests.cs#Stat_dropdowns_hang_from_their_cell_ask_for_details_open_task_manager_and_walk_to_the_titles')
+# ported, no test of their own: cells keep their width (fixed MinWidth + tabular figures), a sample sets only changed
+# words, the dark stat dropdown metrics, the dark strip with no picture (native never has one yet: flat --lg-fill-pop)
+if len(sys.argv) > 3: put(['TOP-097', 'TOP-098', 'TOP-110', 'TOP-180'], 'ported:' + sys.argv[3])
 if ui:
     put(['TOP-001', 'TOP-002', 'TOP-216'], 'tested:' + U + 'Top_bar_is_parked_then_shown_at_the_top_never_topmost_every_control_pressed_and_themed')
     put(['TOP-215'], 'tested:' + U + 'A_scale_change_re_places_it_28_DIP_tall_at_150_percent_without_a_restart')

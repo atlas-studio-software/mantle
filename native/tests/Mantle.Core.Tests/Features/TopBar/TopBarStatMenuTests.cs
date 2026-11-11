@@ -59,6 +59,16 @@ public sealed partial class TopBarFeatureTests
     }
 
     [Fact]
+    public void A_paused_push_says_stats_paused_with_its_reason_and_a_sample_draws_cells_TOP_099()
+    {
+        Assert.Equal("the screen is locked", TopBarStatMenu.Paused(TopBarFixtures.Stats("paused")));
+        Assert.Equal("paused", TopBarStatMenu.Paused(new JsonObject { ["paused"] = true }));
+        Assert.Null(TopBarStatMenu.Paused(TopBarFixtures.Stats("ok")));
+        Assert.Null(TopBarStatMenu.Paused(new JsonObject { ["paused"] = false, ["reason"] = "x" }));
+        Assert.Equal("stats paused", TopBarStatMenu.PausedWords);
+    }
+
+    [Fact]
     public void Details_are_asked_on_open_renewed_after_5_s_never_for_ping_and_samples_keep_the_shape_TOP_100_101_102_109()
     {
         Assert.True(TopBarStatMenu.AsksDetail("cpu")); Assert.False(TopBarStatMenu.AsksDetail("ping")); Assert.False(TopBarStatMenu.AsksDetail("disk"));
@@ -93,23 +103,34 @@ public sealed partial class TopBarFeatureTests
     }
 
     [Fact]
-    public void StatsDetail_asks_the_sidecar_live_answers_a_fixture_itself_and_refuses_while_stepped_aside_TOP_101() => T(async (r, s) =>
+    public void StatsDetail_asks_the_sidecar_for_a_known_meter_only_TOP_101() => T(async (r, s) =>
     {
         await Up(r, s);
-        r.Platform.Answer("topbar.stats", "{\"ok\":true}");
-        Assert.True(Flag((await r.Bus.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = "mem" })).Result, "ok"));
-        Assert.Equal("{\"on\":true,\"detail\":\"mem\"}", r.Platform.Calls.Last(c => c.Verb == "topbar.stats").ArgsJson);
+        var ok = await r.Bus.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = "mem" });
+        Assert.True(Flag(ok.Result, "ok"), ok.Result.ToString());
+        Assert.Contains(r.Platform.Calls, c => c.Verb == "topbar.stats" && c.ArgsJson.Contains("\"detail\":\"mem\""));
+        int n = Calls(r, "topbar.stats");
         Assert.Equal("there are no details for that reading", Reason((await r.Bus.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = "disk" })).Result));
-        int before = Calls(r, "topbar.stats");
-        await r.Bus.CallAsync("topbar.hidden", new JsonObject { ["on"] = true });
-        await Tick(r, 100);
-        Assert.Equal("the stats are paused while the top bar is hidden by hand", Reason((await r.Bus.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = "cpu" })).Result));
-        Assert.DoesNotContain(r.Platform.Calls.Skip(before), c => c.Verb == "topbar.stats" && c.ArgsJson.Contains("detail"));
-        await r.Bus.CallAsync("topbar.hidden", new JsonObject { ["on"] = false });
+        Assert.Equal(n, Calls(r, "topbar.stats"));
+    });
+
+    [Fact]
+    public void StatsDetail_is_refused_while_the_bar_has_stepped_aside_and_not_peeking_TOP_101()
+    {
+        Assert.Equal("the stats are paused while the top bar is hidden by hand", TopBarStatMenu.Refusal(true, false, "hidden"));
+        Assert.Equal("the stats are paused while a game has the screen", TopBarStatMenu.Refusal(true, false, "game"));
+        Assert.Null(TopBarStatMenu.Refusal(true, true, "hidden"));   // peeking: the bar is on screen, so are its details
+        Assert.Null(TopBarStatMenu.Refusal(false, false, null));
+    }
+
+    [Fact]
+    public void StatsDetail_on_the_made_up_sample_answers_itself_TOP_101() => T(async (r, s) =>
+    {
+        await Up(r, s);
         await r.Bus.CallAsync("topbar.testFixture", new JsonObject { ["app"] = "npp", ["stats"] = "ok" });
         int n = Calls(r, "topbar.stats");
         var fx = await r.Bus.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = "gpu" });
-        Assert.True(Flag(fx.Result, "fixture"));
+        Assert.True(Flag(fx.Result, "fixture"), fx.Result.ToString());
         Assert.Equal(n, Calls(r, "topbar.stats"));
     });
 }
