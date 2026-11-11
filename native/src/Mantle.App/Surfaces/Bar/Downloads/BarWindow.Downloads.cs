@@ -213,7 +213,7 @@ public sealed partial class BarWindow
     }
 
     /// keyboard(on): ask for the keyboard on open; refused, the mouse still works and the list's tooltip says why.
-    void DlKeyboard(bool on)
+    void DlKeyboard(bool on, int tries = 0)
     {
         if (_dl == null || Popups == null) return;
         int gen = ++_dlGen;
@@ -222,6 +222,15 @@ public sealed partial class BarWindow
         var (ok, words) = allowed ? Popups.TakeKeyboard(DlKey)
             : (false, "a test instance never takes the keyboard from whoever is at the machine");
         if (gen != _dlGen) return;
+        // the pop-up's window is still being made when the open asks (it shows a frame later): ask again every 50 ms,
+        // ten times at most, only during this open (it was refused as "not open" before, so the arrows never reached it)
+        if (!ok && allowed && words == "the pop-up is not open" && Popups.OpenKey == DlKey && tries < 10)
+        {
+            var t = DispatcherQueue.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(50); t.IsRepeating = false;
+            t.Tick += (_, _) => { if (gen == _dlGen && Popups?.OpenKey == DlKey) { --_dlGen; DlKeyboard(true, tries + 1); } };
+            t.Start();
+            return;
+        }
         _dlKbd = ok;
         _dl.KbdNote = ok ? "" : "Arrow keys do not reach this panel: " + words.Split(", so ")[0];
         Host.Log.Line(ok ? "downloads: the shelf has the keyboard" : $"downloads: the keyboard was not taken ({words})");
