@@ -264,7 +264,7 @@ public sealed class NotificationCentre : IDisposable
             bool u = Id(t) is long id && !_seen.Contains(id);
             c["unread"] = u;
             if (u) unread++;
-            list.Add(c);
+            list.Add((JsonNode)c);
         }
         string detail = string.Join(" ", new[] { Str(raw["detail"]) != null ? Say.PlainSource : null, _watchReason != null ? Say.Slow : null }.Where(x => x != null));
         return new JsonObject {
@@ -281,7 +281,7 @@ public sealed class NotificationCentre : IDisposable
         _last = p;
         _o.Events.Publish<NotificationsPayload?>(Event, new NotificationsPayload(El(p)));
         bool ok = !IsFalse(p["ok"]);
-        int count = (int?)p["count"] ?? 0, unread = (int?)p["unread"] ?? 0;
+        int count = (int)(Int(p["count"]) ?? 0), unread = (int)(Int(p["unread"]) ?? 0);
         string reason = ok ? $"{count} notification{(count == 1 ? "" : "s")}, {unread} unread ({Str(p["via"]) ?? "no source"})" : Str(p["reason"]) ?? Say.CannotRead;
         try { _o.State?.Set(s => s with { Notifications = new NotificationsPiece(ok, count, unread, reason, _watching ? "Windows tells Mantle about new notifications" : _watchReason) }); }
         catch (Exception e) { Log($"the notifications state piece could not be set ({e.Message})"); }
@@ -345,7 +345,7 @@ public sealed class NotificationCentre : IDisposable
             SaveSeen();
             if (_raw != null && _fixReadFail == null) Publish(Shape(_raw, null));
         }
-        return new JsonObject { ["ok"] = true, ["reason"] = null, ["unread"] = (int?)_last?["unread"] ?? 0 };
+        return new JsonObject { ["ok"] = true, ["reason"] = null, ["unread"] = (int)(Int(_last?["unread"]) ?? 0) };
     }
 
     public Task<JsonObject> RemoveAsync(JsonNode? ids) => RemoveIds(KnownIds(ids), "dismiss");
@@ -385,7 +385,7 @@ public sealed class NotificationCentre : IDisposable
         var x = (JsonObject)JsonNode.Parse(r.Result.GetRawText())!;
         var failed = new JsonArray();
         foreach (var f in x["failed"] as JsonArray ?? new JsonArray())
-            failed.Add(new JsonObject { ["id"] = f is JsonObject fo ? fo["id"]?.DeepClone() : f?.DeepClone(), ["reason"] = PlainOr(f is JsonObject fr ? Str(fr["reason"]) : null, "Windows kept it.") });
+            failed.Add((JsonNode)new JsonObject { ["id"] = f is JsonObject fo ? fo["id"]?.DeepClone() : f?.DeepClone(), ["reason"] = PlainOr(f is JsonObject fr ? Str(fr["reason"]) : null, "Windows kept it.") });
         if (failed.Count > 0) Log($"{what}: {failed.Count} of {ids.Count} not dismissed: {Str(x["reason"]) ?? "no reason"}");
         return new JsonObject {
             ["ok"] = !IsFalse(x["ok"]),
@@ -398,7 +398,7 @@ public sealed class NotificationCentre : IDisposable
     {
         if (_raw?["toasts"] is not JsonArray a) return;
         foreach (var t in a.OfType<JsonObject>().Where(t => Id(t) is long i && ids.Contains(i)).ToList()) a.Remove(t);
-        _raw["rev"] = ((long?)_raw["rev"] ?? 0) + 1;
+        _raw["rev"] = (Int(_raw["rev"]) ?? 0) + 1;
     }
 
     /// Click or Enter on a card: a link toast opens its link, otherwise the app starts (the sidecar's `open`).

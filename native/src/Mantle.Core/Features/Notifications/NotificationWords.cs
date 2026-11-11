@@ -47,7 +47,7 @@ public static class NotificationWords
     {
         if (p == null) return "Notifications — reading…";
         if (NotificationCentre.IsFalse(p["ok"])) return "Notifications unavailable — " + (NotificationCentre.Str(p["reason"]) ?? "no reason was given");
-        int n = (p["toasts"] as JsonArray)?.Count ?? 0, u = (int?)p["unread"] ?? 0;
+        int n = (p["toasts"] as JsonArray)?.Count ?? 0, u = (int)(NotificationCentre.Int(p["unread"]) ?? 0);
         return n == 0 ? "Notifications — none" : "Notifications — " + n + (u > 0 ? " (" + u + " new)" : "");
     }
 
@@ -66,7 +66,7 @@ public static class NotificationWords
     public static string Title(JsonObject t) => NotificationCentre.Str(t["title"]) is { Length: > 0 } s ? s : NotificationCentre.Str(t["app"]) is { Length: > 0 } a ? a : "Notification";
 
     public static string Meta(JsonObject t, DateTimeOffset now) =>
-        string.Join(" · ", new[] { NotificationCentre.Str(t["attribution"]), Ago((long?)t["timeMs"] ?? 0, now) }.Where(x => !string.IsNullOrEmpty(x)));
+        string.Join(" · ", new[] { NotificationCentre.Str(t["attribution"]), Ago(NotificationCentre.Int(t["timeMs"]) ?? 0, now) }.Where(x => !string.IsNullOrEmpty(x)));
 
     public static string Letter(string? name) => (name ?? "?").Trim() is { Length: > 0 } s ? char.ToUpperInvariant(s[0]).ToString() : "?";
 

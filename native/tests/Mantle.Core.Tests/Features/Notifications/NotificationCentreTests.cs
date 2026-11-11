@@ -104,7 +104,7 @@ public class NotificationCentreTests
         await c.Push("t");
         var asked = new JsonArray(JsonValue.Create(104), JsonValue.Create(104), JsonValue.Create(1.5), JsonValue.Create("101"), JsonValue.Create(77));
         Assert.Equal(new long[] { 104, 101 }, c.KnownIds(asked));
-        var many = new JsonArray(Enumerable.Range(0, 600).Select(i => (JsonNode)JsonValue.Create(i)).Append(JsonValue.Create(104)).ToArray());
+        var many = new JsonArray(Enumerable.Range(1000, 600).Select(i => (JsonNode)JsonValue.Create(i)).Append(JsonValue.Create(104)).ToArray());
         Assert.Empty(c.KnownIds(many));                                   // capped at 500 before 104 is reached
         int before = k.P.Calls.Count;
         var r = await c.RemoveAsync(Ids(424242));
