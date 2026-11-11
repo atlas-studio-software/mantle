@@ -49,6 +49,21 @@ public sealed partial class BarWindow
         popups.KeyboardLost += key => { if (key == "qs") _qs?.KeyboardLost("another window took focus"); };
     }
 
+    /// A hot corner set to Quick settings (CORN-053, lane native-r7-desktop-3): toggle the panel on the right cluster, like
+    /// Win+A twice. dry (--test): only looks for the panel and its button.
+    internal (bool Ok, bool Closed, string? Why) ToggleQuickSettingsFromCorner(bool dry)
+    {
+        if (_qs == null || Popups == null) return (false, false, "the bar could not open it: it made no quick settings panel");
+        FrameworkElement? anchor = null;
+        foreach (var b in new FrameworkElement?[] { NetworkBtn, VolumeBtn, BatteryBtn })
+            if (b != null && b.Visibility == Visibility.Visible && b.ActualWidth > 0) { anchor = b; break; }
+        anchor ??= _popAnchor;
+        if (anchor == null) return (false, false, "the bar could not open it: its right cluster is not drawn");
+        bool wasOpen = Popups.OpenKey == "qs";
+        if (!dry) OpenQuickSettings(anchor);
+        return (true, wasOpen, null);
+    }
+
     /// Open (or, from its own button, close) the panel above <paramref name="anchor"/>.
     internal void OpenQuickSettings(FrameworkElement anchor)
     {
