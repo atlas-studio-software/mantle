@@ -172,7 +172,13 @@ this area.
 - **Tests:** Core: `TopBarMenuTests.cs` (12) and `TopBarMenuCommandsTests.cs` (3). UI: `TopBar/TopBarMenuTests.cs`
   checks the Mantle menu's rows, the window growing and shrinking, About's note, Restart's second click, File >
   Recent Files > notes.txt as a dry run, and then, after a real click, Down x3 + Enter, Right and Escape.
-- **Ledger:** `mark-topbar-rows.py native ui <sha>` holds the new rows.
+- **Runs:**
+  - 43041284554 (2372917b): build failed (`DispatcherQueueTimer` was ambiguous with Windows.System).
+  - 43042131661 (ca584d3d, build,unit): 771/772 (the Chrome fixture is zoomed, so the test read "Restore size").
+  - 43042815126 (ac023952): `NATIVE-CI: ok (16 ok, 0 skipped)`, unit 772/772, ui 60/60 (the menus test passed),
+    bench ok, topbar 4 of 4 scored (light 0.6139, dark 0.6989).
+- **Ledger:** `mark-topbar-rows.py native ui ac023952` marked 67 rows (54 tested, 13 ported). TOP rows in shell.md
+  after it: 114 tested, 15 ported, 1 better (TOP-218), 252 todo.
 
 ## Left (exact list, in order)
 
