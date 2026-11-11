@@ -37,8 +37,8 @@ namespace Mantle.App.Surfaces.TopBar;
 // with TopBarModel.FitTitles (the app name gives way first, then "»"); on the right the stat cells (CPU, RAM, GPU,
 // NET, PING) and the two tool buttons (timer, notes). Light: --lg-fill-fb over what is behind with the inset
 // --lg-edge-out line at its bottom; dark: --lg-fill-pop, no line (the dark glass and colour under are later parts).
-// The dropdowns and their keys are TopBarSurface.Menus.cs. Not drawn yet (docs/lanes/topbar.md "Left"): the stats
-// dropdowns, the "stats paused" item, the menus' motion and glass.
+// The dropdowns and their keys are TopBarSurface.Menus.cs, the stat dropdowns TopBarSurface.Stats.cs. Not drawn yet
+// (docs/lanes/topbar.md "Left"): app power, the ping test, the menus' motion and glass.
 [Surface("topbar", AtStart = true)]
 internal sealed partial class TopBarSurface : ISurface
 {
@@ -278,6 +278,7 @@ internal sealed partial class TopBarSurface : ISurface
                 var tip = c.Title ?? c.Why ?? "";
                 if (tip.Length > 0) ToolTipService.SetToolTip(b, tip);
                 _cells[c.Key] = new Cell { B = b, V = run, T = v, Ink = ink, Name = c.Label + " " + c.Value, Tip = tip };
+                if (IsOpen(b)) b.Background = Br("LgPress");
                 b.Click += (_, _) => OnStat(c.Key);
                 _right.Children.Add(b);
             }
@@ -349,12 +350,7 @@ internal sealed partial class TopBarSurface : ISurface
 
     // ------------------------------------------------------------------ the controls (the dropdowns are a later part)
     /// TOP-030: with a menu open, hovering another title opens that one (not from a stat or tool dropdown).
-    void Slide(int ti) { if (_open != null && _open.Tool == null && _open.Ti != ti) OpenMenu(ti); }
-    async void OnStat(string key)
-    {
-        var r = await _ctx.CallAsync("topbar.statsDetail", new JsonObject { ["kind"] = key });
-        _ctx.Log.Line($"stat pressed: {key}" + (r.Ok ? "" : $" (its dropdown is not drawn yet: {r.Error})"));
-    }
+    void Slide(int ti) { if (_open != null && _open.Tool == null && _open.Stat == null && _open.Ti != ti) OpenMenu(ti); }
     async void OnTool(string tool)
     {
         var r = await _ctx.CallAsync(tool == "notes" ? "notes.toggle" : "timer.state");
@@ -416,6 +412,7 @@ internal sealed partial class TopBarSurface : ISurface
     {
         _stats = s.Json != null ? JsonNode.Parse(s.Json) as JsonObject : null;
         _paused = s.Paused;
+        if (_open is { Stat: not null } o && _stats != null) { RenderStatMenu(o); RenewDetail(o); }   // in place: same element, scroll kept (TOP-102)
         if (_cells.Count > 0 && !(_stats == null && _paused != null)) { UpdateCells(); return; }   // cells stay cells: words only
         RenderRight();
         Fit();

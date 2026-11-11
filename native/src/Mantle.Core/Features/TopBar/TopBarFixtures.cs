@@ -82,15 +82,29 @@ public static class TopBarFixtures
         var s = new JsonObject
         {
             ["t"] = 1,
-            ["cpu"] = new JsonObject { ["pct"] = 23.4 },
-            ["mem"] = new JsonObject { ["used"] = 9.7 * GiB, ["total"] = 15.7 * GiB },
-            ["gpu"] = new JsonObject { ["pct"] = 7.8, ["name"] = "Intel(R) UHD Graphics" },
-            ["net"] = new JsonObject { ["down"] = 2.4 * MiB, ["up"] = 88 * 1024.0 },
-            ["ping"] = new JsonObject { ["state"] = "ok", ["ms"] = 23, ["label"] = "Valorant", ["server"] = "US West (N. California)" },
+            ["cpu"] = new JsonObject { ["pct"] = 23.4, ["cores"] = Arr(22, 61, 9, 14, 37, 5, 71, 18),
+                ["top"] = Top(("Code", "pct", 11.2), ("chrome", "pct", 6.1), ("Mantle", "pct", 1.3), ("MsMpEng", "pct", 0.9), ("explorer", "pct", 0.4)) },
+            ["mem"] = new JsonObject { ["used"] = 9.7 * GiB, ["total"] = 15.7 * GiB, ["commit"] = 13.1 * GiB, ["commitLimit"] = 23.4 * GiB,
+                ["top"] = Top(("chrome", "bytes", 2.1 * GiB), ("Code", "bytes", 1.4 * GiB), ("Mantle", "bytes", 0.31 * GiB)) },
+            ["gpu"] = new JsonObject { ["pct"] = 7.8, ["name"] = "Intel(R) UHD Graphics",
+                ["engines"] = new JsonArray(Eng("3D", 7.8), Eng("VideoDecode", 2.2), Eng("Copy", 0)),
+                ["dedicated"] = 0.13 * GiB, ["shared"] = 1.2 * GiB, ["top"] = Top(("dwm", "pct", 4.1), ("chrome", "pct", 2.9)) },
+            ["net"] = new JsonObject { ["down"] = 2.4 * MiB, ["up"] = 88 * 1024.0,
+                ["adapters"] = new JsonArray((JsonNode)new JsonObject { ["name"] = "Wi-Fi", ["down"] = 2.4 * MiB, ["up"] = 88 * 1024.0 }) },
+            ["ping"] = new JsonObject { ["state"] = "ok", ["ms"] = 23, ["label"] = "Valorant", ["server"] = "US West (N. California)",
+                ["host"] = "dynamodb.us-west-1.amazonaws.com", ["via"] = "AWS us-west-1", ["method"] = "icmp", ["everyMs"] = 2000, ["pickEveryMs"] = 600000,
+                ["picked"] = new JsonArray(Picked("US West (N. California)", 17), Picked("US West (Oregon)", 38), Picked("US Central (Texas)", 56)) },
+            ["costMs"] = 1.8,
         };
         if (which == "nogpu") s["gpu"] = new JsonObject { ["pct"] = null, ["reason"] = @"Windows has no GPU performance counters here (\GPU Engine is missing), so the GPU cannot be measured" };
         return s;
     }
+
+    // the details of Electron's mock sample (ui/topbar/mock-mantle.js STATS.ok): every stat dropdown draws the same rows
+    static JsonArray Arr(params double[] v) => new(v.Select(x => (JsonNode)JsonValue.Create(x)).ToArray());
+    static JsonArray Top(params (string Name, string Key, double V)[] p) => new(p.Select(x => (JsonNode)new JsonObject { ["name"] = x.Name, [x.Key] = x.V }).ToArray());
+    static JsonNode Eng(string type, double pct) => new JsonObject { ["type"] = type, ["pct"] = pct };
+    static JsonNode Picked(string name, double ms) => new JsonObject { ["name"] = name, ["ms"] = ms };
 
     /// "app=npp&amp;stats=ok" -> (app, stats); null for an empty or missing spec.
     public static (string App, string Stats)? Parse(string? spec)

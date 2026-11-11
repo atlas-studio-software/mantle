@@ -49,6 +49,10 @@ public sealed class TopBarMenu
     public bool IsMore;
     /// A tool's dropdown (the timer): Left / Right never walk into the app's titles (TOP-089).
     public string? Tool;
+    /// A stat's dropdown (TOP-100): no rows of the app's; Left / Right walk to the app's titles from the first (TOP-090).
+    public string? Stat;
+    /// When its details were last asked for (TopBarStatMenu.RenewDue).
+    public long DetailAt;
     public bool GaveUp;
     public readonly List<MenuLevel> Stack = new();
     public (TopBarItem Item, long At)? Armed;
@@ -61,6 +65,14 @@ public sealed class TopBarMenu
     {
         var m = new TopBarMenu { Ti = ti };
         m.Stack.Add(new MenuLevel { Items = t.Items ?? Array.Empty<TopBarItem>(), X = x, Path = t.Pos is int p ? new[] { p } : Array.Empty<int>(), Names = new string?[] { t.Label } });
+        return m;
+    }
+
+    /// openStat: a meter's dropdown. Ti is 0, so stepping from it starts at the first title (topbar.js stepTitle).
+    public static TopBarMenu ForStat(string key)
+    {
+        var m = new TopBarMenu { Ti = 0, Stat = key };
+        m.Stack.Add(new MenuLevel());
         return m;
     }
 
@@ -201,6 +213,14 @@ public sealed class TopBarMenu
             if (key == "Escape") { Edit = null; return MenuStep.Render; }   // the box closes, the menu stays
             return MenuStep.None;   // every other key types into the box
         }
+        if (Stat != null)   // TOP-090: a stat dropdown has no rows of its own; Escape closes it, Left / Right walk the titles
+            return key switch
+            {
+                "Escape" => new(MenuDo.Close, Refocus: true),
+                "ArrowRight" => new(MenuDo.OpenTitle, Index: +1, SelectFirst: true),
+                "ArrowLeft" => new(MenuDo.OpenTitle, Index: -1, SelectFirst: true),
+                _ => MenuStep.None,
+            };
         int level = Stack.Count - 1;
         var lv = Stack[level];
         var sel = lv.Sel >= 0 && lv.Sel < lv.Items.Count ? lv.Items[lv.Sel] : null;

@@ -135,6 +135,18 @@ public sealed partial class TopBarFeature
             return Ok(err == null ? new JsonObject { ["ok"] = true } : new JsonObject { ["ok"] = false, ["reason"] = err });
         });
 
+        // TOP-101: a stat dropdown asks for its meter's details (top processes, cores, adapters); the sidecar sends them
+        // for 10 s after each ask. The made-up sample already carries them, so a fixture run asks nothing.
+        ctx.Command("statsDetail", async c =>
+        {
+            var kind = Str(c.Args, "kind");
+            if (!TopBarStatMenu.IsKind(kind)) return NoWith("there are no details for that reading");
+            if (TopBarStatMenu.Refusal(_stepAside, _peekShown, _kind) is { } no) return NoWith(no);
+            if (_fixture != null) return Answer(new JsonObject { ["ok"] = true, ["fixture"] = true });
+            var r = await _ctx.Platform.CallAsync("topbar.stats", new JsonObject { ["on"] = true, ["detail"] = kind }, TimeSpan.FromMilliseconds(1500));
+            return r.Ok ? Answer(new JsonObject { ["ok"] = true }) : NoWith($"the details were not asked for: {r.Error}");
+        });
+
         ctx.Command("newWindow", c => new(NewWindow(c.Args)));
         // the dropdowns' commands (TOP-061/064/065/054..058, TOP-046..049): every handle the surface names is checked
         // first (CheckArgs), so a menu command, a window action or a UI Automation click never reaches another window

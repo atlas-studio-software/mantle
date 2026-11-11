@@ -76,7 +76,7 @@ internal sealed partial class TopBarSurface
     /// TOP-029: a press on a title opens its menu; on the open title it closes it and gives the app the keyboard back.
     void OnTitlePress(int ti)
     {
-        if (_open != null && _open.Ti == ti) { CloseAll(true, "the open title pressed again"); _ctx.Log.Line($"title pressed: {KeyOf(ti)} (closed; refocus)"); return; }
+        if (_open != null && _open.Stat == null && _open.Ti == ti) { CloseAll(true, "the open title pressed again"); _ctx.Log.Line($"title pressed: {KeyOf(ti)} (closed; refocus)"); return; }
         OpenMenu(ti);
         _ctx.Log.Line($"title pressed: {KeyOf(ti)} ({(_open != null ? "open; " + _open.Top.Items.Count + " rows" : "closed; nothing to open")})");
     }
@@ -154,7 +154,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         _open = null; _openKey = null;
-        _hoverT?.Stop(); _waitT?.Stop(); _editBox = null;
+        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null;
         _menus.Children.Clear(); _dds.Clear();
         _menus.Visibility = Visibility.Collapsed; _away.Visibility = Visibility.Collapsed;
         _asked = -1;
@@ -167,6 +167,7 @@ internal sealed partial class TopBarSurface
     void PaintTitles()
     {
         foreach (var b in _left.Children.OfType<Button>()) b.Background = IsOpen(b) ? Br("LgPress") : ClearBrush();
+        foreach (var c in _cells.Values) c.B.Background = IsOpen(c.B) ? Br("LgPress") : ClearBrush();   // TOP-100: the open stat's pressed wash
     }
 
     // ------------------------------------------------------------------ steps
@@ -260,6 +261,8 @@ internal sealed partial class TopBarSurface
     void RenderMenus()
     {
         var o = _open;
+        if (o?.Stat != null) { RenderStatMenu(o); return; }   // TopBarSurface.Stats.cs
+        _statView = null;
         foreach (var d in _dds) d.Lv.Scroll = d.Sv.VerticalOffset;   // TOP-079: each level keeps its scroll
         _menus.Children.Clear(); _dds.Clear(); _editBox = null;
         if (o == null) return;
