@@ -283,6 +283,7 @@ internal sealed class CalPanel
     {
         var t = _now().Date;
         _title.Text = GcalDays.Words.MonthYear(_shown);
+        AutomationProperties.SetName(_title, _title.Text);   // the month is its own name (Electron: the title, aria-live polite)
         Type(_title, Fs, 1.33); _title.Foreground = B("LgInk");
         bool onThis = _shown.Year == t.Year && _shown.Month == t.Month;
         _today.IsEnabled = !onThis;
@@ -488,7 +489,8 @@ internal sealed class CalPanel
     {
         var g = new Grid { Height = RowH, ColumnSpacing = 8, Padding = new Thickness(6, 0, 6, 0) };
         foreach (var w in new[] { new GridLength(3), GridLength.Auto, new GridLength(1, GridUnitType.Star) }) g.ColumnDefinitions.Add(new ColumnDefinition { Width = w });
-        string? hex = _idx!.Colors.GetValueOrDefault(ev.Cal);
+        var inks = _idx!.Colors;   // the calendars' own colours (data from Google, not theme colours)
+        string? hex = inks.GetValueOrDefault(ev.Cal);
         var rgb = GcalColour.Parse(hex);
         var bar = new Border { Width = 3, Height = 14, CornerRadius = new CornerRadius(2), Background = rgb is { } c ? Solid(c) : B("LgInk3"), VerticalAlignment = VerticalAlignment.Center };
         var time = Text(_idx.TimeOf(ev, _sel), Fs); time.MinWidth = 58; time.Foreground = B("LgInk2"); time.VerticalAlignment = VerticalAlignment.Center; Type(time, Fs, 1.2);
