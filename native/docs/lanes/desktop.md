@@ -52,12 +52,11 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
 
 ## Fixes made while compiling (lane native-r7-desktop-2)
 
-- The layer and the menu were white sheets on screen: WinUI draws a window's content only after its first
-  `Activate`, and both only called `AppWindow.Show(false)`. Both now do what `PopupWindow.Show` does (first show is an
-  Activate that hands the foreground straight back; later shows are SW_SHOWNOACTIVATE). UI Automation had read every
-  element all along, so the UI tests passed over the white sheet; the screenshot pair is what caught it. That fixed
-  the menu. The layer stayed white until its presenter was made not resizable (the one setting it did not share with
-  the windows that draw: the menu and the OSD); its first show also waits for the start-up work queued before it.
+- The layer was a white sheet on screen while UI Automation read every element (so the UI tests passed over it; the
+  screenshot pair caught it). What fixed it: its presenter is no longer resizable (the one setting it did not share
+  with the windows that draw, the menu and the OSD). An Activate on first show was tried too and dropped: it made
+  the layer the app's front window ahead of the bar (ci smoke reads MainWindowHandle) and moved the foreground (bench
+  focus checks). The menu's first show is an Activate that hands the foreground straight back (PopupWindow.Show).
 - The strip's room (what the other three panes leave) was worked out once, while the Mission Control tile still had
   its 132 DIP frame, so the two rows were cut short when the tile shrank to its note; it now follows their sizes.
 - The layer's root Grid had only an automation id, and a panel with no name has no automation peer, so the theme

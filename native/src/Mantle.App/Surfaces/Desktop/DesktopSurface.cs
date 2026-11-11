@@ -56,7 +56,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     IntPtr _hwnd;
     DeskPanes? _panes;
     DeskFixture? _fx;
-    bool _dark, _widgetsOn = true, _shown, _activated;
+    bool _dark, _widgetsOn = true, _shown;
     readonly List<IDisposable> _subs = new();
     DispatcherQueueTimer? _clockT, _statsT, _mcT, _recheckT, _reportT;
     int _mcFails, _mcChain;
@@ -117,9 +117,8 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         StartClock(); StartStats(); StartMc("made");
         SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
         ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
-        // The first show (an Activate: WinUI starts drawing there) waits for the start-up work queued before it, the bar's
-        // first frame among it: activated in the middle of start-up the layer stayed a white sheet (CI 43019084229).
-        if (!ctx.Dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, FirstShow)) FirstShow();
+        // shown here, before the bar's first show, so the bar lands in front of it (the app's front window is the bar's)
+        FirstShow();
     }
 
     void FirstShow()
@@ -169,15 +168,10 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     public void Show(string why)
     {
         if (_win == null) return;
-        if (!_activated) {
-            // WinUI starts drawing a window's content at its first Activate (before it the layer is a white sheet); the
-            // layer is a no-focus window, so the foreground goes straight back to whatever had it (PopupWindow.Show)
-            _activated = true;
-            IntPtr prev = Win32.GetForegroundWindow();
-            _win.Activate();
-            if (prev != IntPtr.Zero && prev != _hwnd && Win32.GetForegroundWindow() == _hwnd) Win32.SetForegroundWindow(prev);
-        }
-        else Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);   // showInactive: never takes the keyboard
+        // showInactive, never activated: an Activate (the menu's road) made the layer the app's front window, ahead of
+        // the bar (ci smoke: MainWindowHandle) and took the foreground for a moment (bench focus checks). It draws without
+        // one; what kept it a white sheet was a resizable presenter (CI 43023226210).
+        _win.AppWindow.Show(false);
         Mantle.App.Shell.Windowing.WindowKinds.StripFrame(_hwnd);   // the presenter puts frame bits back at a show
         _shown = true;
         var pos = _win.AppWindow.Position; var size = _win.AppWindow.Size;
@@ -204,7 +198,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _mcChain++;
         CloseMenu(why);
         try { _win?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
-        _win = null; _root = null; _panes = null; _shown = false; _activated = false;
+        _win = null; _root = null; _panes = null; _shown = false;
         if (Current == this) Current = null;
         _ctx.Log.Line($"destroyed ({why})");
     }
