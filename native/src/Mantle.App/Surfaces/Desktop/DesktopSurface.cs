@@ -168,9 +168,17 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     void FirstShow()
     {
         if (_win == null) return;
-        Show("Mantle started");
-        if (!_ctx.Test) _ = AttachAsync("Mantle started");
-        else _ctx.Log.Line("dry run (--test): would ask the sidecar to put the layer under the icons (desktop {hwnd}); nothing was sent, Explorer was not touched");
+        if (_ctx.Test) {
+            Show("Mantle started");
+            _ctx.Log.Line("dry run (--test): would ask the sidecar to put the layer under the icons (desktop {hwnd}); nothing was sent, Explorer was not touched");
+            return;
+        }
+        // live: held hidden until it is under the icons (main.js applyLive 0b, 'at start'). Shown first, a refused attach
+        // left a full-screen window over every app (the bench's passive sidecar: its focus checks failed, run 43038770664);
+        // out of tries it is closed, never shown (GiveUp)
+        _held = true;
+        _ctx.Log.Line("held hidden until it is under the icons (shown over the apps it would sit above every window)");
+        _ = RemakeAsync(0, false, "at start");
     }
 
     /// The window's place: the primary display's bounds live; an ordinary 960x540 window in --test, at the work area's corner + 40.

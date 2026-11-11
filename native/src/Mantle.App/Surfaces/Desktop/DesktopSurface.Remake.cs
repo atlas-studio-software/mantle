@@ -89,7 +89,7 @@ internal sealed partial class DesktopSurface
             case "done":
                 _held = false;
                 if (_fitPending != null) await FitAsync(_fitPending + ", now that it is under the icons", true);
-                Show("made again and under the icons");
+                Show(when != null ? $"under the icons {when}" : "made again and under the icons");
                 _ctx.Log.Line(when != null
                     ? $"under the icons ({r.Mode ?? "mode not reported"}) on retry {n + 1} {when}"
                     : $"made again and back under the icons ({r.Mode ?? "mode not reported"}) on attempt {n + 1}");
