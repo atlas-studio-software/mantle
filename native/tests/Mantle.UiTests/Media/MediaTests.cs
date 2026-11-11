@@ -33,8 +33,7 @@ public class MediaTests
             ClickEl(El(w, id));
             if (FrameProbe.LogHas(dir, $"media: the card picked {label}", 1500)) return;
         }
-        Assert.Fail($"the card never picked {label}. Log:
-" + Tail(dir));
+        Assert.Fail($"the card never picked {label}. Log:" + Environment.NewLine + Tail(dir));
     }
 
     static (BarApp App, string Dir) Launch(string profile, string theme = "light", string? fixture = Fixture, string? guard = null, params string[] flags)
