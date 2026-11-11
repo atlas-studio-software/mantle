@@ -51,8 +51,15 @@ this area.
 
 ## State at handoff (context ceiling)
 
-- **Run 1:** narrow cloud run (build, unit) on cb079414, started; its NATIVE-CI line is in `/tmp/ct-topbar-unit.log`.
-  No result was read before the handoff. NOT verified: whether part 1 compiles and its 28 unit tests pass.
+- **Run 42997383359 (cb079414):** `NATIVE-CI: FAILED (build, unit failed)`. Cause: CS0029 x3, lambda parameters
+  named `_`. Fixed in 1414fb69.
+- **Run 42997875488 (1414fb69):** `NATIVE-CI: FAILED (unit failed; 1 ok)`. The build is ok, and 5 of 656 unit tests
+  failed:
+  - **Three of the live tests** (`A_live_run_reserves...`, `Live_a_work_area...`, `Live_hidden_by_hand...`): the
+    likely cause is that they omit `test: false` in `T(...)`, so they run as --test.
+  - **`TopBarPureTests.Stat_cells_fixed_decimals_and_reasons`:** a value mismatch; read the assert message.
+  - **`TokensTests.No_colour_literal_in_Mantle_App_outside_Tokens_xaml`:** TopBarSurface uses
+    `Microsoft.UI.Colors.Transparent`. Replace it with `new SolidColorBrush()` (clear) or a token.
 - **Ledger:** no parity rows are marked yet. Rows are marked only after a green run.
 
 ## Left (exact list, in order)
