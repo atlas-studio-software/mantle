@@ -216,6 +216,44 @@ public static class ParityNative
         return o.ToArray();
     }
 
+    /// <summary>The window in FRONT over the rect: the first visible, uncloaked, not minimised top-level window in
+    /// the z-order that reaches into it (shell windows left out), as "pid|hwnd pid 'title' [class] l,t,r,b"; "" if
+    /// none. Covering() lists every window of another process over the rect whatever its z-order; this says which
+    /// one is actually drawn (the notifs backdrop is under the bar or over it).</summary>
+    public static string TopOver(int x, int y, int w, int h)
+    {
+        string top = "";
+        EnumWindows((hw, l) =>
+        {
+            if (!IsWindowVisible(hw) || IsIconic(hw) || Cloaked(hw) || !GetWindowRect(hw, out RECT r) || !Reaches(r, x, y, w, h)) return true;
+            if (ShellClasses.Contains(ClassOf(hw))) return true;
+            GetWindowThreadProcessId(hw, out uint pid);
+            top = pid + "|" + Describe(hw);
+            return false;
+        }, IntPtr.Zero);
+        return top;
+    }
+
+    /// <summary>Puts every visible top-level window of the pid at the bottom of the z-order without activating
+    /// anything (a backdrop that must stay behind the app under test). Returns what it moved, one line each.</summary>
+    public static string[] ToBottom(int pid)
+    {
+        var o = new List<string>(); var wins = new List<IntPtr>();
+        EnumWindows((hw, l) =>
+        {
+            GetWindowThreadProcessId(hw, out uint p);
+            if (p == (uint)pid && IsWindowVisible(hw)) wins.Add(hw);
+            return true;
+        }, IntPtr.Zero);
+        // moved after the walk: moving windows while EnumWindows walks the z-order could visit one twice
+        foreach (var hw in wins)
+        {
+            o.Add(Describe(hw));
+            SetWindowPos(hw, new IntPtr(1) /* HWND_BOTTOM */, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010 /* NOSIZE | NOMOVE | NOACTIVATE */);
+        }
+        return o.ToArray();
+    }
+
     static bool AnyExcluded(List<IntPtr> wins)
     {
         foreach (var hw in wins) if (GetWindowDisplayAffinity(hw, out uint a) && a != 0) return true;

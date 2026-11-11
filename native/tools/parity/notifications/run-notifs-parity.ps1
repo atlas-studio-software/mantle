@@ -58,8 +58,18 @@ $ps = "Add-Type -AssemblyName System.Windows.Forms; `$f = New-Object System.Wind
       "`$f.FormBorderStyle = 'None'; `$f.StartPosition = 'Manual'; `$b = [System.Windows.Forms.Screen]::PrimaryScreen.Bounds; " +
       "`$f.Location = New-Object System.Drawing.Point(`$b.X, `$b.Y); `$f.Size = New-Object System.Drawing.Size(`$b.Width, `$b.Height); " +
       "`$f.BackColor = [System.Drawing.Color]::FromArgb($($c.R), $($c.G), $($c.B)); [System.Windows.Forms.Application]::Run(`$f)"
-$back = Start-Process powershell.exe -PassThru -ArgumentList @('-NoProfile', '-EncodedCommand', [Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ps)))
-Start-Sleep -Milliseconds 2500
+# Started without a console (CreateNoWindow: no "Administrator: Windows PowerShell" terminal on the runner), waited
+# for, and sent to the BOTTOM of the z-order. Before 11-11 it came up as the foreground window, full-screen, while
+# the light run's bar was starting, and stayed IN FRONT of the topmost bar: the light tray grab (run 43021115803)
+# was the plain backdrop, its whole-screen grab had no bar at all, the window list had the backdrop above
+# "Mantle bar", and the app logged "raise: pop-up Notifications is shown but NOT on top (the app in front is still
+# above it)". The dark run, started with the backdrop already up, had the bar in front.
+$bsi = [System.Diagnostics.ProcessStartInfo]::new('powershell.exe', "-NoProfile -EncodedCommand $([Convert]::ToBase64String([Text.Encoding]::Unicode.GetBytes($ps)))")
+$bsi.UseShellExecute = $false; $bsi.CreateNoWindow = $true
+$back = [System.Diagnostics.Process]::Start($bsi)
+$up = $false
+for ($i = 0; $i -lt 75 -and -not $up; $i++) { Start-Sleep -Milliseconds 200; $up = [bool](@([ParityNative]::VisibleWindows()) -match "\|pid $($back.Id)\|Notifs parity backdrop\|") }
+Say ("backdrop {0}; sent to the bottom: {1}" -f $(if ($up) { 'up' } else { 'NOT seen in 15 s' }), (@([ParityNative]::ToBottom($back.Id)) -join '; '))
 [ParityNative]::ParkCursor(5, 5)
 
 function Png([byte[]]$px, [int]$w, [int]$h) {
@@ -84,10 +94,22 @@ function Score($tag, $ef, $x, $y, $w0, $h0, $procId = 0) {
   if (-not (Test-Path $ef)) { return "$tag no score: no Electron shot" }
   # the bar hides itself from capture while its glass is re-shot: a clean grab waits that out (ParityNative.CleanGrab)
   if ($procId) {
-    $shot = [ParityNative]::CleanGrab(@([int]$procId), $x, $y, $w0, $h0, 60, 5000); $nat = $shot.Px
-    Say ("{0}: grab at {1},{2} {3}x{4}: clean={5} ({6} own window(s) over it, {7} ms, {8} grab(s)); covering: {9}" -f $tag, $x, $y, $w0, $h0, $shot.Clean, $shot.Windows, $shot.WaitedMs, $shot.Tries, ((@([ParityNative]::Covering($x, $y, $w0, $h0, @([int]$procId))) -join '; ') -replace '^$', 'none'))
+    # only scored when the app's own window is the one in FRONT over the rect (ParityNative.TopOver) and the grab is
+    # clean; else the backdrop is sent to the bottom again and it is retaken (5 tries), each retake logged with why
+    $ok = $false
+    for ($try = 1; $try -le 5 -and -not $ok; $try++) {
+      $top = [ParityNative]::TopOver($x, $y, $w0, $h0); $topPid = [int]($top -split '\|', 2)[0]
+      if ($topPid -ne [int]$procId) {
+        Say ("{0}: try {1}: retake (in front over the strip: {2}); sent to the bottom: {3}" -f $tag, $try, (($top -split '\|', 2)[-1]), (@([ParityNative]::ToBottom($back.Id)) -join '; '))
+        Start-Sleep -Milliseconds 500; continue
+      }
+      $shot = [ParityNative]::CleanGrab(@([int]$procId), $x, $y, $w0, $h0, 60, 5000); $nat = $shot.Px
+      $ok = $shot.Clean
+      Say ("{0}: try {1}: grab at {2},{3} {4}x{5}: in front: the app; clean={6} ({7} own window(s) over it, {8} ms, {9} grab(s)){10}" -f $tag, $try, $x, $y, $w0, $h0, $shot.Clean, $shot.Windows, $shot.WaitedMs, $shot.Tries, $(if ($ok) { '' } else { ': retake (excluded from capture for 5 s)' }))
+    }
     $full = [ParityNative]::Grab(0, 0, $script:SW, $script:SH); $fb = Png $full $script:SW $script:SH; $fb.Save((Join-Path $Out "native-$tag-full.png")); $fb.Dispose()
     [ParityNative]::VisibleWindows() | Set-Content -Encoding utf8 (Join-Path $Out "native-$tag-windows.txt")
+    if (-not $ok) { return "$tag no score: the native window was never in front and clean over the strip in 5 tries (see native-$tag-full.png and -windows.txt)" }
   } else { $nat = [ParityNative]::Grab($x, $y, $w0, $h0) }
   $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-$tag.png"))
   $eb = [System.Drawing.Bitmap]::FromFile($ef)
@@ -117,6 +139,7 @@ try {
     [IO.File]::WriteAllText($nf, $notifs); [IO.File]::WriteAllText($tf, $trayJson)
     $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_NOTIFS = "@$nf"; $env:MANTLE_TEST_TRAY = "@$tf"
     $prof = "ntfpar-$theme"
+    [void][ParityNative]::ToBottom($back.Id)
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $log = Join-Path $ud 'mantle-native.log'
     $ok = $false
