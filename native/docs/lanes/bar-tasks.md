@@ -234,6 +234,28 @@ deliberate deviation for safety.
   the sub-list's 27 px inset and the close row's warn hover.
 - Left: BAR-215 / 323 / 330 (Mantle's own apps on the native bar, BAR-291..296), BAR-317 (the jump list off switch).
 
+### Handoff (2026-11-11, stopped at the coordinator's word)
+
+- Done: the four items above, on native/r7-strip (code commits 50030c0a, 08db61a7, 9916acf6, ec24b0a0, b910e291).
+- Test state:
+  - Run 43073990848 (build, unit, ui at 50030c0a, item 1 only): NATIVE-CI: FAILED (ui failed; 2 ok, 0 skipped). 2 of 78
+    failed, neither this lane's: Bar_and_glass_idle_cpu_hidden_at_rest_and_shown and the top bar's
+    Stat_dropdowns_hang_from_their_cell_ask_for_details_open_task_manager_and_walk_to_the_titles.
+  - Run 43076145991 (8595713f): NATIVE-CI: FAILED (build, ui failed; 1 ok, 0 skipped). The build broke on a wrong using
+    in BarWindow.ShellBack.cs; fixed in b910e291.
+  - Run 43077405430 (b910e291, build, unit, ui): NATIVE-CI: FAILED (ui failed; 2 ok, 0 skipped). Build ok, unit 924/924,
+    and 80 of 81 UI tests passed, including all four of this lane's new ones (StripTests.PinCount, .ShellBack,
+    .OverflowBadge, .MenuLook). The one failure is the top bar lane's Stat_dropdowns test again.
+  - No full run was made: the fast loop was not green.
+- Ledger: NOT marked. The coordinator's rule is to mark rows only after a green full run. The row text is ready in
+  commit 8595713f (git show 8595713f -- native/docs/parity/bar.md) for BAR-158..163, 257, 258 (the pin beside a count),
+  329 and 1030. Reapply it once a full run on this HEAD (or a later one) is green. Its better: rows:
+  - BAR-161: no 2 s watchdog. The taskbar watch is re-found on every reveal, and at once on TaskbarCreated.
+  - BAR-163: dock asks for the app bar again the moment Explorer is back, not on the next unrelated ask.
+- Left: a green full run, then the rows; the BAR-329 parts listed above; BAR-215 / 323 / 330; BAR-317.
+- Shared files touched (one line or a few each): BarWindow.xaml (the pin's Margin, alignment and id),
+  Frame/BarWindow.Frame.cs SubProc (one HeardShellBack call), Badges/BarWindow.HelmBadge.cs SetBadge (one BadgeMoved call).
+
 ## Part 2 starts here
 
 Previews are done except BAR-233 (re-place on a bar width change or the island's move) and BAR-313 (the Alt+Tab
