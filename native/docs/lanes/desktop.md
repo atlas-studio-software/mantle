@@ -123,12 +123,38 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
 - **Shared files touched:** App.xaml.cs (the desktop wiring block: Wire gets the tray's Paused, ToggleQs; MoreReleases
   adds the desktop detach), Surfaces/Bar/QuickSettings/BarWindow.QuickSettings.cs (one method), ci.ps1 (the desktop floors).
 
+## Round 4 (lane native-r7-desktop-4)
+
+- **Idle CPU (the merge blocker):** a --test run without MANTLE_TEST_DESKTOP makes the layer and parks it, and the parked
+  layer still ticked its clock every second, read the System numbers every 5 s, probed Mission Control and ran the shell
+  watch thread. The idle check measured hidden at rest 1.354 % (light) / 1.146 % (dark) of a core in run 43043879358
+  (limit 1.0). Now `Wake` / `Rest` (DesktopSurface.cs): the clock, the 5 s read and the Mission Control check start when
+  the layer is shown and stop when it is parked, closed or given up on (a check still out is stale when it lands; the CPU
+  share is sampled afresh after a rest); the shell watch starts at the first show (live: when the layer starts on its way
+  under the icons). Shown but unchanged: the strip is rebuilt only when its rows change (`DeskStrip.Same`), and the
+  System / Mission Control text, visibility and automation status are set only when they change. Readings, hidden at rest, light / dark: 1.354 / 1.146 % before (run 43043879358); 0.208 / 0.625 % after (run 43048815419, build,unit,ui at 806e8ab2).
+- **Widgets under windows (DESK-091..103):** `WidgetCover` (Core, pure: the rules of sidecar/WidgetCover.cs, the answer,
+  the idle reasons, the fade timings, `CoverThrottle`), `CoverWatch` (App: WinEvent hooks on a thread of their own, so a
+  cursor or caret move is dropped there; one check 100 ms after the first window event of a burst and every 100 ms while
+  it lasts, one settle check a second later, then nothing: no poll), `DesktopSurface.Cover.cs` (the pane rects the layer
+  already logs become the areas; covered panes take no clicks and fade out 260 ms / in 560 ms on WinUI's opacity
+  transition; a covered clock / System tile parks once its fade has finished, DESK-103), `WidgetHideFeature`
+  (`[Feature("widgethide")]`, default on; health through `widgethide.health`). It watches only while the layer is shown
+  with the feature and the widgets on. Windows below the layer itself (a --test layer is an ordinary window) or below
+  Progman never cover. A --test run watches only with MANTLE_TEST_COVER=1, so the screenshot pair and the other tests keep
+  every pane up. Own-process window events are skipped (WINEVENT_SKIPOWNPROCESS): Mantle's shell UI never covers, and
+  native Mantle has no app windows (Settings, Files) of its own yet.
+- **Tests:** `WidgetCoverTests` (rules, decision, fail-open, areas, throttle, parking); UI
+  `Widgets_step_aside_under_a_window_one_by_one_and_a_resting_desktop_costs_no_checks` (a WinForms window of another
+  process over the clock: the clock alone is covered and parks; minimised, restored and moved away; then it counts the
+  checks made in 4 s with nothing moving).
+- **Deviations:** the fade curve is WinUI's (ScalarTransition has a duration, no easing), not --lg-ease. No helper in the
+  loop, so DESK-100's "the helper is out of date" case does not exist and the failed-watch words say "Mantle could not
+  watch the windows". The cursor and the caret raise location-change events too; the hook thread drops them at once
+  (one thread wake each), which is the price of hearing window moves without a poll.
+
 ## Not built yet (left for later rounds)
 
-- Widget hiding under windows (DESK-091..103, except DESK-095 and DESK-102). Electron: the page reports pane rects,
-  lib/features/widgethide.js hands physical-px areas to the sidecar (widgethide.watch {on, areas}), sidecar/WidgetCover.cs
-  rides WinEvent hooks and pushes {covered, by}; the page fades covered panes (260 ms out, 560 ms in, no layout shift,
-  no clicks); it fails open with health words. The native pane rects are already logged ("panes (physical px on screen)").
 - Not run live by any test: the sidecar fit and rescale (DESK-016), the live remake attach / give-up and the Explorer-back
   try-now / make / recheck paths (DESK-011/012), the put-back detach (DESK-013), the 30 s re-arm (DESK-124), a live corner
   opening the quick settings panel (CORN-053).
