@@ -623,8 +623,8 @@ function Stage-cal {
 # (tools/parity/media/run-media-parity.ps1). Floors a little under the lowest ssim seen; they only move up.
 $Floors['media light'] = 0.74   # 0.7717 (run 43014608940, after the text sizes matched bar.css; 0.5596 before)
 $Floors['media dark']  = 0.69   # 0.7190 (same run; 0.6158 before)
-$Floors['gamemode light'] = 0.30   # lane native-r7-media3: the quick-settings Game mode row (head + switch line); first run sets it
-$Floors['gamemode dark']  = 0.30
+$Floors['gamemode light'] = 0.68   # lane native-r7-media3: the quick-settings Game mode row (head + switch line); 0.7076 (run 43037040342)
+$Floors['gamemode dark']  = 0.62   # 0.6493 (same run)
 function Stage-media {
   $out = Join-Path $Out 'parity\media'
   $code = Lane-Script 'media' 'tools\parity\media\run-media-parity.ps1' @('-Exe', $exe, '-Out', $out)
