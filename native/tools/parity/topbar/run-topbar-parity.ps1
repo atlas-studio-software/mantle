@@ -85,6 +85,15 @@ function StripOverBackdrop([int]$nativePid, [int]$backPid, [string]$tag) {
     Say "$tag z: the backdrop put right behind the strip ($ok); now the strip is $(if ([TopBarZ]::Above($s, $b) -gt 0) { 'above' } else { 'STILL BELOW' })"
   }
 }
+# Other processes' windows over the strip's rect (run 43028973569: at 150 % a dark rounded window covered the strip's
+# lower 14 px, the runner's console grown with the scale). On the runner they are minimised without activation, as
+# the other pair scripts do; anywhere else they are only named.
+function ClearOverStrip([int[]]$keep, [int]$x, [int]$y, [int]$w, [int]$h, [string]$tag) {
+  $over = @([ParityNative]::Covering($x, $y, $w, $h, $keep))
+  if (-not $over.Count) { Say "$tag nothing else over the strip"; return }
+  if ($env:GITHUB_ACTIONS) { foreach ($l in [ParityNative]::ClearRect($x, $y, $w, $h, $keep)) { Say "$tag over the strip: $l" }; Start-Sleep -Milliseconds 300 }
+  else { foreach ($l in $over) { Say "$tag over the strip (left alone off the runner): $l" } }
+}
 
 function Png([byte[]]$px, [int]$w, [int]$h) {
   $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppRgb)
@@ -151,6 +160,7 @@ try {
         $ej = Join-Path $Out "electron-topbar-$tag.json"
         if (Test-Path $ej) { Say "Electron $tag page: $((Get-Content $ej -Raw).Trim())" }
         if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+        ClearOverStrip @($p.Id, $back.Id) $x $y $w0 $h0 $tag
         StripOverBackdrop $p.Id $back.Id $tag
         $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
         $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-topbar-$tag.png"))
