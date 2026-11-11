@@ -74,8 +74,7 @@ internal sealed class TopBarSurface : ISurface
         catch (Exception e)
         {
             // the host logs only the message; the frames say WHERE (a bare "Specified cast is not valid" said nothing)
-            var at = (e.StackTrace ?? "").Split('
-').Select(l => l.Trim()).Where(l => l.Length > 0).Take(4);
+            var at = (e.StackTrace ?? "").Split('\n').Select(l => l.Trim()).Where(l => l.Length > 0).Take(4);
             ctx.Log.Line($"made: failed: {e.GetType().Name}: {e.Message} at {string.Join(" < ", at)}");
             throw;
         }
