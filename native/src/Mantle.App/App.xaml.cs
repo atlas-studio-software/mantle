@@ -314,6 +314,41 @@ public partial class MantleApp : Application
             };
             if (!postUi(() => _window?.AttachCalendar(calLink, keys))) log("cal: the UI thread is gone, so the bar's calendar was not attached");
         }
+        // ---- notifications wiring (lane native-r7-notif): notifs.get / seen / remove / clear / open, tray.list, tray.click and
+        // sys.keys (Features/Notifications), and the "notifications" and "tray" events (replayed). A --test run never reads or
+        // changes Windows' notifications or tray: MANTLE_TEST_NOTIFS and MANTLE_TEST_TRAY are the lists, and every dismiss,
+        // open, click and key press is a dry run (logged, nothing sent).
+        {
+            // "@<file>": the list is read from that file (a parity run's lists, with pictures, outgrow an environment variable)
+            string? FixtureOf(string key)
+            {
+                string? v = Host.Env(key);
+                if (v is not { Length: > 1 } || v[0] != '@') return v;
+                try { return System.IO.File.ReadAllText(v[1..]); }
+                catch (Exception e) { log($"{key} names the file {v[1..]}, which could not be read ({e.Message}), so the test list is empty"); return null; }
+            }
+            var notifs = new Mantle.Core.Features.Notifications.NotificationCentre(new() {
+                Platform = _platform, Events = _events, Clock = clock, Test = test, Log = log, State = _hub,
+                Files = Host.Files, SeenFile = System.IO.Path.Combine(Host.Paths.DataRoot, "notifications-seen.json"),
+                Fixture = test ? FixtureOf("MANTLE_TEST_NOTIFS") : null,
+                AccessProblem = () => Mantle.App.Surfaces.Bar.Frame.Chips.NotificationAccess()?.Reason,
+            });
+            var area = new Mantle.Core.Features.Notifications.NotificationArea(new() {
+                Platform = _platform, Events = _events, Clock = clock, Test = test, Log = log,
+                Fixture = test ? FixtureOf("MANTLE_TEST_TRAY") : null, OwnExe = Environment.ProcessPath,
+            });
+            _offs.Add(Mantle.Core.Features.Notifications.NotificationCommands.Register(_bus, new(notifs, area)));
+            _offs.Add(notifs); _offs.Add(area);
+            notifs.Start(); area.Start();
+            // the bar's bell, centre, tray strip, chips and More menu reach them through their own link (caller "bar")
+            Func<Action, bool> postUi = a => _queue?.TryEnqueue(() => a()) ?? false;
+            // its own state feed (the surfaces' one is made later, in StartSurfaces): the chips follow every state change
+            var r7Feed = new StateFeed(_hub!.Current, postUi, log);
+            _offs.Add(_hub.OnChange(r7Feed.Push));
+            var r7Link = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = r7Feed, Log = Host.Log });
+            if (!postUi(() => _window?.AttachNotifications(r7Link))) log("notifs: the UI thread is gone, so the bar's centre was not attached");
+        }
+        // ---- end notifications wiring
         // main.js restMantle: game mode's host.rest(on, why) destroys the surfaces (the surface host hears "mantle.rest"),
         // hands the Win key to Windows' Start and trims; the wake makes the AtStart surfaces again. The bar and its app bar
         // are kept, as Electron keeps them.
