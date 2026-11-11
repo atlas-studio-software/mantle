@@ -101,6 +101,9 @@ public partial class StripTests
         string lastName = $"Ovf {total:00}";
         AutomationElement Tile(string id)
         {
+            // a panel that is closing (its 160 ms exit) is not one to click in: wait for it to go, then open it again
+            Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, OvfPanel)), 1500);
+            Thread.Sleep(300);
             var w0 = FrameProbe.Find(app.Proc.Id, OvfPanel);
             if (!FrameProbe.Showing(w0)) { Invoke(Find(app.Window, "bar.apps.more")!); Assert.IsTrue(Host.Until(() => FrameProbe.Showing(w0 = FrameProbe.Find(app.Proc.Id, OvfPanel)), 4000), "the panel did not reopen"); }
             var e = Host.Until(() => Find(Host.Uia.FromHandle(w0), id), 3000);

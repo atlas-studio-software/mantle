@@ -383,6 +383,9 @@ public sealed partial class BarWindow
             return;
         }
         m.Kbd = ok;
+        // the keys need a focused element in the menu to reach its KeyDown: the list's scroller holds focus (no ring, no
+        // row picked) until the first arrow moves onto a row
+        if (ok && !JlRows(m).Any(r => r.FocusState != FocusState.Unfocused)) { m.Scroll.IsTabStop = true; m.Scroll.UseSystemFocusVisuals = false; m.Scroll.Focus(FocusState.Programmatic); }
         m.Tip = ok ? "" : "Arrow keys do not reach this menu: " + words.Split(", so ")[0];
         ToolTipService.SetToolTip(m.Root, ok ? null : m.Tip);
         AutomationProperties.SetHelpText(m.Root, m.Tip);

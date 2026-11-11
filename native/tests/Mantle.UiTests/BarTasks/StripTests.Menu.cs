@@ -133,7 +133,7 @@ public partial class StripTests
         Assert.IsTrue((ex & 0x8) != 0 && (ex & 0x20) != 0 && (ex & 0x08000000) != 0, $"the pop-up is not topmost, click-through and unfocusable (ex style 0x{ex:x})");
         Assert.AreNotEqual(tw, Win32.GetForegroundWindow(), "the pop-up took the foreground");
         FrameProbe.GetWindowRect(tw, out var trc);
-        double ts = Named(Cells(app), a.Title)!.Rect.Width / 36.0;
+        double ts = GetDpiForWindow(tw) / 96.0;
         Assert.IsTrue(Math.Abs(trc.Right - trc.Left - 396 * ts) <= 2 && Math.Abs(trc.Bottom - trc.Top - 80 * ts) <= 2, $"the pop-up is {trc.Right - trc.Left}x{trc.Bottom - trc.Top} px, not 396x80 DIP at {ts:0.##}");
         var pill = app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.pill")).BoundingRectangle;
         Assert.IsTrue(trc.Bottom <= pill.Top + 2 && trc.Bottom >= pill.Top - 40 * ts, $"the pop-up (bottom {trc.Bottom}) is not just above the bar (pill top {pill.Top})");
@@ -249,4 +249,5 @@ public partial class StripTests
     }
 
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetWindowLongPtrW(IntPtr h, int index);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
 }

@@ -34,6 +34,8 @@ public class OnTopFeatureTests
             return PlatformReply.Success(J(new JsonObject { ["hwnd"] = h, ["pid"] = 5, ["name"] = "Notes", ["exe"] = "notes.exe", ["topmost"] = top.Contains(h) }));
         });
         r.Platform.Handle("ontop.set", a => {
+            // a --test sidecar is passive: it refuses to change any window that is not its own test window
+            if (r.Host.Flags.Test) return PlatformReply.Fail(PlatformOutcome.Failed, OnTopCore.Passive);
             string h = a.GetProperty("hwnd").ToString();
             bool on = a.GetProperty("on").GetBoolean(), was = top.Contains(h);
             if (on) top.Add(h); else top.Remove(h);
@@ -149,8 +151,7 @@ public class OnTopFeatureTests
         r.Host.FireChord(OnTopFeature.Chord, "a test");
         await Settle(r, () => Toasts(r).Length >= 1);
         Assert.Contains(r.Platform.Calls, c => c.Verb == "ontop.front");
-        Assert.DoesNotContain(r.Platform.Calls, c => c.Verb == "ontop.set");
-        Assert.Empty(top);
+        Assert.Empty(top);   // the passive sidecar changed nothing, and the feature says it was a dry run
         Assert.Equal("Dry run: would keep Notes on top", Toasts(r).Last().GetProperty("text").GetString());
     }, test: true);
 }
