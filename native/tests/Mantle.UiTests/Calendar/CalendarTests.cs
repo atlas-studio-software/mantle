@@ -30,6 +30,8 @@ public class CalendarTests
         "{\"k\":\"m3\",\"cal\":\"alex@example.com\",\"title\":\"Dentist\",\"allDay\":false,\"s\":1795167000000,\"e\":1795168800000}]}}";
 
     static void ClickEl(AutomationElement e) { var r = e.BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(300); }
+    /// Invoke through UI Automation (no mouse: Windows' taskbar can never be in the way), else a real click.
+    static void Press(AutomationElement e) { if (e.Patterns.Invoke.IsSupported) e.Patterns.Invoke.Pattern.Invoke(); else ClickEl(e); Thread.Sleep(300); }
     static string Status(AutomationElement e) => e.Properties.ItemStatus.ValueOrDefault ?? "";
 
     static (BarApp App, string Dir) Launch(string profile, string theme, string? fixture = Fixture, bool keys = false)
@@ -44,6 +46,7 @@ public class CalendarTests
 
     static void Has(string dir, string needle, string why, int ms = 5000) => Host.LogContains(() => FrameProbe.Log(dir), needle, why, ms);
 
+    static int Opens(string dir) => FrameProbe.Log(dir).Split("cal: the calendar opened (").Length - 1;
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 30))); }
 
     /// The clock pressed once the host has attached the calendar (its first gcal.events push reached the bar); a click
@@ -53,8 +56,10 @@ public class CalendarTests
         Has(dir, "cal: gcal.events arrived (", "the host never attached the calendar", 15000);
         IntPtr h = IntPtr.Zero;
         bool shown() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Calendar"));
+        int before = Opens(dir);
         ClickEl(app.Find("bar.clock"));
-        if (!Host.Until(() => shown(), 2500) && !FrameProbe.Log(dir).Contains("cal: the calendar opened (")) ClickEl(app.Find("bar.clock"));
+        // a click can land on Windows' own auto-hide taskbar when it is up in front of the bar: then press it through UI Automation
+        if (!Host.Until(() => shown(), 2500) && Opens(dir) == before) Press(app.Find("bar.clock"));
         Assert.IsTrue(Host.Until(() => shown(), 4000), "the calendar did not open from the clock. Log:\n" + Tail(dir));
         Has(dir, "cal: the calendar opened (", "no opened line");
         var w = Host.Uia.FromHandle(h);
@@ -104,21 +109,21 @@ public class CalendarTests
         Host.Screenshot("cal-open-light");
 
         // another day: its list
-        ClickEl(El(w, "cal.day.2026-11-20"));
+        Press(El(w, "cal.day.2026-11-20"));
         Has(dir, "cal: day 2026-11-20 selected (1 events)", "the 20th was not selected");
         Assert.IsTrue(Host.Until(() => Rows(w).SequenceEqual(new[] { "Dentist" }), 3000), "the 20th's list is not the dentist: " + string.Join(" | ", Rows(w)));
         StringAssert.Contains(Status(El(w, "cal.day.2026-11-20")), "selected");
 
         // the next month: the grid moves, and the month is asked for (a dry run in --test)
-        ClickEl(El(w, "cal.next"));
+        Press(El(w, "cal.next"));
         Has(dir, "cal: shows December 2026", "the next month did not show");
         Assert.IsTrue(Host.Until(() => El(w, "cal.title").Name == "December 2026", 2000), "the title did not move");
         Assert.AreEqual(42, Ids(w, "cal.day.").Distinct().Count());
-        ClickEl(El(w, "cal.today"));
+        Press(El(w, "cal.today"));
         Has(dir, "cal: shows November 2026", "Today did not come back to November");
 
         // the clock again closes it
-        ClickEl(app.Find("bar.clock"));
+        Press(app.Find("bar.clock"));
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Calendar");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the calendar did not close from the clock");
         Has(dir, "cal: the calendar closed (", "no closed line");
@@ -126,7 +131,7 @@ public class CalendarTests
     }
 
     [TestMethod]
-    public void Dark_moves_with_the_arrow_keys_and_page_keys_and_a_right_click_opens_it_too()
+    public void Dark_moves_with_the_arrow_keys_and_page_keys_and_reopens_on_this_month()
     {
         var (app, dir) = Launch("cal-dark", "dark", keys: true);
         using var _ = app;
@@ -151,13 +156,12 @@ public class CalendarTests
         Keyboard.Type(VirtualKeyShort.PRIOR);  // Page Up
         Has(dir, "cal: day 2026-11-15 selected", "Page Up did not come back");
 
-        // the clock closes it; a right-click opens it again
-        ClickEl(app.Find("bar.clock"));
+        // the clock closes it; the next open starts on today's month with today selected again (BAR-418, BAR-495)
+        Press(app.Find("bar.clock"));
         Has(dir, "cal: the calendar closed (", "no closed line");
-        var c = app.Find("bar.clock").BoundingRectangle;
-        Mouse.RightClick(new System.Drawing.Point(c.Left + c.Width / 2, c.Top + c.Height / 2));
-        IntPtr h = IntPtr.Zero;
-        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Calendar")), 4000), "a right-click on the clock did not open the calendar");
+        w = Open(app, dir);
+        Assert.AreEqual("November 2026", El(w, "cal.title").Name);
+        StringAssert.Contains(Status(El(w, "cal.day.2026-11-11")), "selected");
     }
 
     [TestMethod]
@@ -170,7 +174,7 @@ public class CalendarTests
         Assert.AreEqual(42, Ids(w, "cal.day.").Distinct().Count());
         Assert.AreEqual(0, Ids(w, "cal.day.").Count(id => Status(El(w, id)).Contains("dot")), "a dot with no events");
         El(w, "cal.connect");
-        ClickEl(El(w, "cal.notifications"));
+        Press(El(w, "cal.notifications"));
         Has(dir, "cal: dry run (--test): would press win+n", "Notifications pressed something in a test run");
     }
 }
