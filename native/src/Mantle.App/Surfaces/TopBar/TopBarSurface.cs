@@ -173,20 +173,37 @@ internal sealed class TopBarSurface : ISurface
     }
 
     // ------------------------------------------------------------------ the strip
+    /// A strip button: the fixed parts through XAML (a template of a Border and a ContentPresenter, no focus visuals, press
+    /// to open), the themed parts in code. Each code step is guarded: a step that throws is logged once with what it was
+    /// (the first runner build threw a bare "Specified cast is not valid" from this method) and the button still comes.
     Button MakeButton(string id, string name, bool bold = false)
     {
-        var tpl = (ControlTemplate)XamlReader.Load($"<ControlTemplate {Ns} TargetType='Button'><Border Background='{{TemplateBinding Background}}' CornerRadius='{{TemplateBinding CornerRadius}}' Padding='{{TemplateBinding Padding}}'><ContentPresenter Content='{{TemplateBinding Content}}' Foreground='{{TemplateBinding Foreground}}' VerticalAlignment='Center' HorizontalAlignment='Left'/></Border></ControlTemplate>");
-        var b = new Button
+        var b = (Button)XamlReader.Load($"<Button {Ns} Height='22' Padding='9,0,9,0' VerticalAlignment='Center' ClickMode='Press' IsTabStop='True' UseSystemFocusVisuals='False'>"
+            + "<Button.Template><ControlTemplate TargetType='Button'><Border Background='{TemplateBinding Background}' CornerRadius='{TemplateBinding CornerRadius}' Padding='{TemplateBinding Padding}'>"
+            + "<ContentPresenter Content='{TemplateBinding Content}' Foreground='{TemplateBinding Foreground}' VerticalAlignment='Center' HorizontalAlignment='Left'/></Border></ControlTemplate></Button.Template></Button>");
+        Step("corner", () => b.CornerRadius = new CornerRadius(Dbl("LgRCtl", 6)));
+        Step("fill", () => b.Background = ClearBrush());
+        Step("ink", () => b.Foreground = Br("LgInk"));
+        Step("font", () => b.FontFamily = TextFont);
+        Step("font size", () => b.FontSize = _dark ? 13 : 12.5);
+        Step("weight", () => b.FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal);
+        Step("automation id", () => AutomationProperties.SetAutomationId(b, id));
+        Step("automation name", () => AutomationProperties.SetName(b, name));
+        Step("hover", () =>
         {
-            Template = tpl, Height = 22, Padding = new Thickness(9, 0, 9, 0), CornerRadius = new CornerRadius(Dbl("LgRCtl", 6)), VerticalAlignment = VerticalAlignment.Center,
-            Background = ClearBrush(), Foreground = Br("LgInk"), FontFamily = TextFont, FontSize = _dark ? 13 : 12.5,
-            FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal, ClickMode = ClickMode.Press, IsTabStop = true, UseSystemFocusVisuals = false,
-        };
-        AutomationProperties.SetAutomationId(b, id);
-        AutomationProperties.SetName(b, name);
-        b.PointerEntered += (_, _) => { if (!IsOpen(b)) b.Background = Br("LgHover"); };
-        b.PointerExited += (_, _) => { if (!IsOpen(b)) b.Background = ClearBrush(); };
+            b.PointerEntered += (_, _) => { if (!IsOpen(b)) b.Background = Br("LgHover"); };
+            b.PointerExited += (_, _) => { if (!IsOpen(b)) b.Background = ClearBrush(); };
+        });
         return b;
+    }
+    readonly HashSet<string> _stepFailed = new();
+    void Step(string what, Action a)
+    {
+        try { a(); }
+        catch (Exception e) when (e is InvalidCastException or System.Runtime.InteropServices.COMException or ArgumentException)
+        {
+            if (_stepFailed.Add(what)) _ctx.Log.Line($"a strip button's {what} could not be set: {e.GetType().Name}: {e.Message}");
+        }
     }
     bool IsOpen(Button b) => _openKey != null && (b.Tag as string) == _openKey;
 
