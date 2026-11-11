@@ -11,7 +11,7 @@ namespace Mantle.App.Surfaces.TopBar;
 // The dropdowns' motion and the strip's pointer and focus details:
 //  - TOP-080: a dropdown pops in once per menu session (light: up 3 px on the bar's spring over --m-dur-xs 240 ms and a
 //    96 ms fade on --m-fade-in; reduced motion: a 120 ms linear fade only; dark: none, as Helm's menus). A re-render never
-//    pops in again (MenuLevel.Shown). Composition animations only: nothing runs once they end.
+//    pops in again (MenuLevel.Popped). Composition animations only: nothing runs once they end.
 //  - press-drag-release: a press on a title or a stat cell lets the pointer go, so a drag over the rows highlights them
 //    and a release on a row picks it (Electron's mouseup on .r after a mousedown on the title).
 //  - TOP-028: a strip button focused from the keyboard shows the focus ring (light: 2 px accent inside its edge; dark:
@@ -31,8 +31,8 @@ internal sealed partial class TopBarSurface
     /// TOP-080: called by Reveal() when a dropdown is first seen in this menu session.
     void PopIn(FrameworkElement box, MenuLevel lv)
     {
-        if (lv.Shown) return;
-        lv.Shown = true;
+        if (lv.Popped) return;
+        lv.Popped = true;
         if (_dark) { if (_test) _ctx.Log.Line("dropdown pop-in: none (dark)"); return; }
         var v = ElementCompositionPreview.GetElementVisual(box);
         var c = v.Compositor;

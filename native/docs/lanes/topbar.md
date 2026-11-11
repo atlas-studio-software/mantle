@@ -243,7 +243,7 @@ this area.
   `topbar.pt.c<row>.<col>`, `topbar.pt.h.<n>`, `topbar.pt.chip.<n>`, `topbar.pt.speed.*`; amber cells and lines carry
   ItemStatus "amber".
 - **Part 4 leftovers:** `TopBarSurface.Motion.cs`.
-  - TOP-080: a dropdown pops in once per menu session (`MenuLevel.Shown`), from `Reveal()` when it is first seen:
+  - TOP-080: a dropdown pops in once per menu session (`MenuLevel.Popped`; part 4 already had `Shown`, set when drawn), from `Reveal()` when it is first seen:
     light up 3 px on the bar's spring over 240 ms and a 96 ms fade, reduced motion a 120 ms fade, dark none.
     Composition animations only.
   - Press-drag-release: a press on a title or stat cell releases the button's pointer capture, so the rows hear the
