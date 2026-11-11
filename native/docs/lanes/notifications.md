@@ -76,3 +76,13 @@ BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host
 
 - BAR-844 (keyboard on cards), BAR-856 (no panel fallback), BAR-191 (a push channel that cannot be subscribed).
 - The calendar lane calls `OpenNotifications()` for BAR-855.
+
+## State (part 2)
+
+- Run 43014208915 (4b148f0, -Stages build,unit,ui,notifs): `NATIVE-CI: ok (4 ok, 0 skipped)`; unit 639/639, ui 50/50;
+  notifs centre light 0.7078 / dark 0.6998 (floor 0.66), tray light 0.4400 / dark 0.7564 (floor 0.30, held low: see below).
+- The native tray crop is the backdrop colour, not the bar (even through ParityNative.CleanGrab) although UI Automation
+  puts the strip there and clicks at that spot reach it; the tray scores measure that, not the drawing. To look at next.
+- bar.md: 30 rows `tested:` (centre 819-823, 826, 831-835, 838, 839, 843, 848, 850, 853, 863; tray 354, 358-360, 363;
+  chips 181, 182; More 575-577, 579, 582). The fixture's hidden-icon reason came back as Mantle's plain fallback
+  ("Mantle cannot click Tailscale, and Windows did not say why"): PlainOr refused it; why is not known yet.
