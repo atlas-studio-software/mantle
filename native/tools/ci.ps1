@@ -560,8 +560,8 @@ function Stage-sidecar {
 
 # ---- stage media (lane native-r7-media): the now-playing card pair, Electron vs native, light and dark
 # (tools/parity/media/run-media-parity.ps1). Floors a little under the lowest ssim seen; they only move up.
-$Floors['media light'] = 0.53   # 0.5596 (run 43012883434; text sizes since matched to bar.css)
-$Floors['media dark']  = 0.59   # 0.6158 (same run)
+$Floors['media light'] = 0.74   # 0.7717 (run 43014608940, after the text sizes matched bar.css; 0.5596 before)
+$Floors['media dark']  = 0.69   # 0.7190 (same run; 0.6158 before)
 function Stage-media {
   $out = Join-Path $Out 'parity\media'
   $code = Lane-Script 'media' 'tools\parity\media\run-media-parity.ps1' @('-Exe', $exe, '-Out', $out)

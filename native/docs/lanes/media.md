@@ -121,7 +121,8 @@ does something it does not. Only rows a passing test covers end to end are `test
   shell). 43 rows `todo` with the class and test of their ported rule (game mode 27, Downloads 8, Helm badge 6, quick links 2).
 - The pair (tools/parity/media): the card's layout, art box, head lines, app line and transport match; the gap is
   text rasterisation, and the progress reason's size (11.5 -> 12.5 px, line-height 1.45 as bar.css after that run).
-  The dark toggle's sunk fill reads a little darker natively. Floors: light 0.53, dark 0.59.
+  The dark toggle's sunk fill reads a little darker natively. After the size fix (run 43014608940): light 0.7717, dark
+  0.7190; floors light 0.74, dark 0.69.
 
 ### Left (part 3)
 
