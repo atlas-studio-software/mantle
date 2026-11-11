@@ -255,3 +255,53 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
 - Helm badge: the "+N" overflow's sum and tiles (BAR-257, BAR-1030); the keep-on-top pin moving top-left when a count
   shows (Electron's .cell.hb-on .ontop-badge).
 - Downloads: keyboard walk, double-click guard, drag-out and the live open / reveal are ported but untested.
+
+## Part 5 (lane native-r7-media5)
+
+### What is built
+
+- Quick links (Win+X), BAR-1037..1045:
+  - `Mantle.Core/Features/QuickLinks/QuickMenu.cs` (pure): the rows in Windows' groups (Tools / Open / Power and desktop),
+    the Shut down or sign out submenu, the underlined-letter keys, ask-first arming (the first press arms for 5 s, the
+    same letter or Enter does it, nothing confirms within 250 ms), the once-per-decision guard (in flight or within
+    500 ms), the hint keys and the placeholder "Quick links: press a letter".
+  - `Mantle.Core/Features/QuickLinks/QuickLinksFeature.cs`: [Feature("quicklinks", Chords Win+X, Rest)] and
+    `QuickLinkPlan` (pure): what each row id runs. Settings rows go through LauncherLaunch (Windows Settings, with its
+    "Mantle Settings is not running" words); Task Manager / File Explorer open Windows' own (Mantle's are not in the
+    native build); the system tools by ShellExecute; Terminal is wt.exe or Windows PowerShell with Electron's words,
+    (Admin) with Verb runas; Desktop is the sidecar's hotcorners.desktop. `quicklinks.power {action, confirmed}`:
+    shutdown.exe /l, /h, /r /t 0, /s /t 0, and SetSuspendState(FALSE, FALSE, FALSE) for Sleep; ask-first rows refuse
+    without confirmed.
+  - `Mantle.App/Surfaces/Launcher/LauncherSurface.Quick.cs`: the mode drawn in the launcher Mantle already has (no
+    new window). Win+X over Quick links closes it; over the plain launcher it switches. Hiding returns to apps mode.
+    Search opens the launcher's search. Run says it is not in the native build yet (no Win+R lane natively).
+  - The launcher's main file (`LauncherSurface.cs`) gets `partial` and twelve one-line hooks: Create, Show, Hide,
+    Destroy, RunSearch, Apply, FillRow, Select, RenderHint, OnKey and Activate.
+  - No timers at rest: the 5 s arm timer runs only while a row is armed, the 1.4 s hide only after a live action.
+- Game mode:
+  - BAR-815 ported: Esc inside the open Details closes it, gives Details the focus back and is handled before the
+    pop-up's own Esc, so quick settings stays open.
+  - BAR-781: the replan interval is `Host.ReplanMs` (default 30000). A test run reads MANTLE_TEST_GAMEMODE_REPLAN_MS
+    (at least 500) and logs each replan.
+  - BAR-808: `GameModeView.SwitchTakes`: a second click within 500 ms is the same decision. A dry run answers in
+    milliseconds, so the in-flight flag alone let a double click switch twice.
+  - Shared file `QsPanel.cs`, one line: a test panel passes `_room.TakeKeys` to the row, so a test can press Esc in
+    Details (MANTLE_TEST_QS_KEYS=1).
+- Downloads: `Mantle.Core/Features/Downloads/DownloadsKeys.cs` (pure): the Up/Down/Home/End walk (it was inline in the
+  shelf) and the one-press guard (in flight, or the same row's same action within 500 ms). In a test run the shelf logs
+  `downloads: key <K>: row N of M`.
+
+### Deviations
+
+- Shut down runs `shutdown /s /t 0` without Electron's `/hybrid`-when-Fast-Startup probe (a full shut down).
+- Quick links rows use the launcher's letter tile, not their own icons.
+- Run (Win+R) from Quick links says it is not in the native build yet.
+- Mantle's Task Manager and Files are not in the native build, so those rows always open Windows' own app.
+
+### Left (part 6)
+
+- Quick links: the live runs (UAC, shutdown.exe, sleep, the desktop toggle) were never run: every run here is --test.
+- Downloads: drag-out and the live open / reveal (a test run never opens a file); the "Reading your Downloads folder…"
+  state shows only for the few ms of a read, so it is not caught in a UI test.
+- Game mode: the wallpaper hold. BAR-818: native draws the switch, knob and chevron with no transitions, so reduced
+  motion has nothing to turn off.
