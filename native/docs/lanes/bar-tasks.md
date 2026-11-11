@@ -171,6 +171,31 @@ deliberate deviation for safety.
   jumplist.json, kept over a restart; a 4 px move is a click; Esc springs back; a pin dragged past the divider stops on
   the last pin's slot.
 
+## Round 7: the app menu, keep on top (native-r7-strip)
+
+- Core: `Features/JumpList/JumpListService.cs` (lib/features/jumplist.js: get / open / remove / close / pin, the argument
+  checks and plain words in `JumpRules`), `Features/Pinned/PinOverlayEdit.cs` (_jumplist-pins.js pin, unpin, undoUnpin),
+  `Features/OnTop/OnTopCore.cs` (_ontop-core.js, sidecar injected) and `OnTopFeature.cs` (`[Feature("ontop")]`:
+  Win+Ctrl+T, `ontop.set`, `ontop.state` push + replay, `ontop.toast`, the 2 s sweep, saved pins adopted at start,
+  suspend / resume around a game). The jump list is NOT a feature (no tray switch yet): it lives in the strip host and
+  writes the same `features\jumplist.json` store as the dragged order (one store, one gate).
+- Strip: `Tasks/BarWindow.JumpList.cs` (ui/bar/jumplist.js; UIA ids in its header), right-click hooked in Cell_Loaded;
+  the pin badge in the cell template (BarWindow.xaml, `OnTopVisibility`), "; kept on top" in the cell's ItemStatus and
+  the tooltip line. `BarTasksHost.AttachOnHost` now also takes the bus and the event hub (App.xaml.cs, one line) for
+  `ontop.set` / `ontop.state`; the feature installs after the strip attaches, so the host asks `ontop.state` (1.5 s,
+  retried) instead of waiting for a replay.
+- Test hooks (--test only): `MANTLE_TEST_JUMPLIST=<json file>` ({"apps": {"<exe file name>" | "<name>" | "*": <a
+  jumplist.get result> | {"fail": "<words>"}}}: no sidecar read, open/remove dry runs via "the test's made-up jump
+  list"); `MANTLE_TEST_ONTOP_FAKE=1` (ontop.set / info / check answered by a made-up Windows; nothing is changed);
+  `MANTLE_TEST_JL_KEYS=1` (a test menu may take the keyboard).
+- Deviations: pin / unpin in a --test run write the TEST profile's own pin list (Electron dry-runs them); the drag order
+  already did, and it is Mantle's own state. The keep-on-top result pop-up (BAR-341) is not drawn: results go out as
+  `ontop.toast` and the strip logs them. Mantle Files' folder opening (BAR-330) and the "Windows' own" row
+  (BAR-215, 323) wait for Mantle's own apps on the native bar (BAR-291..296).
+- Calendar (BAR-855): the footer's "Notifications" opens Mantle's own centre (`OpenNotifications`), never win+n.
+- Left: overflow "+N" (BAR-235..238, the "+N" part of BAR-242), Explorer restart (BAR-158..163: a TaskbarCreated test
+  hook on the bar window, which is Frame's), the off switch for jump lists (BAR-317 "switched off"), BAR-341.
+
 ## Part 2 starts here
 
 Previews are done except BAR-233 (re-place on a bar width change or the island's move) and BAR-313 (the Alt+Tab

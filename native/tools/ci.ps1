@@ -34,6 +34,8 @@
     notifs   tools/parity/notifications/run-notifs-parity.ps1 (lane native-r7-notif: the notification centre and the
              tray strip, light and dark), gated on "NOTIFS-PARITY summary: 4 scored of 4" and its floors
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
+    topbar   tools/parity/topbar/run-topbar-parity.ps1 (the top bar strip, light and dark at 100 % and 150 %), gated on
+             "TOPBAR-PARITY summary: 4 scored of 4" and its floors (lane native-r7-topbar)
   A stage whose project or script does not exist is skipped, not failed.
 
   The runner desktop between the GUI stages (smoke, ui, bench, parity): tools/desk/desk.ps1 -Reset runs
@@ -47,7 +49,7 @@
   in <Out>/logs/<stage>.log.
 #>
 param(
-  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media'),
+  [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
 )
@@ -57,7 +59,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar')
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -179,7 +181,10 @@ if ($Mode -eq 'uia') {
   $AE = [System.Windows.Automation.AutomationElement]
   $cond = New-Object System.Windows.Automation.PropertyCondition($AE::ProcessIdProperty, $TargetPid)
   $win = $null
-  for ($i = 0; $i -lt 20 -and $null -eq $win; $i++) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond); if ($null -eq $win) { Start-Sleep -Milliseconds 250 } }
+  # the bar's own window by name: the top bar (lane native-r7-topbar) is another top-level window of the same process
+  $named = New-Object System.Windows.Automation.AndCondition($cond, (New-Object System.Windows.Automation.PropertyCondition($AE::NameProperty, 'Mantle bar')))
+  for ($i = 0; $i -lt 20 -and $null -eq $win; $i++) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $named); if ($null -eq $win) { Start-Sleep -Milliseconds 250 } }
+  if ($null -eq $win) { $win = $AE::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children, $cond) }
   if ($null -eq $win) { '{"error":"no top-level UI Automation element for the process"}'; exit }
   $items = @()
   foreach ($e in $win.FindAll([System.Windows.Automation.TreeScope]::Descendants, [System.Windows.Automation.Condition]::TrueCondition)) {
@@ -651,11 +656,37 @@ function Stage-media {
   return "ok ($scored of $of scored, ssim $($got -join ', '))"
 }
 # ---- end stage media
+# lane native-r7-topbar: stage topbar (the top bar strip's pairs, light and dark at 100 % and 150 %), its floors with it
+$Floors['topbar light'] = 0.59   # run 43030945612 (5ef12f86): light 0.6139 at 100 %, 0.6337 at 150 %
+$Floors['topbar dark']  = 0.67   # run 43030945612 (5ef12f86): dark 0.7344 at 100 %, 0.6989 at 150 %
+function Stage-topbar {
+  $out = Join-Path $Out 'parity\topbar'
+  $code = Lane-Script 'topbar' 'tools\parity\topbar\run-topbar-parity.ps1' @('-Exe', $exe, '-Out', $out)
+  if ($null -eq $code) { return 'skipped (no tools/parity/topbar/run-topbar-parity.ps1)' }
+  if ($code -is [string]) { return $code }
+  $log = Join-Path $logs 'topbar.log'
+  $rows = Scores $log '^TOPBAR-PARITY (\w+)-\d+: ssim=([\d.]+)'
+  Select-String -Path $log -Pattern '^TOPBAR-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  $sum = @(Select-String -Path $log -Pattern '^TOPBAR-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if (-not $sum.Count) { return "FAILED (no TOPBAR-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
+  $bad = @(); $got = @()
+  $scored = [int]$sum[0].Matches[0].Groups[1].Value; $of = [int]$sum[0].Matches[0].Groups[2].Value
+  if ($scored -lt 4 -or $of -ne 4) { $bad += "$scored of $of strips scored" }
+  foreach ($t in 'light', 'dark') {
+    $r = @($rows | Where-Object { $_.Tag -eq $t }); $f = $Floors["topbar $t"]
+    if (-not $r.Count) { $bad += "$t not scored"; continue }
+    $lo = ($r | Measure-Object -Property Ssim -Minimum).Minimum
+    if ($lo -lt $f) { $bad += ("{0} lowest ssim {1:N4} under its floor {2}" -f $t, $lo, $f) } else { $got += ("{0} {1:N4} >= {2}" -f $t, $lo, $f) }
+  }
+  if ($code -ne 0) { $bad += "exit $code" }
+  if ($bad.Count) { return "FAILED ($($bad -join '; '))" }
+  return "ok ($scored of $of scored, lowest ssim $($got -join ', '))"
+}
 
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media', 'topbar')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -708,6 +739,7 @@ foreach ($s in $Stages) {
       'cal'     { Stage-cal }       # lane native-r7-calendar
       'notifs'  { Stage-notifs }   # lane native-r7-notif
       'media'   { Stage-media }    # lane native-r7-media
+      'topbar'  { Stage-topbar }   # lane native-r7-topbar
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result
   } catch {
