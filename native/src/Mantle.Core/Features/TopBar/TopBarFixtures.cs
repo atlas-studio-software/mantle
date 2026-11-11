@@ -12,7 +12,35 @@ namespace Mantle.Core.Features.TopBar;
 /// </summary>
 public static class TopBarFixtures
 {
-    static readonly string[] Npp = { "File", "Edit", "Search", "View", "Encoding", "Language", "Settings", "Tools", "Macro", "Run", "Plugins", "Window", "?" };
+    /// mock-mantle.js W32(): Notepad++'s menu tree, ids 100 + pos as Electron numbers them (TOP-061..070's rows).
+    static JsonArray NppMenu()
+    {
+        int pos = 0;
+        JsonObject It(string label, string key = "", bool enabled = true, bool check = false, bool radio = false)
+        {
+            pos++;
+            return new JsonObject { ["t"] = "item", ["pos"] = pos - 1, ["label"] = label, ["key"] = key, ["mn"] = label[..1].ToLowerInvariant(),
+                ["id"] = 100 + pos, ["enabled"] = enabled, ["checked"] = check, ["radio"] = radio, ["items"] = null, ["lazy"] = false };
+        }
+        JsonObject Sep() => new() { ["t"] = "sep", ["pos"] = pos++ };
+        JsonObject Sub(string label, JsonObject[] items, bool lazy = false)
+        {
+            var x = It(label); x["id"] = null; x["items"] = new JsonArray(items.Select(i => (JsonNode)i).ToArray()); x["lazy"] = lazy; pos = 0; return x;
+        }
+        var file = Sub("File", new[] { It("New", "Ctrl+N"), It("Open…", "Ctrl+O"), Sub("Recent Files", new[] { It("notes.txt"), It("todo.md"), It("build.log") }),
+            Sep(), It("Save", "Ctrl+S"), It("Save As…", "Ctrl+Alt+S"), It("Save a Copy As…", enabled: false), Sep(), It("Print…", "Ctrl+P"), Sep(), It("Exit", "Alt+F4") });
+        var edit = Sub("Edit", new[] { It("Undo", "Ctrl+Z"), It("Redo", "Ctrl+Y", enabled: false), Sep(), It("Cut", "Ctrl+X"), It("Copy", "Ctrl+C"), It("Paste", "Ctrl+V"),
+            Sep(), It("Select All", "Ctrl+A") });
+        var search = Sub("Search", new[] { It("Find…", "Ctrl+F"), It("Replace…", "Ctrl+H") });
+        var view = Sub("View", new[] { It("Always on Top", check: true), It("Word Wrap", check: true), Sep(),
+            It("Tab size 2", radio: true, check: true), It("Tab size 4", radio: true), Sep(), Sub("Zoom", new[] { It("Zoom In", "Ctrl+Num +"), It("Zoom Out", "Ctrl+Num -"), It("Restore Default Zoom", "Ctrl+Num /") }) });
+        var items = new[] { file, edit, search, view,
+            Sub("Encoding", new[] { It("UTF-8", radio: true, check: true), It("UTF-16 LE", radio: true) }), Sub("Language", Array.Empty<JsonObject>(), lazy: true),
+            Sub("Settings", new[] { It("Preferences…") }), Sub("Tools", new[] { It("MD5") }), Sub("Macro", new[] { It("Start Recording") }), Sub("Run", new[] { It("Run…", "F5") }),
+            Sub("Plugins", new[] { It("Plugins Admin…") }), Sub("Window", new[] { It("Windows…") }), Sub("?", new[] { It("About Notepad++", "F1") }) };
+        for (int i = 0; i < items.Length; i++) items[i]["pos"] = i;
+        return new JsonArray(items.Select(i => (JsonNode)i).ToArray());
+    }
 
     static JsonObject Base() => new()
     {
@@ -30,7 +58,7 @@ public static class TopBarFixtures
                 f["menu"] = new JsonObject
                 {
                     ["source"] = "win32", ["hwnd"] = "4242", ["owner"] = false,
-                    ["items"] = new JsonArray(Npp.Select((l, i) => (JsonNode)new JsonObject { ["t"] = "item", ["pos"] = i, ["label"] = l, ["enabled"] = true }).ToArray()),
+                    ["items"] = NppMenu(),
                 };
                 return f;
             case "chrome":

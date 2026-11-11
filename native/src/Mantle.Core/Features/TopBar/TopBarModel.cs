@@ -14,11 +14,13 @@ namespace Mantle.Core.Features.TopBar;
 
 /// <summary>One menu row (an item, a separator, or a plain-words info row).</summary>
 public sealed record TopBarItem(string T, string? Label = null, string? Act = null, bool Enabled = true, bool Checked = false,
-    string? Key = null, IReadOnlyList<TopBarItem>? Items = null, string? Power = null, string? Confirm = null, string? Mn = null);
+    string? Key = null, IReadOnlyList<TopBarItem>? Items = null, string? Power = null, string? Confirm = null, string? Mn = null,
+    int? Id = null, int? Pos = null, bool Radio = false, bool OwnerDraw = false, bool Lazy = false, string? Layout = null,
+    string? Exe = null, IReadOnlyList<string>? Args = null, int? Ti = null, string? Source = null);
 
 /// <summary>One top-level title on the strip. <c>Glyph</c> = the Mantle glyph; <c>Bold</c> = the app's name.</summary>
 public sealed record TopBarTitle(string Key, string Label, bool Glyph = false, bool Bold = false, bool Enabled = true,
-    IReadOnlyList<TopBarItem>? Items = null, int? Pos = null, string? Source = null);
+    IReadOnlyList<TopBarItem>? Items = null, int? Pos = null, string? Source = null, int? Id = null, bool Lazy = false);
 
 /// <summary>One stat cell (model.js statCells): <c>Why</c> set = no reading (drawn "--" in ink-2, the why as tooltip).</summary>
 public sealed record TopBarCell(string Key, string Label, string Value, string? Why, bool Warn = false, string? Title = null);
@@ -75,8 +77,8 @@ public static class TopBarModel
     {
         var name = AppName(f);
         var items = new List<TopBarItem>();
-        if (f == null || B(f, "shell")) { items.Add(new("item", "New File Explorer window", "newWindow")); return items; }
-        if (NewWindowArgs(S(f, "exe")) != null) { items.Add(new("item", "New window", "newWindow")); items.Add(new("sep")); }
+        if (f == null || B(f, "shell")) { items.Add(new("item", "New File Explorer window", "newWindow", Exe: @"C:\Windows\explorer.exe", Args: Array.Empty<string>())); return items; }
+        if (NewWindowArgs(S(f, "exe")) is { } nw) { items.Add(new("item", "New window", "newWindow", Exe: S(f, "exe"), Args: nw)); items.Add(new("sep")); }
         items.Add(new("item", "Minimize", "minimize"));
         items.Add(new("item", B(f, "zoomed") ? "Restore size" : "Zoom", "zoom"));
         items.Add(new("item", "Always on top", "ontop", Checked: B(f, "topmost")));
@@ -88,7 +90,10 @@ public static class TopBarModel
 
     static readonly TopBarItem[] NotRunning = { new("item", "Window layouts are not running", Enabled: false) };
     /// model.js MANTLE_MENU (the glyph's menu); "Keep the top bar over full-screen games" is checked from the state.
-    public static IReadOnlyList<TopBarItem> MantleMenu(bool overGames = false, bool peeking = false) => new TopBarItem[]
+    public static IReadOnlyList<TopBarItem> MantleMenu(bool overGames = false, bool peeking = false, JsonObject? layouts = null)
+    {
+        var (restore, save) = LayoutItems(layouts);
+        return new TopBarItem[]
     {
         new("item", "About Mantle", "about"),
         new("item", "Mantle Settings…", "settings", Key: "Win+I"),
@@ -96,14 +101,15 @@ public static class TopBarModel
         new("item", "Keep the top bar over full-screen games", "overGames", Checked: overGames),
         peeking ? new("item", "Show top bar", "show", Key: "Win+Alt+T") : new("item", "Hide top bar", "hide", Key: "Win+Alt+T"),
         new("sep"),
-        new("item", "Layouts", "layouts", Items: NotRunning, Mn: "y"),
-        new("item", "Save layout…", "layoutsSave", Items: NotRunning, Mn: "v"),
+        new("item", "Layouts", "layouts", Items: restore, Mn: "y"),
+        new("item", "Save layout…", "layoutsSave", Items: save, Mn: "v"),
         new("sep"),
         new("item", "Lock", "power", Power: "lock"),
         new("item", "Sleep", "power", Power: "sleep"),
         new("item", "Restart…", "power", Power: "restart", Confirm: "Click again to restart"),
         new("item", "Shut down…", "power", Power: "shutdown", Confirm: "Click again to shut down"),
     };
+    }
 
     /// Separators trimmed at both ends and never doubled (model.js cleanItems), on the snapshot's JSON rows.
     public static List<JsonObject> CleanItems(JsonArray? items)
@@ -119,11 +125,58 @@ public static class TopBarModel
         return o;
     }
 
+    static int? Int(JsonObject o, string k) => o.TryGetPropertyValue(k, out var v) && Num(v) is double d && d == Math.Floor(d) && Math.Abs(d) < int.MaxValue ? (int)d : null;
+
+    /// TOP-062/063: one row of the app's own menu (sidecar/MenuBar.cs: t, label, key, id, pos, enabled, checked, radio,
+    /// ownerDraw, lazy, mn, items), its submenu cleaned the same way, recursively.
+    public static TopBarItem Item(JsonObject it)
+    {
+        if (S(it, "t") == "sep") return new("sep", Pos: Int(it, "pos"));
+        var sub = it["items"] as JsonArray;
+        bool en = !(it.TryGetPropertyValue("enabled", out var e) && e is JsonValue ev && ev.TryGetValue<bool>(out var eb) && !eb);
+        return new("item", S(it, "label"), Enabled: en, Checked: B(it, "checked"), Key: S(it, "key") is { Length: > 0 } k ? k : null,
+            Items: sub != null ? FromJson(sub) : null, Mn: S(it, "mn"), Id: Int(it, "id"), Pos: Int(it, "pos"), Radio: B(it, "radio"),
+            OwnerDraw: B(it, "ownerDraw"), Lazy: B(it, "lazy"));
+    }
+    /// A whole level of the app's own menu, cleaned (model.js cleanItems, recursively).
+    public static IReadOnlyList<TopBarItem> FromJson(JsonArray? items) => CleanItems(items).Select(Item).ToArray();
+
+    /// model.js layoutItems (TOP-037..044): the Layouts and Save layout… submenus from layouts.state {layouts:[{name,count}],
+    /// enabled, busy}; a null state = the layouts feature has said nothing yet ("not running").
+    public static (IReadOnlyList<TopBarItem> Restore, IReadOnlyList<TopBarItem> Save) LayoutItems(JsonObject? st)
+    {
+        if (st == null) return (NotRunning, NotRunning);
+        if (st.TryGetPropertyValue("enabled", out var en) && en is JsonValue env && env.TryGetValue<bool>(out var eb) && !eb)
+        {
+            var off = new TopBarItem[] { new("item", "Window layouts are switched off in the tray", Enabled: false) };
+            return (off, off);
+        }
+        var ls = (st["layouts"] as JsonArray ?? new JsonArray()).OfType<JsonObject>().Select(l => (Name: S(l, "name") ?? "", Count: Int(l, "count") ?? 0)).ToList();
+        var busy = S(st, "busy");
+        var restore = ls.Select(l => new TopBarItem("item", l.Name, "layoutRestore", Enabled: busy == null, Layout: l.Name,
+            Key: l.Count.ToString(CultureInfo.InvariantCulture) + (l.Count == 1 ? " window" : " windows"))).ToList();
+        if (busy != null) restore.Insert(0, new("item", "Putting " + busy + " back…", Enabled: false));
+        if (ls.Count == 0) restore.Add(new("item", "No layouts yet: Save layout… names what is on screen", Enabled: false));
+        else
+        {
+            restore.Add(new("sep"));
+            restore.Add(new("item", "Rename", Items: ls.Select(l => new TopBarItem("item", l.Name + "…", "layoutRename", Layout: l.Name)).ToArray()));
+            restore.Add(new("item", "Delete", Items: ls.Select(l => new TopBarItem("item", l.Name, "layoutDelete", Layout: l.Name, Confirm: "Click again to delete " + l.Name)).ToArray()));
+        }
+        var save = new List<TopBarItem> { new("item", "New layout…", "layoutNew") };
+        if (ls.Count > 0)
+        {
+            save.Add(new("sep"));
+            save.AddRange(ls.Select(l => new TopBarItem("item", "Replace " + l.Name, "layoutSave", Layout: l.Name, Confirm: "Click again to replace " + l.Name)));
+        }
+        return (restore, save);
+    }
+
     /// TOP-018..023: the Mantle glyph, then (with a focus) the bold app name, then its own menus, or "Window" for an
     /// app without any (never for the desktop). Never an empty bar.
-    public static IReadOnlyList<TopBarTitle> Titles(JsonObject? f, JsonObject? menu, bool overGames = false, bool peeking = false)
+    public static IReadOnlyList<TopBarTitle> Titles(JsonObject? f, JsonObject? menu, bool overGames = false, bool peeking = false, JsonObject? layouts = null)
     {
-        var o = new List<TopBarTitle> { new("mantle", "Mantle", Glyph: true, Items: MantleMenu(overGames, peeking)) };
+        var o = new List<TopBarTitle> { new("mantle", "Mantle", Glyph: true, Items: MantleMenu(overGames, peeking, layouts)) };
         if (f == null) return o;
         o.Add(new("app", AppName(f), Bold: true, Items: AppMenu(f)));
         var src = menu?["items"] as JsonArray;
@@ -136,8 +189,9 @@ public static class TopBarModel
                 if (S(it, "t") != "item") continue;
                 var label = S(it, "label");
                 bool en = !(it.TryGetPropertyValue("enabled", out var e) && e is JsonValue ev && ev.TryGetValue<bool>(out var eb) && !eb);
-                int? pos = it.TryGetPropertyValue("pos", out var p) && p is JsonValue pv && pv.TryGetValue<int>(out var pi) ? pi : null;
-                o.Add(new("m" + i.ToString(CultureInfo.InvariantCulture), string.IsNullOrEmpty(label) ? "(untitled)" : label, Enabled: en, Pos: pos, Source: S(menu, "source")));
+                var row = Item(it);
+                o.Add(new("m" + i.ToString(CultureInfo.InvariantCulture), string.IsNullOrEmpty(label) ? "(untitled)" : label, Enabled: en, Pos: row.Pos,
+                    Source: S(menu, "source"), Id: row.Id, Lazy: row.Lazy, Items: row.Items));
             }
         }
         else if (!B(f, "shell"))
