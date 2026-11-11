@@ -105,18 +105,36 @@ this area.
 - **Ledger:** not marked (no full green run). Marker ready: `python -I native/tools/parity/topbar/mark-topbar-rows.py native [ui]` (Core rows; `ui` adds the UI ones). The rows and their test ids are also in the Core and UI
   test names; TOP-218 is the `better:` (exact 28 DIP, no shape) once the scale test is green in a green run.
 
+## Part 3 (lane native-r7-topbar-3, same branch)
+
+- **Electron's default:** `defaultOn: true` (lib/features/topbar.js), so the native feature stays on in every run.
+- **The ui stage hang:** `native/tests/Mantle.UiTests/TestRunJob.cs` puts the test host in a kill-on-close job object
+  before the first test, so everything it starts (each app and its Mantle.Sidecar) ends with it. ci.ps1's
+  `& dotnet ... *>> $log` waited on a pipe that a surviving sidecar held through handle inheritance. At exit it writes
+  `leftover-processes.txt` to the UI out folder. Run 43026242243: `Mantle.Sidecar pid 8204, started 13:13:17.752 UTC`
+  was still alive at the host's exit with no app. It was started during `TopmostTests.Bar_and_popups_started_while_
+  another_app_is_in_front_sit_above_it` (13:13:16-19, whose app is killed by Dispose), so a sidecar can outlive its
+  killed app by over a minute. That is sidecar lifetime code (sidecar/Program.cs: the parent watch and stdin EOF),
+  not this lane's. Reported to the coordinator. Run 43028973569: none left.
+- **The peek:** the watch starts disarmed (TOP-293) and the test had put the cursor on the edge before the first poll.
+  The test now waits for `peek: first look:` first.
+- **The pairs:** the first strip of each scale was BELOW the full-screen backdrop (its first Activate hands the
+  foreground back, which raises the backdrop). The script now logs the z-order and puts the backdrop right behind the
+  strip. At 150 % the runner's console covered the strip's lower 14 px; on the runner it is minimised (ClearRect).
+  Scores (run 43030945612): light 0.6139 / 0.6337, dark 0.7344 / 0.6989 at 100 / 150 %. Floors: light 0.59, dark 0.67.
+  Known differences: at 150 % Electron cuts the app name ("Notepad...") where native fits "Notepad++", and native's
+  titles drift about 0.5 px per title to the right.
+- **Ledger:** 59 rows marked by `mark-topbar-rows.py native ui` after run 43028973569 (unit 656/656, ui 49/49).
+
 ## Left (exact list, in order)
 
-1. Run `-Stages build,unit,ui,topbar` (`--timeout 80`), fix the peek from its new lines, check the idle-CPU test.
-2. Look at the four `topbar-*-pair.png`, set the two floors a little under the scores, re-run.
-3. Mark the rows (only those a passing test covers), then the full run.
-4. **Sections not started** (shell.md order):
+1. **Sections not started** (shell.md order):
    - Menus (TOP-031..), Keyboard;
    - Stats dropdowns, App power, Ping, Tools (the timer / notes features), Strip note;
    - Glass, Under colour, Glass + Strip (dark backdrop), Under colour (dark only);
    - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, newWindow, power, about,
      settings, ...).
-5. **Parts of started sections not ported:**
+2. **Parts of started sections not ported:**
    - Page and strip: TOP-003 menubar role, TOP-006/007 visible width, TOP-010..017 focus details (uia cache, title
      menuChanged re-render, the PIN_FOCUS test hook).
    - Feature + settings: TOP-211 tools hub.

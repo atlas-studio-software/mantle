@@ -559,8 +559,8 @@ function Stage-sidecar {
 }
 
 # lane native-r7-topbar: stage topbar (the top bar strip's pairs, light and dark at 100 % and 150 %), its floors with it
-$Floors['topbar light'] = 0.42   # run 43028973569: light-150 0.4571 (a console over the strip), light-100 0.6139
-$Floors['topbar dark']  = 0.60   # run 43028973569: dark-150 0.6332, dark-100 0.7344
+$Floors['topbar light'] = 0.59   # run 43030945612 (5ef12f86): light 0.6139 at 100 %, 0.6337 at 150 %
+$Floors['topbar dark']  = 0.67   # run 43030945612 (5ef12f86): dark 0.7344 at 100 %, 0.6989 at 150 %
 function Stage-topbar {
   $out = Join-Path $Out 'parity\topbar'
   $code = Lane-Script 'topbar' 'tools\parity\topbar\run-topbar-parity.ps1' @('-Exe', $exe, '-Out', $out)
