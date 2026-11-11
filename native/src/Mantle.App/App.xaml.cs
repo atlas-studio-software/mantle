@@ -277,6 +277,17 @@ public partial class MantleApp : Application
         Mantle.App.Surfaces.Launcher.LauncherSurface.Service = launcher;
         _ = launcher.IndexAsync();
         // ---- end launcher wiring
+        // ---- desktop wiring (lane native-r7-desktop): the desktop layer's live attach / recheck use the sidecar's desktop
+        // verb on the host thread (never sent in --test) and set the "desktop" state piece there; a hot corner opens the
+        // launcher through the surface host (a --test run only looks for it). Before StartSurfaces: the layer is AtStart.
+        Mantle.App.Surfaces.Desktop.DesktopSurface.Wire(_platform, loop.Post, change => _hub!.Set(change));
+        Mantle.Core.Features.Corners.CornersFeature.OpenLauncher = dry => {
+            if (_surfaceControl is not { } sc) return new Mantle.Core.Features.Corners.CornerFx(false, "this Mantle has no launcher to open", dry);
+            if (dry) return new Mantle.Core.Features.Corners.CornerFx(true, DryRun: true);
+            _ = sc.RunAsync("show", "launcher", "a hot corner");
+            return new Mantle.Core.Features.Corners.CornerFx(true);
+        };
+        // ---- end desktop wiring
         StartSurfaces(log);
         // ---- quick settings wiring (lane native-bar-qs): qs.get / qs.set / qs.watch / qs.audio.sessions / qs.audio.session
         // from the generated catalog, on the sidecar's own verbs; a --test run's sets are dry runs (QsService), and
