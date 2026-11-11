@@ -1,5 +1,6 @@
 using System;
 using System.Numerics;
+using Mantle.Core.Features.TopBar;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Controls;
