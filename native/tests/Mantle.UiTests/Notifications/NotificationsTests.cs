@@ -137,7 +137,8 @@ public class NotificationsTests
         var pip = app.TryFind("bar.more.pip", 5000);
         Assert.IsNotNull(pip, "no pip on more");
         StringAssert.StartsWith(Help(pip!), "warn: notifications off");
-        RightClickEl(bell);
+        // the bar's first moments may not take a right-click yet: tried until the centre shows (3 tries)
+        for (int i = 0; i < 3 && !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")); i++) { RightClickEl(bell); Thread.Sleep(700); }
         var w = Pop(app, dir, "Notifications", "notifs.panel");
         Assert.AreEqual("Notifications unavailable", El(w, "notifs.empty").Name);
         Host.Screenshot("notifs-centre-off-dark");
@@ -183,7 +184,9 @@ public class NotificationsTests
         Assert.IsTrue(Host.Until(() => Status(hidden) == "normal off", 2000), "the hidden icon is not dimmed: " + Status(hidden));
         Host.Screenshot("more-menu-light");
         Press(hidden);
-        Assert.IsTrue(Host.Until(() => El(m, "more.hidwhy").Name.StartsWith("Tailscale is in Windows' hidden-icons flyout", StringComparison.Ordinal), 2000), "the hidden icon's click did not say why: " + El(m, "more.hidwhy").Name);
+        // the click says, under the row, the same reason its tooltip gives (the sidecar's words, or Mantle's plain fallback)
+        string said = Help(hidden).Split("\n\n").Last();
+        Assert.IsTrue(Host.Until(() => El(m, "more.hidwhy").Name == said, 2000), "the hidden icon's click did not say why: " + El(m, "more.hidwhy").Name + " (tooltip: " + said + ")");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("notification-area icon n:3"), "a hidden icon was sent a click");
         var quit = El(m, "more.quit");
         Press(quit);
