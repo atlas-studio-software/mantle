@@ -41,6 +41,50 @@ if (-not (Test-Path $electron)) { throw "no Electron at $electron (npm ci first;
 Add-Type -Path (Join-Path $root 'native/tools/parity/ParityNative.cs')
 Add-Type -AssemblyName System.Drawing
 [void][ParityNative]::DpiAware()
+# The z-order between the strip and the backdrop (run 43026242243: the strip was shown, yet every native grab was the
+# bare backdrop colour). A --test strip is never topmost, so the backdrop (a fixture, not under test) is put right
+# behind it when it is above, and both are logged.
+Add-Type -TypeDefinition @'
+using System; using System.Runtime.InteropServices; using System.Text;
+public static class TopBarZ {
+    delegate bool EnumProc(IntPtr h, IntPtr l);
+    [DllImport("user32.dll")] static extern bool EnumWindows(EnumProc f, IntPtr l);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern int GetWindowTextW(IntPtr h, StringBuilder b, int n);
+    [DllImport("user32.dll")] static extern IntPtr GetTopWindow(IntPtr h);
+    [DllImport("user32.dll")] static extern IntPtr GetWindow(IntPtr h, uint cmd);
+    [DllImport("user32.dll")] static extern bool IsWindowVisible(IntPtr h);
+    [DllImport("user32.dll")] static extern int GetWindowLongW(IntPtr h, int i);
+    [DllImport("user32.dll")] static extern bool GetWindowDisplayAffinity(IntPtr h, out uint a);
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int cx, int cy, uint f);
+    public static IntPtr Find(int pid, string title) {
+        IntPtr hit = IntPtr.Zero;
+        EnumWindows((h, l) => { uint p; GetWindowThreadProcessId(h, out p); if (p != (uint)pid) return true;
+            var b = new StringBuilder(256); GetWindowTextW(h, b, 256); if (b.ToString() == title) { hit = h; return false; } return true; }, IntPtr.Zero);
+        return hit;
+    }
+    // 1 = a is above b, -1 = b is above a, 0 = one was not found in the walk
+    public static int Above(IntPtr a, IntPtr b) {
+        for (IntPtr h = GetTopWindow(IntPtr.Zero); h != IntPtr.Zero; h = GetWindow(h, 2 /* GW_HWNDNEXT */)) { if (h == a) return 1; if (h == b) return -1; }
+        return 0;
+    }
+    public static string Describe(IntPtr h) {
+        uint a; GetWindowDisplayAffinity(h, out a);
+        return string.Format("{0:x} visible {1}, exstyle {2:x}, capture affinity {3}", h.ToInt64(), IsWindowVisible(h), GetWindowLongW(h, -20), a);
+    }
+    public static bool PutBehind(IntPtr back, IntPtr strip) { return SetWindowPos(back, strip, 0, 0, 0, 0, 0x0001 | 0x0002 | 0x0010); }
+}
+'@
+function StripOverBackdrop([int]$nativePid, [int]$backPid, [string]$tag) {
+  $s = [TopBarZ]::Find($nativePid, 'Mantle top bar'); $b = [TopBarZ]::Find($backPid, 'Top bar parity backdrop')
+  if ($s -eq [IntPtr]::Zero -or $b -eq [IntPtr]::Zero) { Say "$tag z: strip $s, backdrop $b (one not found; grabbed as is)"; return }
+  $z = [TopBarZ]::Above($s, $b)
+  Say "$tag z: strip $([TopBarZ]::Describe($s)); backdrop $([TopBarZ]::Describe($b)); the strip is $(if ($z -gt 0) { 'above' } elseif ($z -lt 0) { 'BELOW' } else { 'unplaced against' }) the backdrop"
+  if ($z -lt 0) {
+    $ok = [TopBarZ]::PutBehind($b, $s); Start-Sleep -Milliseconds 400
+    Say "$tag z: the backdrop put right behind the strip ($ok); now the strip is $(if ([TopBarZ]::Above($s, $b) -gt 0) { 'above' } else { 'STILL BELOW' })"
+  }
+}
 
 function Png([byte[]]$px, [int]$w, [int]$h) {
   $bmp = New-Object System.Drawing.Bitmap($w, $h, [System.Drawing.Imaging.PixelFormat]::Format32bppRgb)
@@ -107,6 +151,7 @@ try {
         $ej = Join-Path $Out "electron-topbar-$tag.json"
         if (Test-Path $ej) { Say "Electron $tag page: $((Get-Content $ej -Raw).Trim())" }
         if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+        StripOverBackdrop $p.Id $back.Id $tag
         $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
         $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-topbar-$tag.png"))
         $eb = [System.Drawing.Bitmap]::FromFile($ef)

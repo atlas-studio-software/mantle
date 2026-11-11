@@ -212,6 +212,11 @@ public class TopBarSurfaceTests
         Assert.IsNotNull(store, "hidden by hand was not written to a topbar.json in the run's own user data (" + app.Ud + ")");
         Console.WriteLine("hidden by hand is kept in " + store);
         Host.LogContains(() => app.Log, "topbar: peek: watching the top edge", "the peek did not start watching once hidden", 4000);
+        // TOP-293: the watch starts disarmed and arms only once a poll sees the cursor OFF the edge. Run 43026242243 put
+        // the cursor on the edge before the first poll ("first look: the cursor at 960,0 DIP ... phase disarmed"), so
+        // it never armed: that is Electron's rule, so the test waits for the first look with the cursor away.
+        Host.LogContains(() => app.Log, "topbar: peek: first look: ", "the peek's first poll never ran", 3000);
+        Thread.Sleep(300);
 
         // the peek: the real cursor rests on the top edge for over 500 ms, then leaves for over 600 ms
         FrameProbe.GetWindowRect(bar, out var r);
