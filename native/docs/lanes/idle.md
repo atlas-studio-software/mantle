@@ -55,6 +55,17 @@ Electron for comparison (bench/README.md, the earlier bench): bar hidden 0.89 to
 2.0) over 60 s across its 16 processes. Native's whole process at rest here: 0.38 to 0.65 % by cycles, including the
 visible top bar and desktop and the test-only beat.
 
+## Test state and handoff (paused 2026-11-11 on the user's word; work resumes later)
+
+- Branch `native/r7-idle`, pushed. Full run on e4173c25: run 43073389778, `NATIVE-CI: ok (17 ok, 0 skipped: )`
+  (ui 67 of 67, unit 845 of 845). Its idle numbers, hidden at rest over 45 s: light 0.511 % by cycles (0.312 %
+  charged), dark 0.444 % by cycles (0.521 % charged); 2223 and 2168 wakeups.
+- Before and after: the app code at rest is unchanged by this lane (the probe and tally add one volatile read per post
+  when off), so "before" and "after" are the same app: 0.38 to 0.65 % by cycles in 12 hidden windows over 6 runs.
+  What changed is the check: it now reads the exact cycles over 45 s instead of the charged ticks over 15 s.
+- Left: the wakers above sit in other lanes' files (task strip beat, top bar stats, desktop clock); the hover poll
+  idea below. The probe and `IdleTally` stay in as diagnostics (a failing idle test prints what they counted).
+
 ## Not done here
 
 - No waker in this lane's files was found at rest beyond the hover poll (0.02 % of one core), so no app-side fix:
