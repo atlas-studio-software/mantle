@@ -118,7 +118,11 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
         ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
         // shown here, before the bar's first show, so the bar lands in front of it (the app's front window is the bar's)
-        FirstShow();
+        // A --test run shows the layer only when it brings MANTLE_TEST_DESKTOP (the desktop's own tests and screenshot
+        // pair): an ordinary 960x540 window in every other run became the app's front window ahead of the bar (ci smoke)
+        // and sat where the bench's focus checks open their apps (run 43029127051).
+        if (ctx.Test && _fx == null) ctx.Log.Line("not shown: a --test run without MANTLE_TEST_DESKTOP keeps the layer made and parked");
+        else FirstShow();
     }
 
     void FirstShow()
