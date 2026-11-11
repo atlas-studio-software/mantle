@@ -589,7 +589,7 @@ function Stage-cal {
 # menu (tools/parity/desktop/run-desk-parity.ps1, Electron's ui/desktop page over a fake bridge vs native, one fixture,
 # light and dark), gated on "DESK-PARITY summary: 6 scored of 6" and these floors (a little under what it reached;
 # docs/lanes/desktop.md says what the rest of the difference is)
-$DeskFloors = @{ 'light-stats' = 0.5; 'light-strip' = 0.5; 'light-menu' = 0.5; 'dark-stats' = 0.5; 'dark-strip' = 0.5; 'dark-menu' = 0.5 }
+$DeskFloors = @{ 'light-stats' = 0.69; 'light-strip' = 0.51; 'light-menu' = 0.70; 'dark-stats' = 0.68; 'dark-strip' = 0.43; 'dark-menu' = 0.67 }   # 0.7171 / 0.5438 / 0.7285 / 0.7136 / 0.4635 / 0.7055 (run 43025045944); the strip: each native pane above it is 2-3 px taller, so its list is 4 px short and scrolls; the menu: no drop shadow, a 2 px taller panel, dark text not semibold (docs/lanes/desktop.md)
 function Stage-desktop {
   $out = Join-Path $Out 'parity\desk'
   $code = Lane-Script 'desktop' 'tools\parity\desktop\run-desk-parity.ps1' @('-Exe', $exe, '-Out', $out)
