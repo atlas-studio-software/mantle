@@ -52,3 +52,11 @@ BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host
   variable is unset).
 - UI tests, `tools/parity/notifications/` pair script (Electron `?mock=1&mode=pill&tray=tones&notifs=some`; the mock's
   `tray.list` / `notifs.get` answers become MANTLE_TEST_TRAY / MANTLE_TEST_NOTIFS), the ci.ps1 `notifs` stage, bar.md rows.
+
+## State at the part-1 handoff (context ceiling)
+
+- Run 42996911243 (dc88b24): build ok, unit 4 of 639 failed (an int-backed JsonValue is not TryGetValue<long>; seen ids
+  read only in Start). Run 42997472325 (f3c72f0): AOT publish failed on IL2026 (generic JsonArray.Add<T>). Both fixed.
+- Run 42998120400 (7470f00, -Stages build,unit,ui): `NATIVE-CI: ok (3 ok, 0 skipped)`; unit 639 of 639, ui 46 of 46.
+- bar.md: BAR-370, BAR-371 `tested:` (TrayBatchTests). Every other row of the lane is still `todo`: the host half is
+  built and unit-tested, but no row is marked until the bar draws it (part 2). No full run, no screenshot pair yet.
