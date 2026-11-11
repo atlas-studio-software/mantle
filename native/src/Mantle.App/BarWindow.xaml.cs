@@ -158,6 +158,7 @@ public sealed partial class BarWindow : Window
         Tick();
         StartFrame();
         StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
+        StartCalendar();        // lane native-r7-calendar: a left or right click on the clock opens the calendar (Surfaces/Bar/Calendar)
     }
 
     // ------------------------------------------------------------------ the glass
