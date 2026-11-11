@@ -212,6 +212,9 @@ public partial class MantleApp : Application
         // ---- calendar wiring, part 1 (lane native-r7-calendar): [Feature("gcal")] keeps its files in <userData>\gcal (token.bin,
         // client.bin, cache.json) through the ONE write gate; a --test run never sends anything to Google (GcalFeature).
         Mantle.Core.Features.Calendar.GcalFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
+        // ---- game mode wiring (lane native-r7-media3): [Feature("gamemode")] keeps gamemode-restore.json in <userData> through
+        // the ONE write gate; a --test run is a dry run (nothing sent) and reads only the test profile's record.
+        Mantle.Core.Features.GameMode.GameModeFeature.Configure(new(Host.Paths.DataRoot, OwnPids: () => new[] { Environment.ProcessId }, Files: Host.Files));
 
         // the feature host on the ONE write gate's stores
         _stores = Stores.For(Host.Paths, Host.Gate, Host.Log);
