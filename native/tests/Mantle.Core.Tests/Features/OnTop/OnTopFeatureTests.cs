@@ -63,12 +63,9 @@ public class OnTopFeatureTests
     [Fact]
     public void The_tooltip_line_says_kept_on_top_or_why_the_bar_cannot_tell_never_nothing_for_an_app_with_windows()
     {
-        Assert.Equal("
-Kept on top · right-click or Win+Ctrl+T to stop", OnTopWords.TipLine(true, true, null));
-        Assert.Equal("
-Kept on top · right-click or Win+Ctrl+T to stop", OnTopWords.TipLine(true, true, OnTopWords.Cant));
-        Assert.Equal("
-Keep on top: the bar can't show which windows are kept on top right now (restart Mantle to fix it)", OnTopWords.TipLine(false, true, OnTopWords.Cant));
+        Assert.Equal("\nKept on top · right-click or Win+Ctrl+T to stop", OnTopWords.TipLine(true, true, null));
+        Assert.Equal("\nKept on top · right-click or Win+Ctrl+T to stop", OnTopWords.TipLine(true, true, OnTopWords.Cant));
+        Assert.Equal("\nKeep on top: the bar can't show which windows are kept on top right now (restart Mantle to fix it)", OnTopWords.TipLine(false, true, OnTopWords.Cant));
         Assert.Equal("", OnTopWords.TipLine(false, false, OnTopWords.Cant));   // a pin with no window has nothing to keep on top
         Assert.Equal("", OnTopWords.TipLine(false, true, null));
         Assert.Equal("Keep on top: " + OnTopWords.Cant, OnTopWords.MenuCant(OnTopWords.Cant));
