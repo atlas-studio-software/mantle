@@ -112,10 +112,16 @@ public sealed class HoverTests
         var worst = new Dictionary<string, double>();
         foreach (var theme in new[] { "light", "dark" })
         {
-            var (app, h, dir) = Hover("cpu-" + theme, theme);
+            // the app's own idle probe counts the same window from inside (UI-thread messages, timers, sidecar lines)
+            var (app, h, dir) = Hover("cpu-" + theme, theme, new Dictionary<string, string> { ["MANTLE_TEST_IDLE_PROBE"] = $"3000,{HiddenMs}" });
             using var _ = app;
             Thread.Sleep(3000);
+            int logFrom = FrameProbe.Log(dir).Length;
             var hidden = FrameProbe.CpuThreads(app.Proc, HiddenMs);
+            FrameProbe.LogHas(dir, "idle probe: done", 5000);
+            var during = FrameProbe.Log(dir)[Math.Min(logFrom, FrameProbe.Log(dir).Length)..].Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Length > 0).ToList();
+            string inside = string.Join("\n", during.Where(l => l.Contains("idle probe:", StringComparison.Ordinal)).Select(l => "  " + l).Take(60));
+            string logged = string.Join("\n", during.Where(l => !l.Contains("idle probe:", StringComparison.Ordinal)).Select(l => "  " + l).Take(30));
             FrameProbe.CursorToEdge();
             Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(h), 1500), "no reveal for the shown measurement");
             FrameProbe.GetWindowRect(h, out var r);
@@ -130,7 +136,7 @@ public sealed class HoverTests
             var after = FrameProbe.Cpu(app.Proc, 5000);
             string line = $"IDLE-CPU {theme}: hidden at rest {hidden.App} % of one core over {HiddenMs / 1000} s ({hidden.Threads.CyclePct} % by cycles, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
             lines.Add(line); Console.WriteLine(line);
-            tables.Add($"{theme}, hidden at rest:\n{hidden.Threads.Table()}");
+            tables.Add($"{theme}, hidden at rest:\n{hidden.Threads.Table()}\n  what the app counted inside (its idle probe):\n{(inside.Length > 0 ? inside : "  (no idle probe lines)")}\n  what the app logged meanwhile:\n{(logged.Length > 0 ? logged : "  (nothing)")}");
             tables.Add($"{theme}, shown idle:\n{shown.Threads.Table()}");
             worst["hidden " + theme] = hidden.App; worst["shown " + theme] = shown.App;
             Assert.IsTrue(stillUp, "the bar hid during the shown measurement: " + line);

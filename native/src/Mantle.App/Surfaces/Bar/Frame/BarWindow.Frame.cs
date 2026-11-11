@@ -146,6 +146,7 @@ public sealed partial class BarWindow
         ClearPicture();
         Host.Log.Line("bar hidden: at rest until the cursor reaches the bottom edge");
         Tick();
+        IdleProbe.Arm(DispatcherQueue);   // test runs only (MANTLE_TEST_IDLE_PROBE): what wakes the app at rest
     }
 
     void StopFrame()
