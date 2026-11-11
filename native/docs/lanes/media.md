@@ -192,3 +192,66 @@ Log: `qs: game mode row: switched on|off (...)`, `qs: game mode row: details ope
 - Downloads (feature + shelf pop-up; DownloadsList is its pure half), the Helm badge (file watch + the disc on bar
   cells), quick links (Win+X mode in the launcher, WinXLinks), Spotify: not started in part 3.
 - Game mode: the wallpaper hold (needs the desktop layer's hold), tests for the rows above, Escape in Details.
+
+## Part 4 (lane native-r7-media4)
+
+### What is built
+
+- `Mantle.Core/Features/Downloads/DownloadsFeature.cs`: [Feature("downloads")] (lib/features/downloads.js). The folder is
+  read in-process (DownloadsList.ListFolder with attributes: Hidden/System left out) off the host thread; ONE
+  FileSystemWatcher (700 ms quiet, 4 s cap, partial-file changes ignored); the 2-minute retry only while the folder is
+  missing; seenAt (first run = now, a future value reset, an unsaveable one noted); commands downloads.list / seen / open /
+  reveal / folder / drag by opaque tokens; the event `downloads.state` (replayed); Rest = true. Logs counts only.
+- `Mantle.App/Surfaces/Bar/Downloads/`: BarWindow.Downloads.cs (the button bar.downloads: hidden off, muted bad/resting,
+  the dot, the warn chip "downloads off"; open re-reads then marks seen; the keyboard ask; arrows / Home / End / Esc) and
+  DownloadsShelf.cs (the panel). Hooks: `x:Name="DownloadsBtn"` (BarWindow.xaml), `StartDownloads()` (BarWindow.xaml.cs),
+  one AttachDownloads line in App.xaml.cs's media wiring.
+- `Mantle.Core/Features/Badges/HelmBadgeFeature.cs`: [Feature("helmbadge")] (lib/helm-badge.js feature + createWatcher).
+  Event-driven only: a folder watch (tmp + rename), 120 ms settle, the writer's exit HEARD (Process.Exited) instead of
+  Electron's 30 s pid re-check, a missing folder waited for by a watch on its parent (the 30 s retry only when the
+  parent is missing too). `Mantle.App/Surfaces/Bar/Badges/BarWindow.HelmBadge.cs`: CellVm's badge half (partial) and
+  the paint over the strip cells. Hooks in the strip's files: the disc (two Borders, accent / warn) in the cell template
+  (BarWindow.xaml), `BadgeLine` in CellVm.Tip and `BadgeStatus` in its status, `PaintHelmBadges()` after SyncCells
+  (BarWindow.Tasks.cs, three lines); one AttachHelmBadge line in App.xaml.cs.
+- The qs pair (tools/parity/quick-settings): part1 removes Electron's .gmrow, so MANTLE_TEST_QS_NO_GAMEMODE=1 (test only,
+  set by run-qs-parity.ps1 in part1) leaves the Game mode row out natively too (QsPanel.cs, the game mode lines).
+
+### A --test run
+
+- Downloads: open / reveal / folder are dry runs (`downloads: dry run (--test): would ...; nothing was opened`); the
+  folder is MANTLE_DOWNLOADS_DIR only. Without it a test run reads NO folder (never the real Downloads) and the foot says
+  "Test run: MANTLE_DOWNLOADS_DIR is not set, ..." (a deviation from Electron, which read the real one).
+- Helm badge: only MANTLE_HELM_BADGE_FILE or the test profile's own `sources` setting; without them no file is read.
+- MANTLE_TEST_DL_KEYS=1 (with MANTLE_TEST_VISIBLE=1, a CI runner only) lets a test shelf take the keyboard.
+
+### UI Automation ids
+
+Downloads: `bar.downloads` (Name = the tooltip; ItemStatus reading|ok|new|off|resting), `bar.downloads.dot`, `dl.panel`,
+`dl.title`, `dl.sub`, `dl.list` (HelpText = why the arrows do not reach it), `dl.row.<n>` (Name = "name, new, kind,
+size · age"; HelpText = the tooltip; ItemStatus fresh / busy), `dl.reveal.<n>`, `dl.empty` (ItemStatus reading|bad|
+resting|empty), `dl.empty.big`, `dl.empty.sub`, `dl.path`, `dl.next`, `dl.note`, `dl.detail`, `dl.folder`.
+Log: `downloads: N items, M new[, K downloading] [why]`, `downloads: the shelf opened|closed (...)`,
+`downloads: the shelf shows N rows (...)`, `downloads: <verb> was a dry run|done`.
+Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source N: count C`, `helmbadge: bar.app.N shows ...`.
+
+### better:
+
+- BAR-900 / BAR-901: the folder is read in-process with its attributes from start: no helper-down "simpler list" where
+  hidden files could show, and the first read is not held for the helper or 10 s.
+- BAR-1032: the Helm badge has no 30 s timers: the writer's exit is heard and a missing folder is waited for by a watch,
+  so nothing runs while the file does not change.
+
+### Results (part 4)
+
+- Run 43063262898 on 0c3596f7 (build, unit, ui): NATIVE-CI ok (3 ok); unit 816/816 (DownloadsFeatureTests 9,
+  HelmBadgeFeatureTests 7), ui 66/66 (DownloadsTests 2, HelmBadgeTests 1; the idle-CPU test among them).
+- bar.md: 56 rows marked (Downloads 42, Helm badge 14).
+
+### Left (part 5)
+
+- Quick links (Win+X mode in the launcher; WinXLinks is its pure half): not started (needs the launcher's mode and the
+  run lane's exec; BAR-1037..1045 stay todo).
+- Game mode leftovers: UI tests for BAR-781, 786, 808, 812/813, 815, 818; Escape in Details; the wallpaper hold.
+- Helm badge: the "+N" overflow's sum and tiles (BAR-257, BAR-1030); the keep-on-top pin moving top-left when a count
+  shows (Electron's .cell.hb-on .ontop-badge).
+- Downloads: keyboard walk, double-click guard, drag-out and the live open / reveal are ported but untested.
