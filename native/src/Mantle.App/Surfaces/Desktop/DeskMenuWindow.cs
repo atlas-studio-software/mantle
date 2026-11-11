@@ -22,7 +22,17 @@ internal sealed class DeskMenuWindow
 {
     const double IconSize = 14;
     static readonly FontFamily Icons = new("Segoe Fluent Icons, Segoe MDL2 Assets");
-    static readonly FontFamily TextFont = new("Segoe UI Variable Text, Segoe UI Variable, Segoe UI");
+    // tokens.css --ui-font, which deskmenu.css .dm-body uses (not the panes' Segoe UI Variable): Bahnschrift first
+    static readonly FontFamily TextFont = new("Bahnschrift, Segoe UI Variable, Segoe UI");
+
+    /// deskmenu.css --dm-shadow: ends within the 20 DIP clear margin (8 offset + 18 blur - 6 spread), Windows' own menu
+    /// shadow size; drawn by CssShadow (the CSS formula into a bitmap), nothing under the panel itself.
+    static readonly Mantle.App.Surfaces.Osd.CssShadow.Layer[] ShadowLight = {
+        new(0, 1, 2, 0, 14, 18, 38, .08), new(0, 8, 18, -6, 14, 18, 38, .26),
+    };
+    static readonly Mantle.App.Surfaces.Osd.CssShadow.Layer[] ShadowDark = {
+        new(0, 1, 2, 0, 0, 0, 0, .30), new(0, 8, 18, -6, 0, 0, 0, .55),
+    };
 
     readonly Mantle.App.Shell.ISurfaceContext _ctx;
     readonly Func<string, Brush> _b;
@@ -31,6 +41,8 @@ internal sealed class DeskMenuWindow
     readonly Window _win;
     readonly IntPtr _hwnd;
     readonly Border _panel;
+    readonly Grid _root, _shadowHost = new() { IsHitTestVisible = false };
+    string _shadowKey = "";
     readonly StackPanel _list = new();
     readonly TextBlock _note = new() { FontSize = 12, TextWrapping = TextWrapping.Wrap, Padding = new Thickness(10, 6, 10, 4), Visibility = Visibility.Collapsed };
     readonly List<(DeskMenuRow Row, Button B)> _items = new();
@@ -64,14 +76,17 @@ internal sealed class DeskMenuWindow
         }
         AutomationProperties.SetAutomationId(_note, "deskmenu.note");
         _list.Children.Add(_note);
-        _panel = new Border { Child = _list, Padding = new Thickness(DeskMenu.Padding), BorderThickness = new Thickness(1), MinWidth = DeskMenu.MinWidth, MaxWidth = DeskMenu.MaxWidth,
+        // the hairline is inset in Electron (box-shadow inset 0 0 0 1px, no layout): the Border's 1 DIP comes off the padding
+        _panel = new Border { Child = _list, Padding = new Thickness(DeskMenu.Padding - 1), BorderThickness = new Thickness(1), MinWidth = DeskMenu.MinWidth, MaxWidth = DeskMenu.MaxWidth,
             HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(DeskMenu.Inset) };
         _panel.PointerExited += (_, _) => Select(-1);
         AutomationProperties.SetAutomationId(_panel, "deskmenu.panel");
         AutomationProperties.SetName(_panel, "Desktop");
-        var root = new Grid { Background = new SolidColorBrush() };
+        var root = _root = new Grid { Background = new SolidColorBrush() };
+        root.Children.Add(_shadowHost);
         root.Children.Add(_panel);
-        _panel.SizeChanged += (_, _) => Resize();
+        _panel.SizeChanged += (_, _) => { Resize(); Shadow(); };
+        root.SizeChanged += (_, _) => Shadow();
         _win = new Window { Title = "Mantle desktop menu", Content = root };
         var p = OverlappedPresenter.Create();
         p.IsResizable = false; p.IsMaximizable = false; p.IsMinimizable = false; p.IsAlwaysOnTop = true;
@@ -123,7 +138,7 @@ internal sealed class DeskMenuWindow
     (double W, double H) Size()
     {
         double w = _panel.ActualWidth > 0 ? _panel.ActualWidth : DeskMenu.MinWidth;
-        double h = _panel.ActualHeight > 0 ? _panel.ActualHeight : 2 * (DeskMenu.Padding + 1) + _items.Count * DeskMenu.RowHeight + _seps.Count * 9;
+        double h = _panel.ActualHeight > 0 ? _panel.ActualHeight : 2 * DeskMenu.Padding + _items.Count * DeskMenu.RowHeight + _seps.Count * 9;
         return (w + 2 * DeskMenu.Inset, h + 2 * DeskMenu.Inset);
     }
 
@@ -136,6 +151,24 @@ internal sealed class DeskMenuWindow
         if (W == _at.Width && H == _at.Height) return;
         _at = new PxRect(_at.X, _at.Y, W, H);
         _win.AppWindow.Resize(new global::Windows.Graphics.SizeInt32(W, H));
+    }
+
+    /// The drop shadow round the panel, redrawn only when the size, scale or theme changed.
+    void Shadow()
+    {
+        if (_panel.ActualWidth <= 0 || _root.ActualWidth <= 0 || _root.XamlRoot == null) return;
+        double scale = _root.XamlRoot.RasterizationScale;
+        int w = (int)Math.Ceiling(_root.ActualWidth * scale), h = (int)Math.Ceiling(_root.ActualHeight * scale);
+        var box = new Mantle.App.Surfaces.Osd.CssShadow.Box(DeskMenu.Inset, DeskMenu.Inset, _panel.ActualWidth, _panel.ActualHeight, _panel.CornerRadius.TopLeft);
+        string key = FormattableString.Invariant($"{w}x{h}@{scale}:{box}:{_dark}");
+        if (key == _shadowKey) return;
+        _shadowKey = key;
+        var img = new Image {
+            Source = Mantle.App.Surfaces.Osd.CssShadow.Bitmap(w, h, scale, new[] { box }, _dark ? ShadowDark : ShadowLight),
+            Width = w / scale, Height = h / scale, Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top,
+        };
+        _shadowHost.Children.Clear();
+        _shadowHost.Children.Add(img);
     }
 
     bool Inside(int x, int y) => x >= _at.X && x < _at.Right && y >= _at.Y && y < _at.Bottom;
@@ -156,12 +189,21 @@ internal sealed class DeskMenuWindow
     }
 
     /// Up / Down / Home / End move the highlight; Enter runs it (nothing highlighted: closes, runs nothing).
-    public bool Key(string key, Action close)
+    /// Returns what happened, in words, for the log (the UI tests read it).
+    public string Key(string key, Action close)
     {
-        if (key == "enter") { if (_sel < 0) { close(); return true; } _ = Run(_items[_sel]); return true; }
+        if (key == "enter") {
+            if (DeskMenu.EnterVerdict(_sel, _items.Count) == "close") { close(); return "Enter with no row highlighted: closed, nothing run"; }
+            var it = _items[_sel];
+            _ = Run(it);
+            return $"Enter: runs {it.Row.Label}";
+        }
         Select(DeskMenu.Step(_sel, _items.Count, key));
-        return true;
+        return _sel < 0 ? $"{key}: no row highlighted" : $"{key}: {_items[_sel].Row.Label} highlighted";
     }
+
+    /// The highlighted row (-1: none); mouse and keys share it (DESK-120).
+    public int Selected => _sel;
 
     void Select(int i)
     {
@@ -172,6 +214,10 @@ internal sealed class DeskMenuWindow
             b.Background = k == i ? _b("LgHover") : new SolidColorBrush();
             AutomationProperties.SetItemStatus(b, k == i ? "selected" : "");
         }
+        // announced to assistive tech (Electron: aria-activedescendant): the highlighted row's name, as a notification
+        if (i >= 0 && i < _items.Count && Microsoft.UI.Xaml.Automation.Peers.FrameworkElementAutomationPeer.CreatePeerForElement(_items[i].B) is { } peer)
+            peer.RaiseNotificationEvent(Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationKind.Other,
+                Microsoft.UI.Xaml.Automation.Peers.AutomationNotificationProcessing.ImportantMostRecent, _items[i].Row.Label, "deskmenu.highlight");
     }
 
     public void Paint(bool dark)
@@ -181,6 +227,8 @@ internal sealed class DeskMenuWindow
         _panel.Background = _b("LgFillPop");
         _panel.BorderBrush = _b("LgEdgeOut");
         _panel.CornerRadius = new CornerRadius(dark ? 10 : 8);   // --lg-r per theme (Tokens.xaml LgR)
+        _note.FontFamily = TextFont;
+        Shadow();
         foreach (var s in _seps) s.Background = _b("LgEdgeOut");
         _note.Foreground = _b("LgWarn");
         foreach (var (_, b) in _items) {

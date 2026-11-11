@@ -60,6 +60,61 @@ public static class DesktopLayer
     /// After attach attempt n (0-based) on a layer made again: 'done', 'retry' or 'give-up'. Never "show it anyway".
     public static string AttachNext(bool ok, int n) => ok ? "done" : n + 1 < AttachBackoffMs.Count ? "retry" : "give-up";
 
+    public const string TestRemade = "test run: the desktop layer was made again after it closed (not attached: a test run never touches the shell)";
+    public const string ShellBackMaking = "Explorer is back; Mantle is making the desktop layer again";
+
+    /// What Explorer coming back (TaskbarCreated) is said as in the log (main.js shellRestarted).
+    public static string ShellBackLine(string how, int count, bool test) => $"Explorer is back ({how}, {count} this run): " + (test
+        ? "a test run never touches the shell, so nothing is re-attached"
+        : "putting the desktop layer back under the icons");
+
+    /// Out of tries: the layer is closed, never shown over the apps (main.js desktopGiveUp).
+    public static string GaveUp(int tries, string? why, string? when) => when != null
+        ? $"the desktop layer could not go under the icons {when} ({tries} tries: {why ?? "no reason given"}), so Windows' own wallpaper shows; restart Mantle to bring it back"
+        : $"the desktop layer could not go back under the icons after Explorer restarted ({tries} tries: {why ?? "no reason given"}), so Windows' own wallpaper shows; restart Mantle to bring it back";
+
+    // ---- the display changed (DESK-016, lib/display-fit.js) ----
+
+    /// Bursts of display changes become one more fit after this much quiet (main.js displayBurst).
+    public const int DisplayQuietMs = 400;
+
+    /// May the layer be sized now? 'fit' | 'later' (held hidden on its way under the icons: sized once there) | 'skip'.
+    public static (string Act, string Reason) FitVerdict(bool alive, bool test, bool paused, bool held)
+    {
+        if (!alive) return ("skip", "there is no desktop layer");
+        if (test) return ("skip", "a test run: its desktop layer is an ordinary small window, not one that covers the display");
+        if (paused) return ("skip", "Windows is put back, so the desktop layer is left alone");
+        if (held) return ("later", "the desktop layer is waiting, hidden, to go under the icons; it is sized to the display as soon as it is there");
+        return ("fit", "the desktop layer is sized to the main display as it is now");
+    }
+
+    /// Does the layer's content fill the display at its scale? One DIP of rounding either way is a fill. null = unknown.
+    public static (bool? Ok, string Reason) PageFill(double w, double h, double scale, int displayW, int displayH, double displayScale)
+    {
+        if (!(w > 0) || !(h > 0)) return (null, "the desktop layer did not say how big it is");
+        if (!(displayW > 0) || !(displayH > 0)) return (null, "the main display reported no size");
+        double sf = displayScale > 0 ? displayScale : 1;
+        double bw = displayW / sf, bh = displayH / sf;
+        bool fills = Math.Abs(w - bw) <= 1 && Math.Abs(h - bh) <= 1;
+        bool scaled = !(scale > 0) || Math.Abs(scale - sf) < 0.01;
+        string S(double v) => v.ToString("0.##", System.Globalization.CultureInfo.InvariantCulture);
+        if (fills && scaled) return (true, $"the desktop layer fills the main display ({S(bw)}x{S(bh)} at scale {S(sf)})");
+        return (false, $"the desktop layer is {S(w)}x{S(h)} at scale {(scale > 0 ? S(scale) : "?")} but the main display is {S(bw)}x{S(bh)} at scale {S(sf)}{(fills ? " (it fills the screen but draws at the old scale)" : "")}");
+    }
+
+    // ---- type: Chromium's line-height:normal vs WinUI's ----
+
+    /// How many DIP a WinUI TextBlock's natural line is taller than Chromium's line-height:normal for the same Segoe UI
+    /// size: Chromium rounds the ascent and the descent each (13 px: 14 + 3 = 17), DirectWrite rounds their sum up (18).
+    /// The panes take it off below the line so every pane is as tall as Electron's (the glyphs stay where they were).
+    public static double LineTrim(double px)
+    {
+        const double asc = 2210.0 / 2048, desc = 514.0 / 2048;   // Segoe UI's hhea ascender / descender per em
+        double chrome = Math.Round(px * asc, MidpointRounding.AwayFromZero) + Math.Round(px * desc, MidpointRounding.AwayFromZero);
+        double winui = Math.Ceiling(px * (asc + desc));
+        return Math.Max(0, winui - chrome);
+    }
+
     // ---- geometry ----
 
     /// The cluster (desktop.css .cluster): one top-left column, 420 DIP wide. A short window (max-height 760) packs it.

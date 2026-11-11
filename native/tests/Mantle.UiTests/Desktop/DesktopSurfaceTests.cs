@@ -4,6 +4,8 @@ using System.Text;
 using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using FlaUI.Core.Definitions;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.Desktop;
@@ -195,6 +197,143 @@ public class DesktopSurfaceTests
             Second(app, "--test-surface=hide:deskmenu");
             Host.LogContains(() => app.Log, "desktop: menu closed", "closed through the test road");
         } finally { Keep(app, "deskmenu"); }
+    }
+
+    // ---- round 3 (lane native-r7-desktop-3): the menu keys, the remake, Explorer coming back, display changes ----
+
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern uint RegisterWindowMessageW(string name);
+    [DllImport("user32.dll")] static extern int GetSystemMetrics(int i);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out Pt p);
+    [StructLayout(LayoutKind.Sequential)] struct Pt { public int X, Y; }
+    [DllImport("user32.dll")] static extern uint SendInput(uint n, MouseInput[] inputs, int size);
+    /// INPUT with its MOUSEINPUT (x64: the union starts at 8, 40 bytes in all).
+    [StructLayout(LayoutKind.Explicit, Size = 40)]
+    struct MouseInput { [FieldOffset(0)] public uint Type; [FieldOffset(8)] public int Dx; [FieldOffset(12)] public int Dy; [FieldOffset(16)] public uint Data; [FieldOffset(20)] public uint Flags; [FieldOffset(24)] public uint Time; [FieldOffset(32)] public IntPtr Extra; }
+
+    /// The app's hidden shell-watch window (never visible, so not in Win32.WindowsOf).
+    static IntPtr ShellWatchOf(App app)
+    {
+        IntPtr h = IntPtr.Zero;
+        while ((h = FindWindowExW(IntPtr.Zero, h, null, "Mantle shell watch")) != IntPtr.Zero)
+            if (GetWindowThreadProcessId(h, out uint pid) != 0 && pid == (uint)app.Proc.Id) return h;
+        return IntPtr.Zero;
+    }
+
+    /// A REAL pointer move (SendInput, absolute, 10 steps): WinUI hears pointer enter and exit only from real input.
+    static void MoveTo(int x, int y)
+    {
+        GetCursorPos(out var from);
+        int sw = GetSystemMetrics(0), sh = GetSystemMetrics(1);
+        for (int i = 1; i <= 10; i++) {
+            int px = from.X + (x - from.X) * i / 10, py = from.Y + (y - from.Y) * i / 10;
+            var inp = new[] { new MouseInput { Type = 0, Dx = px * 65535 / (sw - 1), Dy = py * 65535 / (sh - 1), Flags = 0x0001 | 0x8000 } };
+            SendInput(1, inp, Marshal.SizeOf<MouseInput>());
+            Thread.Sleep(15);
+        }
+    }
+
+    static string Sel(AutomationElement menu, string id) => Find(menu, id).Properties.ItemStatus.ValueOrDefault ?? "";
+
+    [TestMethod]
+    public void Desktop_menu_takes_Up_Down_Home_End_and_Enter_and_shares_one_highlight_with_the_mouse()
+    {
+        Win32.DpiAware();
+        using var app = Launch("uitest-deskkeys", env: new Dictionary<string, string> { ["MANTLE_TEST_DESKMENU_KEYS"] = "1" });
+        try {
+            Host.LogContains(() => app.Log, "desktop: shown as an ordinary window", "the layer is up", 15000);
+            Second(app, "--test-surface=show:deskmenu");
+            // no key is sent unless the hook said it is armed (an unswallowed Enter would reach the runner's desktop)
+            Host.LogContains(() => app.Log, "desktop: menu keys: Up, Down, Home, End and Enter are the menu's while it is open (MANTLE_TEST_DESKMENU_KEYS=1)", "the menu keys are armed");
+            IntPtr mh = IntPtr.Zero;
+            Assert.IsTrue(Host.Until(() => (mh = Win32.WindowsOf(app.Proc.Id, MenuTitle).FirstOrDefault()) != IntPtr.Zero && Win32.IsWindowVisible(mh), 3000), "the menu window is shown");
+            var menu = Host.Uia.FromHandle(mh);
+            Assert.AreEqual("", Sel(menu, "deskmenu.wallpaper"), "no row highlighted on open");
+
+            Keyboard.Type(VirtualKeyShort.DOWN);
+            Host.LogContains(() => app.Log, "desktop: menu key down: Change wallpaper highlighted", "Down from none = the first row");
+            Assert.IsTrue(Host.Until(() => Sel(menu, "deskmenu.wallpaper") == "selected", 2000), "and it is drawn and announced as highlighted");
+            Keyboard.Type(VirtualKeyShort.UP);
+            Host.LogContains(() => app.Log, "desktop: menu key up: Mantle Settings highlighted", "Up from the first wraps to the last, skipping separators");
+            Keyboard.Type(VirtualKeyShort.HOME);
+            Host.LogContains(() => app.Log, "desktop: menu key home: Change wallpaper highlighted", "Home");
+            Keyboard.Type(VirtualKeyShort.END);
+            Host.LogContains(() => app.Log, "desktop: menu key end: Mantle Settings highlighted", "End");
+            Assert.AreNotEqual(mh, Win32.GetForegroundWindow(), "the menu never takes the foreground, keys or not");
+
+            // the mouse takes the highlight and the keys go on from its row; leaving the menu clears it
+            var r = Find(menu, "deskmenu.personalize").BoundingRectangle;
+            MoveTo(r.X + r.Width / 2, r.Y + r.Height / 2);
+            Assert.IsTrue(Host.Until(() => Sel(menu, "deskmenu.personalize") == "selected", 3000), "moving onto a row highlights it");
+            Assert.AreEqual("", Sel(menu, "deskmenu.settings"), "one highlight: the keys' row let go");
+            Keyboard.Type(VirtualKeyShort.DOWN);
+            Host.LogContains(() => app.Log, "desktop: menu key down: Hide desktop widgets highlighted", "Down goes on from the mouse's row");
+            var panel = Find(menu, "deskmenu.panel").BoundingRectangle;
+            MoveTo(panel.X - 120, panel.Y + panel.Height / 2);
+            Assert.IsTrue(Host.Until(() => Sel(menu, "deskmenu.widgets") == "", 3000), "leaving the menu clears the highlight");
+            Keyboard.Type(VirtualKeyShort.DOWN);
+            Assert.IsTrue(Host.Until(() => Regex.Matches(app.Log, "desktop: menu key down: Change wallpaper highlighted").Count >= 2, 3000), "after the mouse left, Down starts from none again");
+
+            // Enter runs the highlighted row
+            Keyboard.Type(VirtualKeyShort.END); Keyboard.Type(VirtualKeyShort.UP);
+            Host.LogContains(() => app.Log, "desktop: menu key up: Hide desktop widgets highlighted", "End, Up");
+            Keyboard.Type(VirtualKeyShort.ENTER);
+            Host.LogContains(() => app.Log, "desktop: menu key Enter: runs Hide desktop widgets", "Enter runs the highlighted row");
+            Host.LogContains(() => app.Log, "desktop: menu: Hide desktop widgets: done", "the row ran");
+            Host.LogContains(() => app.Log, "desktop: menu closed (a pick)", "and the menu closed");
+
+            // Enter with nothing highlighted closes it and runs nothing; a closed menu takes no keys
+            Second(app, "--test-surface=show:deskmenu");
+            Assert.IsTrue(Host.Until(() => Regex.Matches(app.Log, "desktop: menu keys: Up, Down").Count >= 2, 5000), "armed again for the new menu");
+            Keyboard.Type(VirtualKeyShort.ENTER);
+            Host.LogContains(() => app.Log, "desktop: menu key Enter with no row highlighted: closed, nothing run", "Enter with none closes");
+            Host.LogContains(() => app.Log, "desktop: menu closed (Enter with no row highlighted)", "closed");
+            Assert.IsFalse(Regex.IsMatch(app.Log, "desktop: menu: Show desktop widgets"), "nothing ran");
+        } finally { Keep(app, "deskkeys"); }
+    }
+
+    [TestMethod]
+    public void Desktop_layer_is_made_again_after_it_closes_and_hears_Explorer_come_back_and_display_changes()
+    {
+        Win32.DpiAware();
+        using var app = Launch("uitest-deskremake");
+        try {
+            Host.LogContains(() => app.Log, "desktop: shown as an ordinary window", "the layer is up", 15000);
+            Host.LogContains(() => app.Log, "desktop: listening for display changes and Explorer coming back (TaskbarCreated) on a hidden window of its own", "the shell watch is up");
+            IntPtr watch = IntPtr.Zero;
+            Assert.IsTrue(Host.Until(() => (watch = ShellWatchOf(app)) != IntPtr.Zero, 3000), "the hidden shell-watch window is there");
+            Assert.IsFalse(Win32.IsWindowVisible(watch), "and never shown");
+
+            // Explorer came back: TaskbarCreated, posted to Mantle's own window only (never broadcast, Explorer never restarted)
+            Win32.PostMessageW(watch, RegisterWindowMessageW("TaskbarCreated"), IntPtr.Zero, IntPtr.Zero);
+            Host.LogContains(() => app.Log, "desktop: Explorer is back (TaskbarCreated, 1 this run): a test run never touches the shell, so nothing is re-attached", "Explorer coming back is heard and said");
+            Win32.PostMessageW(watch, RegisterWindowMessageW("TaskbarCreated"), IntPtr.Zero, IntPtr.Zero);
+            Thread.Sleep(500);
+            Assert.IsFalse(app.Log.Contains("(TaskbarCreated, 2 this run)"), "one per 3 s (every Mantle window hears the same broadcast)");
+
+            // a display change: a burst becomes one now and one more after 400 ms of quiet; a test layer is never resized
+            var wh = new IntPtr((1080 << 16) | 1920);
+            Win32.PostMessageW(watch, 0x007E, new IntPtr(32), wh);
+            Win32.PostMessageW(watch, 0x007E, new IntPtr(32), wh);
+            Win32.PostMessageW(watch, 0x007E, new IntPtr(32), wh);
+            Host.LogContains(() => app.Log, "desktop: not sized (WM_DISPLAYCHANGE 1920x1080): a test run: its desktop layer is an ordinary small window, not one that covers the display", "the change is heard and the verdict said");
+            Host.LogContains(() => app.Log, "desktop: not sized (WM_DISPLAYCHANGE 1920x1080 (end of a burst))", "the rest of the burst is one more", 3000);
+            Assert.AreEqual(2, Regex.Matches(app.Log, @"desktop: not sized \(WM_DISPLAYCHANGE").Count, "three changes in a burst = two fits");
+
+            // closed while Mantle runs: made again on the first back-off (1.5 s), shown as an ordinary window, drawn
+            IntPtr old = Layer(app);
+            Win32.PostMessageW(old, 0x0010 /* WM_CLOSE */, IntPtr.Zero, IntPtr.Zero);
+            Host.LogContains(() => app.Log, "desktop: it closed while Mantle runs (its window closed): making a new one (1 of 5 in ten minutes)", "the close is seen and a remake planned");
+            Host.LogContains(() => app.Log, "desktop: made again (1) after it closed; a test run never puts it under the icons", "made again", 6000);
+            IntPtr h = IntPtr.Zero;
+            Assert.IsTrue(Host.Until(() => (h = Layer(app)) != IntPtr.Zero && h != old && Win32.IsWindowVisible(h), 3000), "a new, visible layer window");
+            var layer = Host.Uia.FromHandle(h);
+            Assert.AreEqual("4:15:32 PM", Find(layer, "desktop.clock").Name, "its clock has the fixture's time");
+            Assert.AreEqual("2 things", Find(layer, "desktop.pane.strip").Properties.ItemStatus.ValueOrDefault, "its strip has the rows");
+            Assert.IsTrue(Host.Until(() => Find(layer, "desktop.cpu").Name == "7%", 3000), "its System tile has the numbers");
+            Host.Screenshot("desktop-layer-remade");
+        } finally { Keep(app, "deskremake"); }
     }
 
     [TestMethod]

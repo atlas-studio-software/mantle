@@ -40,12 +40,28 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     static IPlatform? _platform;
     static Action<Action>? _postHost;
     static Func<Func<ShellState, ShellState>, bool>? _setState;
+    static Func<bool>? _paused;
+    static long s_attached;   // the layer's hwnd while it is under the icons (live), for the put-back release
 
-    /// The sidecar (for the live attach / recheck) and the "desktop" state piece, both on the host thread.
-    public static void Wire(IPlatform platform, Action<Action> postHost, Func<Func<ShellState, ShellState>, bool> setState)
+    /// The sidecar (for the live attach / recheck) and the "desktop" state piece, both on the host thread; paused = Windows
+    /// was put back from the tray (a layer that closes then is not made again, DESK-013).
+    public static void Wire(IPlatform platform, Action<Action> postHost, Func<Func<ShellState, ShellState>, bool> setState, Func<bool>? paused = null)
     {
-        _platform = platform; _postHost = postHost; _setState = setState;
+        _platform = platform; _postHost = postHost; _setState = setState; _paused = paused;
     }
+
+    /// Put back from the tray (DESK-013, main.js rest list): the layer is detached from Explorer's desktop window
+    /// (desktop {detach:true}), on the host thread while the sidecar still runs. Nothing when it was never put there.
+    public static IReadOnlyList<(string Label, Func<Task<PlatformReply>> Run)> Releases()
+    {
+        long h = System.Threading.Interlocked.Exchange(ref s_attached, 0);
+        if (h == 0 || _platform is not { } p) return Array.Empty<(string, Func<Task<PlatformReply>>)>();
+        if (Current is { } cur) cur._ctx.Dispatcher.TryEnqueue(() => cur._recheckT?.Stop());   // or it re-places the layer while it is detached
+        return new (string, Func<Task<PlatformReply>>)[] { ("the desktop layer", () => p.CallAsync("desktop",
+            new JsonObject { ["hwnd"] = h.ToString(CultureInfo.InvariantCulture), ["detach"] = true }, TimeSpan.FromMilliseconds(4000))) };
+    }
+
+    static bool Paused() { try { return _paused?.Invoke() == true; } catch { return false; } }
 
     /// The live instance (the deskmenu surface opens its menu through it).
     internal static DesktopSurface? Current { get; private set; }
@@ -63,6 +79,18 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     readonly SysStats _stats = new();
     string _lastRects = "";
     DeskMenuWindow? _menu;
+    // made again (DESK-011..013) and fitted to the display (DESK-016)
+    ShellWatch? _shellWatch;
+    IReadOnlyList<long> _remakeAt = Array.Empty<long>();
+    bool _held, _destroyed, _burstPending;
+    string? _fitPending, _mode;
+    string _burstWhy = "";
+    DispatcherQueueTimer? _burstT, _attachT;
+    (int N, bool Make, string? When)? _attachPending;
+    int _made, _shellBackCount;
+    long _shellBackAt = long.MinValue / 2;
+    DeskStats.View? _lastStats;
+    DeskMenuKeys? _keys;
     static readonly HttpClient Http = new() { Timeout = TimeSpan.FromSeconds(4) };
 
     public bool Shown => _shown && _win?.AppWindow is { IsVisible: true };
@@ -76,6 +104,31 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
             if (err != null) ctx.Log.Line(err);
             if (_fx != null) ctx.Log.Line("a --test run with MANTLE_TEST_DESKTOP: the clock, numbers, Mission Control and strip are its made-up readings");
         }
+        MakeWindow();
+        _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.Theme == "dark"; Paint(); ctx.Log.Line($"theme {t.Theme}: the panes repainted"); }));
+        _subs.Add(ctx.OnState(s => Strip(s)));
+        _subs.Add(ctx.On<DeskWidgets>("deskmenu.widgets", w => SetWidgets(w.On, "the switch")));
+        _subs.Add(ctx.On<DeskMenuShow>("deskmenu.show", m => OpenMenu(m.X, m.Y, m.Seq, "a right-click on the desktop")));
+        _subs.Add(ctx.On<DeskMenuHide>("deskmenu.hide", h => CloseMenu(h.Why)));
+        if (_fx?.WidgetsOff == true) SetWidgets(false, "MANTLE_TEST_DESKTOP");
+        Paint();
+        Strip(ctx.State);
+        StartClock(); StartStats(); StartMc("made");
+        SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
+        StartShellWatch();
+        ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
+        // shown here, before the bar's first show, so the bar lands in front of it (the app's front window is the bar's)
+        // A --test run shows the layer only when it brings MANTLE_TEST_DESKTOP (the desktop's own tests and screenshot
+        // pair): an ordinary 960x540 window in every other run became the app's front window ahead of the bar (ci smoke)
+        // and sat where the bench's focus checks open their apps (run 43029127051).
+        if (ctx.Test && _fx == null) ctx.Log.Line("not shown: a --test run without MANTLE_TEST_DESKTOP keeps the layer made and parked");
+        else FirstShow();
+    }
+
+    /// The layer's window and panes (at start, and again when it closed while Mantle runs).
+    void MakeWindow()
+    {
+        var ctx = _ctx;
         _panes = new DeskPanes(B);
         _root = new Grid { Background = new SolidColorBrush() };
         _root.Children.Add(_panes.Cluster);
@@ -106,23 +159,10 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         foreach (var pane in new FrameworkElement[] { _panes.Clock, _panes.Stats, _panes.Mc })
             pane.SizeChanged += (_, _) => { if (_root != null && _root.ActualHeight > 0) _panes?.FitHeight(_root.ActualHeight); };
 
-        _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.Theme == "dark"; Paint(); ctx.Log.Line($"theme {t.Theme}: the panes repainted"); }));
-        _subs.Add(ctx.OnState(s => Strip(s)));
-        _subs.Add(ctx.On<DeskWidgets>("deskmenu.widgets", w => SetWidgets(w.On, "the switch")));
-        _subs.Add(ctx.On<DeskMenuShow>("deskmenu.show", m => OpenMenu(m.X, m.Y, m.Seq, "a right-click on the desktop")));
-        _subs.Add(ctx.On<DeskMenuHide>("deskmenu.hide", h => CloseMenu(h.Why)));
-        if (_fx?.WidgetsOff == true) SetWidgets(false, "MANTLE_TEST_DESKTOP");
-        Paint();
-        Strip(ctx.State);
-        StartClock(); StartStats(); StartMc("made");
-        SetDesktopPiece(ctx.Test ? new DesktopPiece(false, null, DesktopLayer.TestNeverAttached) : null);
-        ctx.Log.Line($"made hidden ({(ctx.Test ? Host.Quiet ? "test: quiet" : "test: visible" : "live")})");
-        // shown here, before the bar's first show, so the bar lands in front of it (the app's front window is the bar's)
-        // A --test run shows the layer only when it brings MANTLE_TEST_DESKTOP (the desktop's own tests and screenshot
-        // pair): an ordinary 960x540 window in every other run became the app's front window ahead of the bar (ci smoke)
-        // and sat where the bench's focus checks open their apps (run 43029127051).
-        if (ctx.Test && _fx == null) ctx.Log.Line("not shown: a --test run without MANTLE_TEST_DESKTOP keeps the layer made and parked");
-        else FirstShow();
+        // closed while Mantle runs (Explorer restarted and took its child with it; a test closes it): made again (DESK-011)
+        var win = _win;
+        win.Closed += (_, _) => Gone(win, "its window closed");
+        win.AppWindow.Destroying += (_, _) => Gone(win, "its window was destroyed");
     }
 
     void FirstShow()
@@ -196,9 +236,12 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
 
     public void Destroy(string why)
     {
+        _destroyed = true;
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
-        foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT }) t?.Stop();
+        foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT, _burstT, _attachT }) t?.Stop();
+        _shellWatch?.Dispose(); _shellWatch = null;
+        System.Threading.Interlocked.Exchange(ref s_attached, 0);
         _mcChain++;
         CloseMenu(why);
         try { _win?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
@@ -216,21 +259,24 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _postHost(() => set(s => s with { Desktop = d }));
     }
 
-    async Task AttachAsync(string why)
+    async Task<(bool Ok, string? Mode, string? Error)> AttachAsync(string why)
     {
         var r = await Sidecar("desktop", new JsonObject { ["hwnd"] = _hwnd.ToInt64().ToString(CultureInfo.InvariantCulture) });
         if (!r.Ok) {
-            SetDesktopPiece(new DesktopPiece(false, null, DesktopLayer.AttachFailed(r.Error ?? "no reason came back", false)));
+            SetDesktopPiece(new DesktopPiece(false, null, DesktopLayer.AttachFailed(r.Error ?? "no reason came back", _held)));
             _ctx.Log.Line($"NOT under the icons: {r.Error} ({why})");
-            return;
+            return (false, null, r.Error ?? "no reason came back");
         }
         string? mode = r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("mode", out var m) && m.ValueKind == JsonValueKind.String ? m.GetString() : null;
+        _mode = mode;
+        System.Threading.Interlocked.Exchange(ref s_attached, _hwnd.ToInt64());
         SetDesktopPiece(new DesktopPiece(true, mode, DesktopLayer.Attached(mode)));
         _ctx.Log.Line($"under the icons ({mode ?? "mode not reported"}) ({why})");
         if (mode == "progman-front") {
             _recheckT ??= Timer(TimeSpan.FromMilliseconds(DesktopLayer.RecheckMs), () => _ = RecheckAsync(), repeat: true);
             _recheckT.Start();
         }
+        return (true, mode, null);
     }
 
     bool _recheckBad;
@@ -289,7 +335,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     {
         if (_fx?.Stats != null) { _panes?.SetStats(_fx.Stats); return; }
         _panes?.SetStats(DeskStats.Boot);
-        void Read() => _ = Task.Run(() => _stats.Read()).ContinueWith(t => _ctx.Dispatcher.TryEnqueue(() => _panes?.SetStats(t.Result)), TaskScheduler.Default);
+        void Read() => _ = Task.Run(() => _stats.Read()).ContinueWith(t => _ctx.Dispatcher.TryEnqueue(() => { _lastStats = t.Result; _panes?.SetStats(t.Result); }), TaskScheduler.Default);
         Read();
         _statsT = Timer(TimeSpan.FromMilliseconds(DeskStats.EveryMs), Read, repeat: true);
         _statsT.Start();
@@ -387,6 +433,12 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _menu = new DeskMenuWindow(_ctx, B, _dark, _widgetsOn, PickAsync, () => CloseMenu("a click outside it"), () => CloseMenu("Esc"));
         var r = _menu.Open(x, y);
         _ctx.Log.Line($"menu opened at {r.X},{r.Y} {r.Width}x{r.Height} px for the point {x},{y} ({why})");
+        // MENU KEYS (DESK-118..120): live always; a --test run only with MANTLE_TEST_DESKMENU_KEYS=1 (DeskMenuKeys)
+        bool keysTest = _ctx.Test && Host.Env(DeskMenuKeys.TestEnv) == "1";
+        if (!_ctx.Test || keysTest) {
+            _keys ??= new DeskMenuKeys(_ctx.Dispatcher, MenuKey, _ctx.Log.Line, keysTest);
+            if (_keys.Arm()) _ctx.Log.Line($"menu keys: Up, Down, Home, End and Enter are the menu's while it is open{(keysTest ? $" ({DeskMenuKeys.TestEnv}=1)" : "")}");
+        }
         if (seq > 0) _ = _ctx.CallAsync("deskmenu.ack", new JsonObject { ["seq"] = seq });
     }
 
@@ -403,9 +455,16 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     internal void CloseMenu(string why)
     {
         if (_menu == null) return;
+        _keys?.Disarm();
         _menu.Close();
         _menu = null;
         _ctx.Log.Line($"menu closed ({why})");
+    }
+
+    void MenuKey(string key)
+    {
+        if (_menu == null) return;
+        _ctx.Log.Line("menu key " + _menu.Key(key, () => CloseMenu("Enter with no row highlighted")));
     }
 
     async Task<string?> PickAsync(DeskMenuRow row)

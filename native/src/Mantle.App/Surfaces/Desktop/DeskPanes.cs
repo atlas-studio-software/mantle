@@ -117,7 +117,13 @@ internal sealed class DeskPanes
         for (int i = 0; i < list.Count; i++) {
             _rows.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
             var (l, v) = list[i];
-            l.Margin = v.Margin = new Thickness(0, 4, 0, 4);
+            // desktop.css .row: 4 px above and below, a 1 px border-top from the second row on (in the row, above the
+            // padding: the divider drawn at the row's top); dt and dd sit on one baseline (12 px dt 1 DIP lower than the
+            // 13 px dd); the 13 px line is Chromium's 17, not WinUI's 18 (LineTrim)
+            double top = 4 + (i > 0 ? 1 : 0);
+            v.Margin = new Thickness(0, top, 0, 4 - DesktopLayer.LineTrim(13));
+            l.Margin = new Thickness(0, top + 1, 0, 0);
+            l.VerticalAlignment = VerticalAlignment.Top; v.VerticalAlignment = VerticalAlignment.Top;
             Grid.SetRow(l, i); Grid.SetColumn(l, 0); Grid.SetRow(v, i); Grid.SetColumn(v, 1);
             _rows.Children.Add(l); _rows.Children.Add(v);
             if (i > 0) {
@@ -208,7 +214,9 @@ internal sealed class DeskPanes
         Cluster.Width = c.Width;
         Cluster.Spacing = c.Gap;
         foreach (var p in new[] { Clock, Stats, Mc, Strip }) {
-            p.Padding = new Thickness(c.Pad.L, c.Pad.T, c.Pad.R, c.Pad.B);
+            // the hairline is drawn INSIDE the pane in Electron (::after, inset 0): here it is the Border's 1 DIP, so the
+            // padding gives that DIP back and every pane is exactly as tall as Electron's
+            p.Padding = new Thickness(c.Pad.L - 1, c.Pad.T - 1, c.Pad.R - 1, c.Pad.B - 1);
             p.CornerRadius = new CornerRadius(16);   // light: the tile radius; dark: --lg-r-pop (16 too)
             p.Background = _b(dark ? "LgFillPop" : "LgFillFb");   // no wallpaper picture yet: the fallback tint
             p.BorderBrush = _b("LgEdgeOut");
@@ -219,7 +227,7 @@ internal sealed class DeskPanes
         _clock.FontSize = c.ClockPx; _clock.LineHeight = c.ClockPx; _clock.LineStackingStrategy = LineStackingStrategy.BlockLineHeight;
         _clock.FontWeight = FontWeights.Light; _clock.Foreground = _b("LgInk");
         _mer.FontSize = Math.Round(c.ClockPx * 0.30, 1); _mer.FontWeight = FontWeights.Medium; _mer.CharacterSpacing = 60; _mer.Foreground = _b("LgInk2");
-        _date.FontFamily = body; _date.FontSize = c.DatePx; _date.Margin = new Thickness(0, c.DateTop, 0, 0); _date.Foreground = _b("LgInk2");
+        _date.FontFamily = body; _date.FontSize = c.DatePx; _date.Margin = new Thickness(0, c.DateTop, 0, -DesktopLayer.LineTrim(c.DatePx)); _date.Foreground = _b("LgInk2");
         foreach (var h in new[] { _statsHead, _mcHead, _stripHead }) {
             h.FontFamily = body; h.FontWeight = dark ? FontWeights.SemiBold : FontWeights.Medium;
             h.CharacterSpacing = dark ? 40 : 90; h.Foreground = _b("LgInk3");

@@ -67,5 +67,45 @@ public static class DeskMenu
     }
 
     /// The words a failed row keeps on the menu.
+    // ---- MENU KEYS (DESK-118..120): the menu never takes the keyboard, so a low-level hook armed only while it is open
+    // hands it the bare Up / Down / Home / End / Enter (sidecar/Hotkey.cs PopWatch NavVerdict, nav:true) ----
+
+    public const int VkReturn = 0x0D, VkEnd = 0x23, VkHome = 0x24, VkUp = 0x26, VkDown = 0x28;
+    public const int NavSwallow = 1, NavReport = 2, NavHeld = 4;
+
+    /// The menu key a virtual-key code is ("up", "down", "home", "end", "enter"), or null.
+    public static string? NavKey(int vk) => vk switch {
+        VkUp => "up", VkDown => "down", VkHome => "home", VkEnd => "end", VkReturn => "enter", _ => null,
+    };
+
+    /// What the keyboard hook does with one key while the menu is open: NavSwallow | NavReport | NavHeld bits.
+    /// Not a menu key: 0. A key up: swallowed when its down was (held, not passive). A down with Ctrl/Alt/Shift/Win, or
+    /// with the bar in front, or no menu open: passed, nothing reported. A down: reported (Enter on its first down only,
+    /// the arrows on every autorepeat so a held arrow walks the menu), swallowed unless passive, held set.
+    public static int NavVerdict(int vk, bool down, bool anyMod, bool fgIsBar, bool passive, bool nav, bool held)
+    {
+        if (NavKey(vk) == null) return 0;
+        if (!down) return held && !passive ? NavSwallow : 0;
+        if (!nav || anyMod || fgIsBar) return 0;
+        int r = NavHeld;
+        if (vk != VkReturn || !held) r |= NavReport;
+        if (!passive) r |= NavSwallow;
+        return r;
+    }
+
+    /// Enter: the highlighted row runs; with nothing highlighted the menu closes and runs nothing (DESK-119).
+    public static string EnterVerdict(int sel, int n) => sel >= 0 && sel < n ? "run" : "close";
+
+    // ---- NEVER SILENT (DESK-124): the helper gives the click back to Windows when Mantle does not ack in 1 s ----
+
+    public const int AckMs = 1000, StandDownRetryMs = 30000;
+
+    /// The helper's fallback event in words: the log line, and the health row when it stood down (null otherwise).
+    public static (string Line, string? Health) Fallback(string? why, bool replayed, bool standDown, string? standWhy)
+    {
+        string line = $"{(string.IsNullOrWhiteSpace(why) ? "the helper gave a right-click to Windows" : why)}; {(replayed ? "Windows' own menu opened instead" : "the click was not given back to Windows")}";
+        return (line, standDown ? (string.IsNullOrWhiteSpace(standWhy) ? "right-clicks on the desktop go to Windows for now" : standWhy) : null);
+    }
+
     public static string Failed(string label, string? reason) => $"{label} did not work: {(string.IsNullOrEmpty(reason) ? "no reason was given" : reason)}";
 }

@@ -28,6 +28,7 @@ public sealed class DeskMenuFeature : IFeature
 {
     IFeatureContext _ctx = null!;
     bool _armed, _widgetsOn = true;
+    int _standGen;
 
     public ValueTask InstallAsync(IFeatureContext ctx)
     {
@@ -74,12 +75,29 @@ public sealed class DeskMenuFeature : IFeature
                 int y = e.TryGetProperty("y", out var vy) && vy.ValueKind == JsonValueKind.Number ? vy.GetInt32() : 0;
                 _ctx.Broadcast("deskmenu.show", new DeskMenuShow(seq, x, y, false));
                 break;
-            case "fallback":
-                string why = e.TryGetProperty("why", out var w) && w.ValueKind == JsonValueKind.String ? w.GetString() ?? "" : "";
+            case "fallback": {
+                // DESK-124: Mantle did not ack within 1 s (or nacked), so the helper gave the click to Windows' menu; two
+                // misses in a row and the helper stands down: the health row says why, and the hook re-arms after 30 s
+                var f = DeskMenu.Fallback(Str(e, "why"), Bool(e, "replayed"), Bool(e, "standDown"), Str(e, "standWhy"));
                 _ctx.Broadcast("deskmenu.hide", new DeskMenuHide("the helper gave this right-click to Windows"));
-                _ctx.Log(why);
+                _ctx.Log(f.Line);
+                if (f.Health != null) { _ctx.Health(false, f.Health); _ = StandDownAsync(); }
                 break;
+            }
         }
+    }
+
+    static string? Str(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
+    static bool Bool(JsonElement e, string k) => e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.True;
+
+    /// The helper stood down: arm again after DeskMenu.StandDownRetryMs (a newer stand-down restarts the wait).
+    async Task StandDownAsync()
+    {
+        int my = ++_standGen;
+        try { await Task.Delay(DeskMenu.StandDownRetryMs, _ctx.Stopping).ConfigureAwait(true); }
+        catch (OperationCanceledException) { return; }
+        if (my != _standGen) return;
+        await ArmAsync(_ctx.Enabled, "trying again after standing down").ConfigureAwait(true);
     }
 
     async ValueTask<CommandResult> ForwardAsync(string verb, JsonElement a)
