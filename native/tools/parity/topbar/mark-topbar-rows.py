@@ -78,6 +78,27 @@ if ui:
     put(['TOP-215'], 'tested:' + U + 'A_scale_change_re_places_it_28_DIP_tall_at_150_percent_without_a_restart')
     put(['TOP-218'], 'better:a WS_POPUP with no thick frame takes an exact 28 DIP height, so no window shape is needed (a region still crops it if Windows ever keeps it taller); ' + U + 'A_scale_change_re_places_it_28_DIP_tall_at_150_percent_without_a_restart')
     put(['TOP-281'], 'tested:' + U + 'Win_Alt_T_hides_it_the_top_edge_peeks_it_and_Win_Alt_T_shows_it_again_in_dark')
+# part 6: the ping test and its history (TOP-139..159), the dropdown pop-in (TOP-080), the focus ring (TOP-028) and the
+# menus under a real pointer (press-drag-release, slide, hover-open, click-away)
+T = 'Mantle.Core.Tests/Features/TopBar/PingTestPanelTests.cs#'
+H = 'Mantle.Core.Tests/Features/TopBar/PingTestHistoryTests.cs#'
+PU = 'Mantle.UiTests/TopBar/TopBarPingTestTests.cs#Ping_test_runs_on_demand_shows_its_result_and_keeps_a_history'
+MU = 'Mantle.UiTests/TopBar/TopBarMenuPointerTests.cs#Menus_follow_a_real_pointer_press_drag_release_slide_hover_and_click_away'
+put(['TOP-139', 'TOP-140'], 'tested:' + T + 'Idle_shows_two_tabs_and_Run_ping_test_with_its_cost_TOP_139_140')
+put(['TOP-141', 'TOP-144'], 'tested:' + T + 'Run_shows_starting_at_once_and_a_refusal_rereads_the_state_TOP_141_144')
+put(['TOP-142'], 'tested:' + T + 'Running_shows_progress_steps_and_Cancel_TOP_142')
+put(['TOP-145', 'TOP-146', 'TOP-147', 'TOP-148', 'TOP-149', 'TOP-150', 'TOP-151'], 'tested:' + T + 'A_finished_run_amber_on_exactly_the_bad_values_with_the_verdict_and_speeds_TOP_145_146_147_148_149_150_151')
+put(['TOP-153', 'TOP-155', 'TOP-156', 'TOP-157', 'TOP-158'], 'tested:' + T + 'History_tab_save_name_box_open_delete_and_compare_TOP_153_155_156_157_158')
+put(['TOP-159'], 'tested:' + H + 'A_damaged_file_is_moved_aside_and_the_history_starts_fresh_TOP_159')
+if ui:
+    put(['TOP-143', 'TOP-154'], 'tested:' + PU)
+    put(['TOP-080'], 'tested:' + MU)
+    put(['TOP-028'], 'tested:' + MU)
+# ported, no test of their own: the router / list / row failure lines (TOP-152), the key order (TOP-091: the ping name box
+# first; app power is not native, so the in-menu name box and the menu keys follow)
+if len(sys.argv) > 3: put(['TOP-152', 'TOP-091'], 'ported:' + sys.argv[3])
+# rows ported in part 4 that a UI test now covers (only these are upgraded from ported to tested)
+upgrade = {'TOP-071': 'tested:' + MU, 'TOP-030': 'tested:' + MU} if ui else {}
 done = 0
 for name in ('shell.md', 'bar.md'):
     path = native + '/docs/parity/' + name
@@ -85,7 +106,11 @@ for name in ('shell.md', 'bar.md'):
     out = []
     for line in s.split('\n'):
         m = re.match(r'^\| ((?:TOP|BAR)-\d+) \|', line)
-        if m and m.group(1) in rows and line.rstrip('\r').endswith('| todo |'):
+        if m and m.group(1) in upgrade and re.search(r'\| ported:[0-9a-f]+ \|\r?$', line):
+            cr = '\r' if line.endswith('\r') else ''
+            line = re.sub(r'ported:[0-9a-f]+ \|$', upgrade[m.group(1)] + ' |', line.rstrip('\r')) + cr
+            done += 1
+        elif m and m.group(1) in rows and line.rstrip('\r').endswith('| todo |'):
             cr = '\r' if line.endswith('\r') else ''
             line = line.rstrip('\r')[:-len('todo |')] + rows[m.group(1)] + ' |' + cr
             done += 1

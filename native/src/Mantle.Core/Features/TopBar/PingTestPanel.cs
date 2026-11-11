@@ -209,13 +209,17 @@ public sealed class PingTestPanel
     // ------------------------------------------------------------------ JSON reads, as JS does them
     static JsonNode? G(JsonObject? o, string k) => o != null && o.TryGetPropertyValue(k, out var v) ? v : null;
     static string? S(JsonObject? o, string k) => G(o, k) is JsonValue v && v.GetValueKind() == JsonValueKind.String ? v.GetValue<string>() : null;
-    static double? N(JsonObject? o, string k) => G(o, k) is JsonValue v && v.GetValueKind() == JsonValueKind.Number ? v.GetValue<double>() : null;
+    static double? N(JsonObject? o, string k) => Number(G(o, k));
+    /// A JSON number as a double, whatever CLR type the node holds (an in-memory JsonValue made from an int throws on
+    /// GetValue&lt;double&gt;), else null.
+    public static double? Number(JsonNode? n) => n is JsonValue v && v.GetValueKind() == JsonValueKind.Number
+        && double.TryParse(v.ToJsonString(), NumberStyles.Float, CultureInfo.InvariantCulture, out var d) ? d : null;
     static double D(JsonObject? o, string k) => N(o, k) ?? 0;
     static bool T(JsonObject? o, string k) => G(o, k) switch
     {
         null => false,
         JsonValue v when v.GetValueKind() == JsonValueKind.String => v.GetValue<string>().Length > 0,
-        JsonValue v when v.GetValueKind() == JsonValueKind.Number => v.GetValue<double>() != 0 && !double.IsNaN(v.GetValue<double>()),
+        JsonValue v when v.GetValueKind() == JsonValueKind.Number => Number(v) is double d && d != 0 && !double.IsNaN(d),
         JsonValue v when v.GetValueKind() == JsonValueKind.False => false,
         JsonValue v when v.GetValueKind() == JsonValueKind.Null => false,
         _ => true,
@@ -224,7 +228,7 @@ public sealed class PingTestPanel
     /// JS's String(v) for a JSON value: a number as JS prints it, a string as is.
     static string Str(JsonNode? v) => v is JsonValue x ? x.GetValueKind() switch
     {
-        JsonValueKind.Number => Js(x.GetValue<double>()), JsonValueKind.String => x.GetValue<string>(), JsonValueKind.True => "true", JsonValueKind.False => "false", _ => "null",
+        JsonValueKind.Number => Js(Number(x) ?? 0), JsonValueKind.String => x.GetValue<string>(), JsonValueKind.True => "true", JsonValueKind.False => "false", _ => "null",
     } : v == null ? "null" : v.ToJsonString();
 
     // ------------------------------------------------------------------ numbers in words

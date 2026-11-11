@@ -68,11 +68,11 @@ public sealed class PingTestHistory
         null => false,
         JsonValue x when x.GetValueKind() == JsonValueKind.String => x.GetValue<string>().Length > 0,
         JsonValue x when x.GetValueKind() == JsonValueKind.False => false,
-        JsonValue x when x.GetValueKind() == JsonValueKind.Number => x.GetValue<double>() != 0,
+        JsonValue x when x.GetValueKind() == JsonValueKind.Number => PingTestPanel.Number(x) is double d && d != 0,
         _ => true,
     };
     static JsonNode? OrNull(JsonObject o, string k) => o.TryGetPropertyValue(k, out var v) && Truthy(v) ? Copy(v) : null;
-    static double Num(JsonNode? v) => v is JsonValue x && x.GetValueKind() == JsonValueKind.Number ? x.GetValue<double>() : 0;
+    static double Num(JsonNode? v) => PingTestPanel.Number(v) ?? 0;
 
     static JsonObject SpeedOf(JsonNode? s)
     {
@@ -122,7 +122,7 @@ public sealed class PingTestHistory
     /// `${startedAt}-${run}` as JS prints the two numbers.
     public static string Id(JsonNode? startedAt, JsonNode? run)
     {
-        static string S(JsonNode? v) => v is JsonValue x && x.GetValueKind() == JsonValueKind.Number ? JsJson.Number(x.GetValue<double>()) : v is JsonValue s && s.GetValueKind() == JsonValueKind.String ? s.GetValue<string>() : "undefined";
+        static string S(JsonNode? v) => v is JsonValue x && x.GetValueKind() == JsonValueKind.Number ? JsJson.Number(PingTestPanel.Number(x) ?? 0) : v is JsonValue s && s.GetValueKind() == JsonValueKind.String ? s.GetValue<string>() : "undefined";
         return S(startedAt) + "-" + S(run);
     }
 

@@ -215,6 +215,47 @@ this area.
 - **Ledger:** `mark-topbar-rows.py native ui 7b5260b3` marked 24 rows (19 tested, 4 ported, 1 better: TOP-102). TOP
   rows in shell.md after it: 133 tested, 19 ported, 2 better (TOP-102, TOP-218), 228 todo.
 
+## Part 6 (lane native-r7-topbar-6, same branch): the ping test, its history, and part 4's leftovers
+
+- **Core:** `PingTestPanel.cs` is ui/topbar/pingtest.js as a pure machine: the last run and the history are pushed in
+  (`OnRun`, `OnHistory`), a row press is `Act("pt-...")`, the name box's keys are `Key`, and `Rows()` returns `PtRow`s
+  (Sep, Tabs, Head, Info with classes, Progress, Table with `PtCell`s, Row2, Go, NameBox, Chips, HistRow). Calls go
+  through an injected `CallFn`, so the unit tests drive it with no app. `PingTestHistory.cs` is _pingtest-history.js:
+  `<data root>\ping-tests.json` through `SafeFile` (the one write gate), last 50 unsaved + every saved one, a damaged file
+  moved aside, a refused or failed write kept in memory with the reason. `PingTestFake.cs` plays a made-up run
+  (starting, ping, down, up, done; 350 ms a step) for --test fixture runs: odd runs on "Test Wi-Fi" with a quick router,
+  even runs on "Test Wi-Fi 5G" with a slow one, so two runs give two networks, amber and both verdicts. Documentation
+  addresses only (192.0.2.1, 02:00:5e:...): the oss-guard refuses LAN IPs and real-looking MACs.
+- **Feature:** `TopBarFeature.PingTest.cs`: `pingTest` (start / cancel / state; checked, then the sidecar's
+  `topbar.pingtest`, or the fake in a fixture run), `pingTests` (list / save / rename / delete; the id must match
+  `^[0-9]{1,16}-[0-9]{1,6}$`, the name `checkName`), and the sidecar's `pingtest` pushes forwarded as
+  `topbar.pingtest` (without `ev`), a finished run added to the history and pushed as `topbar.pingtests`.
+  `TopBarFeature.Configure(new(DataRoot, Files))` in App.xaml.cs gives it the run's data root; unconfigured (unit
+  tests), every write is refused and the history says so.
+  - **Nothing at rest:** the fake has no timer until a start and stops with its run; a live run asks the sidecar only on
+    the user's press (and once at load for the last state and the history list, as Electron's page does).
+  - **Deviation (safer):** a second damaged history file never replaces an older `ping-tests.bad.json` (Electron's
+    rename would); it is kept as `ping-tests.bad-<ms>.json` and the problem line names it.
+- **Surface:** `TopBarSurface.PingTest.cs` draws the rows at the end of the PING dropdown. The rows' signature joins
+  the stat dropdown's shape, so a 1 s sample with the same ping rows still updates in place, and a ping push redraws.
+  The name box keeps its text, caret and focus across redraws (`AfterPingRender`); `PingKey` takes keys typed in it
+  before the menu keys (TOP-091). AutomationIds: `topbar.pt.tab.*`, `topbar.pt.<act verb>`, `topbar.pt.name`,
+  `topbar.pt.c<row>.<col>`, `topbar.pt.h.<n>`, `topbar.pt.chip.<n>`, `topbar.pt.speed.*`; amber cells and lines carry
+  ItemStatus "amber".
+- **Part 4 leftovers:** `TopBarSurface.Motion.cs`.
+  - TOP-080: a dropdown pops in once per menu session (`MenuLevel.Shown`), from `Reveal()` when it is first seen:
+    light up 3 px on the bar's spring over 240 ms and a 96 ms fade, reduced motion a 120 ms fade, dark none.
+    Composition animations only.
+  - Press-drag-release: a press on a title or stat cell releases the button's pointer capture, so the rows hear the
+    drag (hover, slide) and a release on a row picks it (`DragPick`; any release ends the drag).
+  - TOP-028: the strip buttons' template now binds BorderBrush / BorderThickness; keyboard focus shows a 2 px accent
+    ring (dark: 1.5 px accent, --lg-focus's outer ring; its inner dark band is not drawn).
+- **Tests:** Core `PingTestPanelTests.cs` (7), `PingTestHistoryTests.cs` (7), `TopBarPingTestCommandsTests.cs` (2).
+  UI `TopBar/TopBarPingTestTests.cs` (run, amber cells, closing does not cancel, history in the test profile, save by
+  UI Automation, rename by the keyboard with Enter, compare, delete on a second press) and
+  `TopBar/TopBarMenuPointerTests.cs` (a real pointer: press on File, slide to Edit and back, hover Recent Files opens
+  its submenu, no second pop-in on a re-render, release on Open… picks it, click-away, Tab focus ring).
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
