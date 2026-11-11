@@ -173,13 +173,19 @@ public sealed partial class BarWindow
         }
     }
 
+    string? _dlLastRow;
+    long _dlLastAt = long.MinValue / 2;
+
     /// act(): one press per row at a time (a double-click or held Enter opens once); a dry run or a note stays in the
     /// panel; success closes it; a failure is a sentence in the note, and a stale row re-reads.
     async System.Threading.Tasks.Task DlAct(string verb, string? item, string what)
     {
         if (_dl == null || _dlLink == null) return;
         string k = item ?? "*";
-        if (!_dl.Busy.Add(k)) { Host.Log.Line($"downloads: a second {verb} on the same row was ignored (one is in flight)"); return; }
+        long now = Environment.TickCount64;
+        if (!Mantle.Core.Features.Downloads.DownloadsKeys.Takes(_dl.Busy.Contains(k), _dlLastRow, _dlLastAt, k + "|" + verb, now) || !_dl.Busy.Add(k))
+        { Host.Log.Line($"downloads: a second {verb} on the same row was ignored (one decision)"); return; }
+        _dlLastRow = k + "|" + verb; _dlLastAt = now;
         _dl.Note = "";
         PaintDl();
         var r = await _dlLink.CallAsync("downloads." + verb, item != null ? new JsonObject { ["item"] = item } : new JsonObject());
@@ -235,8 +241,9 @@ public sealed partial class BarWindow
         var rows = _dl.Rows;
         var fe = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(_dl.Root.XamlRoot) as Button;
         int at = fe != null ? rows.ToList().IndexOf(fe) : -1;
-        int to = home ? 0 : end ? rows.Count - 1 : at < 0 ? (down ? 0 : rows.Count - 1) : Math.Max(0, Math.Min(rows.Count - 1, at + (down ? 1 : -1)));
+        int to = Mantle.Core.Features.Downloads.DownloadsKeys.Walk(home ? "Home" : end ? "End" : down ? "Down" : "Up", at, rows.Count) ?? 0;
         e.Handled = true;
+        if (Host.Args.Test) Host.Log.Line($"downloads: key {k}: row {to + 1} of {rows.Count}");
         rows[to].Focus(FocusState.Keyboard);
         rows[to].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
     }
