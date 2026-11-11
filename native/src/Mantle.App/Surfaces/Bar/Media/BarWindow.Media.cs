@@ -173,6 +173,7 @@ public sealed partial class BarWindow
     async System.Threading.Tasks.Task MediaPick(string? aumid, string label)
     {
         if (_mediaLink == null) return;
+        Host.Log.Line($"media: the card picked {label} ({aumid ?? "automatic"})");
         var r = await _mediaLink.CallAsync("media.select", new JsonObject { ["aumid"] = aumid });
         if (r.Ok) { if (_mcard != null) _mcard.Note = ""; RenderMedia(JsonNode.Parse(r.Result.GetRawText()) as JsonObject); }
         else MediaSay(aumid != null ? $"could not switch to {label}: {r.Error}" : $"could not go back to automatic: {r.Error}", "card");

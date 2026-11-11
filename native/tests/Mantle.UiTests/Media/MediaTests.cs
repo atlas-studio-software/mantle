@@ -25,6 +25,18 @@ public class MediaTests
     static string Status(AutomationElement e) => e.Properties.ItemStatus.ValueOrDefault ?? "";
     static string Help(AutomationElement e) => e.Properties.HelpText.ValueOrDefault ?? "";
 
+    /// A source row click; a click the card refused because the list had just moved (BAR-930) is made again, as the
+    /// card's own words ask ("Click again if you meant it").
+    static void PickRow(AutomationElement w, string dir, string id, string label)
+    {
+        for (int i = 0; i < 3; i++) {
+            ClickEl(El(w, id));
+            if (FrameProbe.LogHas(dir, $"media: the card picked {label}", 1500)) return;
+        }
+        Assert.Fail($"the card never picked {label}. Log:
+" + Tail(dir));
+    }
+
     static (BarApp App, string Dir) Launch(string profile, string theme = "light", string? fixture = Fixture, string? guard = null, params string[] flags)
     {
         string dir = FrameProbe.NewDir(profile);
@@ -105,7 +117,7 @@ public class MediaTests
         Assert.AreEqual("Automatic: showing the session Windows calls current", El(w, "media.card.srcwhy").Name);
         Assert.AreEqual("Google Chrome · A lecture", El(w, "media.card.src.chrome").Name);
         Thread.Sleep(600);   // past the 400 ms settle after the card drew
-        ClickEl(El(w, "media.card.src.chrome"));
+        PickRow(w, dir, "media.card.src.chrome", "Google Chrome");
         Assert.IsTrue(Host.Until(() => El(w, "media.card.srcwhy").Name == "Showing the source you picked", 3000), "the pick did not take: " + El(w, "media.card.srcwhy").Name);
         Assert.AreEqual("on", Status(El(w, "media.card.src.chrome")));
         Assert.AreEqual("Google Chrome · Paused", El(w, "media.card.app").Name);
@@ -133,7 +145,7 @@ public class MediaTests
         Assert.AreEqual("Automatic: showing Spotify rather than Lessons (the protected media apps rule)", El(w, "media.card.srcwhy").Name);
         Assert.AreEqual("Lessons · (school)", El(w, "media.card.src.lessons.app").Name);
         Thread.Sleep(600);
-        ClickEl(El(w, "media.card.src.lessons.app"));
+        PickRow(w, dir, "media.card.src.lessons.app", "Lessons");
         Assert.IsTrue(Host.Until(() => El(w, "media.card.srcwhy").Name == "Showing the source you picked", 3000), "the pick did not take");
         Assert.AreEqual("Lessons (school) · controls off so a stray click can't pause it", El(w, "media.card.lockhead").Name);
         Assert.AreEqual("Mantle was started with --media-guard; start it without that flag to allow them", El(w, "media.card.lockhow").Name);
