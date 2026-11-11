@@ -72,7 +72,8 @@ public class SidecarJobUiTests
             foreach (Match m in starts)
                 StringAssert.Contains(m.Groups[2].Value, "in Mantle's own job", "a sidecar start is not in the app's job: " + m.Value);
             int pid = int.Parse(starts[1].Groups[1].Value);
-            Assert.IsTrue(File.Exists(Path.Combine(stubDir, $"start-2-{pid}.txt")), $"pid {pid} from the log is not the stand-in's second start: " + string.Join(", ", Directory.GetFiles(stubDir).Select(f => Path.GetFileName(f))));
+            // the app logs the start as it creates the process; the stand-in writes its note once its runtime is up
+            Assert.IsTrue(Host.Until(() => File.Exists(Path.Combine(stubDir, $"start-2-{pid}.txt")), 10000), $"pid {pid} from the log is not the stand-in's second start: " + string.Join(", ", Directory.GetFiles(stubDir).Select(f => Path.GetFileName(f))));
 
             side = Process.GetProcessById(pid);
             Assert.IsTrue(side.StartTime >= app.Proc.StartTime, $"pid {pid} started before the app: not its sidecar");
