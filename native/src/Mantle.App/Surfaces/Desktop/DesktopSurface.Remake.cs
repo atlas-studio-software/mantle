@@ -114,6 +114,7 @@ internal sealed partial class DesktopSurface
         _win = null; _held = false; _shown = false;
         _recheckT?.Stop();
         Rest("given up on");
+        if (_coverOn) CoverHealth(false, WidgetCover.NoLayer);
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         try { w?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
         SetDesktopPiece(new DesktopPiece(false, null, DesktopLayer.GaveUp(tries, why, when)));

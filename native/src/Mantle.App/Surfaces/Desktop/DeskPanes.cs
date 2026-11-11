@@ -203,11 +203,63 @@ internal sealed class DeskPanes
         return true;
     }
 
-    /// Widgets off: every pane hidden in place (visibility:hidden: nothing moves).
+    // ---- hidden: the widgets switch (at once) and a window over a pane (a fade; DESK-092/093/103) ----
+
+    bool _widgetsOn = true;
+    readonly Dictionary<string, bool> _covered = new();
+    readonly HashSet<string> _faded = new();
+    readonly Dictionary<string, Microsoft.UI.Dispatching.DispatcherQueueTimer> _fadeT = new();
+
+    Border[] Panes => new[] { Clock, Stats, Mc, Strip };
+    Border? Pane(string key) => Array.Find(Panes, p => (string)p.Tag == key);
+
+    /// Widgets off: every pane hidden in place at once (visibility:hidden: nothing moves).
     public void SetWidgets(bool on)
     {
-        foreach (var p in new[] { Clock, Stats, Mc, Strip }) { p.Opacity = on ? 1 : 0; p.IsHitTestVisible = on; AutomationProperties.SetItemType(p, on ? "widget" : "widget hidden"); }
+        _widgetsOn = on;
+        foreach (var p in Panes) Apply(p, false, null);
         AutomationProperties.SetItemStatus(Cluster, on ? "widgets on" : "widgets off");
+    }
+
+    /// A window over the pane: it takes no clicks at once and fades out over 260 ms; uncovered, it fades in over 560 ms
+    /// (desktop.css .pane[data-cover].covered). Opacity only, so the pane keeps its box and nothing else moves. Reduced
+    /// motion: no fade. <paramref name="fadedOut"/> runs once a covered pane's fade-out has finished (DESK-103).
+    public void SetCovered(string key, bool covered, bool animate, Action<string> fadedOut)
+    {
+        if (Pane(key) is not { } p) return;
+        if ((_covered.TryGetValue(key, out bool was) && was) == covered) return;
+        _covered[key] = covered;
+        Apply(p, animate, fadedOut);
+    }
+
+    /// The pane's fade-out has finished: it is drawn no more.
+    public bool FadedOut(string key) => _faded.Contains(key);
+
+    void Apply(Border p, bool animate, Action<string>? fadedOut)
+    {
+        string key = (string)p.Tag;
+        bool covered = _covered.TryGetValue(key, out bool c) && c;
+        bool show = _widgetsOn && !covered;
+        p.IsHitTestVisible = show;
+        AutomationProperties.SetItemType(p, !_widgetsOn ? "widget hidden" : covered ? "widget covered" : "widget");
+        if (_fadeT.Remove(key, out var t)) t.Stop();
+        if (show) _faded.Remove(key);
+        // WinUI's own opacity transition runs on the compositor and hands off from wherever a fade is when it turns
+        p.OpacityTransition = animate ? new ScalarTransition { Duration = TimeSpan.FromMilliseconds(show ? WidgetCover.FadeInMs : WidgetCover.FadeOutMs) } : null;
+        p.Opacity = show ? 1 : 0;
+        if (show || !covered || fadedOut == null) return;
+        if (!animate) { _faded.Add(key); fadedOut(key); return; }
+        var ft = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread().CreateTimer();
+        ft.Interval = TimeSpan.FromMilliseconds(WidgetCover.FadeOutMs); ft.IsRepeating = false;
+        ft.Tick += (_, _) => {
+            ft.Stop();
+            if (!_fadeT.TryGetValue(key, out var cur) || cur != ft) return;   // uncovered (or covered again) since
+            _fadeT.Remove(key);
+            _faded.Add(key);
+            fadedOut(key);
+        };
+        _fadeT[key] = ft;
+        ft.Start();
     }
 
     /// The strip may scroll inside what is left of the window height (the heading stays put).

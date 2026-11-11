@@ -108,6 +108,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _subs.Add(ctx.On<ThemePayload>("theme", t => { _dark = t.Theme == "dark"; Paint(); ctx.Log.Line($"theme {t.Theme}: the panes repainted"); }));
         _subs.Add(ctx.OnState(s => Strip(s)));
         _subs.Add(ctx.On<DeskWidgets>("deskmenu.widgets", w => SetWidgets(w.On, "the switch")));
+        _subs.Add(ctx.On<WidgetHideOn>("widgethide.on", w => { _coverOn = w.On; CoverSync(w.On ? "the feature is on" : "the feature is off"); }));
         _subs.Add(ctx.On<DeskMenuShow>("deskmenu.show", m => OpenMenu(m.X, m.Y, m.Seq, "a right-click on the desktop")));
         _subs.Add(ctx.On<DeskMenuHide>("deskmenu.hide", h => CloseMenu(h.Why)));
         if (_fx?.WidgetsOff == true) SetWidgets(false, "MANTLE_TEST_DESKTOP");
@@ -231,6 +232,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _ctx.Log.Line($"shown {where} at {pos.X},{pos.Y} {size.Width}x{size.Height} px, scale {(Win32.GetDpiForWindow(_hwnd) / 96.0).ToString("0.##", CultureInfo.InvariantCulture)} ({why})");
         StartShellWatch();
         Wake(why);
+        CoverSync("shown");
         QueueReport("shown");
     }
 
@@ -252,6 +254,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _awake = false;
         foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT, _burstT, _attachT }) t?.Stop();
         _shellWatch?.Dispose(); _shellWatch = null;
+        StopCover();
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         _mcChain++;
         CloseMenu(why);
@@ -342,14 +345,16 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _clockT?.Stop(); _statsT?.Stop(); _mcT?.Stop();
         _mcChain++;   // a check still out is stale when it lands
         _ctx.Log.Line($"widgets resting: no clock tick, no System read and no Mission Control check while it is hidden ({why})");
+        CoverSync(why);   // nothing shown, nothing watched
     }
 
     void StartClock()
     {
         PaintClock();
         if (_fx?.Now != null) { _ctx.Log.Line($"the clock is frozen at {DeskClock.Of(_fx.Now.Value).Text} (MANTLE_TEST_DESKTOP)"); return; }
+        if (_clockParked) return;   // under a window, faded out: Unpark starts it again
         _clockT ??= Timer(TimeSpan.FromMilliseconds(1000), () => {
-            if (!_awake) return;
+            if (!_awake || _clockParked) return;
             PaintClock();
             _clockT!.Interval = TimeSpan.FromMilliseconds(DeskClock.NextDelayMs(DateTime.Now));
             _clockT.Start();
@@ -371,12 +376,12 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _stats = new SysStats();   // the CPU share is since the last read: after a rest that would be the whole rest, so sample afresh
         ReadStats();
         _statsT ??= Timer(TimeSpan.FromMilliseconds(DeskStats.EveryMs), ReadStats, repeat: true);
-        _statsT.Start();
+        if (!_statsParked) _statsT.Start();
     }
 
     void ReadStats()
     {
-        if (!_awake) return;
+        if (!_awake || _statsParked) return;
         var s = _stats;
         _ = Task.Run(() => s.Read()).ContinueWith(t => _ctx.Dispatcher.TryEnqueue(() => { _lastStats = t.Result; if (_awake) _panes?.SetStats(t.Result); }), TaskScheduler.Default);
     }
@@ -434,6 +439,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _widgetsOn = on;
         _panes?.SetWidgets(on);
         _ctx.Log.Line($"widgets {(on ? "shown" : "hidden")} ({why})");
+        if (_ctx != null && _panes != null) CoverSync("the widgets switch");
     }
 
     internal bool WidgetsOn => _widgetsOn;
@@ -452,17 +458,21 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         double scale = _root.XamlRoot.RasterizationScale;
         var pos = _win.AppWindow.Position;
         var parts = new List<string>();
+        var rects = new List<(string, int, int, int, int)>();
         foreach (var p in new[] { _panes.Clock, _panes.Stats, _panes.Mc, _panes.Strip }) {
             string key = (string)p.Tag;
             if (p.Visibility != Visibility.Visible || p.ActualWidth <= 0) { parts.Add($"{key}=0,0,0,0"); continue; }
             var at = p.TransformToVisual(_root).TransformPoint(new global::Windows.Foundation.Point(0, 0));
             var r = DesktopLayer.ToScreen(at.X, at.Y, p.ActualWidth, p.ActualHeight, pos.X, pos.Y, scale);
             parts.Add($"{key}={r.X},{r.Y},{r.Width},{r.Height}");
+            rects.Add((key, (int)r.X, (int)r.Y, (int)r.Width, (int)r.Height));
         }
         string line = string.Join(" ", parts);
         if (line == _lastRects) return;
         _lastRects = line;
+        _areas = WidgetCover.Areas(rects);
         _ctx.Log.Line($"panes (physical px on screen): {line} (scale {scale.ToString("0.##", CultureInfo.InvariantCulture)}, window {_root.ActualWidth.ToString("0", CultureInfo.InvariantCulture)}x{_root.ActualHeight.ToString("0", CultureInfo.InvariantCulture)} DIP)");
+        CoverSync("the widgets moved");
     }
 
     // ---- the menu ----

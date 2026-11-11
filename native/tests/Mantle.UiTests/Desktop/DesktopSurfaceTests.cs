@@ -338,6 +338,85 @@ public class DesktopSurfaceTests
         } finally { Keep(app, "deskremake"); }
     }
 
+    /// A plain window of another process (PowerShell WinForms), the fixture that sits over a widget.
+    sealed class CoverForm : IDisposable
+    {
+        public readonly Process Proc;
+        public readonly IntPtr Hwnd;
+        public CoverForm(string title)
+        {
+            string ps = "Add-Type -AssemblyName System.Windows.Forms; Add-Type -AssemblyName System.Drawing; $f = New-Object System.Windows.Forms.Form; " +
+                        $"$f.Text = '{title}'; $f.StartPosition = 'Manual'; $f.Location = New-Object System.Drawing.Point(1200, 600); " +
+                        "$f.Size = New-Object System.Drawing.Size(240, 120); $f.BackColor = [System.Drawing.Color]::Gray; [System.Windows.Forms.Application]::Run($f)";
+            var psi = new ProcessStartInfo(Path.Combine(Environment.SystemDirectory, "WindowsPowerShell", "v1.0", "powershell.exe")) { UseShellExecute = false };
+            foreach (var a in new[] { "-NoProfile", "-EncodedCommand", Convert.ToBase64String(Encoding.Unicode.GetBytes(ps)) }) psi.ArgumentList.Add(a);
+            Proc = Host.Track(Process.Start(psi)!);
+            var proc = Proc;
+            var h = Host.Until(() => Win32.WindowsOf(proc.Id, title) is { Count: > 0 } w ? (object)w[0] : null, 30000, 200);
+            if (h is not IntPtr hw) { Host.Kill(Proc); Assert.Fail("the fixture window did not appear in 30 s"); throw new InvalidOperationException(); }
+            Hwnd = hw;
+        }
+        public void Dispose() => Host.Kill(Proc);
+    }
+
+    [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
+    [DllImport("user32.dll")] static extern bool ShowWindow(IntPtr h, int cmd);
+    const uint SWP_NOACTIVATE = 0x0010;
+
+    static string ItemType(AutomationElement win, string id) { try { return Find(win, id).Properties.ItemType.ValueOrDefault ?? ""; } catch (Exception) { return ""; } }
+    static int Count(string log, string what) => Regex.Matches(log, Regex.Escape(what)).Count;
+    static int Checks(string log) => Regex.Matches(log, @"desktop: cover check \d+ ").Count;
+
+    /// DESK-092/093/096/098/103: a window of another app over the clock fades the clock only; minimised, moved away: back.
+    /// The watch hears window events only: a resting desktop makes no check at all (no poll).
+    [TestMethod]
+    public void Widgets_step_aside_under_a_window_one_by_one_and_a_resting_desktop_costs_no_checks()
+    {
+        var app = Launch("desk-cover", "light", new Dictionary<string, string> { ["MANTLE_TEST_COVER"] = "1" });
+        using var _ = app;
+        try {
+            Host.LogContains(() => app.Log, "desktop: widgets under windows: watching 4 widget(s) on window events only (no poll", "the watch is armed once the panes are reported", 15000);
+            var m = Regex.Matches(app.Log, @"desktop: panes \(physical px on screen\): clock=(-?\d+),(-?\d+),(\d+),(\d+)").Last();
+            int cx = int.Parse(m.Groups[1].Value), cy = int.Parse(m.Groups[2].Value), cw = int.Parse(m.Groups[3].Value), ch = int.Parse(m.Groups[4].Value);
+            IntPtr layer = Layer(app);
+            var win = Host.Uia.FromHandle(layer);
+            Assert.AreEqual("widget", ItemType(win, "desktop.pane.clock"), "the clock shows before any window covers it");
+
+            string title = "Cover " + Guid.NewGuid().ToString("N")[..6];
+            using var cover = new CoverForm(title);
+            // over the middle of the clock only (the System tile is 11 DIP under it)
+            Assert.IsTrue(SetWindowPos(cover.Hwnd, IntPtr.Zero, cx + cw / 4, cy + ch / 4, cw / 2, ch / 2, SWP_NOACTIVATE), "the fixture window moves over the clock");
+            Host.LogContains(() => app.Log, $"desktop: covered: clock (by {title})", "the clock is covered by the fixture window, and only the clock", 5000);
+            Assert.IsTrue(Host.Until(() => ItemType(win, "desktop.pane.clock") == "widget covered", 3000), "the clock pane says covered");
+            Assert.AreEqual("widget", ItemType(win, "desktop.pane.stats"), "each widget on its own: the System tile is not under it");
+            Host.LogContains(() => app.Log, "desktop: the clock stopped ticking: a window covers it and its fade-out has finished", "DESK-103: parked once the fade is done", 3000);
+
+            // minimised: back, and the clock ticks again
+            ShowWindow(cover.Hwnd, 6 /* SW_MINIMIZE */);
+            Assert.IsTrue(Host.Until(() => ItemType(win, "desktop.pane.clock") == "widget", 5000), "minimised, the clock comes back");
+            Host.LogContains(() => app.Log, "desktop: the clock ticks again (uncovered)", "uncovered, the clock paints and ticks");
+
+            // restored over it, then moved away
+            ShowWindow(cover.Hwnd, 4 /* SW_SHOWNOACTIVATE */);
+            Assert.IsTrue(Host.Until(() => Count(app.Log, $"desktop: covered: clock (by {title})") >= 2, 5000), "restored over the clock: covered again");
+            GetWindowRect(layer, out var lr);
+            Assert.IsTrue(SetWindowPos(cover.Hwnd, IntPtr.Zero, lr.Right + 40, lr.Top, cw / 2, ch / 2, SWP_NOACTIVATE), "the fixture window moves away");
+            Assert.IsTrue(Host.Until(() => Count(app.Log, "desktop: the clock ticks again (uncovered)") >= 2 && ItemType(win, "desktop.pane.clock") == "widget", 5000), "moved away, the clock comes back");
+
+            // a resting desktop: once the settle check has run, no window event means no check at all
+            Thread.Sleep(2500);
+            int before = Checks(app.Log);
+            Thread.Sleep(4000);
+            int after = Checks(app.Log);
+            Assert.IsTrue(after - before <= 1, $"{after - before} cover checks in 4 s with no window moving (a 2 s poll would make 2)");
+            Console.WriteLine($"COVER: {after} checks in all; {after - before} in 4 s at rest");
+
+            // parked: the watch stops (nothing shown, nothing watched)
+            Second(app, "--test-surface=hide:desktop");
+            Host.LogContains(() => app.Log, "desktop: widgets under windows: the watch stopped after", "parked, the watch stops", 5000);
+        } finally { Keep(app, "desktop-cover"); }
+    }
+
     [TestMethod]
     public void Hot_corners_self_test_every_corner_and_action_is_a_dry_run_and_the_real_cursor_is_never_used()
     {
