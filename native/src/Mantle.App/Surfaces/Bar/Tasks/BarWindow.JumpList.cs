@@ -63,6 +63,7 @@ public sealed partial class BarWindow
         public bool Kbd;
         public StackPanel Body = null!, List = null!, Foot = null!;
         public UiaGrid Root = null!;   // a plain panel has no UI Automation peer
+        public Border FootBox = null!;
         public ScrollViewer Scroll = null!;
         public TextBlock Note = null!;
         public Border? Sub;
@@ -91,7 +92,12 @@ public sealed partial class BarWindow
         TestLine("right-click", sender);
         StopTimer(_flyDwell);
         if (Popups?.OpenKey == JlKey(vm)) { Popups.Close("a second right-click on its icon"); return; }
-        OpenJump(vm, b);
+        // never take the bar down over a menu: a fault is said in the log and the chip strip
+        try { OpenJump(vm, b); }
+        catch (Exception ex) {
+            Host.Log.Line($"bar tasks: menu: the app menu could not open ({ex.GetType().Name}: {ex.Message})");
+            if (_chips.Fail("menu", "App menu did not open", ex.Message, "warn")) RenderPip(force: true);
+        }
     }
 
     void HookJlOnce()
@@ -203,6 +209,7 @@ public sealed partial class BarWindow
         m.Foot = new StackPanel();
         var footBox = (Border)XamlReader.Load("<Border " + JlNs + " BorderThickness='0,1,0,0' BorderBrush='{ThemeResource LgEdgeOut}' Margin='0,2,0,0' Padding='0,4,0,0'/>");
         footBox.Child = m.Foot;
+        m.FootBox = footBox;
         // the app itself: a new window (middle-click does the same; BAR-214, BAR-322)
         m.Foot.Children.Add(JlRow(name, null, it.Icon, CellVm.LetterOf(name), "bar.jl.app", _ => JlFresh(m), "LgInk", bold: true));
         // Mantle's own pin list, never Windows' pins (BAR-216, BAR-324)
@@ -247,8 +254,8 @@ public sealed partial class BarWindow
         // the list scrolls inside the 456 DIP cap; the note and the foot always show
         m.Scroll.MaxHeight = double.PositiveInfinity;
         m.Note.Measure(new global::Windows.Foundation.Size(JlWidth - 14, double.PositiveInfinity));
-        ((FrameworkElement)m.Foot.Parent).Measure(new global::Windows.Foundation.Size(JlWidth - 14, double.PositiveInfinity));
-        double fixedH = 12 + (m.Note.Visibility == Visibility.Visible ? m.Note.DesiredSize.Height : 0) + ((FrameworkElement)m.Foot.Parent).DesiredSize.Height;
+        m.FootBox.Measure(new global::Windows.Foundation.Size(JlWidth - 14, double.PositiveInfinity));
+        double fixedH = 12 + (m.Note.Visibility == Visibility.Visible ? m.Note.DesiredSize.Height : 0) + m.FootBox.DesiredSize.Height;
         m.Scroll.MaxHeight = Math.Max(48, JlMax - fixedH - 2);
         m.Body.Measure(new global::Windows.Foundation.Size(JlWidth - 2, double.PositiveInfinity));
         return Math.Min(JlMax, Math.Ceiling(m.Body.DesiredSize.Height) + 2);
