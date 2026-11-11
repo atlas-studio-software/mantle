@@ -281,11 +281,12 @@ public sealed partial class BarWindow
     {
         if (_tasks == null || _jl != m) return;
         JlSay(m, what + "…", quiet: true);
+        string verb = what.Split(' ')[0];   // the log and the close reason never name the app or the item
         start(r => {
-            Host.Log.Line($"bar tasks: menu: {what}: {(r.Ok ? (r.DryRun ? "dry run" : "done") : "failed")}{(r.Did != null ? $" ({r.Did})" : "")}{(Host.Args.Test && r.Reason != null ? ": " + r.Reason : "")}");
+            Host.Log.Line($"bar tasks: menu: {verb}: {(r.Ok ? (r.DryRun ? "dry run" : "done") : "failed")}{(r.Did != null ? $" ({r.Did})" : "")}{(Host.Args.Test && r.Reason != null ? ": " + r.Reason : "")}");
             if (_jl != m) return;
-            if (r.Ok && r.Did != "dry") { Popups?.Close(what + " done"); return; }
-            if (r.Ok) { Popups?.Close(what + " (a dry run)"); return; }
+            if (r.Ok && r.Did != "dry") { Popups?.Close(verb + " done"); return; }
+            if (r.Ok) { Popups?.Close(verb + " (a dry run)"); return; }
             JlSay(m, what + " failed: " + (r.Reason ?? "Mantle did not say why"), quiet: false);
         });
     }
