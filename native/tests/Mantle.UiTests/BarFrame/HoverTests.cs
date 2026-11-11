@@ -100,9 +100,12 @@ public sealed class HoverTests
 
     /// The promise: idle CPU near zero. One run per theme: the bar + its glass hidden at rest, then shown and idle
     /// (cursor resting on the pill: light refreshes its glass 4 times a second while up, dark holds one still).
-    /// Hidden at rest is read over 45 s: Windows charges CPU in whole 15.6 ms clock ticks, so the old 15 s window moved
-    /// in steps of 0.104 % and a few stray ticks decided the 1 % line; 45 s moves in steps of 0.035 %. Each window is
-    /// also read thread by thread (cycles, wakeups, name, start module) into idle-threads.txt, and a failure names them.
+    /// Hidden at rest is judged over 45 s by the CPU cycles the process used (QueryThreadCycleTime, exact), as % of one
+    /// core. The CPU time Windows charges (Process.TotalProcessorTime) moves in whole 15.6 ms clock ticks and lands on
+    /// whichever thread runs at the tick: over the same 45 s it read 0.139 to 1.423 % while the cycles read 0.38 to 0.65 %
+    /// (lane r7-idle runs), so it is reported, not judged. The limit is unchanged (1 % of one core). Each window is also
+    /// read thread by thread (cycles, wakeups, name, start module) into idle-threads.txt, with what the app's own idle
+    /// probe counted inside (MANTLE_TEST_IDLE_PROBE), and a failure prints them.
     [TestMethod]
     public void Bar_and_glass_idle_cpu_hidden_at_rest_and_shown()
     {
@@ -134,40 +137,18 @@ public sealed class HoverTests
             Thread.Sleep(500);
             int pics = FrameProbe.Count(dir, "glass: stopped");
             var after = FrameProbe.Cpu(app.Proc, 5000);
-            string line = $"IDLE-CPU {theme}: hidden at rest {hidden.App} % of one core over {HiddenMs / 1000} s ({hidden.Threads.CyclePct} % by cycles, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
+            string line = $"IDLE-CPU {theme}: hidden at rest {hidden.Threads.CyclePct} % of one core by cycles over {HiddenMs / 1000} s ({hidden.App} % charged in clock ticks, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
             lines.Add(line); Console.WriteLine(line);
             tables.Add($"{theme}, hidden at rest:\n{hidden.Threads.Table()}\n  what the app counted inside (its idle probe):\n{(inside.Length > 0 ? inside : "  (no idle probe lines)")}\n  what the app logged meanwhile:\n{(logged.Length > 0 ? logged : "  (nothing)")}");
             tables.Add($"{theme}, shown idle:\n{shown.Threads.Table()}");
-            worst["hidden " + theme] = hidden.App; worst["shown " + theme] = shown.App;
+            worst["hidden " + theme] = hidden.Threads.CyclePct; worst["shown " + theme] = shown.App;
             Assert.IsTrue(stillUp, "the bar hid during the shown measurement: " + line);
             if (theme == "light") Assert.IsTrue(pics >= 1, "light glass never logged its stop on hide: " + line);
         }
         File.WriteAllLines(Path.Combine(Host.OutDir, "idle-cpu.txt"), lines);
         File.WriteAllText(Path.Combine(Host.OutDir, "idle-threads.txt"), string.Join("\n\n", tables) + "\n");
         string Named(string which) => string.Join("\n", lines) + "\n" + string.Join("\n", tables.Where(t => t.Contains(which, StringComparison.Ordinal)));
-        Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more:\n" + Named("hidden at rest"));
+        Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more (by cycles):\n" + Named("hidden at rest"));
         Assert.IsTrue(worst["shown light"] < 20 && worst["shown dark"] < 20, "shown idle costs 20 % of a core or more:\n" + Named("shown idle"));
-    }
-
-    /// TEMPORARY (lane r7-idle diagnosis): the idle probe under a few start variants, 20 s each, into idle-variants.txt.
-    [TestMethod]
-    public void Idle_probe_variants_diagnostic()
-    {
-        var outp = new List<string>();
-        var variants = new (string Tag, Dictionary<string, string> Env)[] {
-            ("base", new()), ("no-launcher", new() { ["MANTLE_NO_LAUNCHER"] = "1" }), ("quiet", new() { ["MANTLE_TEST_VISIBLE"] = "0" }),
-        };
-        foreach (var (tag, env) in variants)
-        {
-            env["MANTLE_TEST_IDLE_PROBE"] = "2000,20000";
-            var (app, _, dir) = Hover("var-" + tag, "light", env);
-            using var _a = app;
-            var t = ThreadCpu.Measure(app.Proc.Id, 23000);
-            FrameProbe.LogHas(dir, "idle probe: done", 8000);
-            outp.Add($"== {tag}: {t.CyclePct} % by cycles, {t.Switches} wakeups");
-            outp.AddRange(FrameProbe.Log(dir).Split('\n').Select(l => l.TrimEnd('\r')).Where(l => l.Contains("idle probe:", StringComparison.Ordinal) && !l.Contains(" 1 x ", StringComparison.Ordinal) && !l.Contains(" 2 x ", StringComparison.Ordinal)));
-            Host.KillAll();
-        }
-        File.WriteAllLines(Path.Combine(Host.OutDir, "idle-variants.txt"), outp);
     }
 }
