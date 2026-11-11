@@ -41,11 +41,13 @@ Add-Type -Path (Join-Path $root 'native/tools/parity/ParityNative.cs')
 Add-Type -AssemblyName System.Drawing
 [void][ParityNative]::DpiAware()
 # The test layer is an ordinary window, and its first show hands the foreground straight back to whatever had it (the
-# backdrop), which lifts the backdrop over it: the layer is put back on top (not topmost) once it is up.
+# backdrop), which lifts the backdrop over it, and the runner's console can sit over it too: the layer is made
+# topmost while its panes are shot; then the backdrop is, under the menu.
 Add-Type -Namespace DeskPar -Name Z -MemberDefinition @'
 [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string title);
 [DllImport("user32.dll")] static extern bool SetWindowPos(IntPtr h, IntPtr after, int x, int y, int w, int hh, uint flags);
 public static bool Raise(string title) { IntPtr h = FindWindowW(null, title); return h != IntPtr.Zero && SetWindowPos(h, IntPtr.Zero, 0, 0, 0, 0, 0x0013); }
+public static bool Topmost(string title, bool on) { IntPtr h = FindWindowW(null, title); return h != IntPtr.Zero && SetWindowPos(h, new IntPtr(on ? -1 : -2), 0, 0, 0, 0, 0x0013); }
 public static bool Under(string top, string below) { IntPtr t = FindWindowW(null, top), b = FindWindowW(null, below); return t != IntPtr.Zero && b != IntPtr.Zero && SetWindowPos(b, t, 0, 0, 0, 0, 0x0013); }
 '@
 
@@ -127,8 +129,8 @@ try {
     $m = $null
     for ($i = 0; $i -lt 150 -and -not $m; $i++) { Start-Sleep -Milliseconds 200; $all = [regex]::Matches((LogText $log), $re); if ($all.Count) { $m = $all[$all.Count - 1] } }
     if (-not $m) { $rows += "desk-$theme no score: the native layer never reported its panes in 30 s"; Copy-Item $log (Join-Path $Out "native-desk-$theme-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
-    if (-not [DeskPar.Z]::Raise('Mantle desktop')) { Say 'the native layer could not be put over the backdrop' }
-    if (-not [DeskPar.Z]::Under('Mantle desktop', 'Desktop parity backdrop')) { Say 'the backdrop could not be put under the native layer' }
+    # over everything while its panes are shot (the runner's own console can sit over an ordinary window), then back
+    if (-not [DeskPar.Z]::Topmost('Mantle desktop', $true)) { Say 'the native layer could not be put over everything' }
     Start-Sleep -Milliseconds 1500   # the last paint, then the rects again (a late layout pass re-reports them)
     $all = [regex]::Matches((LogText $log), $re); $m = $all[$all.Count - 1]
     $g = $m.Groups
@@ -140,6 +142,10 @@ try {
       try { $line = Score "desk-$theme-$($part.n)" (Join-Path $Out "electron-desk-$theme-$($part.n).png") $x $y $w0 $h0 } catch { $line = "desk-$theme-$($part.n) no score: $($_.Exception.Message)" }
       Write-Host $line; $rows += $line
     }
+    # the menu's see-through margin must show the backdrop, not whatever is under it: the backdrop goes over everything
+    # (the menu is raised over it when it opens)
+    [void][DeskPar.Z]::Topmost('Mantle desktop', $false)
+    if (-not [DeskPar.Z]::Topmost('Desktop parity backdrop', $true)) { Say 'the backdrop could not be put over everything' }
     # the menu, through the test road (a second start: no mouse, no right-click hook)
     $q = Start-Process $Exe -PassThru -ArgumentList ($common + '--test-surface=show:deskmenu')
     if (-not $q.WaitForExit(15000)) { Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue }
