@@ -205,7 +205,8 @@ public class DesktopSurfaceTests
         using var app = Launch("uitest-corners", env: new Dictionary<string, string> { ["MANTLE_CORNERS_SELFTEST"] = "1", ["MANTLE_CORNERS_TEST_GAME"] = "MantleNative.exe" });
         try {
             Host.LogContains(() => app.Log, "corners: stopped watching the corners: a test run never reads the real cursor", "the watch never reads the real cursor in --test", 15000);
-            Host.LogContains(() => app.Log, "corners: SELFTEST", "the self-test finished", 90000);
+            Host.LogContains(() => app.Log, "corners: SELFTEST: driving", "the self-test started", 15000);
+            Assert.IsTrue(Host.Until(() => Regex.IsMatch(app.Log, "corners: SELFTEST (ok|FAILED)"), 90000), "the self-test finished in 90 s");
             string line = app.Log.Split('\n').Last(l => l.Contains("corners: SELFTEST ok") || l.Contains("corners: SELFTEST FAILED"));
             StringAssert.Contains(line, "corners: SELFTEST ok: 20 of 20 corner x action dry runs", line);
             StringAssert.Contains(line, "the game stand-in refused: MantleNative.exe is running (a known game)", line);

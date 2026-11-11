@@ -80,6 +80,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _root = new Grid { Background = new SolidColorBrush() };
         _root.Children.Add(_panes.Cluster);
         AutomationProperties.SetAutomationId(_root, "desktop.layer");
+        AutomationProperties.SetName(_root, "Desktop layer");   // a panel with no name has no automation peer: the tests read its theme here
         _win = new Window { Title = "Mantle desktop", Content = _root };
         var p = OverlappedPresenter.Create();
         p.IsResizable = ctx.Test; p.IsMaximizable = false; p.IsMinimizable = false;
