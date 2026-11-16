@@ -140,11 +140,12 @@ function Get-AppProcs([int]$mainPid) {
   }
 }
 
-# bar up = a visible, uncloaked window of the app, bar-sized, whose rect reaches into the bottom 120 px of the screen
+# bar up = the app's "Mantle bar" window (both apps' title) is visible, uncloaked and on the screen at its bottom
+# edge. Hidden: native's is SW_HIDE; Electron's live-shaped test bar is parked below the edge or not shown. Electron's
+# window is taller than its pill (it keeps room for the pop-ups: 400,378 to 1520,1080 on the runner), so no size test.
 function Get-BarWin([int[]]$pids) {
   @([IdleCmp]::WindowsOf($pids) | Where-Object {
-      -not $_.Cloaked -and ($_.R.Bottom - $_.R.Top) -ge 30 -and ($_.R.Bottom - $_.R.Top) -le 200 -and ($_.R.Right - $_.R.Left) -ge 300 -and
-      $_.R.Top -lt $H -and $_.R.Bottom -gt ($H - 120) }) | Select-Object -First 1
+      $_.Title -eq 'Mantle bar' -and -not $_.Cloaked -and $_.R.Top -lt ($H - 20) -and $_.R.Bottom -gt ($H - 120) }) | Select-Object -First 1
 }
 function Describe-Wins([int[]]$pids) {
   (@([IdleCmp]::WindowsOf($pids)) | ForEach-Object { '{0} "{1}" [{2}] {3},{4},{5},{6}{7}' -f $_.Pid, $_.Title, $_.Class, $_.R.Left, $_.R.Top, $_.R.Right, $_.R.Bottom, $(if ($_.Cloaked) { ' cloaked' } else { '' }) }) -join ' | '
@@ -154,6 +155,11 @@ function Pids([int]$mainPid) { [int[]]@(Get-AppProcs $mainPid | ForEach-Object {
 # a line in a log the app still writes (opened shared, as the UI tests read it)
 function LogHas([string]$path, [string]$text) {
   try { $f = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite'); try { return ([IO.StreamReader]::new($f)).ReadToEnd().Contains($text) } finally { $f.Dispose() } } catch { return $false }
+}
+# the last line of a log the app still writes that contains text, or ''
+function LogLine([string]$path, [string]$text) {
+  try { $f = [IO.File]::Open($path, 'Open', 'Read', 'ReadWrite'); try { $all = ([IO.StreamReader]::new($f)).ReadToEnd() } finally { $f.Dispose() } } catch { return '' }
+  $hit = @($all -split "`r?`n" | Where-Object { $_.Contains($text) }); if ($hit.Count) { $hit[-1] } else { '' }
 }
 function Until([scriptblock]$cond, [int]$ms) { $end = (Get-Date).AddMilliseconds($ms); while ((Get-Date) -lt $end) { if (& $cond) { return $true }; Start-Sleep -Milliseconds 200 }; return [bool](& $cond) }
 
@@ -217,7 +223,7 @@ function Run-App([string]$app, [string]$theme, [int]$round) {
     $quitExe = $Exe
   }
   $env:MANTLE_TEST_VISIBLE = $null
-  Say "$tag started pid $($p.Id): $(Split-Path -Leaf $p.Path) $($argv -join ' ')"
+  Say "$tag started pid $($p.Id): $(if ($app -eq 'electron') { 'electron.exe' } else { Split-Path -Leaf $Exe }) $($argv -join ' ')"
   $res = [ordered]@{ app = $app; theme = $theme; round = $round; pid = $p.Id; windows = @() }
   try {
     $ready = if ($app -eq 'electron') { Until { $p.HasExited -or @([IdleCmp]::WindowsOf((Pids $p.Id))).Count -gt 0 } 90000 }
@@ -225,6 +231,12 @@ function Run-App([string]$app, [string]$theme, [int]$round) {
     if ($p.HasExited -or -not $ready) { Problem "${tag}: not up (exited $($p.HasExited)) in time"; return $res }
     $res.readyS = [math]::Round(((Get-Date) - $t0).TotalSeconds, 1)
     Start-Sleep -Seconds $SettleSec
+    if ($app -eq 'electron') {
+      # Electron's own per-window memory line names each renderer's PID (bar, launcher, top bar...): it is how the
+      # per-process rows in windows.txt are told apart
+      $res.electronMemoryLine = LogLine (Join-Path $dir 'electron.out.txt') 'memory (30 s after start)'
+      Say "$tag own log: $($res.electronMemoryLine)"
+    }
     [ParityNative]::ParkCursor($away[0], $away[1])
     Start-Sleep -Seconds 2
     $res.windows += @(Measure-Window $tag $p.Id 'hidden' | Where-Object { $_ })
