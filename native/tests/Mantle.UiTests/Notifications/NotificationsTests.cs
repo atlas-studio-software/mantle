@@ -148,6 +148,17 @@ public class NotificationsTests
         Assert.IsFalse(log.Contains("would dismiss") || log.Contains("would open notification"), "an Enter before any Tab pressed something:\n" + Tail(dir));
         Assert.IsTrue(FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), "the centre closed on an early Enter");
 
+        // Esc closes it and the keyboard goes back
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Host.LogContains(Log(dir), "notifs: the panel closed (Esc)", "Esc did not close the centre");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), 3000), "the centre is still on screen after Esc");
+
+        // opened again (once its exit has finished): it takes the keyboard again
+        Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
+        for (int i = 0; i < 3 && !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")); i++) { ClickEl(bell); Thread.Sleep(700); }
+        Pop(app, dir, "Notifications", "notifs.panel");
+        Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
+
         // Tab walks on until the newest card (Discord's, 104) has the keyboard; the dead card (90) is never a stop
         for (int i = 0; i < 8 && !FrameProbe.Log(dir).Contains("notifs: key focus: card 104"); i++) { Keyboard.Type(VirtualKeyShort.TAB); Thread.Sleep(250); }
         Host.LogContains(Log(dir), "notifs: key focus: card 104", "Tab never reached the newest card");
@@ -157,17 +168,6 @@ public class NotificationsTests
         Host.LogContains(Log(dir), "notifs: dry run (--test): would open notification 104 (its app) and dismiss it", "the card was not opened as a dry run");
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the centre did not close once the card opened");
-
-        // opened again (once its exit has finished: a press during the 160 ms exit is not a new open): Esc closes it
-        Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
-        // a press on the bell right after the centre closed is sometimes not taken (runs 43822746706, 43825622855; the
-        // dark test below retries its right-click the same way): press until it opens, three times at most
-        for (int i = 0; i < 3 && !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")); i++) { ClickEl(bell); Thread.Sleep(700); }
-        Pop(app, dir, "Notifications", "notifs.panel");
-        Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
-        Keyboard.Type(VirtualKeyShort.ESCAPE);
-        Host.LogContains(Log(dir), "notifs: the panel closed (Esc)", "Esc did not close the centre");
-        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), 3000), "the centre is still on screen after Esc");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("90 (its app)"), "the dead card was opened");
     }
 

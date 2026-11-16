@@ -74,6 +74,9 @@ BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host
   the cards (a dead card is no stop: NotificationWords.TakesKeys) and their buttons; Enter opens a card, Esc closes. The
   ring (light 1 px accent, dark 1.5 px pale) is drawn over the card for the keyboard only. A repaint keeps the focused
   card. MANTLE_TEST_NOTIFS_KEYS=1 lets a test centre take the keyboard; a test run logs `notifs: key focus: card <id>`.
+- OPEN (media lane part 6): after a card was opened with Enter and the centre closed, three presses on the bell in the
+  next 3 s opened nothing and logged nothing (UI runs 43825622855, 43828596279); after an Esc close the reopen works.
+  Cause not found; the UI test opens the card last.
 - The edge bar's chip strip is not drawn (the island's pip stands for it, as before).
 
 ## Left
