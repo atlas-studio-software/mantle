@@ -117,6 +117,7 @@ internal sealed partial class TopBarSurface : ISurface
         _subs.Add(ctx.On<TopBarNote>("topbar.note", n => SetNote(n.Text)));
         InstallMenus();
         Place("made");
+        Prime();   // TOP-221: the one Activate, now, before the first show can meet a pop-up
         ctx.Log.Line("made hidden and parked (" + (Host.Quiet ? "test: quiet" : _test ? "test: visible" : "live") + ")");
     }
 
@@ -458,6 +459,28 @@ internal sealed partial class TopBarSurface : ISurface
         if (v.Show) ShowWin(v.Why); else HideWin(v.Why);
     }
 
+    /// TOP-221: WinUI takes keys into a window's XAML only once Window.Activate() has run on it: a bar first shown
+    /// inactive and then clicked was in front with the XAML focus on the pressed button, and no key came (runs
+    /// 43866395320..43869659697, even with an Activate at the first press). So the bar is activated ONCE here, at its
+    /// making: parked off-screen, before its first show (that waits for the sidecar), the foreground handed straight
+    /// back, then hidden again. Its first show is then inactive like every later one ("first show: shown inactive").
+    /// The Activated / Deactivated this raises are not the user's: _priming keeps them from the menus' handler.
+    void Prime()
+    {
+        if (_activated) return;
+        Win32.SetWindowPos(_hwnd, IntPtr.Zero, -32000, -32000, 0, 0, Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER);
+        IntPtr prev = Win32.GetForegroundWindow();
+        _priming = true;
+        _win.Activate();
+        bool took = Win32.GetForegroundWindow() == _hwnd;
+        if (took && prev != IntPtr.Zero && prev != _hwnd) Win32.SetForegroundWindow(prev);
+        Win32.ShowWindow(_hwnd, 0 /* SW_HIDE */);
+        Place("primed");
+        _ctx.Dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () => _priming = false);
+        if (_test) _ctx.Log.Line("primed: activated once off-screen and hidden again (" + (took ? (prev != IntPtr.Zero && Win32.GetForegroundWindow() == prev ? "the foreground handed back" : "the foreground NOT handed back") : "it never took the foreground") + ")");
+    }
+    bool _priming;
+
     void ShowWin(string why)
     {
         if (_shown && Win32.IsWindowVisible(_hwnd)) return;
@@ -467,8 +490,9 @@ internal sealed partial class TopBarSurface : ISurface
             // TOP-221 showInactive, the FIRST show too: an Activate here (handing the foreground back after) took the
             // keyboard for a moment, so a pop-up the user opened in Mantle's first second lost it and closed (the
             // downloads shelf, the notification centre; lane native-r8-startup run 43859364384). A non-resizable
-            // presenter draws without an Activate (DesktopSurface's finding). The window is activated only by the user:
-            // a click on it, or its keys (the "window activated; keys go to" road).
+            // presenter draws without an Activate (DesktopSurface's finding). The one Activate WinUI needs for keys ran at
+            // the making (Prime), off-screen; from here the window is activated only by the user: a click on it, or its
+            // keys (the "window activated; keys go to" road).
             _activated = true;
             _win.AppWindow.Show(false);
             if (_test) _ctx.Log.Line(Win32.GetForegroundWindow() == _hwnd ? "first show: the bar took the foreground" : "first show: shown inactive, the foreground stays where it was");

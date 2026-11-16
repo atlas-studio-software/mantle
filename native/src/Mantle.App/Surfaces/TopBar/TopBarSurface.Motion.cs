@@ -112,19 +112,22 @@ internal sealed partial class TopBarSurface
     /// island, it is put on the island's window. Our own window, our own thread: nothing else's focus is touched.
     void IslandKeys()
     {
-        if (Win32.GetForegroundWindow() != _hwnd) return;
+        IntPtr had = IslandNative.GetFocus();
+        if (Win32.GetForegroundWindow() != _hwnd)
+        {
+            if (_test) _ctx.Log.Line("keys: the bar is not the foreground window (the Win32 focus here: " + Cls(had) + ")");
+            return;
+        }
         IntPtr island = IslandNative.FindWindowExW(_hwnd, IntPtr.Zero, "Microsoft.UI.Content.DesktopChildSiteBridge", null);
         if (island == IntPtr.Zero) island = Win32.GetWindow(_hwnd, 5 /* GW_CHILD */);
-        IntPtr had = IslandNative.GetFocus();
         if (island == IntPtr.Zero || had == island || IslandNative.IsChild(island, had))
         {
-            if (_test && !_islandSaid) { _islandSaid = true; _ctx.Log.Line("keys: the Win32 focus is on " + Cls(had) + (island == IntPtr.Zero ? " (the bar has no island window)" : " (inside the island)")); }
+            if (_test) _ctx.Log.Line("keys: the Win32 focus is on " + Cls(had) + (island == IntPtr.Zero ? " (the bar has no island window)" : " (inside the island)"));
             return;
         }
         IslandNative.SetFocus(island);
         if (_test) _ctx.Log.Line("keys: the Win32 focus was on " + Cls(had) + ", put on the island's window: now on " + Cls(IslandNative.GetFocus()));
     }
-    bool _islandSaid;
 
     string Cls(IntPtr h) => h == IntPtr.Zero ? "nothing" : h == _hwnd ? "the bar's own window" : Win32.ClassName(h);
 
@@ -179,25 +182,10 @@ internal sealed partial class TopBarSurface
     void InstallDragEnd()
     {
         _root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => _dragArmed = false), true);
-        // TOP-221: the first show is inactive (no Activate), and a WinUI window that was never Activate()d does not take
-        // the keyboard into its XAML on a click. So the user's FIRST press on the bar activates it once, the road a click
-        // takes anyway; from then on Windows activates it on each click as usual ("window activated; keys go to").
-        _root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) =>
-        {
-            if (_userActivated) return;
-            _userActivated = true;
-            // after the press is handled (an Activate inside it could cost the button its pointer capture and its click)
-            _ctx.Dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
-            {
-                _win.Activate();
-                if (_test) _ctx.Log.Line("first press: the bar activated for its keys (in front: " + (Win32.GetForegroundWindow() == _hwnd ? "yes" : "no") + ")");
-                // the click had made it the foreground window already, so WinUI raises no Activated for this one (run
-                // 43868709747): the keys are sent home here, as the Activated handler does
-                if (Win32.GetForegroundWindow() == _hwnd) KeysHomeSoon();
-            });
-        }), true);
+        // TOP-221: no first-press Activate (part 9's try, runs 43866395320..43869659697: in front, the XAML focus on the
+        // button, still no key). The bar's one Activate is at its making (TopBarSurface.cs Prime), so a click activates
+        // it as Windows does any window, and the Activated handler sends the keys home.
     }
-    bool _userActivated;
 
     /// TOP-028: the keyboard focus ring on a strip button.
     void FocusRing(Button b)
