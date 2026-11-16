@@ -305,3 +305,21 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
   state shows only for the few ms of a read, so it is not caught in a UI test.
 - Game mode: the wallpaper hold. BAR-818: native draws the switch, knob and chevron with no transitions, so reduced
   motion has nothing to turn off.
+
+## Part 6 (lane native-r8-media)
+
+- Downloads keys (BAR-888): the real cause was not the timing alone. Asked on the open, the keyboard was refused (the
+  pop-up was not shown yet); once it was taken, Windows gave row 1 the window's first focus, which reads as a keyboard
+  focus, so the first Down went to row 2. Now PopupHost raises OnScreen when a pop-up's first frame is shown and the
+  shelf asks for the keyboard there, once (no retry timer); the shelf keeps its own flag (cleared when it takes the
+  keyboard, set by a walk, Tab or a press in it), and until then a focused row is no start (DownloadsKeys.From).
+- The double click (BAR-882) opens once, but its second press never becomes a click (the first press repaints the
+  rows); the UI test drives the one-decision guard with two quick Enters instead.
+- Notifications: BAR-844 (better: the centre takes the keyboard), BAR-191 (SurfaceLink onFail / SubscribeFailed),
+  BAR-856 n/a; calendar BAR-463 (gcal.resume on a wake). See notifications.md and calendar.md.
+- Helm badge: the exit test's writer is ping.exe, ended by the test by its own PID (it was a 2 s cmd /c ping).
+
+### Left (part 7)
+
+- The bell sometimes ignores presses right after the centre closed from an Enter on a card (notifications.md, OPEN).
+- The calendar pair's size gap (measured in calendar.md).
