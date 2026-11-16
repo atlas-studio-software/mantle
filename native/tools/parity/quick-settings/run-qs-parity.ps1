@@ -79,6 +79,8 @@ try {
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-qspar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
     $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_QS = $state
+    # part1 takes Electron's Game mode row (.gmrow) out with the other rows (electron-qs.cjs PART2_OUT); native leaves it out too
+    if ($Mode -eq 'part1') { $env:MANTLE_TEST_QS_NO_GAMEMODE = '1' } else { Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue }
     $prof = "qspar-$theme"
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $log = Join-Path $ud 'mantle-native.log'
@@ -121,6 +123,7 @@ try {
 } finally {
   Stop-Process -Id $back.Id -Force -ErrorAction SilentlyContinue
   Remove-Item Env:MANTLE_TEST_QS -ErrorAction SilentlyContinue
+  Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue
 }
 $scored = @($rows | Where-Object { $_ -like 'QS-PARITY*' }).Count
 Write-Host ("QS-PARITY summary: {0} scored of 2, lowest ssim {1:N4} ({2}); no masks" -f $scored, $low, $Mode)

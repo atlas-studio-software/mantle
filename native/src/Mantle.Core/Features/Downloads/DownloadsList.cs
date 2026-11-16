@@ -89,8 +89,9 @@ public static class DownloadsList
     static bool IsNotDir(IOException io) => (io.HResult & 0xFFFF) == 267;   // ERROR_DIRECTORY: the name is not a folder
 
     /// <summary>The plain read (only when the helper cannot answer): the newest <paramref name="max"/> entries plus every
-    /// partial and hidden name (uncut, so the shelf can count them). Never throws.</summary>
-    public static DownloadsRead ListFolder(string folder, int max = 60)
+    /// partial and hidden name (uncut, so the shelf can count them). <paramref name="attributes"/>: a Hidden or System
+    /// entry is left out too (counted as hidden), as the helper's read did (native reads attributes in-process). Never throws.</summary>
+    public static DownloadsRead ListFolder(string folder, int max = 60, bool attributes = false)
     {
         try
         {
@@ -101,6 +102,7 @@ public static class DownloadsList
             {
                 var name = fsi.Name;
                 if (SkipReason(name) != null) { named.Add(new(name)); continue; }
+                if (attributes && (fsi.Attributes & (FileAttributes.Hidden | FileAttributes.System)) != 0) { named.Add(new(null)); continue; }
                 if (name.Contains('�')) { unspellable++; continue; }
                 bool dir = (fsi.Attributes & FileAttributes.Directory) != 0;
                 DownloadEntry e;

@@ -9,7 +9,7 @@
   "pop-up Now playing: shown at" line and grabbed with the same margins over a full-screen backdrop of that colour.
   Both crops are compared bottom-aligned and centred (SSIM on luminance, ParityNative.Diff, no masks); writes
   <out>/media-<theme>-pair.png (Electron above, native below), one MEDIA-PARITY line each, then a summary line.
-  Game mode is not in the pair: its quick-settings tile is not drawn natively yet (docs/lanes/media.md).
+  Game mode (lane native-r7-media3): the quick-settings Game mode row (head + switch line), Electron ?gm=off vs native.
 
   Runner only (CI / GITHUB_ACTIONS, or MANTLE_PARITY_LOCAL=1 on a machine nobody is using): it shows windows.
   ci.ps1 stage media runs it, gated on "MEDIA-PARITY summary: 2 scored of 2" and per-theme floors.
@@ -77,8 +77,8 @@ function Find-Id($procId, [string]$id) {
 
 $rows = @(); $low = 1.0
 try {
-  foreach ($theme in 'light', 'dark') {
-    $tag = "media-$theme"
+  foreach ($kind in 'media', 'gamemode') { foreach ($theme in 'light', 'dark') {
+    $tag = "$kind-$theme"
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-mediapar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
     $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_MEDIA = $state
@@ -89,6 +89,25 @@ try {
     for ($i = 0; $i -lt 150 -and -not $ok; $i++) { Start-Sleep -Milliseconds 200; $ok = (LogText $log) -match 'media: the chip shows ' }
     if (-not $ok) { $rows += "$tag no score: the native chip did not show the MANTLE_TEST_MEDIA session in 30 s"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     Start-Sleep -Milliseconds 1500
+    if ($kind -eq 'gamemode') {
+      # the Game mode row: quick settings opened from the speaker button (Invoke, no mouse), the row's head and switch
+      # line plus 8 px round it (6 above and below), once game mode has had its first look ("Off · starts with your games")
+      $vol = $null
+      for ($i = 0; $i -lt 20 -and -not $vol; $i++) { $vol = Find-Id $p.Id 'bar.volume'; if (-not $vol) { Start-Sleep -Milliseconds 250 } }
+      if (-not $vol) { $rows += "$tag no score: no bar.volume in the native bar"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+      $vol.GetCurrentPattern([System.Windows.Automation.InvokePattern]::Pattern).Invoke()
+      $shown = $false
+      for ($i = 0; $i -lt 40 -and -not $shown; $i++) { Start-Sleep -Milliseconds 150; $shown = (LogText $log) -match 'pop-up Quick settings: shown at ' }
+      if (-not $shown) { $rows += "$tag no score: quick settings did not show"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt"); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+      $sub = ''
+      for ($i = 0; $i -lt 40 -and $sub -ne 'Off · starts with your games'; $i++) { Start-Sleep -Milliseconds 200; $se = Find-Id $p.Id 'qs.gamemode.sub'; if ($se) { $sub = $se.Current.Name } }
+      if ($sub -ne 'Off · starts with your games') { Say "$tag`: the row says '$sub', not 'Off · starts with your games' (shot anyway)" }
+      Start-Sleep -Milliseconds 600
+      $row = Find-Id $p.Id 'qs.gamemode'; $swe = Find-Id $p.Id 'qs.gamemode.switch'
+      if (-not $row -or -not $swe) { $rows += "$tag no score: no qs.gamemode row in quick settings"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt"); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
+      $ra = $row.Current.BoundingRectangle; $rb = $swe.Current.BoundingRectangle
+      $x = [int][Math]::Floor($ra.X) - 8; $y = [int][Math]::Floor($ra.Y) - 6; $w0 = [int][Math]::Ceiling($ra.Width) + 16; $h0 = [int][Math]::Ceiling($rb.Bottom - $ra.Y) + 12
+    } else {
     $btn = $null
     for ($i = 0; $i -lt 20 -and -not $btn; $i++) { $btn = Find-Id $p.Id 'bar.media.chip'; if (-not $btn) { Start-Sleep -Milliseconds 250 } }
     if (-not $btn) { $rows += "$tag no score: no bar.media.chip in the native bar"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt") -ErrorAction SilentlyContinue; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
@@ -98,7 +117,8 @@ try {
     if (-not $m) { $rows += "$tag no score: the native card did not show"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt"); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     Start-Sleep -Milliseconds 900   # the entrance (instant) and the first paint
     $x = [int]$m.Groups[1].Value - 12; $y = [int]$m.Groups[2].Value - 12; $w0 = [int]$m.Groups[3].Value + 24; $h0 = [int]$m.Groups[4].Value + 12 + 4
-    $ef = Join-Path $Out "electron-media-$theme.png"
+    }
+    $ef = Join-Path $Out "electron-$tag.png"
     if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
     $nb = Png $nat $w0 $h0; $nb.Save((Join-Path $Out "native-$tag.png"))
@@ -117,11 +137,11 @@ try {
     $q = Start-Process $Exe -PassThru -ArgumentList @('--quit', '--test', "--profile-name=$prof", "--user-data=$ud")
     if (-not $q.WaitForExit(15000)) { Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue }
     if (-not $p.WaitForExit(8000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
-  }
+  } }
 } finally {
   Stop-Process -Id $back.Id -Force -ErrorAction SilentlyContinue
   Remove-Item Env:MANTLE_TEST_MEDIA -ErrorAction SilentlyContinue
 }
 $scored = @($rows | Where-Object { $_ -like 'MEDIA-PARITY*' }).Count
-Write-Host ("MEDIA-PARITY summary: {0} scored of 2, lowest ssim {1:N4}; no masks" -f $scored, $low)
+Write-Host ("MEDIA-PARITY summary: {0} scored of 4, lowest ssim {1:N4}; no masks" -f $scored, $low)
 $rows | Where-Object { $_ -notlike 'MEDIA-PARITY*' } | ForEach-Object { Write-Host "MEDIA-PARITY problem: $_" }

@@ -135,3 +135,123 @@ does something it does not. Only rows a passing test covers end to end are `test
 - Helm badge: the file watch and the disc on bar cells (HelmBadge is its pure half; tests point
   MANTLE_HELM_BADGE_FILE at a fixture, never the real Helm). Quick links: Win+X mode in the launcher (WinXLinks).
 - Spotify (unchanged from part 1).
+
+## Part 3 (lane native-r7-media3)
+
+### What is built
+
+- `Mantle.Core/Features/GameMode/GameModeFeature.cs`: [Feature("gamemode")], lib/features/gamemode.js around the pure
+  GameModePlan: the scan tick (3 s idle, 5 s on, 5 s resting, 12 s backstop; one at a time), the power and Energy saver
+  steps, easing through gamemode.apply (chunks of 40), the 30 s replan, the boost (baseline at on, one trim through
+  gamemode.trimbg a minute in, never twice per game; the mid-game switch puts the eased apps back), wallpaper hold and
+  Lively, the restore record (`<data root>\gamemode-restore.json`, through the ONE write gate), crash put-back at the
+  first ready, what could not be put back kept and tried every 30 s (20 tries), the shared game watch it drives
+  (GameWatch.Drive / Whole / Publish), and the rest hand-off (IFeatureHostServices.RestAsync -> RestCoordinator).
+  Commands gamemode.state / set / auto / liftSaver / boost; the event `gamemode.state` (replayed). Options auto,
+  liftSaver, boost. `GameModeJson.cs`: the scan reply read into the plan's records, applyItem / restoreItem / recordEntry.
+- `GameModeView.cs`: ui/bar/gamemode.js view() (pure). `Mantle.App/Surfaces/Bar/GameMode/GameModeRow.cs`: the row in
+  quick settings (before the notes, as bar.js attaches it); hook: four lines in QsPanel.cs (marked "game mode").
+- Wiring: App.xaml.cs "game mode wiring" (one Configure line: data root, own pid, the write gate).
+- The pair: tools/parity/media now also shoots the Game mode row (head + switch line) from Electron's mock (?gm=off)
+  and native; ci.ps1 stage media gates on 4 of 4 and the `gamemode light/dark` floors.
+
+### A --test run never changes Windows
+
+- Every write (gamemode.apply / power / saver / trimbg, Lively's command) is logged as
+  `gamemode: dry run (--test): would ask the sidecar <verb> {...}; nothing was sent` and never sent; reads are reads.
+- Deviation: Electron skipped the crash put-back in a test run. Native runs it as a DRY RUN against the TEST profile's
+  record (refused outright if the data root is %APPDATA%\mantle) and drops that record, so a test proves it:
+  `gamemode: test run: the restore record was read from the test profile and dropped; nothing was sent`.
+- MANTLE_GAMEMODE_TEST_GAME (test only): stand-in exe names counted as known games running (the rest end to end).
+- The wallpaper hold is not wired natively yet (the desktop layer is another lane's), so the Wallpaper row says
+  "this version of Mantle cannot pause its wallpaper for games" (blocked), never a silent skip.
+
+### UI Automation ids (the row)
+
+`qs.gamemode` (group), `qs.gamemode.sub`, `qs.gamemode.switch` (Name "Game mode: Turn on|Turn off", ItemStatus
+`on|off[; pending][; dead]`), `qs.gamemode.more` (ItemStatus expanded/collapsed), `qs.gamemode.why` (ItemStatus `warn`),
+`qs.gamemode.list`, `qs.gamemode.row.<key>` (plan rows `qs.gamemode.row.plan.<label-with-dashes>`; ItemStatus = status),
+`qs.gamemode.last`, `qs.gamemode.opts`, `qs.gamemode.opt.auto|liftSaver|boost`.
+Log: `qs: game mode row: switched on|off (...)`, `qs: game mode row: details open|closed`, `gamemode: on (<how>[, DRY RUN]): ...`,
+`gamemode: off: <why>`, `gamemode: restore (<why>): <text>`.
+
+### Results (part 3)
+
+- Run 43037040342 (build, unit, ui, media; the unit project did not build there): media 4 of 4, the Game mode row's
+  pair light 0.7076 / dark 0.6493 (floors 0.68 / 0.62); the card pair unchanged (0.7717 / 0.7190).
+- Run on d329b870 (build, unit, ui): NATIVE-CI ok (3 ok, 0 skipped); unit 731/731 (GameModeFeatureTests, 11),
+  ui 58/58 (GameModeTests, 2).
+- bar.md: 17 game mode rows tested (BAR-751, 758, 761, 762, 768, 769, 770, 775, 782, 783, 794, 795, 797, 799, 801,
+  805, 807). The other game mode rows stay todo: the service and row now do them, but no test checks that row yet
+  (for example BAR-781 the 30 s replan, BAR-786 the waiting line, BAR-808 the double click, BAR-812/813 every Details
+  row, BAR-815 Escape, BAR-818 reduced motion).
+- The pair's gap: text rasterisation, the native track and knob drawn as Borders (no knob shadow), the dark switch fill.
+
+### Left (part 4)
+
+- Downloads (feature + shelf pop-up; DownloadsList is its pure half), the Helm badge (file watch + the disc on bar
+  cells), quick links (Win+X mode in the launcher, WinXLinks), Spotify: not started in part 3.
+- Game mode: the wallpaper hold (needs the desktop layer's hold), tests for the rows above, Escape in Details.
+
+## Part 4 (lane native-r7-media4)
+
+### What is built
+
+- `Mantle.Core/Features/Downloads/DownloadsFeature.cs`: [Feature("downloads")] (lib/features/downloads.js). The folder is
+  read in-process (DownloadsList.ListFolder with attributes: Hidden/System left out) off the host thread; ONE
+  FileSystemWatcher (700 ms quiet, 4 s cap, partial-file changes ignored); the 2-minute retry only while the folder is
+  missing; seenAt (first run = now, a future value reset, an unsaveable one noted); commands downloads.list / seen / open /
+  reveal / folder / drag by opaque tokens; the event `downloads.state` (replayed); Rest = true. Logs counts only.
+- `Mantle.App/Surfaces/Bar/Downloads/`: BarWindow.Downloads.cs (the button bar.downloads: hidden off, muted bad/resting,
+  the dot, the warn chip "downloads off"; open re-reads then marks seen; the keyboard ask; arrows / Home / End / Esc) and
+  DownloadsShelf.cs (the panel). Hooks: `x:Name="DownloadsBtn"` (BarWindow.xaml), `StartDownloads()` (BarWindow.xaml.cs),
+  one AttachDownloads line in App.xaml.cs's media wiring.
+- `Mantle.Core/Features/Badges/HelmBadgeFeature.cs`: [Feature("helmbadge")] (lib/helm-badge.js feature + createWatcher).
+  Event-driven only: a folder watch (tmp + rename), 120 ms settle, the writer's exit HEARD (Process.Exited) instead of
+  Electron's 30 s pid re-check, a missing folder waited for by a watch on its parent (the 30 s retry only when the
+  parent is missing too). `Mantle.App/Surfaces/Bar/Badges/BarWindow.HelmBadge.cs`: CellVm's badge half (partial) and
+  the paint over the strip cells. Hooks in the strip's files: the disc (two Borders, accent / warn) in the cell template
+  (BarWindow.xaml), `BadgeLine` in CellVm.Tip and `BadgeStatus` in its status, `PaintHelmBadges()` after SyncCells
+  (BarWindow.Tasks.cs, three lines); one AttachHelmBadge line in App.xaml.cs.
+- The qs pair (tools/parity/quick-settings): part1 removes Electron's .gmrow, so MANTLE_TEST_QS_NO_GAMEMODE=1 (test only,
+  set by run-qs-parity.ps1 in part1) leaves the Game mode row out natively too (QsPanel.cs, the game mode lines).
+
+### A --test run
+
+- Downloads: open / reveal / folder are dry runs (`downloads: dry run (--test): would ...; nothing was opened`); the
+  folder is MANTLE_DOWNLOADS_DIR only. Without it a test run reads NO folder (never the real Downloads) and the foot says
+  "Test run: MANTLE_DOWNLOADS_DIR is not set, ..." (a deviation from Electron, which read the real one).
+- Helm badge: only MANTLE_HELM_BADGE_FILE or the test profile's own `sources` setting; without them no file is read.
+- MANTLE_TEST_DL_KEYS=1 (with MANTLE_TEST_VISIBLE=1, a CI runner only) lets a test shelf take the keyboard.
+
+### UI Automation ids
+
+Downloads: `bar.downloads` (Name = the tooltip; ItemStatus reading|ok|new|off|resting), `bar.downloads.dot`, `dl.panel`,
+`dl.title`, `dl.sub`, `dl.list` (HelpText = why the arrows do not reach it), `dl.row.<n>` (Name = "name, new, kind,
+size · age"; HelpText = the tooltip; ItemStatus fresh / busy), `dl.reveal.<n>`, `dl.empty` (ItemStatus reading|bad|
+resting|empty), `dl.empty.big`, `dl.empty.sub`, `dl.path`, `dl.next`, `dl.note`, `dl.detail`, `dl.folder`.
+Log: `downloads: N items, M new[, K downloading] [why]`, `downloads: the shelf opened|closed (...)`,
+`downloads: the shelf shows N rows (...)`, `downloads: <verb> was a dry run|done`.
+Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source N: count C`, `helmbadge: bar.app.N shows ...`.
+
+### better:
+
+- BAR-900 / BAR-901: the folder is read in-process with its attributes from start: no helper-down "simpler list" where
+  hidden files could show, and the first read is not held for the helper or 10 s.
+- BAR-1032: the Helm badge has no 30 s timers: the writer's exit is heard and a missing folder is waited for by a watch,
+  so nothing runs while the file does not change.
+
+### Results (part 4)
+
+- Run 43063262898 on 0c3596f7 (build, unit, ui): NATIVE-CI ok (3 ok); unit 816/816 (DownloadsFeatureTests 9,
+  HelmBadgeFeatureTests 7), ui 66/66 (DownloadsTests 2, HelmBadgeTests 1; the idle-CPU test among them).
+- bar.md: 56 rows marked (Downloads 42, Helm badge 14).
+
+### Left (part 5)
+
+- Quick links (Win+X mode in the launcher; WinXLinks is its pure half): not started (needs the launcher's mode and the
+  run lane's exec; BAR-1037..1045 stay todo).
+- Game mode leftovers: UI tests for BAR-781, 786, 808, 812/813, 815, 818; Escape in Details; the wallpaper hold.
+- Helm badge: the "+N" overflow's sum and tiles (BAR-257, BAR-1030); the keep-on-top pin moving top-left when a count
+  shows (Electron's .cell.hb-on .ontop-badge).
+- Downloads: keyboard walk, double-click guard, drag-out and the live open / reveal are ported but untested.
