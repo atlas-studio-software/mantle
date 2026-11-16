@@ -118,8 +118,9 @@ internal sealed class PopupHost
         _kbWin = null;
         NoActivate(w, true);
         bool held = Win32.GetForegroundWindow() == w.Hwnd;
-        bool back = held && _kbPrev != IntPtr.Zero && Win32.IsWindow(_kbPrev) && Win32.SetForegroundWindow(_kbPrev);
-        Host.Log.Line($"pop-up {w.Name}: gave the keyboard back ({why}){(back ? ", to the window that had it" : held ? "; the window that had it could not be raised" : "; another window already had it")}");
+        var (to, toWhat) = BackTarget(_kbPrev);
+        bool back = held && to != IntPtr.Zero && Win32.SetForegroundWindow(to);
+        Host.Log.Line($"pop-up {w.Name}: gave the keyboard back ({why}){(back ? ", to " + toWhat : held ? "; " + toWhat + " could not be raised" : "; another window already had it")}");
         _kbPrev = IntPtr.Zero;
     }
 
@@ -131,8 +132,26 @@ internal sealed class PopupHost
         _kbPrev = IntPtr.Zero;
         uint pid = 0;
         if (fg != IntPtr.Zero) Win32.GetWindowThreadProcessId(fg, out pid);
-        bool back = pid == (uint)Environment.ProcessId && Win32.IsWindow(prev) && Win32.SetForegroundWindow(prev);
-        Host.Log.Line($"pop-up: gave the keyboard back ({why}){(back ? ", from Mantle's own window to the window that had it" : "; another window already had it")}");
+        var (to, toWhat) = BackTarget(prev);
+        bool back = pid == (uint)Environment.ProcessId && to != IntPtr.Zero && Win32.SetForegroundWindow(to);
+        Host.Log.Line($"pop-up: gave the keyboard back ({why}){(back ? ", from Mantle's own window to " + toWhat : "; another window already had it")}");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetShellWindow();
+
+    /// Where the keyboard goes back to, and its words. Windows' own taskbar is never it: handed the foreground, it comes
+    /// up over Mantle's bar (an auto-hidden one stays up while it holds it, and takes the next presses on the bar), the
+    /// case of a PC or CI runner that shows it. Nor is a window that is gone, hidden or cloaked. Those fall back to the
+    /// desktop (the shell's window), which is what has the keyboard when no app does; no desktop: nothing is raised.
+    static (IntPtr Hwnd, string Words) BackTarget(IntPtr prev)
+    {
+        string why;
+        if (prev == IntPtr.Zero) why = "no window had it";
+        else if (!Win32.IsWindow(prev) || !Win32.IsWindowVisible(prev) || Win32.IsCloaked(prev)) why = "the window that had it is gone or hidden";
+        else if (Win32.ClassName(prev) is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd") why = "the window that had it was Windows' taskbar";
+        else return (prev, "the window that had it");
+        IntPtr desk = GetShellWindow();
+        return desk != IntPtr.Zero && desk != prev && Win32.IsWindow(desk) ? (desk, $"the desktop ({why})") : (IntPtr.Zero, $"nothing ({why}, and there is no desktop window)");
     }
 
     static void NoActivate(PopupWindow w, bool on)

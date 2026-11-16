@@ -148,7 +148,10 @@ internal sealed partial class QsPanel
 
     void Enter(string kind)
     {
-        if (!Open || _view != null) return;
+        if (!Open || _view != null) {
+            _log($"qs: the {kind} view did not open: " + (!Open ? "the panel is not open" : $"the {_view} view is open"));
+            return;
+        }
         _gen++;
         _view = kind;
         _vNote.Clear();
