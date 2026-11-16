@@ -152,6 +152,11 @@ public class NotificationAreaTests
         Assert.Equal("Mantle cannot open this one: why", NotificationWords.CardTip((JsonObject)JsonNode.Parse("{\"opens\":\"none\",\"opensWhy\":\"why\"}")!));
         Assert.Equal("Open — goes where X pointed this notification\nPicture not shown — too big",
             NotificationWords.CardTip((JsonObject)JsonNode.Parse("{\"opens\":\"protocol\",\"app\":\"X\",\"imageNotes\":[\"too big\"]}")!));
+        // BAR-844: Tab reaches a card that opens (app, its link, no word: the app); a dead one is skipped
+        Assert.True(NotificationWords.TakesKeys((JsonObject)JsonNode.Parse("{\"opens\":\"app\"}")!));
+        Assert.True(NotificationWords.TakesKeys((JsonObject)JsonNode.Parse("{\"opens\":\"protocol\"}")!));
+        Assert.True(NotificationWords.TakesKeys(new JsonObject()));
+        Assert.False(NotificationWords.TakesKeys((JsonObject)JsonNode.Parse("{\"opens\":\"none\",\"opensWhy\":\"why\"}")!));
         Assert.Equal("open", NotificationWords.WinKey("n", false, null, true));
         Assert.Equal("close", NotificationWords.WinKey("n", false, "notifs", true));
         Assert.Equal("none", NotificationWords.WinKey("n", true, "notifs", true));    // a banner click never toggles it shut

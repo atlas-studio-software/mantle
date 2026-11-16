@@ -75,12 +75,16 @@ dots, rows, colours); the score is low because the native pop-up is 4 px wider a
   centre is native; a --test run logs a dry run and presses nothing (BAR-424).
 - `gcal.pickClient` refuses live runs ("choosing the Google client file is not in the native app yet"): there is no
   native file dialog yet (BAR-434).
-- Resume from sleep is not watched (BAR-463): the 10-minute timer and the open-time refresh (older than 2 min) catch up.
+- Resume from sleep (BAR-463, media lane part 6): App.OnWake calls `gcal.resume` on a wake from sleep (not on an unlock);
+  signed in, the sync runs 8 s later. Not UI-tested: a test cannot put the runner to sleep.
 - Token and client files are read AND written in Electron's v10 format when Electron's "Local State" key exists (PLAN
   3.7(a), both apps share the files in the fallback period) instead of PLAN 3.7(c). Tested only against a made-up key
   in a scratch folder: it MUST be checked against a real Electron-encrypted token.bin at switch-over (BAR-529).
 
 ## Left
 
-- The pair's size gap (above); BAR-463 resume; the native file dialog for pickClient; the perf budget (BAR-516) is not
+- The pair's size gap (above). Measured on the run 43076134464 pair (light, from the card's top edge): the time text is
+  4 px lower natively, the weekday row 6 px lower (5 more after the month row), the day grid's pitch is the same, the
+  "Notifications" link 14 px lower; the crops are 288x523 (Electron) and 292x536 (native). Not closed yet.
+- The native file dialog for pickClient; the perf budget (BAR-516) is not
   measured natively yet.

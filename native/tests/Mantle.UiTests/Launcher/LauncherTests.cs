@@ -16,7 +16,7 @@ namespace Mantle.UiTests.Launcher;
 /// scratch Start Menu this test writes (MANTLE_TEST_LAUNCHER_DIR), never the machine's.
 /// </summary>
 [TestClass]
-public class LauncherTests
+public partial class LauncherTests
 {
     const string Title = "Mantle launcher";
     const int WS_EX_NOACTIVATE = 0x08000000;

@@ -29,7 +29,10 @@ public sealed partial class BarWindow
     SurfaceLink? _dlLink;
     JsonElement _dlState;
     bool _dlKbd;
-    int _dlGen;
+    // the user moved the focus since the shelf took the keyboard (a walk, Tab, a press in the shelf); until then a row
+    // that has the focus got it from Windows (the window's first focus), whatever its FocusState says (run 43818332316:
+    // that focus reads as a keyboard one), so the first Down is the newest
+    bool _dlUser;
     DispatcherTimer? _dlTick;
 
     /// Called once from the bar's start, after the pop-up framework (BarWindow.xaml.cs).
@@ -48,11 +51,16 @@ public sealed partial class BarWindow
         _dl.Act = (verb, item, what) => _ = DlAct(verb, item, what);
         _dl.Drag = (item, nm) => _ = DlDrag(item, nm);
         _dl.Root.KeyDown += DlKey_;
+        _dl.Root.PreviewKeyDown += (_, e) => { if (e.Key == global::Windows.System.VirtualKey.Tab) _dlUser = true; };
+        _dl.Root.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _dlUser = true), true);
         _dlBtn.Click += (_, _) => OpenDownloads();
         _dlBtn.RightTapped += (_, e) => { e.Handled = true; OpenDownloads(); };
         RenderDlBtn();
         if (Popups == null) return;
         Popups.Anchor(_dlBtn);
+        // the keyboard is asked for once the shelf is on screen (its first frame), never on a timer: asked on the open,
+        // the window is still being made and Windows refuses it, so the arrows never reached a live shelf
+        Popups.OnScreen += key => { if (key == DlKey) DlKeyboard(true); };
         Popups.Closed += (key, why) => {
             if (key != DlKey || _dl == null) return;
             _dlTick?.Stop();
@@ -128,7 +136,6 @@ public sealed partial class BarWindow
         _dlTick ??= new DispatcherTimer { Interval = TimeSpan.FromSeconds(30) };
         _dlTick.Tick -= DlTick; _dlTick.Tick += DlTick;
         _dlTick.Start();
-        DlKeyboard(true);
     }
     void DlTick(object? s, object e) { if (Popups?.OpenKey == DlKey) PaintDl(); else _dlTick?.Stop(); }
 
@@ -173,13 +180,19 @@ public sealed partial class BarWindow
         }
     }
 
+    string? _dlLastRow;
+    long _dlLastAt = long.MinValue / 2;
+
     /// act(): one press per row at a time (a double-click or held Enter opens once); a dry run or a note stays in the
     /// panel; success closes it; a failure is a sentence in the note, and a stale row re-reads.
     async System.Threading.Tasks.Task DlAct(string verb, string? item, string what)
     {
         if (_dl == null || _dlLink == null) return;
         string k = item ?? "*";
-        if (!_dl.Busy.Add(k)) { Host.Log.Line($"downloads: a second {verb} on the same row was ignored (one is in flight)"); return; }
+        long now = Environment.TickCount64;
+        if (!Mantle.Core.Features.Downloads.DownloadsKeys.Takes(_dl.Busy.Contains(k), _dlLastRow, _dlLastAt, k + "|" + verb, now) || !_dl.Busy.Add(k))
+        { Host.Log.Line($"downloads: a second {verb} on the same row was ignored (one decision)"); return; }
+        _dlLastRow = k + "|" + verb; _dlLastAt = now;
         _dl.Note = "";
         PaintDl();
         var r = await _dlLink.CallAsync("downloads." + verb, item != null ? new JsonObject { ["item"] = item } : new JsonObject());
@@ -206,19 +219,18 @@ public sealed partial class BarWindow
         if (!r.Ok && Popups?.OpenKey == DlKey) PaintDl();
     }
 
-    /// keyboard(on): ask for the keyboard on open; refused, the mouse still works and the list's tooltip says why.
+    /// keyboard(on): ask for the keyboard once the shelf is on screen (PopupHost.OnScreen); refused, the mouse still works
+    /// and the list's tooltip says why.
     void DlKeyboard(bool on)
     {
         if (_dl == null || Popups == null) return;
-        int gen = ++_dlGen;
         if (!on) { if (_dlKbd) { _dlKbd = false; Popups.GiveBackKeyboard("the Downloads shelf closed"); } return; }
         bool allowed = !Host.Args.Test || (Host.Env(DlKeysEnv) == "1" && !Host.Quiet);
         var (ok, words) = allowed ? Popups.TakeKeyboard(DlKey)
             : (false, "a test instance never takes the keyboard from whoever is at the machine");
-        if (gen != _dlGen) return;
-        _dlKbd = ok;
+        _dlKbd = ok; _dlUser = false;
         _dl.KbdNote = ok ? "" : "Arrow keys do not reach this panel: " + words.Split(", so ")[0];
-        Host.Log.Line(ok ? "downloads: the shelf has the keyboard" : $"downloads: the keyboard was not taken ({words})");
+        Host.Log.Line(ok ? "downloads: the shelf has the keyboard (asked once it was on screen)" : $"downloads: the keyboard was not taken ({words})");
         if (ok && _dl.Rows.Count > 0) _dl.Root.Focus(FocusState.Programmatic);
         PaintDl();
     }
@@ -234,9 +246,13 @@ public sealed partial class BarWindow
         if (!(down || up || home || end) || _dl.Rows.Count == 0) return;
         var rows = _dl.Rows;
         var fe = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(_dl.Root.XamlRoot) as Button;
-        int at = fe != null ? rows.ToList().IndexOf(fe) : -1;
-        int to = home ? 0 : end ? rows.Count - 1 : at < 0 ? (down ? 0 : rows.Count - 1) : Math.Max(0, Math.Min(rows.Count - 1, at + (down ? 1 : -1)));
+        // a row Windows focused on its own (the window's first focus when it took the keyboard) is not one the user
+        // walked to or clicked: the first Down is still the newest (Electron: nothing has the focus yet)
+        int at = Mantle.Core.Features.Downloads.DownloadsKeys.From(fe != null ? rows.ToList().IndexOf(fe) : -1, _dlUser);
+        _dlUser = true;
+        int to = Mantle.Core.Features.Downloads.DownloadsKeys.Walk(home ? "Home" : end ? "End" : down ? "Down" : "Up", at, rows.Count) ?? 0;
         e.Handled = true;
+        if (Host.Args.Test) Host.Log.Line($"downloads: key {k}: row {to + 1} of {rows.Count} (from {(at < 0 ? "none" : "row " + (at + 1))})");
         rows[to].Focus(FocusState.Keyboard);
         rows[to].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
     }

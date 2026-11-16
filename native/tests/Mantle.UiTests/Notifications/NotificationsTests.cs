@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.Notifications;
@@ -125,6 +127,85 @@ public class NotificationsTests
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), "the centre did not close for Windows' own");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("notifs: the panel could not be resized"), "a resize failed:\n" + Tail(dir));
     }
+
+    [TestMethod]
+    public void The_centre_takes_the_keyboard_an_early_Enter_presses_nothing_Tab_reaches_a_card_Enter_opens_it_and_Esc_closes()
+    {
+        // BAR-844; MANTLE_TEST_NOTIFS_KEYS=1 lets this test centre take the keyboard (a CI runner only); every open is a dry run
+        string dir = FrameProbe.NewDir("ntf-keys");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_NOTIFS"] = Toasts(), ["MANTLE_TEST_NOTIFS_KEYS"] = "1" };
+        using var app = BarApp.Launch("ntf-keys", "light", env: env, extra: new[] { "--bench-out=" + dir });
+        Host.LogContains(Log(dir), "notifs: a --test run with MANTLE_TEST_NOTIFS: 4 made-up notifications", "the fixture was not taken", 15000);
+        var bell = app.Find("bar.notifications");
+        ClickEl(bell);
+        Pop(app, dir, "Notifications", "notifs.panel");
+        Host.LogContains(Log(dir), "notifs: the centre has the keyboard", "the test centre did not take the keyboard");
+
+        // the keyboard rests on a stop that does nothing: an Enter before any Tab never clears or opens anything
+        Keyboard.Type(VirtualKeyShort.RETURN);
+        Thread.Sleep(700);
+        string log = FrameProbe.Log(dir);
+        Assert.IsFalse(log.Contains("would dismiss") || log.Contains("would open notification"), "an Enter before any Tab pressed something:\n" + Tail(dir));
+        Assert.IsTrue(FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), "the centre closed on an early Enter");
+
+        // Esc closes it and the keyboard goes back
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Host.LogContains(Log(dir), "notifs: the panel closed (Esc)", "Esc did not close the centre");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), 3000), "the centre is still on screen after Esc");
+        // the hand-back never gives the keyboard to Windows' own taskbar (it would come up over the bar): on a runner
+        // whose taskbar had it before the open, the desktop gets it instead
+        Host.LogContains(Log(dir), "pop-up Notifications: gave the keyboard back", "the centre did not give the keyboard back");
+        string back = ClassOf(Win32.GetForegroundWindow());
+        Assert.IsFalse(back is "Shell_TrayWnd" or "Shell_SecondaryTrayWnd", "the keyboard went back to Windows' taskbar:\n" + Tail(dir));
+
+        // opened again (once its exit has finished): it takes the keyboard again
+        Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
+        ClickOnBar(app, bell);
+        Pop(app, dir, "Notifications", "notifs.panel");
+        Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
+
+        // Tab walks on until the newest card (Discord's, 104) has the keyboard; the dead card (90) is never a stop
+        for (int i = 0; i < 8 && !FrameProbe.Log(dir).Contains("notifs: key focus: card 104"); i++) { Keyboard.Type(VirtualKeyShort.TAB); Thread.Sleep(250); }
+        Host.LogContains(Log(dir), "notifs: key focus: card 104", "Tab never reached the newest card");
+        Host.Screenshot("notifs-card-focus-light");
+        Keyboard.Type(VirtualKeyShort.RETURN);
+        Host.LogContains(Log(dir), "notifs: key Enter: opens notification 104", "Enter on the card did nothing");
+        Host.LogContains(Log(dir), "notifs: dry run (--test): would open notification 104 (its app) and dismiss it", "the card was not opened as a dry run");
+        IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the centre did not close once the card opened");
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("90 (its app)"), "the dead card was opened");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string? title);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern int GetClassNameW(IntPtr h, char[] buf, int max);
+    static string ClassOf(IntPtr h) { var b = new char[256]; int n = GetClassNameW(h, b, b.Length); return n > 0 ? new string(b, 0, n) : ""; }
+    static uint PidAt(Point p) { GetWindowThreadProcessId(GetAncestor(WindowFromPoint(p), 2), out uint pid); return pid; }
+
+    /// A press on a bar button once nothing covers it. Handing the keyboard back can give the foreground to the runner's
+    /// own taskbar (it had it before the open; desk-watch, run 43831510908), which then sits over the bar: hide it as
+    /// StripTests does, and say what covers the button if it stays covered.
+    internal static void ClickOnBar(BarApp app, AutomationElement e)
+    {
+        var r = e.BoundingRectangle;
+        var at = new Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
+        if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100)) {
+            // an auto-hidden taskbar stays up while it holds the foreground (run 43835062492): hand that to the runner's
+            // desktop, as the harness's desk reset does by clicking it
+            // (and an auto-hidden one stays up while the pointer rests on it: the pointer is moved off the bar first)
+            Win32.TaskbarAutoHide(true);
+            SetCursorPos(at.X, at.Y - 400);
+            ZOrder.Foreground(FindWindowW("Progman", null));
+            if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100))
+                Assert.Fail($"the button at {at} is covered by another window ({Win32.Title(GetAncestor(WindowFromPoint(at), 2))})");
+        }
+        ZOrder.Click(at.X, at.Y); Thread.Sleep(350);
+    }
+
+    static int Count(string s, string what) { int n = 0, i = 0; while ((i = s.IndexOf(what, i, StringComparison.Ordinal)) >= 0) { n++; i += what.Length; } return n; }
 
     [TestMethod]
     public void A_list_that_cannot_be_read_mutes_the_bell_says_why_and_a_right_click_opens_it_in_dark()

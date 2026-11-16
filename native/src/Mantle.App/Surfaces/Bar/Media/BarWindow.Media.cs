@@ -78,6 +78,7 @@ public sealed partial class BarWindow
     /// From the host thread's wiring (App.xaml.cs, block "media wiring"), posted here.
     internal void AttachMedia(SurfaceLink link)
     {
+        WatchChannels(link);   // BAR-191: the media link also carries downloads and the Helm badge
         _mediaLink = link;
         link.On<JsonElement>(MediaService.Event, e => RenderMedia(e.ValueKind == JsonValueKind.Object ? JsonNode.Parse(e.GetRawText()) as JsonObject : null));
     }

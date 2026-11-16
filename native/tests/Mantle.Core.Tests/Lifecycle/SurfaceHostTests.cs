@@ -218,7 +218,7 @@ public class SurfaceHostTests
         Assert.Equal(2, feed.Deliveries);
     }
 
-    SurfaceLink Link(Threads t, CommandBus bus, EventHub ev, Lines log, string name = "launcher")
+    SurfaceLink Link(Threads t, CommandBus bus, IEvents ev, Lines log, string name = "launcher")
         => new(name, new SurfaceWires { PostUi = t.PostUi, PostHost = t.PostHost, Bus = bus, Events = ev, Feed = new StateFeed(S0, t.PostUi, log.Line), Log = log });
 
     [Fact]
@@ -268,6 +268,40 @@ public class SurfaceHostTests
         sub.Dispose();   // disposed before the queued payload reaches the UI thread
         t.Pump();
         Assert.Equal(2, seen.Count);
+        link.Dispose();
+    }
+
+    sealed class RefusingEvents : IEvents
+    {
+        public void Publish<T>(string name, T payload) { }
+        public IDisposable Subscribe<T>(string name, Action<T> handler) => throw new InvalidOperationException("the hub is gone");
+        public IDisposable Replay<T>(string name, Func<T> current) => throw new InvalidOperationException("the hub is gone");
+    }
+
+    [Fact]
+    public void A_subscription_that_cannot_be_made_is_logged_and_said_in_the_callers_words_or_else_through_SubscribeFailed()
+    {
+        // BAR-191 (bar.js on): the caller's onFail wins; without one the link's SubscribeFailed hears (event, reason)
+        var t = new Threads();
+        var log = new Lines();
+        var link = Link(t, new CommandBus(), new RefusingEvents(), log, "bar");
+        var said = new List<(string, string, string?)>();
+        link.SubscribeFailed = (ev, why) => said.Add((ev, why, t.Running));
+        var own = new List<string>();
+        link.On<int>("tray", _ => { }, why => own.Add(why));
+        link.On<string>("media.state", _ => { });
+        t.Pump();
+        Assert.Equal(new[] { "the hub is gone" }, own);
+        Assert.Equal(new[] { ("media.state", "the hub is gone", (string?)"ui") }, said);
+        Assert.Contains("bar: could not subscribe \"media.state\": the hub is gone", log.All);
+        Assert.Contains("bar: could not subscribe \"tray\": the hub is gone", log.All);
+        // a disposed subscription says nothing
+        said.Clear();
+        var sub = link.On<string>("gcal.status", _ => { });
+        t.PostHost(() => { });
+        sub.Dispose();
+        t.Pump();
+        Assert.Empty(said);
         link.Dispose();
     }
 
