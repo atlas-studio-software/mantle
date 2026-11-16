@@ -257,6 +257,7 @@ public partial class MantleApp : Application
         _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => ThemeShown?.Invoke(p)); };
         ThemeNow = _look.Payload();
         _look.Start();
+        if (_queue != null) Mantle.App.Shell.Glass.DesktopGlass.Feed(_look.Look, _queue);   // the see-through look's still and tint (look.md)
         _look.FollowWindows(themeKey);   // Match Windows follows a change at once (RegNotifyChangeKeyValue), not by polling
         log($"theme: Mantle is {_look.Now}; the host's theme reaches {ThemeShown?.GetInvocationList().Length ?? 0} surface(s) directly" +
             (ThemeShown == null ? " (the bar still follows theme.json itself)" : ""));

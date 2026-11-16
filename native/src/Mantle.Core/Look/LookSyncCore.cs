@@ -115,6 +115,8 @@ public static class LookSyncCore
                 foreach (var (k, lo, hi) in Ranges) {
                     if (!(IsFinite(gt[k], out var n) && n >= lo && n <= hi)) return "glass." + t + "." + k + " must be " + NumText(lo) + ".." + NumText(hi);
                 }
+                // Optional (look-sync 2026-11-11): absent = automatic tint (Wash.Alpha). A present null is not a boolean.
+                if (gt.ContainsKey("dimAuto") && !IsBool(gt["dimAuto"], out _)) return "glass." + t + ".dimAuto must be true or false";
             }
             return Str(g["render"]) is "picture" or "seeThrough" ? null : "glass.render must be picture or seeThrough";
         }

@@ -108,7 +108,7 @@ if (-not $Exe -or -not (Test-Path $Exe)) {
 }
 if (-not $Exe -or -not (Test-Path $Exe)) { Write-Host "PARITY: FAILED (no native exe: set MANTLE_NATIVE_EXE or run the build first; see $Out\publish.log)"; exit 3 }
 Say "native exe $Exe"
-$env:MANTLE_TEST_VISIBLE = '1'
+$env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'
 
 
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the

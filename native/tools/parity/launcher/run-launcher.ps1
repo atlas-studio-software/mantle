@@ -186,7 +186,7 @@ foreach ($t in $Themes) {
   # ---- native
   $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-native-launcher-parity-$t-" + [guid]::NewGuid().ToString('N').Substring(0, 6))
   New-Item -ItemType Directory -Force -Path $ud | Out-Null
-  $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_LAUNCHER_DIR = $fx
+  $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_LAUNCHER_DIR = $fx
   $common = @('--test', "--profile-name=parity-launcher-native-$t", "--user-data=$ud", "--theme=$t")
   $np = Start-Process $Exe -ArgumentList $common -PassThru
   $nPx = $null
