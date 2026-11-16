@@ -157,6 +157,9 @@ internal sealed partial class TopBarSurface
             {
                 _win.Activate();
                 if (_test) _ctx.Log.Line("first press: the bar activated for its keys (in front: " + (Win32.GetForegroundWindow() == _hwnd ? "yes" : "no") + ")");
+                // the click had made it the foreground window already, so WinUI raises no Activated for this one (run
+                // 43868709747): the keys are sent home here, as the Activated handler does
+                if (Win32.GetForegroundWindow() == _hwnd) KeysHomeSoon();
             });
         }), true);
     }
