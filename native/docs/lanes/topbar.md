@@ -339,6 +339,40 @@ this area.
 - **Ledger:** `mark-topbar-rows.py native ui eed9756d` marked 26 rows (24 todo rows, and TOP-030 / TOP-071 ported ->
   tested): TOP-028, 080, 139..151, 153..159 tested; TOP-091, 152 ported. TOP rows now: 157 tested, 19 ported,
   2 better, 204 todo (of 382).
+- **Top-row hints receiver (bcc4980e, TOP-362..371):** `TopRowHints.cs` is lib/toprow-hints.js's receiver (look-sync
+  CONTRACT.md "Top-row hints (v1)"): the pipe, protocol v1, 8 KB lines (CRLF fine, an over-long line dropped whole and
+  counted), seq per window per connection, the sender's window checked once per (app, window) through the sidecar's
+  `winproc` (Quartz.exe / Helm.exe, or electron.exe under ~\browser, ~\helm or their `-*` worktrees), failed checks
+  retried after 30 s, ok ones re-verified in the background, light theme keeps nothing, none / a disconnect forget,
+  32 clients, 64 windows a client, each ignore reason logged at most once a minute with its count, a busy pipe said
+  in words and retried every 10 s. `TopBarFeature.Hints.cs` starts it in a --live run (the live pipe) or a --test run
+  (`look-sync-toprow-test-<pid>`), forwards kept hints to the sidecar's `underhint` (a refusal said once per reason)
+  and resends them on a new sidecar. App.xaml.cs: `ConfigureHints(new(() => _look?.Now == "dark"))` (shared, 2 lines).
+  - **Deviations (safer):** the pipe is this user's only (`PipeOptions.CurrentUserOnly`; Node's default pipe ACL lets
+    only the creator, SYSTEM and admins write); a --test run refuses `LOOK_SYNC_TOPROW_PIPE` when it names the live pipe.
+  - **Nothing at rest:** an overlapped connect, overlapped reads, a timer only while the pipe is busy.
+  - **Not here (the glass lane's colour layer):** TOP-372..375 (see Left). Until a layer runs, the sidecar refuses
+    `underhint` and the log says so once.
+- **The menus test (part 4):** run 43825704178 (0e272ae0) failed it once, "the bar got no key": the real click did not
+  leave the bar in the foreground, the test called `ZOrder.Foreground` and sent the keys at once. 4c360c1c gives it the
+  stat test's wait for "window activated; keys go to". Passed in the 4 runs before; cause of the lost foreground not
+  found. In 43827392539 the test took that path (the click left the bar in the background) and passed.
+- **Full runs at 4c360c1c (hints + menus wait + main 45ba0e54):** 3 runs, each `NATIVE-CI: FAILED (ui failed; 16 ok,
+  0 skipped)`, unit 952 of 952 each, every top bar UI test passed each time; the ui failures were other lanes' tests
+  and differ per run: 43827392539 DesktopSurfaceTests.Desktop_menu_opens... (UIA ElementFromHandle timeout);
+  43830388635 the idle CPU test (dark hidden at rest 1.666 % > 1.0) and Apps_that_do_not_fit_wait_behind_plus_N...
+  (the overflow panel never took the keyboard); 43833241748 Popups_paint_the_desktop_still_sharp... ("dark").
+- **Idle cost of the hints listener:** the coordinator saw "hidden again" non-zero on this branch and 0 on main. By
+  the code the listener has nothing at rest (one overlapped connect wait, no timer unless the pipe is busy, reads only
+  for a client, no loop that re-makes the pipe by itself). 78a9de39 proves it rather than says it: `TopRowHints.Wakes`
+  counts every wake (connect, read, busy retry, check answer; a stop is not one), a --test run logs each as "hints:
+  listener woke: <what>", the unit test checks 0 wakes in 1.5 s of listening, and the idle CPU test (HoverTests.cs,
+  shared, 3 lines) checks the listener started once and never woke in its window. The 1 % limit is unchanged.
+  Full run 43836510792 at 78a9de39: the idle test PASSED with those checks (light hidden 0.833 %, again 0.625 %; dark
+  hidden 0 %, again 0 %), unit 963 of 963, ui 86 of 87: `NATIVE-CI: FAILED (ui failed; 16 ok, 0 skipped)`, the one
+  failure again Apps_that_do_not_fit_wait_behind_plus_N... ("the panel never took the keyboard"; the strip lane's).
+- **Ledger for the hints rows NOT marked:** no full green run on a hints HEAD. When one is green, run
+  `python -I native/tools/parity/topbar/mark-topbar-rows.py native ui <sha>` (it has TOP-362..371).
 
 ## Left (exact list, in order)
 
@@ -356,8 +390,14 @@ this area.
      far: TOP-180 (dark with no picture is flat `--lg-fill-pop`), part of TOP-188 (its sizes, not the lip, the
      pressed row or the disabled opacity), TOP-187's face (not its `--lg-shadow`). A stat dropdown parity pair is not added: Electron's page needs a taller window and `&stat=cpu`,
      and native a fixture key that opens the dropdown at start plus a log line with its rect;
-   - Top-row hints, Recovery + lifecycle, Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about,
-     settings, ...).
+   - Top-row hints: the receiver is done (part 8, TOP-362..371). Left: TOP-372 (paint a hint: the colour layer),
+     TOP-373 (capture verdicts -> `Mismatch` / `Confirmed`, the strip note after 10 s), TOP-374's look-change half
+     (`ResendAll` in dark when the look changes; the new-sidecar half is wired), TOP-375 (the wash base). All of these
+     need the colour layer under the bar, which is the glass lane's; `TopRowHints` already has the calls they need.
+   - Recovery + lifecycle (TOP-376..382): TOP-376..379 are the Electron page's crash / load / hang events (no page
+     natively); TOP-380 health order (the native one lacks page, drift and the game watch); TOP-381 (a new sidecar
+     reruns the start: native `OnReady` -> `Apply("sidecar ready")`, no test of its own); TOP-382 stop order.
+   - Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about, settings, ...).
 2. **Parts of started sections not ported:**
    - Page and strip: TOP-003 menubar role, TOP-006/007 visible width, TOP-010..017 focus details (uia cache, title
      menuChanged re-render, the PIN_FOCUS test hook).
