@@ -141,7 +141,21 @@ internal sealed partial class TopBarSurface
     }
 
     /// Any release ends the drag (bubbles after the row's handler).
-    void InstallDragEnd() => _root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => _dragArmed = false), true);
+    void InstallDragEnd()
+    {
+        _root.AddHandler(UIElement.PointerReleasedEvent, new PointerEventHandler((_, _) => _dragArmed = false), true);
+        // TOP-221: the first show is inactive (no Activate), and a WinUI window that was never Activate()d does not take
+        // the keyboard into its XAML on a click. So the user's FIRST press on the bar activates it once, the road a click
+        // takes anyway; from then on Windows activates it on each click as usual ("window activated; keys go to").
+        _root.AddHandler(UIElement.PointerPressedEvent, new PointerEventHandler((_, _) =>
+        {
+            if (_userActivated) return;
+            _userActivated = true;
+            _win.Activate();
+            if (_test) _ctx.Log.Line("first press: the bar activated for its keys");
+        }), true);
+    }
+    bool _userActivated;
 
     /// TOP-028: the keyboard focus ring on a strip button.
     void FocusRing(Button b)
