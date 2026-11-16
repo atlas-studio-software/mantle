@@ -342,5 +342,9 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
   QsPanel on native/main or this branch). The test now waits for the pop-up's "shown at" line and presses the chevron
   only once UI Automation's hit test puts it under the press (a stray press now fails saying what is there).
   QsPanel.Enter logs why a view did not open.
+- Downloads keys (full run 43847520444): "the second Enter was not held back" once in three runs. The Enters went to
+  whatever had the focus after the double click, whose presses repaint the rows under the pointer (a busy row is not
+  hit-testable). The test now puts the keyboard back on row 1 with Home (the walk's log line, the row's keyboard focus)
+  before the two Enters, and the failure prints the log's end. Not proven which element had the focus in that run.
 - Not touched (other lanes' files), same pattern: PopupWindow.Show and BarWindow.xaml.cs hand the foreground straight
   back to the window that had it, which on a runner can be Windows' taskbar; BackTarget could serve them too.

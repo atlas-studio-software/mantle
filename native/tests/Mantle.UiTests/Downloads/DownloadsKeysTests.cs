@@ -96,10 +96,17 @@ public class DownloadsKeysTests
             Assert.AreEqual(before + 1, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "a double click opened more than once");
 
             // BAR-882: two Enters on the focused row within 0.5 s are one decision: the second is held back and said
+            // the double click's presses repaint the rows under the pointer, so the keyboard is first put back on a row
+            // by a walk (Home), as a user would, and the Enters go to that row (run 43847520444: neither was held back)
+            int homes = Count(FrameProbe.Log(dir), "downloads: key Home: row 1 of 3");
+            Keyboard.Type(VirtualKeyShort.HOME);
+            Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: key Home: row 1 of 3") == homes + 1, 3000), "Home after the double click did not reach the first row");
+            Assert.IsTrue(Host.Until(() => El(w, "dl.row.0").Properties.HasKeyboardFocus.ValueOrDefault, 3000), "the first row does not have the focus after Home");
             int ignored = Count(FrameProbe.Log(dir), "downloads: a second open on the same row was ignored (one decision)");
             Keyboard.Type(VirtualKeyShort.RETURN);
             Keyboard.Type(VirtualKeyShort.RETURN);
-            Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: a second open on the same row was ignored (one decision)") == ignored + 1, 5000), "the second Enter was not held back");
+            Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: a second open on the same row was ignored (one decision)") == ignored + 1, 5000),
+                "the second Enter was not held back; the log's end:\n" + string.Join("\n", FrameProbe.Log(dir).Split('\n').TakeLast(25)));
             Thread.Sleep(600);
             Assert.AreEqual(before + 2, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "two quick Enters opened more than once");
 
