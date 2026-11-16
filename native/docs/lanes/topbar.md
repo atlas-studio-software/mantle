@@ -422,6 +422,28 @@ this area.
   0 skipped: )`**, unit 1018 of 1018, ui 91 of 91.
 - **Ledger:** `mark-topbar-rows.py native ui 9d9a6873` marked 36 rows. TOP rows: 191 tested, 25 ported, 2 better,
   6 n/a, 158 todo (of 382). Part 8 ended with 157 / 19 / 2 / 0 / 204; the 10 hints rows were part of the 34 more tested.
+- **Merged** origin/native/main 8d8845e2 (the flake branch) at 49793bc8, clean.
+- **The first show never activates (TOP-221), coordinator's bug from lane native-r8-startup run 43859364384** (the
+  start-up show's Activate took the keyboard from a pop-up opened in Mantle's first second; the downloads shelf and
+  the notification centre then closed). 3fe8a087: the first show is `AppWindow.Show(false)` (logged in --test as
+  "first show: shown inactive, the foreground stays where it was"); UI test `TopBarFirstShowTests` (81de52ca fixes
+  its Mouse name clash): a hidden-by-hand start, the launcher clicked to take the keyboard, Win+Alt+T makes the bar's
+  first show, the launcher must keep the foreground and stay open.
+  - **NOT GREEN, HANDOFF.** A WinUI window that is never `Activate()`d at its show does not take keys into its XAML
+    after a click. Runs: 43864177428 (3fe8a087+81de52ca: ui 88 of 92: the stat test, the menus test, the menu
+    bottom-rows test and the password-field test; no trx came back), 43866395320 (79b53393: Activate inside the first
+    PointerPressed; ui 90 of 92: the stat and the menus tests), 43868709747 (c0b94b60: that Activate deferred to low
+    priority; top bar ui only, 8 of 10: same 2; the log says "first press: the bar activated for its keys (in front:
+    yes)" but no "window activated" came), 43869659697 (4dc160e2: KeysHomeSoon after it; 8 of 10, same 2: the log
+    says "window activated; keys go to topbar.stat.cpu (it held the focus)", the bar is in front, and still no key
+    arrives). Not yet known whether the first-show test itself passed in those runs (the trx lists only failures
+    read here). So the window is foreground, XAML focus is on the button, and the keys do not reach XAML: the island's
+    own HWND likely never gets the Win32 keyboard focus. Next tries, in order: (1) after the first-press Activate,
+    `SetFocus` on the XAML island's child HWND (FindWindowEx for the DesktopChildSiteBridge /
+    InputSite class) and log what has the Win32 focus (GetFocus on the bar's thread); (2) Activate once at creation
+    while the window is still parked (before any pop-up can exist), handing the foreground straight back, then the
+    inactive first show; (3) if neither works, revert 3fe8a087..4dc160e2 (TopBarSurface.cs first show,
+    TopBarSurface.Motion.cs first press) and keep the bug open.
 - **Not done (budget):** TOP-003 menubar role (needs custom automation peers), Tools (TOP-211), TOP-091's UI test.
 
 ## Left (exact list, in order)
