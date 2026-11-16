@@ -46,6 +46,13 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
   existing UI tests (no look.json) see the earlier look.
 - The wash colour is the contract's: rgb(9 10 11) in dark (LookHost.DarkBar), white in light (LookHost.LightFill).
 
+## Measured (cloud runner, 1920x1080 at 100 %, 2026-11-16)
+- NativeGuardTests: snow-peak-like Electron .78 -> native .52 (4.56:1); night-dune-like .74 -> .30 (5.43:1); white .80;
+  a thin line: box .74, row .78 -> .78; a slope low on the screen: top band .30, a window over it .74, under it .30;
+  light .54 over a dark picture, .30 over a bright one. A 1920x1080 still: dark 125 ms, light 101 ms (once per still).
+- GlassTests (blocks fixture, Dim .40 dark / .35 light): pop-ups raised by the guard to .76 dark / .49 light, worst
+  channel error 0-1 of 6 over 54-180 points; the OSD .68 (96 of 96 points, worst 1); the launcher .76 (4092 of 4092, worst 1).
+
 ## Open questions for the user
 - **The per-row profile in look.json.** CONTRACT.md defines no key for it, so it stays native-internal and the shared
   value stays `desktop.guard.<theme>` (NativeGuard.Entry, the same shape). Proposed, if Quartz and Helm should take the
