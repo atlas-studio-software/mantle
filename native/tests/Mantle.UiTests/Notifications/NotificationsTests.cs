@@ -160,10 +160,9 @@ public class NotificationsTests
 
         // opened again (once its exit has finished: a press during the 160 ms exit is not a new open): Esc closes it
         Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
-        // the cursor still rests on the bell from the first click: move off and back so the press is a fresh one
-        var br = bell.BoundingRectangle;
-        Mouse.MoveTo(new Point(br.Left - 120, br.Top - 200));
-        ClickEl(bell);
+        // a press on the bell right after the centre closed is sometimes not taken (runs 43822746706, 43825622855; the
+        // dark test below retries its right-click the same way): press until it opens, three times at most
+        for (int i = 0; i < 3 && !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")); i++) { ClickEl(bell); Thread.Sleep(700); }
         Pop(app, dir, "Notifications", "notifs.panel");
         Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
         Keyboard.Type(VirtualKeyShort.ESCAPE);
