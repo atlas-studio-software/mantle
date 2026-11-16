@@ -89,9 +89,19 @@ public class DownloadsKeysTests
             var row = El(w, "dl.row.1");
             var r = row.BoundingRectangle;
             Mouse.DoubleClick(new System.Drawing.Point(r.Left + r.Width / 2, r.Top + r.Height / 2));
-            Has(dir, "downloads: a second open on the same row was ignored (one decision)", "the double click's second press was not held back");
+            // the first press repaints the rows (busy), so the second press often never becomes a click at all (run
+            // 43822746706); either way it is one open
+            Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: open was a dry run") == before + 1, 5000), "the double click did not open the row");
             Thread.Sleep(600);
             Assert.AreEqual(before + 1, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "a double click opened more than once");
+
+            // BAR-882: two Enters on the focused row within 0.5 s are one decision: the second is held back and said
+            int ignored = Count(FrameProbe.Log(dir), "downloads: a second open on the same row was ignored (one decision)");
+            Keyboard.Type(VirtualKeyShort.RETURN);
+            Keyboard.Type(VirtualKeyShort.RETURN);
+            Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: a second open on the same row was ignored (one decision)") == ignored + 1, 5000), "the second Enter was not held back");
+            Thread.Sleep(600);
+            Assert.AreEqual(before + 2, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "two quick Enters opened more than once");
 
             // BAR-890: Esc closes the shelf and hands the keyboard back
             Keyboard.Type(VirtualKeyShort.ESCAPE);

@@ -158,7 +158,11 @@ public class NotificationsTests
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the centre did not close once the card opened");
 
-        // opened again: Esc closes it and the keyboard goes back
+        // opened again (once its exit has finished: a press during the 160 ms exit is not a new open): Esc closes it
+        Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
+        // the cursor still rests on the bell from the first click: move off and back so the press is a fresh one
+        var br = bell.BoundingRectangle;
+        Mouse.MoveTo(new Point(br.Left - 120, br.Top - 200));
         ClickEl(bell);
         Pop(app, dir, "Notifications", "notifs.panel");
         Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
