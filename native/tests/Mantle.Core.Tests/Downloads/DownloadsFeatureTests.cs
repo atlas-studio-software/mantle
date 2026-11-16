@@ -66,6 +66,7 @@ public class DownloadsFeatureTests
 
     /// The read runs off the host thread: give it a moment, then let the host's queue run.
     static async Task Settle(W w) { for (int i = 0; i < 20; i++) { await Task.Delay(15); await Task.Yield(); } }
+    static async Task<bool> Until(Func<bool> f) { for (int i = 0; i < 200 && !f(); i++) await Task.Delay(25); return f(); }
 
     [Fact]
     public void The_module_fields_are_Electrons()
@@ -108,10 +109,17 @@ public class DownloadsFeatureTests
         w.Fire!("a.crdownload", true);                                  // a browser writing its partial: nothing
         w.R.Time.AdvanceMs(5000); await Settle(w);
         Assert.Equal(0, Reads());
-        for (int i = 0; i < 10; i++) { w.Put($"f{i}.txt", 0); w.Fire!($"f{i}.txt", false); w.R.Time.AdvanceMs(500); }
+        // 5 s of events 500 ms apart: the 4 s cap fires during the eighth (t = 4000). A read lists the real folder on a
+        // real thread and a read is logged only when its line changed, so the cap read must have listed f0..f7 before
+        // f8 lands: else it can see all ten, the read after the quiet logs the same line, and only one read shows
+        // (runs 43831510908, 43834705342: "expected 2, got 1"). The shelf was right either way; the count was not.
+        for (int i = 0; i < 8; i++) { w.Put($"f{i}.txt", 0); w.Fire!($"f{i}.txt", false); w.R.Time.AdvanceMs(500); }
+        Assert.True(await Until(() => Reads() >= 1), "the 4 s cap read never came");
+        for (int i = 8; i < 10; i++) { w.Put($"f{i}.txt", 0); w.Fire!($"f{i}.txt", false); w.R.Time.AdvanceMs(500); }
         await Settle(w);
-        Assert.Equal(1, Reads());                                        // 5 s of events 500 ms apart: one read at the 4 s cap
+        Assert.Equal(1, Reads());                                        // one read at the 4 s cap, none since
         w.R.Time.AdvanceMs(DownloadsFeature.DebounceMs); await Settle(w);
+        Assert.True(await Until(() => Reads() >= 2), "the read after the quiet never came");
         Assert.Equal(2, Reads());                                        // ... and one after the quiet
         Assert.True(w.State.GetProperty("watching").GetBoolean());
         Assert.Equal(1, w.Watches);
