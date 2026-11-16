@@ -51,7 +51,8 @@
 param(
   [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop'),
   [string]$Out = 'native/out',
-  [ValidateSet('aot', 'sc', '')] [string]$BuildMode = ''
+  [ValidateSet('aot', 'sc', '')] [string]$BuildMode = '',
+  [string]$UiFilter = ''   # the ui stage runs only the tests this dotnet test --filter picks (a flake loop: -Stages build,ui,ui,ui)
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -388,7 +389,7 @@ function Stage-ui {
   New-Item -ItemType Directory -Force -Path $dir | Out-Null
   $env:MANTLE_NATIVE_EXE = $exe; $env:MANTLE_TEST_VISIBLE = '1'
   try {
-    $code = Run 'ui' 'dotnet' @('test', $proj[0].FullName, '-c', 'Release', '-nologo', '--logger', 'trx;LogFileName=ui.trx', '--results-directory', $dir)
+    $code = Run 'ui' 'dotnet' (@('test', $proj[0].FullName, '-c', 'Release', '-nologo', '--logger', 'trx;LogFileName=ui.trx', '--results-directory', $dir) + $(if ($UiFilter) { @('--filter', $UiFilter) } else { @() }))
   } finally { $env:MANTLE_TEST_VISIBLE = $null }
   $t = Trx (Join-Path $dir 'ui.trx')
   if ($null -eq $t) { return "FAILED (no test results; dotnet test exit $code)" }
@@ -778,7 +779,7 @@ foreach ($s in $Stages) {
   }
   if ($gui) { Desk-During $s $watchFrom }
   $secs = [math]::Round(((Get-Date) - $t0).TotalSeconds)
-  $results[$s] = $r
+  if ($results[$s] -notlike 'FAILED*') { $results[$s] = $r }   # a stage run twice keeps its failure
   Say "STAGE ${s}: $r [${secs}s]"
 }
 if ($watcher -and -not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }
