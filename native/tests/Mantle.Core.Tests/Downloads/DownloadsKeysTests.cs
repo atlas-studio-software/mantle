@@ -21,6 +21,20 @@ public class DownloadsKeysTests
     }
 
     [Fact]
+    public void A_row_Windows_focused_on_its_own_is_no_start_so_the_first_Down_is_still_the_newest()
+    {
+        // the shelf took the keyboard and Windows gave row 1 its first focus: nobody walked there
+        Assert.Equal(-1, DownloadsKeys.From(0, byUser: false));
+        Assert.Equal(0, DownloadsKeys.Walk("Down", DownloadsKeys.From(0, byUser: false), 3));
+        Assert.Equal(2, DownloadsKeys.Walk("Up", DownloadsKeys.From(0, byUser: false), 3));
+        // a row the user walked to, tabbed to or clicked is where the walk goes on from
+        Assert.Equal(1, DownloadsKeys.From(1, byUser: true));
+        Assert.Equal(2, DownloadsKeys.Walk("Down", DownloadsKeys.From(1, byUser: true), 3));
+        // the focus is somewhere that is not a row (the folder button)
+        Assert.Equal(-1, DownloadsKeys.From(-1, byUser: true));
+    }
+
+    [Fact]
     public void A_double_click_or_a_press_while_one_is_in_flight_opens_once()
     {
         Assert.True(DownloadsKeys.Takes(false, null, 0, "a|open", 1000));

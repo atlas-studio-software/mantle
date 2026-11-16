@@ -117,9 +117,11 @@ internal sealed class DownloadsShelf
         AutomationProperties.SetHelpText(_scroll, KbdNote);
         ToolTipService.SetToolTip(_scroll, KbdNote.Length > 0 ? KbdNote : null);
 
-        string? focusItem = null; bool focusReveal = false;
+        string? focusItem = null; bool focusReveal = false; var focusHow = FocusState.Keyboard;
         var fe = Root.XamlRoot != null ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) as FrameworkElement : null;
         if (fe?.Tag is string tag) { focusItem = tag.TrimStart('r', ':'); focusReveal = tag.StartsWith("r:", StringComparison.Ordinal); }
+        // a repaint keeps the focus as it was: one Windows gave on its own stays unasked (no ring, not a walked row)
+        if (fe is Control fc && fc.FocusState == FocusState.Programmatic) focusHow = FocusState.Programmatic;
         double scrollTop = _scroll.VerticalOffset;
         _list.Children.Clear(); _rows.Clear();
 
@@ -142,8 +144,8 @@ internal sealed class DownloadsShelf
             int n = 0;
             foreach (var i in items) _list.Children.Add(Row(i, n++, nowMs));
             if (focusItem != null && _rows.FirstOrDefault(r => (r.Tag as string) == focusItem) is { } back) {
-                if (focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back) rv.Focus(FocusState.Keyboard);
-                else back.Focus(FocusState.Keyboard);
+                if (focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back) rv.Focus(focusHow);
+                else back.Focus(focusHow);
             }
         }
         _scroll.UpdateLayout();

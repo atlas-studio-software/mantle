@@ -68,7 +68,7 @@ public class DownloadsKeysTests
 
             // BAR-888: the first Down is the newest; Down walks; End / Home; clamped, never wraps; the first Up from none is the oldest
             Keyboard.Type(VirtualKeyShort.DOWN);
-            Has(dir, "downloads: key Down: row 1 of 3", "the first Down did not reach the newest row");
+            Has(dir, "downloads: key Down: row 1 of 3 (from none)", "the first Down did not reach the newest row");
             Keyboard.Type(VirtualKeyShort.DOWN);
             Has(dir, "downloads: key Down: row 2 of 3", "Down did not walk");
             Keyboard.Type(VirtualKeyShort.END);

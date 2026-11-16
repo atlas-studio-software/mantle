@@ -27,6 +27,13 @@ public static class DownloadsKeys
         };
     }
 
+    /// <summary>
+    /// The row a walk starts from: the focused row <paramref name="focused"/> (-1: none) only when the user put the focus
+    /// there (a key walk, Tab or a click); a row Windows focused on its own when the shelf took the keyboard is none, so
+    /// the first Down is the newest and the first Up the oldest.
+    /// </summary>
+    public static int From(int focused, bool byUser) => byUser && focused >= 0 ? focused : -1;
+
     /// <summary>act(): a press runs unless the row's last one is still on its way, or came within <see cref="GapMs"/>.</summary>
     public static bool Takes(bool inFlight, string? lastRow, long lastAt, string row, long now) =>
         !inFlight && !(lastRow == row && now - lastAt < GapMs);
