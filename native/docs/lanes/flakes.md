@@ -151,3 +151,11 @@ for the JumpList change): 10 tests a pass.
   start, found pass 1's "the jump list arrived" ("the slow read finished at once") in passes 2..8; and in pass 2
   the runner's taskbar covered the overflow test's drag (section 3). A fresh CI runner never has those folders.
 - Run 43844871485 at 7383ddf2, the profile folders removed before each pass: 8 passes, 10 of 10 each (80 of 80).
+- Full run 43846765759 at 6a34e943 (40cebf3b with native/main 78ee12dd merged): NATIVE-CI: FAILED (ui failed; 16
+  ok, 0 skipped). UI 85 of 88: all four flakes of this lane passed; the 3 failures ran back to back at 10:18 to
+  10:20 and touch none of this lane's code paths: `Bar_and_glass_idle_cpu_hidden_at_rest_and_shown` (light hidden
+  at rest 1.042 % against the 1.0 % limit; it failed the same way in 8 earlier runs across the lanes: the idle
+  lane's), `Running_app_button_focuses_minimizes_and_restores_its_window` ("the fixture window 'UiFixture B ...'
+  did not appear in 20 s"; once before, 11-11) and `Right_cluster_buttons_invoke_without_crashing` (no
+  `bar.start` found in 8 s, though the id list read right after has it). None of them calls `TaskbarAutoHide`
+  past the assembly setup, opens the "+N" panel or the app menu, or reads the theme probe. Not traced here.
