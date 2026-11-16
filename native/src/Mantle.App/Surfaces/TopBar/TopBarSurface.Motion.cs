@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using Mantle.App.Native;
 using Mantle.Core.Features.TopBar;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Dispatching;
@@ -151,8 +152,12 @@ internal sealed partial class TopBarSurface
         {
             if (_userActivated) return;
             _userActivated = true;
-            _win.Activate();
-            if (_test) _ctx.Log.Line("first press: the bar activated for its keys");
+            // after the press is handled (an Activate inside it could cost the button its pointer capture and its click)
+            _ctx.Dispatcher.TryEnqueue(Microsoft.UI.Dispatching.DispatcherQueuePriority.Low, () =>
+            {
+                _win.Activate();
+                if (_test) _ctx.Log.Line("first press: the bar activated for its keys (in front: " + (Win32.GetForegroundWindow() == _hwnd ? "yes" : "no") + ")");
+            });
         }), true);
     }
     bool _userActivated;
