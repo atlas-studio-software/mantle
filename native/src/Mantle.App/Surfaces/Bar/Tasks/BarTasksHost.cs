@@ -168,14 +168,26 @@ internal sealed partial class BarTasksHost : IDisposable
     // ---------------------------------------------------------------- keep on top (lib/features/ontop.js through the bus)
     /// Windows Mantle keeps on top (hwnd -> name), from the <c>ontop.state</c> push; UI thread.
     public IReadOnlyDictionary<string, string> OnTopPinned { get; private set; } = new Dictionary<string, string>();
-    /// Why the bar cannot show which windows are kept on top (ui/bar/ontop.js CANT), or null.
-    public string? OnTopProblem { get; private set; } = "the bar can't show which windows are kept on top right now (restart Mantle to fix it)";
+    /// Why the bar cannot show which windows are kept on top (ui/bar/ontop.js CANT), or null: set only once the bar
+    /// knows it will not hear the state (no event channel, the subscription failed, or the state never answered).
+    public string? OnTopProblem { get; private set; }
+    bool _onTopKnown;
+
+    /// BAR-334 test hook (--test only): MANTLE_TEST_ONTOP_CHANNEL=0 attaches the strip as if it had no event channel.
+    public const string OnTopChannelEnv = "MANTLE_TEST_ONTOP_CHANNEL";
+
+    void OnTopCant(string why)
+    {
+        _log("bar tasks: keep on top: " + why + ", so every app's tooltip and the menu say the bar can't show which windows are kept on top");
+        _ui.TryEnqueue(() => { OnTopProblem = Mantle.Core.Features.OnTop.OnTopWords.Cant; OnTopChanged?.Invoke(); });
+    }
     public event Action? OnTopChanged;
     public event Action<string>? OnTopToast;
 
     void AttachOnTop(IEvents? events)
     {
-        if (events == null) { _log("bar tasks: keep on top: the bar has no event channel, so the pin badge does not show"); return; }
+        if (Host.Args.Test && Host.Env(OnTopChannelEnv) == "0") events = null;
+        if (events == null) { OnTopCant("the bar has no event channel" + (Host.Args.Test && Host.Env(OnTopChannelEnv) == "0" ? " (" + OnTopChannelEnv + "=0)" : "")); return; }
         try {
             _ontopSub = events.Subscribe<System.Text.Json.JsonElement>(Mantle.Core.Features.OnTop.OnTopFeature.StateEvent, TakeOnTop);
             // the feature is installed after the strip attaches, so its replay never reached this subscription: ask once
@@ -185,7 +197,7 @@ internal sealed partial class BarTasksHost : IDisposable
                 string why = t.TryGetProperty("reason", out var r) && r.ValueKind == System.Text.Json.JsonValueKind.String ? " - " + r.GetString() : "";
                 _ui.TryEnqueue(() => OnTopToast?.Invoke(text + why));
             });
-        } catch (Exception e) { _log("bar tasks: keep on top: could not subscribe to the pin state (" + e.Message + ")"); }
+        } catch (Exception e) { OnTopCant("could not subscribe to the pin state (" + e.Message + ")"); }
     }
 
     IDisposable? _ontopAsk;
@@ -197,7 +209,8 @@ internal sealed partial class BarTasksHost : IDisposable
             foreach (var p in arr.EnumerateArray())
                 if (p.TryGetProperty("hwnd", out var h)) d[h.ToString()] = p.TryGetProperty("name", out var n) ? n.ToString() : "";
         _ui.TryEnqueue(() => {
-            if (OnTopProblem != null) _log($"bar tasks: keep on top: the pin state is known ({d.Count} window(s) kept on top)");
+            if (!_onTopKnown || OnTopProblem != null) _log($"bar tasks: keep on top: the pin state is known ({d.Count} window(s) kept on top)");
+            _onTopKnown = true;
             OnTopPinned = d; OnTopProblem = null; OnTopChanged?.Invoke();
         });
     }
@@ -210,7 +223,7 @@ internal sealed partial class BarTasksHost : IDisposable
         if (c.Ok) { TakeOnTop(c.Result); return; }
         if (left == 20) _log("bar tasks: keep on top: the pin state did not answer yet (" + (c.Error ?? "no answer") + "); asking again every 1.5 s");
         if (left > 1) _ontopAsk = _host?.Delay(TimeSpan.FromMilliseconds(1500), () => _ = AskOnTop(left - 1));
-        else _log("bar tasks: keep on top: the pin state never answered (" + (c.Error ?? "no answer") + "), so the bar can't show which windows are kept on top");
+        else OnTopCant("the pin state never answered (" + (c.Error ?? "no answer") + ")");
     }
 
     /// The menu's "Keep on top" / "Stop keeping on top" (ontop.set {hwnd, pid, name, on}); a refusal comes back in words.
