@@ -20,7 +20,7 @@ namespace Mantle.App.Surfaces.TopBar;
 // box's keys back to the panel. A push while the dropdown is open on PING redraws it (Electron rewrote its HTML); closed,
 // nothing is drawn and no timer runs. AutomationIds: topbar.pt.tab.test / .history, topbar.pt.<act verb> for each action
 // row, topbar.pt.name (the name box), topbar.pt.table / topbar.pt.compare, topbar.pt.h.<n> (history rows),
-// topbar.pt.chip.<n>, topbar.pt.info.<n>; an amber cell or line has the ItemStatus "amber".
+// topbar.pt.chip.<n>, topbar.pt.verdict, topbar.pt.info.<n>; an amber cell or line has the ItemStatus "amber".
 internal sealed partial class TopBarSurface
 {
     PingTestPanel? _pt;
@@ -141,7 +141,8 @@ internal sealed partial class TopBarSurface
             case PtKind.Info:
             {
                 bool bad = r.Cls.Split(' ').Contains("bad");
-                var t = Info(r.Text, bad, "topbar.pt.info." + i);
+                // the verdict (Electron's .pt-verdict) has one id of its own, so it is found without walking every row
+                var t = Info(r.Text, bad, r.Cls.Split(' ').Contains("verdict") ? "topbar.pt.verdict" : "topbar.pt.info." + i);
                 if (!bad) t.Foreground = Br(InkFor(r.Cls));
                 if (r.Cls.Split(' ').Contains("hid")) t.FontStyle = Windows.UI.Text.FontStyle.Italic;
                 if (r.Tip is { Length: > 0 }) ToolTipService.SetToolTip(t, r.Tip);

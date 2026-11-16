@@ -63,8 +63,13 @@ public partial class TopBarSurfaceTests
         Assert.IsFalse(app.Log.Contains("topbar.pingTest cancel"), "closing the dropdown cancelled the run");
         Invoke(win, "topbar.stat.ping");
         Assert.IsTrue(Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId("topbar.pt.pt-start"))?.Name == "Run again", 3000), "the finished run is not there on reopen");
-        Assert.IsTrue(Host.Until(() => win.FindAllDescendants().Any(e => (e.Name ?? "").StartsWith("The lag starts at your Wi-Fi", StringComparison.Ordinal)), 3000),
-            "the second run (a slow router) does not say the lag starts at home");
+        // by the verdict's own id: a walk of every element on the bar reads each one's name live, and one redrawn away in
+        // between throws, which Until swallows (the likely way run 43075038269 missed it; the message now says what it read)
+        Host.Screenshot("topbar-pingtest-second");
+        string verdict = "";
+        Assert.IsTrue(Host.Until(() => (verdict = win.FindFirstDescendant(cf => cf.ByAutomationId("topbar.pt.verdict"))?.Name ?? "")
+            .StartsWith("The lag starts at your Wi-Fi: your own router takes 28 ms on average", StringComparison.Ordinal), 3000),
+            $"the second run (a slow router) does not say the lag starts at home; its verdict: \"{verdict}\"");
 
         // the history (TOP-155/156): two runs on two networks, kept in the test profile's ping-tests.json
         Invoke(win, "topbar.pt.tab.history");
@@ -75,8 +80,9 @@ public partial class TopBarSurfaceTests
         Assert.IsTrue(file.Length > 0, "no ping-tests.json in the test profile " + app.Ud);
         Assert.IsFalse(file.Contains(Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), StringComparison.OrdinalIgnoreCase), "the history was written outside the test profile: " + file);
         StringAssert.Contains(File.ReadAllText(file), "\"version\": 1");
-        var rows = win.FindAllDescendants().Where(e => Aid(e).StartsWith("topbar.pt.h.", StringComparison.Ordinal)).ToArray();
-        Assert.AreEqual(2, rows.Length, "the history does not list both runs");
+        // tried again until it reads: a 1 s sample can redraw a row while the walk reads its id
+        var rows = Host.Until(() => win.FindAllDescendants().Where(e => Aid(e).StartsWith("topbar.pt.h.", StringComparison.Ordinal)).ToArray() is { Length: 2 } a ? a : null, 3000)!;
+        Assert.IsNotNull(rows, "the history does not list both runs");
         Host.Screenshot("topbar-pingtest-history");
 
         // open the older run, Save… with a name typed through UI Automation, then Save (TOP-153/157)
