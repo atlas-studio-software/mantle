@@ -1,5 +1,5 @@
 using System.Diagnostics;
-using FlaUI.Core.Input;
+
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.TopBar;
@@ -37,7 +37,7 @@ public partial class TopBarSurfaceTests
         }, 8000), "the launcher did not show");
         // the runner may refuse SetForegroundWindow; a real click gives it the keyboard
         FrameProbe.GetWindowRect(launcher, out var lr);
-        Mouse.Click(new System.Drawing.Point(lr.Left + (lr.Right - lr.Left) / 2, lr.Top + 30));
+        FlaUI.Core.Input.Mouse.Click(new System.Drawing.Point(lr.Left + (lr.Right - lr.Left) / 2, lr.Top + 30));
         Assert.IsTrue(Host.Until(() => Win32.GetForegroundWindow() == launcher, 4000), "the launcher never got the keyboard: " + Win32.Title(Win32.GetForegroundWindow()));
 
         Second(app, "light", "--test-chord=Win+Alt+T");   // the bar's first show, while the launcher has the keyboard
