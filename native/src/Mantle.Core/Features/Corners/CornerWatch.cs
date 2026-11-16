@@ -17,7 +17,10 @@ public sealed class CornerFilter
     public const double SlackDip = 2;
     volatile CornerTable _table = CornerRules.Defaults;
     volatile IReadOnlyList<DipRect> _displays = Array.Empty<DipRect>();
-    bool _was;
+    volatile bool _was;
+
+    /// A new watch: the first move is always looked at (the cursor may have started in a corner the host must see it leave).
+    public void Fresh() => _was = true;
 
     public CornerTable Table { get => _table; set => _table = value; }
     public IReadOnlyList<DipRect> Displays { get => _displays; set => _displays = value; }

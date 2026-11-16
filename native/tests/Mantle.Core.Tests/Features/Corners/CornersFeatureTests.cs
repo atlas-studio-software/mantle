@@ -130,8 +130,8 @@ public class CornersFeatureTests
         for (int x = 100; x < 1400; x += 7) k.P.Pt = new DipPoint(x, 300 + x % 200);   // a long sweep across the middle
         k.P.Pt = new DipPoint(1, 400);                      // along the left edge, away from its corners
         k.P.Pt = new DipPoint(1534, 1);                     // the top-right corner is Off by default
-        Assert.Equal(looks, k.F.Looks);
-        Assert.Equal(0, k.P.Wakes);
+        Assert.Equal(looks + 1, k.F.Looks);                // only the first move after the watch started (it may leave a corner)
+        Assert.Equal(1, k.P.Wakes);
         Assert.Equal(reads, k.P.ButtonReads);               // the buttons are read only in an active corner
         Assert.Equal(0, k.Scans);
         await Task.CompletedTask;

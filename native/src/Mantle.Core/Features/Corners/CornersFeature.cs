@@ -152,7 +152,7 @@ public sealed class CornersFeature : IFeature
         _displaysAt = long.MinValue;
         ReadDisplays();
         _claims.Set(_actions, _displays);
-        _filter.Table = _actions; _filter.Displays = _displays;
+        _filter.Table = _actions; _filter.Displays = _displays; _filter.Fresh();
         var p = _displays.Count > 0 ? _displays[0] : new DipRect(0, 0, 0, 0);
         _watchWhy = "watching";
         // better than Electron's 100 ms poll: the cursor's own move event, so a resting pointer costs nothing (CORN-008)

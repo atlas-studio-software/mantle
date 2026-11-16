@@ -1,6 +1,4 @@
 using FlaUI.Core.AutomationElements;
-using FlaUI.Core.Input;
-using FlaUI.Core.WindowsAPI;
 using Mantle.UiTests.QuickSettings;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -10,7 +8,7 @@ namespace Mantle.UiTests.Corners;
 /// Quick settings' Hot corners row (Surfaces/Desktop/CornersRow.cs, ui/bar/corners.js) over the real [Feature("corners")]:
 /// the four tiles laid out like the screen with the defaults, a tile opens its choices, a chip saves at once (in the TEST
 /// profile's features\corners.json, never %APPDATA%\mantle) and the tile says the new action, the current chip just
-/// closes, and Esc closes the choices first and the panel on the next Esc. A --test run never reads the real cursor,
+/// closes, and one corner is open at a time. A --test run never reads the real cursor,
 /// so no corner fires here; the row's words are the Core tests' (CornerRowTests).
 /// </summary>
 [TestClass]
@@ -19,7 +17,6 @@ public class CornersRowTests
     static void ClickEl(AutomationElement e) { var r = e.BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(350); }
     static string Status(AutomationElement e) => e.Properties.ItemStatus.ValueOrDefault ?? "";
     static void Has(string dir, string needle, string why, int ms = 8000) => Host.LogContains(() => FrameProbe.Log(dir), needle, why, ms);
-    static void Esc() { Keyboard.Press(VirtualKeyShort.ESCAPE); Thread.Sleep(120); Keyboard.Release(VirtualKeyShort.ESCAPE); Thread.Sleep(350); }
 
     static AutomationElement El(AutomationElement w, string id, int ms = 3000)
     {
@@ -31,7 +28,7 @@ public class CornersRowTests
     static bool Gone(AutomationElement w, string id) => w.FindFirstDescendant(cf => cf.ByAutomationId(id)) is not { IsOffscreen: false };
 
     [TestMethod]
-    public void The_row_shows_the_corners_like_the_screen_a_chip_saves_at_once_and_Esc_closes_the_choices_first()
+    public void The_row_shows_the_corners_like_the_screen_a_chip_saves_at_once_and_one_corner_opens_at_a_time()
     {
         string dir = FrameProbe.NewDir("corners-row");
         var env = new Dictionary<string, string> { ["MANTLE_TEST_QS"] = QuickSettingsTests.Fixture };
@@ -74,13 +71,16 @@ public class CornersRowTests
         ClickEl(El(w, "qs.corners.chip.lock"));
         Has(dir, "qs: hot corners row: tr closed (its own choice)", "the current chip did not just close");
 
-        // Esc: the choices first, the panel on the next Esc
+        // one corner open at a time; clicking the open tile again closes it. (Esc is not tested: native's quick-settings
+        // pop-up takes no keyboard, so Esc never reaches it; the row's Esc handler waits for a pop-up that does.)
         ClickEl(El(w, "qs.corners.tile.tl"));
         Has(dir, "qs: hot corners row: tl open", "the top-left tile did not open");
-        Esc();
-        Has(dir, "qs: hot corners row: Esc closed the tl choices", "Esc did not close the choices");
-        Assert.IsTrue(FrameProbe.Showing(h), "the first Esc closed the whole panel");
-        Esc();
-        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the second Esc did not close the panel");
+        ClickEl(El(w, "qs.corners.tile.bl"));
+        Has(dir, "qs: hot corners row: bl open", "the bottom-left tile did not open");
+        StringAssert.StartsWith(Status(El(w, "qs.corners.tile.tl")), "collapsed", "two corners are open at once");
+        ClickEl(El(w, "qs.corners.tile.bl"));
+        Has(dir, "qs: hot corners row: bl closed", "clicking the open tile did not close it");
+        Assert.IsTrue(Host.Until(() => Gone(w, "qs.corners.chip.off"), 3000), "the choices stayed open");
+        Assert.IsTrue(FrameProbe.Showing(h), "the panel closed");
     }
 }
