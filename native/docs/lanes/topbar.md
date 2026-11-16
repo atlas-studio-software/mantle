@@ -374,6 +374,48 @@ this area.
 - **Ledger for the hints rows NOT marked:** no full green run on a hints HEAD. When one is green, run
   `python -I native/tools/parity/topbar/mark-topbar-rows.py native ui <sha>` (it has TOP-362..371).
 
+## Part 9 (lane native-r8-topbar9, same branch): corners, known games, the window, the session, health
+
+- **Merged** origin/native/stage4 (414f4f10: native/main b40021a2 + e0649c73), a fast-forward.
+- **The hints rows (TOP-362..371) marked tested:** stage4 went green as native/main 414f4f10, run 43852816953
+  (`NATIVE-CI: ok (17 ok, 0 skipped)`, ui 89 of 89). They were marked with part 8's script
+  (`git show e0649c73:.../mark-topbar-rows.py`, then `native ui e0649c73`): 10 rows, so none of part 9's went in early.
+- **TOP-297 hot corners:** the peek reads `CornerClaims.Live.Claims(pt, display)` (read only; `TopBarFeature.Corners`
+  is the seam the tests swap). An ACTIVE corner's 6x6 DIP square never peeks; an Off corner takes nothing; a peek out
+  stays when the cursor slides into the corner; with the corners stopped the whole edge peeks.
+- **Known games RUNNING (TOP-267..272, `TopBarFeature.Games.cs`):** a `GameWatchFollower` on the host's `GameWatch`.
+  Game mode drives the watch, so the bar has no timer of its own at rest; joining makes game mode's idle tick go from
+  3 s to its 12 s backstop (the bar's focus events feed it). Only with nothing driving does the follower read
+  `gamemode.scan {procs:true}` (3 s) every 1 s, as Electron. A game starting: Decide("game started") (hides, closes
+  menus, stats off), the peek watch stops, the guard goes off, the strip is let go. While it runs nothing re-reserves
+  (display changes, the 1.5 / 6 s re-checks, Explorer, re-register) and the guard stays off. A failing check keeps the
+  bar aside and goes into health. The start reads the games before the reserve. `MANTLE_TOPBAR_TEST_GAME` (--test only)
+  adds exe names, as Electron's. The log never names the game ("a known game", "N known games").
+- **The strip races (TOP-251/252):** never reserved while a game runs; a game starting while a reserve is in flight
+  lets it go again at once.
+- **The window fight (TOP-227..232):** the rules are `TopBarDrift` (Core), the runner `TopBarSurface.Drift.cs`. The
+  subclass hears WM_WINDOWPOSCHANGED, the check runs 250 ms later, once. Nothing runs while the window stays put.
+  The surface reports the fight to the feature (`topbar.drift`); health drops it while the bar is hidden. Units are
+  physical px (Electron: DIP).
+- **Explorer restarted (TOP-250):** the bar's own subclass hears TaskbarCreated and calls `topbar.shell`, which runs
+  ReserveStrip("Explorer restarted"); the work-area check after it registers afresh when Explorer ignored it (TOP-249).
+  No timer. The UI test posts TaskbarCreated to the bar's own window only.
+- **Session end (TOP-258):** App.xaml.cs (shared, 1 line) posts `TopBarFeature.SessionEnding` before the session
+  end's quit on WM_ENDSESSION (ending). The strip goes now, `_ending` stops every later reserve, the game loop stops.
+- **TOP-013/016 UI Automation menus (`TopBarFeature.Uia.cs`):** the feature (not the surface) reads `topbar.uia` once
+  per handle for a focus snapshot with no menu and uia "try", keeps 64 handles, a failed read as an empty menu with its
+  reason, and pushes the focus again with the menu.
+- **Health order (TOP-380):** the window fight > the focus watch > the strip gap > the game watch > the peek watch
+  (Electron's "page" first has no native equivalent).
+- **TOP-381 / 382:** a new sidecar reruns Apply (unit test); stop ends the loops then watch / guard / stats off and the
+  strip released, in that order (unit test). Open: the app's Quit destroys the surfaces BEFORE "put Windows back"
+  (App.xaml.cs, not this lane's), so on quit the window goes before the feature lets the strip go; the restore's
+  app-bar give-back runs either way.
+- **n/a rows:** TOP-376..379 (no renderer page), TOP-006/007 (the window is always the display's width; no zoom guess).
+- **Shared lines:** App.xaml.cs 1 line (session end). TopBarSurface.cs, non-backdrop lines only: `_want = ...` in
+  Place, two cases in Proc (WM_WINDOWPOSCHANGED, TaskbarCreated), `DriftStop()` in Destroy.
+- **Not done (budget):** TOP-003 menubar role (needs custom automation peers), Tools (TOP-211), TOP-091's UI test.
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
@@ -394,17 +436,9 @@ this area.
      TOP-373 (capture verdicts -> `Mismatch` / `Confirmed`, the strip note after 10 s), TOP-374's look-change half
      (`ResendAll` in dark when the look changes; the new-sidecar half is wired), TOP-375 (the wash base). All of these
      need the colour layer under the bar, which is the glass lane's; `TopRowHints` already has the calls they need.
-   - Recovery + lifecycle (TOP-376..382): TOP-376..379 are the Electron page's crash / load / hang events (no page
-     natively); TOP-380 health order (the native one lacks page, drift and the game watch); TOP-381 (a new sidecar
-     reruns the start: native `OnReady` -> `Apply("sidecar ready")`, no test of its own); TOP-382 stop order.
    - Data + IPC (statsDetail, invoke, uia, window, power left; newWindow, about, settings, ...).
 2. **Parts of started sections not ported:**
-   - Page and strip: TOP-003 menubar role, TOP-006/007 visible width, TOP-010..017 focus details (uia cache, title
-     menuChanged re-render, the PIN_FOCUS test hook).
+   - Page and strip: TOP-003 menubar role (custom automation peers for the bar and its titles).
    - Feature + settings: TOP-211 tools hub.
-   - Window + displays: TOP-220 zoom (n/a natively), TOP-224 tall window for dropdowns (the place half is done),
-     TOP-225 refocus, TOP-227..232 drift put-back, TOP-250 Explorer restart (onShellRestart: no native host hook found),
-     TOP-252 game start mid-reserve, TOP-258 session end.
-   - Step aside: TOP-267..272 known games RUNNING (GameWatch follower), TOP-273..280 full-screen video (media sessions),
-     the motion (leave / arrive).
-   - Peek: TOP-297 the hot corners claim (corners not native yet).
+   - Window + displays: TOP-220 zoom (n/a natively), TOP-221, TOP-223, TOP-226.
+   - Step aside: TOP-273..280 full-screen video (media sessions, `Features/Media`), the motion (leave / arrive).

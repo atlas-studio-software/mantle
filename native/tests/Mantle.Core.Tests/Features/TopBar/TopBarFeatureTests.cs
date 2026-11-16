@@ -43,6 +43,7 @@ public sealed partial class TopBarFeatureTests
         r.Platform.Answer("topbar.stats", "{\"ok\":true}");
         r.Platform.Answer("topbar.reserve", "{\"ok\":true}");
         r.Platform.Answer("topbar.release", "{\"ok\":true}");
+        r.Platform.Answer("gamemode.scan", "{\"procs\":[]}");   // no known game runs (TopBarFeature.Games.cs)
         r.Platform.Start();
     }
 
@@ -52,10 +53,11 @@ public sealed partial class TopBarFeatureTests
         for (int i = 0; i < 20; i++) await Task.Yield();
     }
 
-    static async Task<TopBarFeature> Up(Rig r, FakeScreen s, string hwnd = "123", ITopBarShell? shell = null)
+    static async Task<TopBarFeature> Up(Rig r, FakeScreen s, string hwnd = "123", ITopBarShell? shell = null, Action<Rig>? before = null)
     {
         TopBarFeature? f = null;
         Sidecar(r);
+        before?.Invoke(r);
         r.Host.Load(new[] { D(r, s, x => f = x, shell) });
         await r.Host.Installed;
         await Tick(r, 50);
@@ -235,6 +237,44 @@ public sealed partial class TopBarFeatureTests
         Assert.False(f.PeekShown);
         Assert.True(r.Logged("peek hidden after"));
         Assert.False(Vis(r)[^1].Show);
+    });
+
+    [Fact]
+    public void An_active_hot_corner_takes_its_square_from_the_peek_an_off_one_takes_nothing_TOP_297() => T(async (r, s) =>
+    {
+        var claims = new Mantle.Core.Features.Corners.CornerClaims();
+        TopBarFeature? f = null;
+        Sidecar(r);
+        r.Host.Load(new[] { D(r, s, x => { f = x; x.Corners = claims; }) });
+        await r.Host.Installed;
+        await Tick(r, 50);
+        await r.Bus.CallAsync("topbar.placed", new JsonObject { ["hwnd"] = "123", ["scale"] = 1.5 });
+        await Tick(r, 400);
+        claims.Set(new Mantle.Core.Features.Corners.CornerTable("taskview", "off", "off", "desktop"));
+        r.Host.FireChord("Win+Alt+T");
+        await Tick(r, 100);
+        async Task<bool> Rest(double x, double y, int ms = 900)
+        {
+            await r.Bus.CallAsync("topbar.testPeek", new JsonObject { ["x"] = 700, ["y"] = 400 });   // off the edge: the peek re-arms
+            await Tick(r, 800);   // any peek out ends after the grace
+            Assert.False(f!.PeekShown);
+            await r.Bus.CallAsync("topbar.testPeek", new JsonObject { ["x"] = x, ["y"] = y });
+            await Tick(r, ms);
+            return f.PeekShown;
+        }
+        // the display is 1536 x 864 DIP; the active top-left corner is 0..6 DIP square
+        Assert.False(await Rest(2, 0));       // the corner's square: no peek, ever
+        Assert.False(await Rest(5.9, 1));
+        Assert.True(await Rest(6, 0));        // one step out of the square is the edge again
+        Assert.True(await Rest(1533, 0));     // the OFF top-right corner takes nothing
+        // a peek already out stays while the cursor slides into the corner (over the bar)
+        Assert.True(await Rest(700, 0));
+        await r.Bus.CallAsync("topbar.testPeek", new JsonObject { ["x"] = 2, ["y"] = 1 });
+        await Tick(r, 1500);
+        Assert.True(f!.PeekShown);
+        // the corners stopped: no table, the whole edge peeks, the corner too
+        claims.Set(null);
+        Assert.True(await Rest(2, 0));
     });
 
     [Fact]

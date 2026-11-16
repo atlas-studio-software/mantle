@@ -7,6 +7,7 @@ using System.Text.Json.Nodes;
 using System.Threading;
 using System.Threading.Tasks;
 using Mantle.Core.Commands;
+using Mantle.Core.Features.Corners;
 
 namespace Mantle.Core.Features.TopBar;
 
@@ -70,6 +71,9 @@ public sealed partial class TopBarFeature : IFeature
     bool _peekWatching, _peekShown; bool? _peekOk; string? _peekReason; long _peekSince; IDisposable? _peekT;
     string? _peekBlocked; bool _peekLooked;
     (double X, double Y)? _fakeCursor; bool _fakeSource;
+    /// TOP-297: the hot corners' claim table (an ACTIVE corner's 6x6 DIP square is the corner's, not the peek's). The
+    /// running Mantle reads the live one; the tests hand in their own.
+    public CornerClaims Corners { get; set; } = CornerClaims.Live;
 
     public TopBarFeature() { _screen = new Win32TopBarScreen(); _shell = new ProcessTopBarShell(); _reserve = new(false, "not reserved yet"); }
     /// For the tests: a clock on manual time and a fake screen.
@@ -123,6 +127,8 @@ public sealed partial class TopBarFeature : IFeature
         InstallMenuCommands(ctx);   // TopBarFeature.Commands.cs: about, settings, winSettings, taskmgr, newWindow
         InstallPingTest(ctx);       // TopBarFeature.PingTest.cs: topbar.pingTest / pingTests and the pingtest pushes
         InstallHints();             // TopBarFeature.Hints.cs: the top-row hints pipe (TOP-362..371)
+        GamesInstall();             // TopBarFeature.Games.cs: known games running (TOP-267..272)
+        InstallLifecycle(ctx);      // TopBarFeature.Lifecycle.cs: the window fight's health, Explorer restarted, session end
         ctx.Command("status", _ => Ok(Status()));
         ctx.Command("overGames", async c =>
         {
@@ -136,7 +142,7 @@ public sealed partial class TopBarFeature : IFeature
         ctx.Command("placed", c => Placed(c.Args));
         ctx.Command("display", c => Display(c.Args));
         ctx.Command("menuState", c => MenuState(c.Args));
-        ctx.Command("shown", c => { _shown = Bool(c.Args, "on"); return Ok(new JsonObject { ["ok"] = true }); });
+        ctx.Command("shown", c => { _shown = Bool(c.Args, "on"); if (_driftWhy != null) Health(); return Ok(new JsonObject { ["ok"] = true }); });
         if (_test)
         {
             // --test only: the made-up focus / stats (TopBarFixtures) and a fake cursor for the peek (the user's real
@@ -206,6 +212,7 @@ public sealed partial class TopBarFeature : IFeature
         ["stats"] = new JsonObject { ["on"] = _statsOn.On, ["reason"] = _statsOn.Reason },
         ["display"] = new JsonObject(_displayCounters.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)JsonValue.Create(kv.Value.ToString())))),
         ["dpiAware"] = _dpiAware, ["live"] = _live, ["state"] = ViewObj(), ["hints"] = _hints?.View(),
+        ["run"] = RunView(), ["runWatch"] = new JsonObject { ["ok"] = _runWatch.Ok, ["reason"] = _runWatch.Reason },
     };
 
     // ------------------------------------------------------------------ health (topbar.js health)
@@ -217,13 +224,17 @@ public sealed partial class TopBarFeature : IFeature
     void Health()
     {
         if (_stopped) return;
-        var gap = _watch.Ok == false ? null : TopBarRules.StripGap(_live, _reserve, false, _hidden, Now);
+        var gap = _watch.Ok == false ? null : TopBarRules.StripGap(_live, _reserve, _run != null, _hidden, Now);
         var p = _reserve.Pending;
         long left = p != null ? p.Since + p.Grace - Now : 0;
         if (_live && p != null && left > 0 && !_reserve.Reserved && _graceT == null)
             _graceT = Later((int)left + 50, () => { _graceT = null; Health(); });
-        string? why = _watch.Ok == false ? $"the top bar cannot follow the focused app: {_watch.Reason}"
+        // TOP-380, Electron's order: page (none natively: the strip is drawn in this process) > the window fight >
+        // the focus watch > the strip gap > the game watch > the peek watch
+        string? why = DriftHealth() is { } drift ? drift
+            : _watch.Ok == false ? $"the top bar cannot follow the focused app: {_watch.Reason}"
             : gap != null ? $"maximised windows can go under the top bar: {gap}"
+            : _runWatch.Ok == false ? $"a game starting is not noticed, so the top bar can sit over it until it goes full screen: {_runWatch.Reason}"
             : (_hidden && _peekOk == false) ? $"the top bar is hidden by hand and cannot peek at the top edge: {_peekReason}"
             : null;
         _ctx.Health(why == null, why);
@@ -296,9 +307,11 @@ public sealed partial class TopBarFeature : IFeature
         if (_stopped || _ending) return;
         _displayCounters["runs"] = (int)_displayCounters["runs"] + 1;
         _displayCounters["last"] = why;
-        _ctx.Log($"display changed ({why}): re-placed{(_ctx.Enabled ? ", the strip re-asked and the drag guard re-armed" : "")}");
+        _ctx.Log($"display changed ({why}): re-placed{(_ctx.Enabled && _run == null ? ", the strip re-asked and the drag guard re-armed" : _run != null ? $" only: {GameWord(_run.All)} is running, so the strip stays let go" : "")}");
         Broadcast("topbar.place", new TopBarPlace(_menuOpen ? _menuH : TopBarRules.BarDip, "display changed (" + why + ")"));
-        if (_ctx.Enabled)
+        // not while a known game runs: its own mode switch fires these, and re-reserving then would move the work area
+        // under the game (ReserveStrip and GuardOn both check the run as well)
+        if (_ctx.Enabled && _run == null)
         {
             _ = Run(async () => { await ReserveStrip($"display changed ({why})"); return null; }, "app bar display changed");
             _ = Run(async () => { await GuardOn(); return null; }, "drag guard display changed");
@@ -323,7 +336,7 @@ public sealed partial class TopBarFeature : IFeature
         o.Remove("ev");
         if (kind == "focus")
         {
-            if (!B(o, "self")) { _focus = o; _ = Run(async () => { await Decide("focus"); return null; }, "focus"); }
+            if (!B(o, "self")) { _focus = o; UiaFor(o); _ = Run(async () => { await Decide("focus"); return null; }, "focus"); }
         }
         else if (kind == "title" && _focus != null && S(_focus, "hwnd") == S(o, "hwnd"))
         {
@@ -348,10 +361,11 @@ public sealed partial class TopBarFeature : IFeature
         var game = f?["game"] as JsonObject;
         bool verdict = B(game, "stepAside");
         bool full = f != null && !self && !B(f, "shell") && B(f, "fullscreen") && lockExe == null;
-        var kind = TopBarRules.AsideKind(_hidden, lockExe, false, false, verdict, _overGames, full);
+        var run = _run;
+        var kind = TopBarRules.AsideKind(_hidden, lockExe, run != null, false, verdict, _overGames, full);
         bool want = kind != null;
-        var signal = TopBarRules.Signal(kind, lockExe, null, _overGames, TopBarModel.AppName(f), S(game, "signal"));
-        var logSig = TopBarRules.LogSignal(kind, signal);
+        var signal = TopBarRules.Signal(kind, lockExe, run != null ? RunNames(run.All) : null, _overGames, TopBarModel.AppName(f), S(game, "signal"));
+        var logSig = TopBarRules.LogSignal(kind, signal, GameWord(run?.All));
         var was = _kind;
         if (want == _stepAside)
         {
@@ -391,6 +405,7 @@ public sealed partial class TopBarFeature : IFeature
         {
             await _ctx.Platform.CallAsync("topbar.guard", new JsonObject { ["on"] = false }, TimeSpan.FromMilliseconds(1500));
             _guard = (false, $"off while the top bar is hidden by hand ({TopBarRules.HideChord} shows it)");
+            if (_run != null) return;   // a known game already let it go
             var rel = await ReleaseStrip($"hidden by hand; {TopBarRules.HideChord} takes it back");
             _ctx.Log(rel.DryRun ? "hidden by hand: a --test instance holds no strip, so there was none to let go"
                 : rel.Ok ? $"hidden by hand: let go of the top {TopBarRules.BarDip} DIP, so maximised windows get the whole screen"
@@ -415,7 +430,7 @@ public sealed partial class TopBarFeature : IFeature
             await _ctx.Settings.SetAsync("hidden", JsonValue.Create(on));
             _ctx.Log(on ? $"hidden by hand ({via}); {TopBarRules.HideChord} or \"Show top bar\" in quick settings shows it again, also after a restart"
                 : $"shown by hand ({via})" + (_peekShown ? " while it was peeking: it stays, now for good" : ""));
-            if (!on && _ctx.Enabled && !_stopped) Asked("shown by hand");
+            if (!on && _ctx.Enabled && !_stopped && _run == null) Asked("shown by hand");
             if (!on) PeekSync(via, keepUp: true);
             if (_ctx.Enabled && !_stopped) await Decide(via);
             else _ctx.Log($"the top bar is switched off in the tray, so it is only remembered: {(on ? "hidden" : "shown")} when it is switched on");
@@ -430,6 +445,11 @@ public sealed partial class TopBarFeature : IFeature
     async Task ReserveStrip(string why)
     {
         if (_stopped || _ending || !_ctx.Enabled) return;
+        if (_run != null)   // never while a known game runs (a game's mode switch is a display change too)
+        {
+            if (_live) _ctx.Log($"app bar {why}: not taken back: {GameWord(_run.All)} is running; the strip comes back when it exits");
+            return;
+        }
         if (_hidden) { if (_live) _ctx.Log($"app bar {why}: not taken: the top bar is hidden by hand ({TopBarRules.HideChord} shows it)"); return; }
         var d = _screen.Primary(out var pwhy);
         double scale = d?.Scale ?? _scale;
@@ -445,6 +465,12 @@ public sealed partial class TopBarFeature : IFeature
         var r = await _ctx.Platform.CallAsync("topbar.reserve", new JsonObject { ["hwnd"] = _hwnd.ToInt64().ToString(CultureInfo.InvariantCulture), ["size"] = size });
         _ownAt = Now;
         if (_ending || _stopped) return;
+        if (_run != null)   // TOP-252: a game started while that was on its way: give the strip straight back
+        {
+            _ctx.Log($"app bar {why}: {GameWord(_run.All)} started meanwhile, so the strip was let go again");
+            await ReleaseStrip($"{GameWord(_run.All)} is running");
+            return;
+        }
         if (_hidden)
         {
             _ctx.Log($"app bar {why}: the top bar was hidden by hand meanwhile, so the strip was let go again");
@@ -467,7 +493,7 @@ public sealed partial class TopBarFeature : IFeature
                 : p == null ? $"reserved {size}px, but the work area could not be read ({w2})"
                 : $"reserved {size}px, but the work area starts at {w.Got.ToString(CultureInfo.InvariantCulture)} DIP instead of the bar's bottom {w.Want.ToString(CultureInfo.InvariantCulture)} DIP", null, size);
             _ctx.Log($"app bar {why}: {_reserve.Reason}");
-            if (TopBarRules.ReRegister(w.Ok, why == TopBarRules.ReRegisterWhy, _reRegAt, Now) && !_hidden)
+            if (TopBarRules.ReRegister(w.Ok, why == TopBarRules.ReRegisterWhy, _reRegAt, Now) && !_hidden && _run == null && !_stopped && !_ending)
             {
                 _reRegAt = Now;
                 _ctx.Log($"app bar {why}: the work area ignored the strip, so the bar is registered with Windows afresh (Explorer may have restarted)");
@@ -490,7 +516,7 @@ public sealed partial class TopBarFeature : IFeature
     /// The drag guard (TOP-254/255/257): the bar's physical rect; off while hidden by hand. A --test platform is passive.
     async Task GuardOn()
     {
-        if (_hidden || _stopped) return;
+        if (_run != null || _hidden || _stopped) return;   // off while a known game runs or the bar is hidden by hand
         var d = _screen.Primary(out var why);
         if (d is not { } p) { _guard = (false, why); return; }
         int h = (int)TopBarModel.JsRound(TopBarRules.BarDip * p.Scale);
@@ -524,8 +550,9 @@ public sealed partial class TopBarFeature : IFeature
         if (w.Ok && _fixture == null && w.Result.ValueKind == JsonValueKind.Object && w.Result.TryGetProperty("focus", out var fo) && fo.ValueKind == JsonValueKind.Object)
         {
             var o = JsonNode.Parse(fo.GetRawText()) as JsonObject;
-            if (o != null && !B(o, "self")) { _focus = o; Broadcast("topbar.focus", FocusPayload()); }
+            if (o != null && !B(o, "self")) { _focus = o; UiaFor(o); Broadcast("topbar.focus", FocusPayload()); }
         }
+        await GameCheck();   // TOP-272: a game already running (Mantle restarted mid-game): the strip is not taken at all
         await Decide(why);
         await ReserveStrip(why);
         if (_live) foreach (var ms in new[] { 1500, 6000 }) Later(ms, () => _ = Run(async () => { await ReserveStrip($"{ms / 1000.0} s re-check".Replace(".0 s", " s")); return null; }, "app bar"));
@@ -533,12 +560,14 @@ public sealed partial class TopBarFeature : IFeature
         if (!_stepAside) await StatsOn(true, null);
         Show(why);
         Publish();
+        RunLoop();
         PeekSync(why);
         Health();
     }
 
     async Task Off(string why)
     {
+        RunLoopStop();
         PeekSync(why);
         Hide(why);
         _shown = false;
@@ -552,8 +581,8 @@ public sealed partial class TopBarFeature : IFeature
     }
 
     // ------------------------------------------------------------------ the peek (TOP-289..305, BAR-349)
-    bool PeekWanted() => _hidden && _ctx.Enabled && !_stopped && _placed;
-    string PeekStopWhy() => _stopped ? "the top bar stopped" : !_ctx.Enabled ? "the top bar was switched off in the tray" : !_hidden ? "shown by hand" : "the window is not made yet";
+    bool PeekWanted() => _hidden && _ctx.Enabled && !_stopped && _run == null && _placed;
+    string PeekStopWhy() => _stopped ? "the top bar stopped" : !_ctx.Enabled ? "the top bar was switched off in the tray" : _run != null ? $"{GameWord(_run.All)} started" : !_hidden ? "shown by hand" : "the window is not made yet";
 
     void PeekSync(string why, bool keepUp = false)
     {
@@ -599,11 +628,12 @@ public sealed partial class TopBarFeature : IFeature
         else { var c = _screen.Cursor(out cwhy); pt = c is { } cc ? new PeekPoint(cc.X / s, cc.Y / s) : null; }
         var f = _focus;
         string? lockExe = f == null ? null : TopBarRules.LockScreen(S(f, "exe"), S(f, "desc"), B(f, "self"));
-        var guard = TopBarPeek.Blocker(new PeekGuard(_hidden, _ctx.Enabled, _stopped, null, lockExe,
+        var guard = TopBarPeek.Blocker(new PeekGuard(_hidden, _ctx.Enabled, _stopped, _run != null ? GameWord(_run.All) : null, lockExe,
             B(f?["game"] as JsonObject, "stepAside") && !_overGames ? "the sidecar said so" : null,
             f != null && B(f, "fullscreen") && !B(f, "self") && !B(f, "shell") ? TopBarModel.AppName(f) : null));
         var r = TopBarPeek.Step(_peekSt, new PeekInput(Now, pt, cwhy, bounds, new PeekRect(bounds.X, bounds.Y, bounds.W, _menuOpen ? _menuH : TopBarRules.BarDip),
-            _menuOpen, guard, false, () => _fakeSource ? new PeekButtons(true) : _screen.Buttons()));
+            _menuOpen, guard, pt is { } cp && Corners.Claims(new DipPoint(cp.X, cp.Y), new DipRect(bounds.X, bounds.Y, bounds.W, bounds.H)) != null,
+            () => _fakeSource ? new PeekButtons(true) : _screen.Buttons()));
         _peekSt = r.St;
         // what keeps the edge from peeking, said once per change (never silent); a --test run also says its first look
         if (r.Blocked != _peekBlocked) { _peekBlocked = r.Blocked; if (r.Blocked != null) _ctx.Log($"peek: not now: {r.Blocked}"); }
@@ -641,7 +671,9 @@ public sealed partial class TopBarFeature : IFeature
     public async ValueTask StopAsync(FeatureStop stop)
     {
         if (_stopped) return;
+        if (_current == this) _current = null;
         StopHints();   // TopBarFeature.Hints.cs: kept hints forgotten, the pipe closed
+        RunLoopStop();
         _burst?.Stop();
         _peekT?.Dispose(); _peekT = null; _peekWatching = false;
         _graceT?.Dispose(); _graceT = null;

@@ -605,6 +605,7 @@ public partial class MantleApp : Application
         bool ending = wParam != IntPtr.Zero;
         var se = _sessionEnd;
         if (se == null || _hostLoop == null) return IntPtr.Zero;
+        if (ending) _hostLoop.Post(Mantle.Core.Features.TopBar.TopBarFeature.SessionEnding);   // TOP-258: the strip goes first
         _hostLoop.Post(() => se.End(ending, lp));
         if (ending) {
             // Windows may end the process once this returns: wait for the restore (the road's own 12 s hard stop)
