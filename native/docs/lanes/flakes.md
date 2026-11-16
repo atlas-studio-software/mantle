@@ -53,10 +53,21 @@ Evidence:
   (found by the notifications lane, d9b449a4 on `native/r7-media3`). So the probe sampled the taskbar from before
   the switch to the end, and the bar under it was never seen.
 
-Fix (test side): `Probe` and each light read check that the app's own window is what lies under the probe (its
-corners and centre). If not, the runner's taskbar is set to auto-hide again and the foreground goes to the
-runner's desktop (Progman), as `ClickOnBar` does; if anything still covers the probe after 3 s the test fails
-there, naming the window. The "never went dark" message now also names whatever lies over the probe.
+The flake loop shows it happening in every pass: ci.ps1's desk watcher logs "DESK ui during: taskbar shown 2x,
+ends shown", each time with "foreground explorer ... [Shell_TrayWnd]" (runs 43842157127, 43843061023). The taskbar
+takes the foreground when a test kills the app that had it, and a click on the bar leaves the pointer resting in
+the taskbar's band, which also keeps an auto-hidden taskbar up.
+
+Fix (test side):
+
+- `Win32.TaskbarAutoHide(true)` (the harness's one way to get the runner's taskbar off the bar, called by
+  `StripTests.Click`, `StripTests.DragTo`, `ClickOnBar` and the assembly setup) now also hands the foreground to
+  the runner's desktop (Progman) when the taskbar holds it, and moves the pointer off the taskbar's band. Setting
+  auto-hide alone did not drop a taskbar held up either way. Shared lines: `native/tests/Mantle.UiTests/Win32.cs`
+  +11.
+- `Probe` and each light read check that the app's own window is what lies under the probe (its corners and
+  centre). If not, they call `TaskbarAutoHide(true)` and wait; if anything still covers the probe after 3 s the
+  test fails there, naming the window. The "never went dark" message now also names whatever lies over the probe.
 
 ## 3. Popups paint the desktop still sharp (dark): a test bug (the click never reached the bar)
 
@@ -75,8 +86,14 @@ The note about a first sample taken one frame early after a move (worst error 29
 `Lined` already looks up to 12 times, 250 ms apart, and a passing light run shows exactly that (run 43827392539,
 light-more-moved: error 31, then 0 on the next look).
 
-Fix (test side): `ClickEl` checks the process under the click point first; if it is not the app, it hands the
-foreground to the runner's desktop as in 2 and waits up to 3 s, else fails naming the covering window.
+Fix (test side): `ClickEl` checks the process under the click point first; if it is not the app, it calls
+`TaskbarAutoHide(true)` as in 2 and waits up to 3 s, else fails naming the covering window.
+
+The same cover also failed the overflow test once in the loop (run 43843061023, pass 2: the taskbar came up with
+the foreground at 09:54:04.609, the test's app started at 09:54:05.269, and its log ends at the fit with no
+"drag: lifted" line; the failure screenshot shows the runner's taskbar up with the pointer on its Start button;
+the exact message was lost because each pass overwrites ui.trx). `DragTo` already called
+`TaskbarAutoHide(true)`, which then did not drop the taskbar; it does now.
 
 ## 4. Desktop menu opens placed: a test race with a start-up stall (the stall itself is open)
 
@@ -114,10 +131,23 @@ puts them in the documented order), so the loop calls it again and again after o
 desk reset and NATIVE-CI line:
 
     pwsh -NoProfile -File native/tools/ci.ps1 -Stages build && for i in 1 2 3 4 5 6; do
+      pwsh -NoProfile -Command "Get-ChildItem ([IO.Path]::GetTempPath()) -Filter 'mantle-native-uitest-*' -Directory |
+        Remove-Item -Recurse -Force -ErrorAction SilentlyContinue";
       pwsh -NoProfile -File native/tools/ci.ps1 -Stages ui -UiFilter '<filter>'; done
+
+Each pass must start without the last pass's test profiles (see Runs): a fresh runner never has them.
 
 Shared lines: `native/tools/ci.ps1` +1 parameter and the filter on the `dotnet test` line.
 
 ## Runs
 
-(filled in below as the runs come back)
+The loop filter: the overflow test, all ThemeTests, both glass "still sharp" runs, the desktop menu test, and the
+app menu's keyboard test (`The_menu_draws_its_bottom_rows_while_it_reads_and_the_arrow_keys_move_over_every_row`,
+for the JumpList change): 10 tests a pass.
+
+- Run 43842157127 at 45eebd63: one pass (ci.ps1 ran each named stage once), 10 of 10.
+- Run 43843061023 at 7383ddf2: 8 passes, pass 1 10 of 10, passes 2..8 failed. Not the fixes: the tests' profile
+  folders (fixed names under %TEMP%) were left from pass 1, so the app menu test, which reads its log from the
+  start, found pass 1's "the jump list arrived" ("the slow read finished at once") in passes 2..8; and in pass 2
+  the runner's taskbar covered the overflow test's drag (section 3). A fresh CI runner never has those folders.
+- Run 43844871485 at 7383ddf2, the profile folders removed before each pass: 8 passes, 10 of 10 each (80 of 80).

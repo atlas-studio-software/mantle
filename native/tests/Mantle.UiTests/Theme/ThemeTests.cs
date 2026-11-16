@@ -61,13 +61,12 @@ public class ThemeTests
 
     /// The probe reads the screen's pixels, so they must be the bar's. The runner's own taskbar (auto-hidden) stays up
     /// while it holds the foreground and then lies over the bar: run 43836206025 read its flat 238 grey as the "light"
-    /// pill and waited 8 s for it to go dark. Hand the foreground to the runner's desktop (as ClickOnBar does) and wait
+    /// pill and waited 8 s for it to go dark. Win32.TaskbarAutoHide takes the taskbar off the bar, and the test waits
     /// until the bar is what lies under the probe; anything still over it fails here, by name.
     static void Uncover(App app, Rectangle probe)
     {
         if (Covering(app, probe) == null) return;
         Win32.TaskbarAutoHide(true);
-        ZOrder.Foreground(FindWindowW("Progman", null));
         if (!Host.Until(() => Covering(app, probe) == null, 3000, 100))
             Assert.Fail($"the probe {probe} is covered by {Covering(app, probe)}: its pixels would not be the bar's");
     }
@@ -219,7 +218,6 @@ public class ThemeTests
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
     [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
     [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
-    [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string? title);
 
     static IntPtr SessionWindowOf(int pid)
     {
