@@ -1,6 +1,7 @@
 using System;
 using System.Globalization;
 using System.Text.Json.Nodes;
+using Mantle.App.Native;
 using Mantle.App.Surfaces.Bar.Frame;
 using Mantle.Core.Features.TopBar;
 using Microsoft.UI.Dispatching;

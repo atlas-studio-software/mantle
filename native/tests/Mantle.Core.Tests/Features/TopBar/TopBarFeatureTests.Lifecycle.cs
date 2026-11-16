@@ -30,7 +30,7 @@ public sealed partial class TopBarFeatureTests
         string scan = Valorant;
         r.Platform.Handle("gamemode.scan", _ => Json(scan));
         await Tick(r, 1100);   // the follower's own read (every RunMs while nothing drives the watch)
-        Assert.NotNull(f.Run);
+        Assert.NotNull(f.RunningGame);
         Assert.True(f.StepAside);
         Assert.Equal("run", f.Kind);
         Assert.True(r.Logged("stepped aside (game started): a known game running: the bar stays aside with its strip let go until it exits"));
@@ -52,7 +52,7 @@ public sealed partial class TopBarFeatureTests
         Assert.True(f.StepAside);
         Assert.Equal(reserves, Calls(r, "topbar.reserve"));
         Assert.Equal(releases + 1, Calls(r, "topbar.release"));
-        Assert.Equal(2, f.Run!.All.Count);
+        Assert.Equal(2, f.RunningGame!.All.Count);
         // TOP-271: a failing check says so in health and never takes the strip back mid-game
         scan = "{\"procs\":[],\"procsReason\":\"the process list is still being read\"}";
         await Tick(r, 1100);
@@ -64,7 +64,7 @@ public sealed partial class TopBarFeatureTests
         scan = "{\"procs\":[]}";
         await Tick(r, 1100);
         Assert.True(r.Logged("checking for games starting again"));
-        Assert.Null(f.Run);
+        Assert.Null(f.RunningGame);
         Assert.False(f.StepAside);
         Assert.Contains(r.Lines, l => l.Contains("2 known games exited after ", StringComparison.Ordinal) && l.Contains(" s; the top bar takes back the top 28 DIP and comes back", StringComparison.Ordinal));
         Assert.True(r.Logged("back (game exited): the game exited"));
@@ -87,7 +87,7 @@ public sealed partial class TopBarFeatureTests
         using var drive = r.Host.GameWatch.Drive(null);   // game mode reading: the bar no longer reads on its own
         r.Host.GameWatch.Publish((JsonObject)JsonNode.Parse("{\"ok\":true,\"procs\":[{\"pid\":9,\"file\":\"cs2.exe\"}]}")!);
         await Tick(r, 200);
-        Assert.NotNull(f.Run);
+        Assert.NotNull(f.RunningGame);
         Assert.False(f.PeekWatching);
         Assert.True(r.Logged("peek: stopped watching the top edge: a known game started"));
         Assert.True(r.Logged("a known game running; the top bar stepped aside until it exits (a --test instance holds no strip, so there was none to let go)"));
@@ -96,7 +96,7 @@ public sealed partial class TopBarFeatureTests
         Assert.Equal(own, Calls(r, "gamemode.scan"));
         r.Host.GameWatch.Publish((JsonObject)JsonNode.Parse("{\"ok\":true,\"procs\":[]}")!);
         await Tick(r, 200);
-        Assert.Null(f.Run);
+        Assert.Null(f.RunningGame);
         Assert.True(f.PeekWatching);   // still hidden by hand: the edge is watched again
         Assert.True(f.Hidden);
         Assert.True(r.Logged("app bar game exited: a --test instance never reserves space on the screen, so there was nothing to take back"));
@@ -108,7 +108,7 @@ public sealed partial class TopBarFeatureTests
     {
         var f = await Up(r, s, before: x => x.Platform.Handle("gamemode.scan", _ => Json(Valorant)));
         await Tick(r, 7000);   // past the 1.5 s and 6 s re-checks
-        Assert.NotNull(f.Run);
+        Assert.NotNull(f.RunningGame);
         Assert.Equal(0, Calls(r, "topbar.reserve"));
         Assert.True(r.Logged("app bar sidecar ready: not taken back: a known game is running; the strip comes back when it exits"));
         Assert.True(r.Logged("app bar 6 s re-check: not taken back: a known game is running; the strip comes back when it exits"));
@@ -131,7 +131,7 @@ public sealed partial class TopBarFeatureTests
         Assert.True(a.Ok);
         Assert.True(r.Logged("app bar Explorer restarted: a known game started meanwhile, so the strip was let go again"));
         Assert.Equal(releases + 2, Calls(r, "topbar.release"));   // the game's own, then the reserve's
-        Assert.NotNull(f.Run);
+        Assert.NotNull(f.RunningGame);
     }, test: false);
 
     [Fact]
@@ -228,6 +228,85 @@ public sealed partial class TopBarFeatureTests
         Assert.Equal(scans, Calls(r, "gamemode.scan"));   // the game loop ended
         Assert.False(f.PeekWatching);
     }, test: false);
+
+    [Fact]
+    public void An_app_with_only_a_UI_Automation_menu_is_read_once_per_window_and_a_failed_read_keeps_its_reason_TOP_013_016_011() => T(async (r, s) =>
+    {
+        var f = await Up(r, s);
+        int asked = 0;
+        r.Platform.Handle("topbar.uia", a =>
+        {
+            asked++;
+            return a.GetProperty("hwnd").GetString() == "21"
+                ? Json("{\"ok\":true,\"menu\":{\"source\":\"uia\",\"hwnd\":\"21\",\"items\":[{\"label\":\"File\",\"pos\":0}]}}")
+                : Json("{\"ok\":false,\"reason\":\"the app's menu bar did not answer\"}");
+        });
+        TopBarFocus Last() => r.Events.Published.Where(p => p.Name == "topbar.focus").Select(p => (TopBarFocus)p.Payload!).Last();
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"21\",\"exe\":\"C:\\\\x\\\\app.exe\",\"uia\":\"try\"}");
+        await Tick(r, 100);
+        Assert.Equal(1, asked);
+        Assert.Contains("\"source\":\"uia\"", Last().MenuJson);
+        // away and back: the kept menu, no second read
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"22\",\"exe\":\"C:\\\\x\\\\other.exe\",\"uia\":\"try\"}");
+        await Tick(r, 100);
+        Assert.Equal(2, asked);
+        Assert.Contains("the app's menu bar did not answer", Last().MenuJson);
+        Assert.Contains("\"source\":\"none\"", Last().MenuJson);
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"21\",\"exe\":\"C:\\\\x\\\\app.exe\",\"uia\":\"try\"}");
+        await Tick(r, 100);
+        Assert.Equal(2, asked);
+        Assert.Contains("\"File\"", Last().MenuJson);
+        // a Win32 menu, or no "try": never read
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"23\",\"exe\":\"C:\\\\x\\\\n.exe\",\"uia\":\"try\",\"menu\":{\"source\":\"win32\",\"items\":[]}}");
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"24\",\"exe\":\"C:\\\\x\\\\m.exe\",\"uia\":\"not needed\"}");
+        // TOP-011: Mantle's own window keeps the last app
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"25\",\"exe\":\"C:\\\\x\\\\Mantle.exe\",\"self\":true,\"uia\":\"try\"}");
+        await Tick(r, 100);
+        Assert.Equal(2, asked);
+        Assert.Equal(2, f.UiaKept);
+        Assert.Contains("\"hwnd\":\"24\"", Last().Json);
+    });
+
+    [Fact]
+    public void An_open_menu_grows_the_window_to_its_full_height_and_closing_with_refocus_gives_the_app_its_keyboard_back_live_only_TOP_224_225() => T(async (r, s) =>
+    {
+        await Up(r, s);
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"31\",\"exe\":\"C:\\\\x\\\\notepad.exe\",\"desc\":\"Notepad\"}");
+        await Tick(r, 100);
+        TopBarPlace Place() => r.Events.Published.Where(p => p.Name == "topbar.place").Select(p => (TopBarPlace)p.Payload!).Last();
+        var a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = true, ["height"] = 500.2 });
+        Assert.Equal(501, a.Result.GetProperty("height").GetInt32());
+        Assert.Equal(new TopBarPlace(501, "a menu opened"), Place());
+        a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = true, ["height"] = 5000 });
+        Assert.Equal(864, a.Result.GetProperty("height").GetInt32());   // the display's height (1296 px at 150 %), never the window's own
+        a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = true, ["height"] = 3 });
+        Assert.Equal(28, a.Result.GetProperty("height").GetInt32());
+        r.Platform.Answer("focus", "{\"ok\":true}");
+        a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = false, ["refocus"] = true });
+        Assert.Equal(28, a.Result.GetProperty("height").GetInt32());
+        Assert.True(a.Result.GetProperty("refocused").GetBoolean());
+        Assert.Contains(r.Platform.Calls, c => c.Verb == "focus" && c.ArgsJson.Contains("\"31\""));
+        r.Platform.Handle("focus", _ => PlatformReply.Fail(PlatformOutcome.Failed, "access denied"));
+        a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = false, ["refocus"] = true });
+        Assert.False(a.Result.GetProperty("ok").GetBoolean());
+        Assert.Equal("the app could not be given the keyboard back: access denied", a.Result.GetProperty("reason").GetString());
+        int focus = Calls(r, "focus");
+        a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = false, ["refocus"] = false });
+        Assert.False(a.Result.GetProperty("refocused").GetBoolean());
+        Assert.Equal(focus, Calls(r, "focus"));
+    }, test: false);
+
+    [Fact]
+    public void A_test_run_never_hands_the_keyboard_to_another_app_on_close_TOP_225() => T(async (r, s) =>
+    {
+        await Up(r, s);
+        r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"31\",\"exe\":\"C:\\\\x\\\\notepad.exe\",\"desc\":\"Notepad\"}");
+        await Tick(r, 100);
+        r.Platform.Answer("focus", "{\"ok\":true}");
+        var a = await r.Bus.CallAsync("topbar.menuState", new JsonObject { ["open"] = false, ["refocus"] = true });
+        Assert.False(a.Result.GetProperty("refocused").GetBoolean());
+        Assert.Equal(0, Calls(r, "focus"));
+    });
 
     // ------------------------------------------------------------------ the window fight's rules (pure)
     [Fact]

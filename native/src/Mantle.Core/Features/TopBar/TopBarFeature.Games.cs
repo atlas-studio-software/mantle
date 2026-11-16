@@ -36,7 +36,7 @@ public sealed partial class TopBarFeature
     string[] _testGames = Array.Empty<string>();
 
     /// Read by the tests: the known game(s) running now, or null.
-    public RunInfo? Run => _run;
+    public RunInfo? RunningGame => _run;
     public (bool? Ok, string? Reason) RunWatch => _runWatch;
 
     /// "a known game" for one exe (any number of its processes), "N known games" for more: no game named in the log.

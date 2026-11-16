@@ -336,7 +336,7 @@ public sealed partial class TopBarFeature : IFeature
         o.Remove("ev");
         if (kind == "focus")
         {
-            if (!B(o, "self")) { _focus = o; _ = Run(async () => { await Decide("focus"); return null; }, "focus"); }
+            if (!B(o, "self")) { _focus = o; UiaFor(o); _ = Run(async () => { await Decide("focus"); return null; }, "focus"); }
         }
         else if (kind == "title" && _focus != null && S(_focus, "hwnd") == S(o, "hwnd"))
         {
@@ -550,7 +550,7 @@ public sealed partial class TopBarFeature : IFeature
         if (w.Ok && _fixture == null && w.Result.ValueKind == JsonValueKind.Object && w.Result.TryGetProperty("focus", out var fo) && fo.ValueKind == JsonValueKind.Object)
         {
             var o = JsonNode.Parse(fo.GetRawText()) as JsonObject;
-            if (o != null && !B(o, "self")) { _focus = o; Broadcast("topbar.focus", FocusPayload()); }
+            if (o != null && !B(o, "self")) { _focus = o; UiaFor(o); Broadcast("topbar.focus", FocusPayload()); }
         }
         await GameCheck();   // TOP-272: a game already running (Mantle restarted mid-game): the strip is not taken at all
         await Decide(why);

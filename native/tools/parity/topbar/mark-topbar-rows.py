@@ -109,6 +109,40 @@ put(['TOP-368'], 'tested:' + HT + 'Light_theme_keeps_nothing_and_drops_a_kept_wi
 put(['TOP-369'], 'tested:' + HT + 'None_forgets_the_window_and_a_disconnect_drops_all_its_hints_TOP_369')
 put(['TOP-370'], 'tested:' + HT + 'At_most_32_clients_and_64_windows_a_client_each_reason_logged_once_a_minute_TOP_370')
 put(['TOP-371'], 'tested:' + HT + 'A_real_pipe_busy_says_so_retries_and_then_takes_a_client_TOP_362_371')
+# part 9: hot corners, known games, the strip races, the window fight, Explorer, session end, health / start / stop
+F9 = 'Mantle.Core.Tests/Features/TopBar/TopBarFeatureTests.Lifecycle.cs#'
+U9 = 'Mantle.UiTests/TopBar/TopBarLifecycleTests.cs#'
+put(['TOP-297'], 'tested:' + F + 'An_active_hot_corner_takes_its_square_from_the_peek_an_off_one_takes_nothing_TOP_297')
+KG = F9 + 'A_known_game_running_steps_aside_with_the_strip_let_go_and_comes_back_when_it_exits_TOP_267_268_269_270_271'
+put(['TOP-268', 'TOP-271'], 'tested:' + KG)
+put(['TOP-270'], 'tested:' + KG + ', ' + F9 + 'A_game_driven_hub_feeds_the_bar_and_a_hidden_bar_keeps_its_peek_off_while_a_game_runs_TOP_267_270')
+put(['TOP-272', 'TOP-251'], 'tested:' + F9 + 'Mantle_restarted_mid_game_checks_for_games_before_the_reserve_so_the_strip_is_never_taken_TOP_272_251')
+put(['TOP-252'], 'tested:' + F9 + 'A_game_starting_while_a_reserve_is_on_its_way_lets_the_strip_go_again_at_once_TOP_252_250')
+put(['TOP-258'], 'tested:' + F9 + 'Session_end_lets_the_strip_go_at_once_and_nothing_takes_it_again_TOP_258')
+put(['TOP-380'], 'tested:' + F9 + 'Health_names_the_window_fight_first_then_the_game_watch_and_drops_the_fight_while_hidden_TOP_380_230')
+put(['TOP-381'], 'tested:' + F9 + 'A_new_sidecar_reruns_the_whole_start_TOP_381')
+put(['TOP-382'], 'tested:' + F9 + 'Stop_ends_the_loops_then_turns_the_watch_guard_and_stats_off_and_lets_the_strip_go_TOP_382')
+DR = F9 + 'Drift_three_free_put_backs_then_a_backoff_that_never_gives_up_and_one_line_when_it_stays_TOP_227_228_229_230_231'
+put(['TOP-229', 'TOP-231'], 'tested:' + DR)
+put(['TOP-230'], 'tested:' + DR + ', ' + F9 + 'Health_names_the_window_fight_first_then_the_game_watch_and_drops_the_fight_while_hidden_TOP_380_230')
+put(['TOP-013', 'TOP-016', 'TOP-011'], 'tested:' + F9 + 'An_app_with_only_a_UI_Automation_menu_is_read_once_per_window_and_a_failed_read_keeps_its_reason_TOP_013_016_011')
+put(['TOP-224'], 'tested:' + F9 + 'An_open_menu_grows_the_window_to_its_full_height_and_closing_with_refocus_gives_the_app_its_keyboard_back_live_only_TOP_224_225')
+put(['TOP-225'], 'tested:' + F9 + 'An_open_menu_grows_the_window_to_its_full_height_and_closing_with_refocus_gives_the_app_its_keyboard_back_live_only_TOP_224_225, ' + F9 + 'A_test_run_never_hands_the_keyboard_to_another_app_on_close_TOP_225')
+# n/a natively, each with its reason
+put(['TOP-376'], "n/a:no renderer page natively: the strip is XAML in Mantle's own process, so a crash there is Mantle's crash (the supervisor restarts Mantle, CORE crash road)")
+put(['TOP-377'], "n/a:no page is loaded natively: the strip is built in code at start (topbar: made), so there is no load to fail")
+put(['TOP-378'], "n/a:no separate page process to hang: a hung UI thread is Mantle's own hang (the supervisor's watchdog)")
+put(['TOP-379'], "n/a:no page load natively: the zoom pin has no equivalent (XAML lays out in the window's DIP), the theme and look are applied when the surface is made and on each theme event")
+put(['TOP-006'], "n/a:natively the window is always the display's exact width (Place() sizes it to the monitor and the drift put-back, TOP-227, restores it), so no strip can be wider than its screen")
+put(['TOP-007'], "n/a:no zoom guess natively: XAML lays out in the window's own DIP, so a width bounce leaves nothing to undo")
+if ui:
+    put(['TOP-267', 'TOP-269'], 'tested:' + U9 + 'A_known_game_starting_takes_the_bar_away_and_its_exit_brings_it_back, ' + KG)
+    put(['TOP-227', 'TOP-228'], 'tested:' + U9 + 'A_moved_window_is_put_back_and_Explorer_coming_back_asks_for_the_strip_again, ' + DR)
+    put(['TOP-250'], 'tested:' + U9 + 'A_moved_window_is_put_back_and_Explorer_coming_back_asks_for_the_strip_again, ' + F9 + 'Live_Explorer_restarted_reserves_again_and_checks_the_work_area_TOP_250')
+# ported, no test of their own: the put-back before a show and a fight paused while hidden (TOP-232), the focus
+# details the surface already had (TOP-012 close on another window, TOP-014 title / menuChanged, TOP-015 geometry,
+# TOP-017 close), and the host's replay standing in for the page's hello (TOP-010)
+if len(sys.argv) > 3: put(['TOP-232', 'TOP-012', 'TOP-014', 'TOP-015', 'TOP-017', 'TOP-010'], 'ported:' + sys.argv[3])
 # rows ported in part 4 that a UI test now covers (only these are upgraded from ported to tested)
 upgrade = {'TOP-071': 'tested:' + MU, 'TOP-030': 'tested:' + MU} if ui else {}
 done = 0
