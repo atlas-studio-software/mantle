@@ -140,7 +140,14 @@ public sealed partial class BarWindow
         Dock.LayoutUpdated += (_, _) => { if (_cellsDirty && _benchOut != null) WriteCells(); };
         HookDrag();   // drag to reorder (BarWindow.Drag.cs)
         HookOverflow();   // the fit and "+N" (BarWindow.Overflow.cs)
-        if (Host.Args.Test) StartUiBeat();
+        if (Host.Args.Test) {
+            // the beat watches for a stalled UI thread while the strip can be clicked; hidden, nothing can be, and
+            // the beat would be the one periodic waker in a hidden-at-rest idle reading (a cost real users never pay)
+            Hiding += _ => StopUiBeat("the bar is hiding");
+            Revealed += () => StartUiBeat("the bar was revealed");
+            if (FrameMode != "hover") StartUiBeat("start");
+            else Host.Log.Line("bar tasks: test: UI beat waits for the first reveal (the bar is hidden at rest)");
+        }
     }
 
     void StopTasks() { FlyTeardown("the bar is closing"); _beat?.Dispose(); _tasks?.Dispose(); }
@@ -153,8 +160,18 @@ public sealed partial class BarWindow
     long _beatQueued;
     bool _beatSaid;
 
-    void StartUiBeat()
+    void StopUiBeat(string why)
     {
+        if (_beat == null) return;
+        _beat.Dispose(); _beat = null;
+        Host.Log.Line($"bar tasks: test: UI beat stopped ({why})");
+    }
+
+    void StartUiBeat(string why)
+    {
+        if (_beat != null) return;
+        Host.Log.Line($"bar tasks: test: UI beat started ({why})");
+        _beatSaid = false;
         var q = DispatcherQueue;
         _beat = new System.Threading.Timer(_ => {
             long now = Environment.TickCount64, was = System.Threading.Interlocked.Read(ref _beatQueued);
@@ -164,7 +181,9 @@ public sealed partial class BarWindow
             }
             System.Threading.Interlocked.Exchange(ref _beatQueued, now);
             q.TryEnqueue(() => {
-                long late = Environment.TickCount64 - System.Threading.Interlocked.Exchange(ref _beatQueued, 0);
+                long queued = System.Threading.Interlocked.Exchange(ref _beatQueued, 0);
+                if (queued == 0) return;
+                long late = Environment.TickCount64 - queued;
                 _beatSaid = false;
                 if (late >= 500) Host.Log.Line($"bar tasks: test: the UI thread ran queued work {late} ms late");
             });
