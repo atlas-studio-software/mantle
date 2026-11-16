@@ -109,6 +109,8 @@ public class DownloadsKeysTests
                 "the second Enter was not held back; the log's end:\n" + string.Join("\n", FrameProbe.Log(dir).Split('\n').TakeLast(25)));
             Thread.Sleep(600);
             Assert.AreEqual(before + 2, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "two quick Enters opened more than once");
+            // the press's repaint (busy) and its answer's (the note) fill the rows in place: the keyboard stays on row 1
+            Assert.IsTrue(El(w, "dl.row.0").Properties.HasKeyboardFocus.ValueOrDefault, "the first row lost the keyboard focus to the repaints after the Enters");
 
             // BAR-890: Esc closes the shelf and hands the keyboard back
             Keyboard.Type(VirtualKeyShort.ESCAPE);
