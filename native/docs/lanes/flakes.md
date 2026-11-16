@@ -159,3 +159,8 @@ for the JumpList change): 10 tests a pass.
   did not appear in 20 s"; once before, 11-11) and `Right_cluster_buttons_invoke_without_crashing` (no
   `bar.start` found in 8 s, though the id list read right after has it). None of them calls `TaskbarAutoHide`
   past the assembly setup, opens the "+N" panel or the app menu, or reads the theme probe. Not traced here.
+- Full run 43850529950 at bded7a0c (the same code): NATIVE-CI: FAILED (ui failed; 16 ok, 0 skipped). UI 87 of 88:
+  the four flakes and the three failures above all passed; the one failure is the corners lane's new
+  `CornersRowTests.The_row_shows_the_corners_like_the_screen_a_chip_saves_at_once_and_one_corner_opens_at_a_time`
+  (merged from native/main 78ee12dd): "the sub-caption says Unavailable ... This bar has no road to Mantle's
+  commands", at CornersRowTests.cs line 42, 0.3 s into the app's start. Not this lane's code; not traced here.
