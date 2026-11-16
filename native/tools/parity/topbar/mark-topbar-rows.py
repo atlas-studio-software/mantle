@@ -97,6 +97,18 @@ if ui:
 # ported, no test of their own: the router / list / row failure lines (TOP-152), the key order (TOP-091: the ping name box
 # first; app power is not native, so the in-menu name box and the menu keys follow)
 if len(sys.argv) > 3: put(['TOP-152', 'TOP-091'], 'ported:' + sys.argv[3])
+# part 8: the top-row hints receiver (TopRowHints.cs; TOP-372..375 are the colour layer's, the glass lane's)
+HT = 'Mantle.Core.Tests/Features/TopBar/TopRowHintsTests.cs#'
+put(['TOP-362'], 'tested:' + HT + 'A_real_pipe_busy_says_so_retries_and_then_takes_a_client_TOP_362_371, ' + HT + 'A_test_run_never_takes_the_live_pipe')
+put(['TOP-363'], 'tested:' + HT + 'The_protocol_v1_messages_and_what_is_refused_TOP_363')
+put(['TOP-364'], 'tested:' + HT + 'Cols_4096_are_taken_and_averaged_down_to_480_TOP_364')
+put(['TOP-365'], 'tested:' + HT + 'A_line_over_8_KB_is_counted_and_dropped_and_an_exactly_8_KB_CRLF_line_is_taken_TOP_365')
+put(['TOP-366'], 'tested:' + HT + 'Seq_must_increase_per_window_and_a_new_connection_may_start_over_TOP_366')
+put(['TOP-367'], 'tested:' + HT + 'The_senders_window_is_checked_once_and_only_the_apps_process_is_taken_TOP_367')
+put(['TOP-368'], 'tested:' + HT + 'Light_theme_keeps_nothing_and_drops_a_kept_window_on_its_next_look_TOP_368')
+put(['TOP-369'], 'tested:' + HT + 'None_forgets_the_window_and_a_disconnect_drops_all_its_hints_TOP_369')
+put(['TOP-370'], 'tested:' + HT + 'At_most_32_clients_and_64_windows_a_client_each_reason_logged_once_a_minute_TOP_370')
+put(['TOP-371'], 'tested:' + HT + 'A_real_pipe_busy_says_so_retries_and_then_takes_a_client_TOP_362_371')
 # rows ported in part 4 that a UI test now covers (only these are upgraded from ported to tested)
 upgrade = {'TOP-071': 'tested:' + MU, 'TOP-030': 'tested:' + MU} if ui else {}
 done = 0
