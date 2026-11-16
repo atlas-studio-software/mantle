@@ -115,7 +115,7 @@ public sealed partial class GlassTests
         string dir = FrameProbe.NewDir("glass-desk");
         string still = Path.Combine(dir, "still.png");
         WritePng(still);
-        var env = new Dictionary<string, string> { ["LOOK_SYNC_DIR"] = Fixture("desk", still), ["MANTLE_TEST_GLASS"] = "", ["MANTLE_TEST_DESKTOP"] = DesktopSurfaceTests.Fixture };
+        var env = new Dictionary<string, string> { ["LOOK_SYNC_DIR"] = Fixture("desk", still), ["MANTLE_TEST_GLASS"] = "", ["MANTLE_TEST_DESKTOP"] = Mantle.UiTests.Desktop.DesktopSurfaceTests.Fixture };
         using var app = BarApp.Launch("glass-desk-" + Guid.NewGuid().ToString("N")[..4], theme: "dark", env: env, extra: new[] { "--bench-out=" + dir });
         int pid = app.Proc.Id;
         IntPtr layer = Host.Until(() => FrameProbe.Find(pid, "Mantle desktop") is var h && FrameProbe.Showing(h) ? (object)h : null, 15000) is IntPtr l ? l : IntPtr.Zero;

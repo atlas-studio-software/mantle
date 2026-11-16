@@ -28,10 +28,23 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
   and translate (monitor origin - layer origin) / scale. A move sets the translation and re-reads the band's need (a max
   over a few numbers, no pixel work); the tint is said in the log when it changes. `At(hwnd, element)` is an origin for
   layers placed by layout (the sum of ActualOffset up the tree, so a sliding or rising pane is lined up at rest).
+- `Mantle.App/Shell/Glass/GlassBox.cs` (part 2): the look inside a rounded box that layout places in a bigger window. The
+  picture and the tint go INSIDE the box under its body, out under its hairline (a negative margin of the border), and the
+  hairline is drawn again over them; the box's padding moves to an inner border (the layout is the same), its fill is kept
+  for the plain case and swapped for a clear brush (it still takes clicks). Inside, so the box's opacity, motion and size
+  carry them. `MenuGlass`: one layer per top bar dropdown level, handed to each new box of that level (the stat dropdown
+  is drawn again with each reading), so a redraw neither decodes nor logs; the menu closing puts them down.
+- `GlassLayer.Moved` says nothing when neither the offset nor the tint moved (the top bar is placed again at every menu
+  open, in the same place).
 - Hooks: `Shell/Popup/PopupWindow.cs` (all bar pop-ups), `Surfaces/Launcher/LauncherSurface.cs` (the pane),
   `Surfaces/Osd/OsdSurface.cs` (the pill/panel, under its 1 px edge too), `Surfaces/Toasts/ToastsSurface.cs` (each card).
+  Part 2: `Surfaces/TopBar/TopBarSurface.cs` (the strip: `MakeGlass`, the face's fill, show / hide / theme / destroy; one
+  line each in `TopBarSurface.Menus.cs` and `.Stats.cs` to dress a dropdown box and line it up after layout),
+  `Surfaces/Desktop/DeskPanes.cs` (a GlassBox per pane), `DesktopSurface.cs` / `.Remake.cs` (up, down, moved, laid out,
+  release), `DeskMenuWindow.cs` (the panel; its origin is the window's plus the 20 DIP clear margin).
 - `MANTLE_TEST_GLASS=electron` (test runs only): the old look, set by the Electron pair harnesses (bar, launcher, qs,
-  cal, notifs, media, previews, osd). The strip pairs do not need it (that window does not have the look).
+  cal, notifs, media, previews, osd; part 2: topbar, desktop). The strip pairs do not need it (that window does not have
+  the look).
 
 ## Why this way
 - The tint is a separate layer over the picture, so a theme or Dim change never touches the bitmap, and one bitmap
@@ -53,7 +66,21 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
 - GlassTests (blocks fixture, Dim .40 dark / .35 light): pop-ups raised by the guard to .76 dark / .49 light, worst
   channel error 0-1 of 6 over 54-180 points; the OSD .68 (96 of 96 points, worst 1); the launcher .76 (4092 of 4092, worst 1).
 
+## Why this way (part 2)
+- The top bar replaces Electron's blurred picture of the desktop layer's strip AND its colour under (TOP-190..198,
+  344..361) with the one look: the user's 2026-11-11 decision says the same in every state and one tint (CONTRACT:
+  'The same in every state. One look whatever is in front'). The top-row hints (TOP-372..375) only fed the colour under,
+  so they are n/a with the contract quoted; the receiver (TOP-362..371) is the top bar lane's and still runs.
+- The dropdowns and panes carry the look inside their box, not behind it: a dropdown slides in by a composition
+  Translation on its box and a pane fades by its own Opacity, so layers behind them would stay put or stay shown.
+- The light strip keeps its bottom hairline (it is there in every state, so it is not a line that comes and goes).
+
 ## Open questions for the user
+- **The top-row hints receiver.** With the colour under gone, the hints have nothing to paint; native still listens on the
+  pipe and forwards kept hints to the sidecar's `underhint`, which refuses them (said once). Retire the receiver and the
+  forward, or keep them listening in case the colour under ever comes back?
+- **TOP-181 / TOP-186's words.** A missing or unreadable still is said in the log (once per reason), not as the Mantle
+  menu's first row or a strip note as Electron's frost failures were. Should the bar say it on the strip too?
 - **The per-row profile in look.json.** CONTRACT.md defines no key for it, so it stays native-internal and the shared
   value stays `desktop.guard.<theme>` (NativeGuard.Entry, the same shape). Proposed, if Quartz and Helm should take the
   worst row over their own chrome too: `desktop.guard.<theme>.rows = { "stripDip": 8, "target": 4.5, "need": [0.30, ...] }`
@@ -74,7 +101,7 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
   0 / .30 now (and mark those golden cases as documented differences), or at the switch from Electron?
 
 ## Left (todo)
-- SEE-012 top bar (part 2); SEE-013 desktop layer and menu (part 2); SEE-015 Settings rows.
+- SEE-015 Settings rows. TOP-181's menu row and strip note; TOP-187's --lg-shadow under the light dropdowns.
 - SEE-019: counter-moving the picture during the entrance/exit motion. Not cheap: moving the picture element against
   the pane's composition Translation also moves its rounded clip (a gap of up to 8 DIP at one edge while the pane still
   shows), and animating the ImageBrush's transform is a dependent (UI-thread) animation that can lag the compositor's.
