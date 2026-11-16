@@ -67,11 +67,18 @@ public partial class TopBarSurfaceTests
         Assert.IsTrue(Host.Until(() => Height(bar) == barPx, 4000), "the window did not shrink back after the submenu's pick");
 
         // the keyboard after a real click on the glyph: Down x3, Enter runs "Windows Settings…" (TOP-083, TOP-087)
+        // (as TopBarStatTests: a bar handed the foreground takes keys only once it says where they go; run 43825704178
+        // sent them straight after Foreground and none arrived)
         var glyph = Find(win, "topbar.title.mantle").BoundingRectangle;
         ZOrder.Click(glyph.Left + glyph.Width / 2, glyph.Top + glyph.Height / 2);
         Host.LogContains(() => app.Log, "topbar: menu opened: mantle", "a real click on the glyph did not open its menu", 4000);
-        if (Win32.GetForegroundWindow() != bar) Console.WriteLine("the click did not give the bar the foreground; asking for it");
-        if (Win32.GetForegroundWindow() != bar) Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys");
+        if (Win32.GetForegroundWindow() != bar)
+        {
+            Console.WriteLine("the click did not give the bar the foreground; asking for it");
+            int acts = Count(app.Log, "topbar: window activated; keys go to ");
+            Assert.IsTrue(ZOrder.Foreground(bar), "the bar never took the foreground, so it cannot get keys");
+            Assert.IsTrue(Host.Until(() => Count(app.Log, "topbar: window activated; keys go to ") > acts, 4000), "the bar handed the foreground never said where its keys go");
+        }
         FrameProbe.Tap(0x28); FrameProbe.Tap(0x28); FrameProbe.Tap(0x28);
         Host.LogContains(() => app.Log, "topbar: key: ArrowDown", "the bar got no key", 4000);
         FrameProbe.Tap(0x0D);
