@@ -503,6 +503,7 @@ internal sealed partial class TopBarSurface : ISurface
         int w = r.Right - r.Left, h = (int)Math.Round(_height * s, MidpointRounding.AwayFromZero);
         _bar.Height = TopBarRules.BarDip;
         _root.Height = _height;
+        _want = (r.Left, r.Top, w, s);   // TOP-227: where it belongs (TopBarSurface.Drift.cs)
         Win32.SetWindowPos(_hwnd, IntPtr.Zero, r.Left, r.Top, w, h, Win32.SWP_NOACTIVATE | Win32.SWP_NOZORDER);
         FrameNative.GetWindowRect(_hwnd, out var got);
         int gh = got.Bottom - got.Top;
@@ -536,6 +537,10 @@ internal sealed partial class TopBarSurface : ISurface
             case 0x007E: kind = "metrics"; changed = new[] { "bounds" }; break;                               // WM_DISPLAYCHANGE
             case 0x02E0: kind = "metrics"; changed = new[] { "scaleFactor" }; break;                          // WM_DPICHANGED (after WinUI's own handler)
             case 0x001A when wp == new IntPtr(0x2F): kind = "metrics"; changed = new[] { "workArea" }; break;  // WM_SETTINGCHANGE SPI_SETWORKAREA
+            case 0x0047: _ctx.Dispatcher.TryEnqueue(DriftHeard); break;                                       // WM_WINDOWPOSCHANGED: TOP-227 drift
+            case var m when m == TaskbarCreatedMsg && m != 0:                                                  // TOP-250: Explorer restarted
+                _ctx.Dispatcher.TryEnqueue(() => { _ctx.Log.Line("Explorer is back (TaskbarCreated)"); _ = _ctx.CallAsync("topbar.shell", new JsonObject { ["why"] = "Explorer restarted" }); });
+                break;
         }
         if (kind != null)
         {
@@ -556,6 +561,7 @@ internal sealed partial class TopBarSurface : ISurface
 
     public void Destroy(string why)
     {
+        DriftStop();
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
         _noteT?.Stop(); _noteT = null;

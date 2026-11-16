@@ -39,7 +39,7 @@ public partial class TopBarSurfaceTests
         return psi;
     }
 
-    static App Launch(string profile, string theme = "light")
+    static App Launch(string profile, string theme = "light", Action<ProcessStartInfo>? env = null)
     {
         Host.Guard();
         Win32.DpiAware();
@@ -48,6 +48,7 @@ public partial class TopBarSurfaceTests
         Directory.CreateDirectory(ud);
         var psi = Start(profile, ud, theme);
         psi.RedirectStandardOutput = false; psi.RedirectStandardError = false;
+        env?.Invoke(psi);
         var app = new App { Proc = Host.Track(Process.Start(psi)!), Ud = ud, Profile = profile };
         var h = Host.Until(() => app.Proc.HasExited ? (object)"exited" : Bar(app) is var b && b != IntPtr.Zero ? (object)b : null, 30000);
         if (h is not IntPtr) Assert.Fail(h is string ? $"the app exited (code {app.Proc.ExitCode}) before its top bar was made" : "no '" + Title + "' window in 30 s:\n" + Tail(app.Log));
