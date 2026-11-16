@@ -414,6 +414,14 @@ this area.
 - **n/a rows:** TOP-376..379 (no renderer page), TOP-006/007 (the window is always the display's width; no zoom guess).
 - **Shared lines:** App.xaml.cs 1 line (session end). TopBarSurface.cs, non-backdrop lines only: `_want = ...` in
   Place, two cases in Proc (WM_WINDOWPOSCHANGED, TaskbarCreated), `DriftStop()` in Destroy.
+- **Runs:** fast 43854706570 (build: the `Run` name clash), 43855244202 (test build errors; ui 90 of 91, the idle
+  test light hidden 1.25 %), 43857502511 (unit 1017 of 1018: a JSON-escaped apostrophe in the UIA test; ui 90 of 91:
+  the corners row test "This bar has no road to Mantle's commands", the corners lane's; idle passed, light hidden
+  0.104 %, dark 0.937 %). The idle readings at the same code ranged 0.104..1.25 % (15 s window, 0.104 % a tick), so
+  the 1.25 % was tick noise. No part 9 timer runs at rest. Full **43859548470 at 9d9a6873: `NATIVE-CI: ok (17 ok,
+  0 skipped: )`**, unit 1018 of 1018, ui 91 of 91.
+- **Ledger:** `mark-topbar-rows.py native ui 9d9a6873` marked 36 rows. TOP rows: 191 tested, 25 ported, 2 better,
+  6 n/a, 158 todo (of 382). Part 8 ended with 157 / 19 / 2 / 0 / 204; the 10 hints rows were part of the 34 more tested.
 - **Not done (budget):** TOP-003 menubar role (needs custom automation peers), Tools (TOP-211), TOP-091's UI test.
 
 ## Left (exact list, in order)
