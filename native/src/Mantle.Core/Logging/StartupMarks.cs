@@ -20,6 +20,8 @@ public sealed class StartupMarks
 
     public readonly record struct Mark(string Name, long UnixMs, double SinceStartMs, double SinceMainMs);
 
+    /// The Stopwatch timestamp when this object was made (first thing in Main), for "+N ms after Main" elsewhere.
+    public long MainTicks => _mainTicks;
     /// Unix ms of the process start, as the OS recorded it.
     public long ProcessStartUnixMs { get; }
     /// Unix ms when this object was made (first thing in Main).

@@ -35,7 +35,7 @@ public sealed class StateFeed
     readonly Func<Action, bool> _postUi;
     readonly Action<string> _log;
     readonly object _gate = new();
-    readonly List<Action<ShellState>> _handlers = new();
+    readonly List<(Action<ShellState> H, string? Who)> _handlers = new();
     ShellState? _pending;
     bool _queued;
 
@@ -67,16 +67,18 @@ public sealed class StateFeed
         lock (_gate) { s = _pending!; _pending = null; _queued = false; }
         Current = s;
         Deliveries++;
-        foreach (var h in _handlers.ToArray()) {
-            try { h(s); } catch (Exception e) { _log($"surfaces: a state handler failed ({e.GetType().Name}: {e.Message})"); }
+        foreach (var (h, who) in _handlers.ToArray()) {
+            try { UiSlice.Run("a new state", who, h, s); } catch (Exception e) { _log($"surfaces: a state handler failed ({e.GetType().Name}: {e.Message})"); }
         }
     }
 
     /// Each new snapshot, on the UI thread (UI thread).
-    public IDisposable Subscribe(Action<ShellState> handler)
+    /// <paramref name="who"/> names the handler for the start-up stall meter (<see cref="UiSlice"/>).
+    public IDisposable Subscribe(Action<ShellState> handler, string? who = null)
     {
-        _handlers.Add(handler);
-        return new Undo(() => _handlers.Remove(handler));
+        var e = (handler, who);
+        _handlers.Add(e);
+        return new Undo(() => _handlers.Remove(e));
     }
 
     internal sealed class Undo : IDisposable
@@ -122,7 +124,7 @@ public sealed class SurfaceLink : IDisposable
 
     public IDisposable OnState(Action<ShellState> handler)
     {
-        var d = _w.Feed.Subscribe(s => { if (!_gone) handler(s); });
+        var d = _w.Feed.Subscribe(s => { if (!_gone) handler(s); }, Name);
         _subs.Add(d);
         return d;
     }
@@ -162,7 +164,7 @@ public sealed class SurfaceLink : IDisposable
                     if (sub.Off) return;
                     _w.PostUi(() => {
                         if (sub.Off || _gone) return;
-                        try { handler(p); } catch (Exception e) { Log.Line($"its \"{ev}\" handler failed ({e.GetType().Name}: {e.Message})"); }
+                        try { UiSlice.Run(ev, Name, handler, p); } catch (Exception e) { Log.Line($"its \"{ev}\" handler failed ({e.GetType().Name}: {e.Message})"); }
                     });
                 });
             } catch (Exception e) { Log.Line($"could not subscribe \"{ev}\": {e.Message}"); }

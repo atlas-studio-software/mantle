@@ -116,7 +116,9 @@ internal sealed class CornersRow
         // the feature publishes a JsonObject (ctx.Broadcast), so that is the type heard here
         if (_link != null) _sub = _link.On<JsonObject>("corners.state", o => Take(JsonDocument.Parse(o.ToJsonString()).RootElement.Clone()));
         Paint();
-        if (_link == null) { _log("qs: hot corners row: no link to the host"); Take(Err("this bar has no road to Mantle's commands")); return; }
+        // opened before the host handed the panel its road (a click in Mantle's first moments): "Loading…" stays, and the
+        // panel's Attach opens the row again once the road is there (QsPanel.Attach), so the row never says "no road"
+        if (_link == null) { _log("qs: hot corners row: no link to the host yet (Mantle is still starting); it reads once the link is there"); return; }
         var r = await _link.CallAsync("corners.state");
         if (!(r.Ok && r.Result.ValueKind == JsonValueKind.Object)) _log($"qs: hot corners row: corners.state did not answer: {(r.Ok ? "an answer that is not an object (" + r.Result.ValueKind + ")" : r.Error ?? "no reason")}");
         Take(r.Ok && r.Result.ValueKind == JsonValueKind.Object ? r.Result : Err(r.Error ?? "no answer"));

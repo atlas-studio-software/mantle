@@ -84,8 +84,8 @@ internal sealed partial class BarTasksHost : IDisposable
             Platform = platform, Host = host, PinsDir = dir, PinsNote = note, ReadFavorites = fav, UserData = Host.Paths.DataRoot,
             Overlay = overlay, Test = Host.Args.Test, OrderFailForTest = orderFail,
             Log = _log, Actions = new BarTaskActions(platform, _ui, Host.Args.Kind == RunKind.Live, _log),
-            Publish = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
-            Marks = list => _ui.TryEnqueue(() => { Last = list; Changed?.Invoke(); }),
+            Publish = list => _ui.TryEnqueue(() => Mantle.Core.Logging.UiSlice.Run("the strip's new list", null, () => { Last = list; Changed?.Invoke(); })),
+            Marks = list => _ui.TryEnqueue(() => Mantle.Core.Logging.UiSlice.Run("the strip's new marks", null, () => { Last = list; Changed?.Invoke(); })),
             WindowsProblem = p => _ui.TryEnqueue(() => { if (WindowsProblem == p) return; WindowsProblem = p; Changed?.Invoke(); }),
         });
         // the right-click menu (lib/features/jumplist.js): its pin rows write the same store as the dragged order

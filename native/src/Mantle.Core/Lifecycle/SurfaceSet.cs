@@ -139,7 +139,7 @@ public sealed class SurfaceSet
         ISurfaceInstance? it = null;
         try {
             it = s.Spec.Make();
-            it.Create();
+            Mantle.Core.Logging.UiSlice.Run("making the surface", s.Spec.Name, it.Create);
             s.It = it; s.Phase = SurfacePhase.Made; s.Reason = "made " + how;
             Log($"surface {s.Spec.Name}: made {how}");
             return true;

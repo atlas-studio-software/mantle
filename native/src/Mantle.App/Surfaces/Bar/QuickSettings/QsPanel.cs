@@ -229,6 +229,15 @@ internal sealed partial class QsPanel
         _ = TilesRefresh();  // warmed at start (lib/features/qstiles.js reads 3 s after the helper is up)
         _ = Snapshot();      // warmed at start, so the first open draws real values in its first frame
         _ = ReadPowerMode();
+        // lane native-r8-startup: the bar is up and clickable before the host thread hands over this road, so a click in
+        // Mantle's first moments can open the panel with no road yet. Its open-time reads and its watch could not be made
+        // then; they are made now, so the open panel fills in instead of keeping "no road" until it is opened again.
+        if (Open) {
+            _log("qs: the panel was opened before the host was up; its rows read now");
+            _ = _gm.Opened(_dark);
+            _ = _corners.Opened(_dark);
+            _ = link.CallAsync("qs.watch", new JsonObject { ["on"] = true });
+        }
     }
 
     /// Set by the bar while the pop-up is open.
