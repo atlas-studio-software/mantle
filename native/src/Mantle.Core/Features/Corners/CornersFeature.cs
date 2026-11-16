@@ -33,12 +33,14 @@ public sealed class CornersFeature : IFeature
     CornerTable _actions = CornerRules.Defaults;
     CornerState _st = CornerRules.StartState();
     IDisposable? _timer;
-    bool _watching, _busy, _stopped, _unhealthy;
+    ICornerWatch? _watch;
+    readonly CornerFilter _filter = new();
+    bool _watching, _busy, _stopped, _unhealthy, _polling;
     string _watchWhy = "not started yet";
     IReadOnlyList<DipRect> _displays = Array.Empty<DipRect>();
     long _displaysAt = long.MinValue;
     JsonObject? _last;
-    readonly Dictionary<string, string> _fails = new();
+    readonly Dictionary<string, (string Action, string Said)> _fails = new();
     readonly List<string> _testGames = new();
     readonly CornerClaims _claims;
 
@@ -150,12 +152,42 @@ public sealed class CornersFeature : IFeature
         _displaysAt = long.MinValue;
         ReadDisplays();
         _claims.Set(_actions, _displays);
+        _filter.Table = _actions; _filter.Displays = _displays;
         var p = _displays.Count > 0 ? _displays[0] : new DipRect(0, 0, 0, 0);
         _watchWhy = "watching";
-        _ctx.Log($"watching the corners ({Summary(_actions)}) of the {p.Width}x{p.Height} DIP screen: a {CornerRules.CornerZoneDip} DIP square each, {CornerRules.CornerDwellMs} ms at rest fires once, polled every {CornerRules.CornerPollMs} ms ({why})");
+        // better than Electron's 100 ms poll: the cursor's own move event, so a resting pointer costs nothing (CORN-008)
+        var (w, werr) = _pointer!.Watch(_filter, () => _clock.Post(OnWake));
+        _watch = w; _polling = w == null;
+        string how = w != null ? "looked at only when the pointer moves near an active corner (no poll at rest)"
+            : $"polled every {CornerRules.CornerPollMs} ms (the pointer watch could not start: {werr})";
+        _ctx.Log($"watching the corners ({Summary(_actions)}) of the {p.Width}x{p.Height} DIP screen: a {CornerRules.CornerZoneDip} DIP square each, {CornerRules.CornerDwellMs} ms at rest fires once, {how} ({why})");
         Broadcast();
-        _timer = _clock.Later(TimeSpan.FromMilliseconds(CornerRules.CornerPollMs), Tick);
+        if (_polling) _timer = _clock.Later(TimeSpan.FromMilliseconds(CornerRules.CornerPollMs), Tick);
+        else Look();   // where the cursor is now: in a corner, the watch starts disarmed until it leaves
     }
+
+    /// The watch heard a move near an active corner (or the one leaving it), on the host thread.
+    void OnWake()
+    {
+        _watch?.Taken();
+        if (_watching && !_stopped) Look();
+    }
+
+    /// One look; while the cursor dwells in a corner, the next look 100 ms on (the dwell needs the time to pass, and a
+    /// button going down in it disarms). Fired, disarmed, idle: no timer; the next move wakes it.
+    void Look()
+    {
+        Looks++;
+        try { Poll(); }
+        catch (Exception e) { _ctx.Log($"a corner poll threw: {e.Message}"); }
+        if (_watching && !_stopped && _timer == null && _st.Phase == "dwell")
+            _timer = _clock.Later(TimeSpan.FromMilliseconds(CornerRules.CornerPollMs), Tick);
+    }
+
+    /// Every look the watch made (the unit tests' at-rest number).
+    public int Looks { get; private set; }
+    /// True when the pointer could not be watched and the 100 ms poll runs instead.
+    public bool Polling => _polling && _watching;
 
     void Say(bool watching, string reason, string why)
     {
@@ -167,6 +199,7 @@ public sealed class CornersFeature : IFeature
     void Halt(string? why)
     {
         _timer?.Dispose(); _timer = null;
+        _watch?.Dispose(); _watch = null;
         bool was = _watching;
         _watching = false;
         _claims.Set(null);
@@ -179,13 +212,14 @@ public sealed class CornersFeature : IFeature
         if (now - _displaysAt < CornerRules.DisplaysMs && _displays.Count > 0) return;
         _displaysAt = now;
         var d = _pointer!.Displays();
-        if (d.Count > 0 && !d.SequenceEqual(_displays)) { _displays = d; if (_watching) _claims.Set(_actions, _displays); }
+        if (d.Count > 0 && !d.SequenceEqual(_displays)) { _displays = d; _filter.Displays = d; if (_watching) _claims.Set(_actions, _displays); }
     }
 
     void Tick()
     {
         _timer = null;
         if (!_watching || _stopped) return;
+        if (!_polling) { Look(); return; }
         try { Poll(); }
         catch (Exception e) { _ctx.Log($"a corner poll threw: {e.Message}"); }
         if (_watching && !_stopped) _timer = _clock.Later(TimeSpan.FromMilliseconds(CornerRules.CornerPollMs), Tick);
@@ -217,7 +251,7 @@ public sealed class CornersFeature : IFeature
             string? blocked = CornerRules.FireBlocker(scan, TestGame);
             if (_stopped || !_watching) { _ctx.Log($"{label}: not run: the corners stopped while the window in front was checked"); return; }
             if (blocked != null) {
-                _last = new JsonObject { ["corner"] = corner, ["action"] = action, ["blocked"] = blocked, ["at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
+                _last = new JsonObject { ["corner"] = corner, ["action"] = action, ["blocked"] = true, ["said"] = blocked, ["at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
                 _ctx.Log($"{label}: not run: {blocked}");
                 Fired?.Invoke(corner, action, null, blocked);
                 Broadcast();
@@ -225,7 +259,7 @@ public sealed class CornersFeature : IFeature
             }
             var o = await CornerActions.RunAsync(action, new Effects(this), _ctx.Flags.Test).ConfigureAwait(true);
             _last = new JsonObject { ["corner"] = corner, ["action"] = action, ["ok"] = o.Ok, ["dryRun"] = o.DryRun, ["said"] = o.Said, ["at"] = DateTimeOffset.UtcNow.ToUnixTimeMilliseconds() };
-            if (o.Ok) _fails.Remove(corner); else _fails[corner] = o.Said;
+            if (o.Ok) _fails.Remove(corner); else _fails[corner] = (action, o.Said);
             _ctx.Log(o.Ok ? $"{label}: {o.Said} ({why})" : $"{label}: FAILED: {o.Said} ({why})");
             Fired?.Invoke(corner, action, o, null);
             Broadcast();
@@ -300,7 +334,7 @@ public sealed class CornersFeature : IFeature
         var corners = new JsonArray(); foreach (var c in CornerRules.Corners) corners.Add((JsonNode)c);
         var choices = new JsonArray();
         foreach (var a in CornerRules.Actions) choices.Add((JsonNode)new JsonObject { ["id"] = a, ["label"] = CornerRules.ActionName(a) });
-        var fails = new JsonObject(); foreach (var (c, s) in _fails) fails[c] = s;
+        var fails = new JsonObject(); foreach (var (c, f) in _fails) fails[c] = new JsonObject { ["action"] = f.Action, ["said"] = f.Said };
         return new JsonObject {
             ["enabled"] = _ctx?.Enabled ?? false, ["test"] = _ctx?.Flags.Test ?? false, ["actions"] = acts, ["corners"] = corners,
             ["names"] = names, ["choices"] = choices, ["watching"] = _watching,
