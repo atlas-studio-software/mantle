@@ -15,6 +15,8 @@ public sealed class MenuLevel
 {
     public IReadOnlyList<TopBarItem> Items = Array.Empty<TopBarItem>();
     public int Sel = -1;
+    /// Popped in once in this menu session, when first seen (TOP-080): later re-renders never pop in again.
+    public bool Popped;
     public double X; public double? Y; public double? FlipX;
     /// The app's menu positions down to this level, and the labels along them (the UIA invoke's names).
     public IReadOnlyList<int> Path = Array.Empty<int>();

@@ -212,6 +212,8 @@ public partial class MantleApp : Application
         // ---- calendar wiring, part 1 (lane native-r7-calendar): [Feature("gcal")] keeps its files in <userData>\gcal (token.bin,
         // client.bin, cache.json) through the ONE write gate; a --test run never sends anything to Google (GcalFeature).
         Mantle.Core.Features.Calendar.GcalFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
+        // ---- top bar wiring (lane native-r7-topbar): the ping test history (ping-tests.json) in the data root, through the ONE write gate
+        Mantle.Core.Features.TopBar.TopBarFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
         // ---- game mode wiring (lane native-r7-media3): [Feature("gamemode")] keeps gamemode-restore.json in <userData> through
         // the ONE write gate; a --test run is a dry run (nothing sent) and reads only the test profile's record.
         Mantle.Core.Features.GameMode.GameModeFeature.Configure(new(Host.Paths.DataRoot, OwnPids: () => new[] { Environment.ProcessId }, Files: Host.Files));
@@ -257,6 +259,7 @@ public partial class MantleApp : Application
         _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => ThemeShown?.Invoke(p)); };
         ThemeNow = _look.Payload();
         _look.Start();
+        if (_queue != null) Mantle.App.Shell.Glass.DesktopGlass.Feed(_look.Look, _queue);   // the see-through look's still and tint (look.md)
         _look.FollowWindows(themeKey);   // Match Windows follows a change at once (RegNotifyChangeKeyValue), not by polling
         log($"theme: Mantle is {_look.Now}; the host's theme reaches {ThemeShown?.GetInvocationList().Length ?? 0} surface(s) directly" +
             (ThemeShown == null ? " (the bar still follows theme.json itself)" : ""));

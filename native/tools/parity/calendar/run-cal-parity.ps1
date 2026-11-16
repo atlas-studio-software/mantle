@@ -81,7 +81,7 @@ try {
     $tag = "cal-$theme"
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-calpar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GCAL = $state; $env:MANTLE_TEST_CAL_NOW = "$NowMs"
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_GCAL = $state; $env:MANTLE_TEST_CAL_NOW = "$NowMs"
     $prof = "calpar-$theme"
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $log = Join-Path $ud 'mantle-native.log'

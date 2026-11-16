@@ -284,13 +284,18 @@ public sealed class LookHost : IDisposable
             var g = (JsonObject)LookSyncCore.Clone(_glass[look])!;
             foreach (var k in new[] { "blurPx", "dim", "panel" })
                 if (patch.TryGetPropertyValue(k, out var v)) g[k] = LookSyncCore.TryNum(v, out var d) ? LookSyncCore.N(d) : LookSyncCore.N(double.NaN);
-            next = (JsonObject)LookSyncCore.Clone(_glass)!;
+            // glass.<theme>.dimAuto (CONTRACT 2026-11-11): kept on every write (the clone above), set only when asked; a
+            // value that is not true/false is refused by checkValue with its reason
+            bool autoAsked = patch.TryGetPropertyValue("dimAuto", out var au);
+            if (autoAsked) g["dimAuto"] = LookSyncCore.Clone(au);
+            next =(JsonObject)LookSyncCore.Clone(_glass)!;
             next[look] = g;
             string? bad = LookSyncCore.CheckValue("glass", next);
             if (bad != null) return Fail(Regex.Replace(bad, @"^glass\.(dark|light)\.", ""));
             _glass = next;
             Save();
-            Say($"look: {look} glass set in Mantle: blur {LookSyncCore.J(g["blurPx"])} dim {LookSyncCore.J(g["dim"])} panel {LookSyncCore.J(g["panel"])}");
+            Say($"look: {look} glass set in Mantle: blur {LookSyncCore.J(g["blurPx"])} dim {LookSyncCore.J(g["dim"])} panel {LookSyncCore.J(g["panel"])}" +
+                (autoAsked ? " dimAuto " + LookSyncCore.J(g["dimAuto"]) + " (" + global::Mantle.Core.Look.Wash.Alpha(new JsonObject { ["glass"] = LookSyncCore.Clone(next) }, null, look).Text + ")" : ""));
             Emit("glass");
         }
         string? note = await Share("glass", LookSyncCore.Clone(next)!).ConfigureAwait(false);
@@ -298,6 +303,46 @@ public sealed class LookHost : IDisposable
     }
 
     static JsonObject WithNote(JsonObject v, string? note) { if (note != null) v["note"] = note; return v; }
+
+    /// <summary>Settings' Dim slider (CONTRACT 2026-11-11): moving it writes the value AND <c>dimAuto: false</c> (the user
+    /// took over), for the look in effect unless <paramref name="look"/> names one. Native Settings is later (look.md SEE-015).</summary>
+    public Task<JsonObject> SetDimByHandAsync(double dim, string? look = null)
+    {
+        var p = new JsonObject { ["dim"] = dim, ["dimAuto"] = false };
+        if (look != null) p["look"] = look;
+        return SetGlassAsync(p);
+    }
+
+    /// <summary>Settings' "Auto" control: <c>dimAuto: true</c>, the Dim value kept (it is the floor of the automatic raise).</summary>
+    public Task<JsonObject> SetDimAutoAsync(string? look = null)
+    {
+        var p = new JsonObject { ["dimAuto"] = true };
+        if (look != null) p["look"] = look;
+        return SetGlassAsync(p);
+    }
+
+    /// <summary>The tint over the painted desktop in <paramref name="theme"/>: look-sync washAlpha over the glass Mantle shows
+    /// and the desktop record it paints, with the mode and the reason as words (WashResult.Text is Settings' row).</summary>
+    /// <param name="unusable">why the record's top band does not describe what the window paints now, else null</param>
+    public WashResult Wash(string theme, string? unusable = null)
+    {
+        JsonObject? record;
+        try { record = Sync.CurrentDesktop().Record; } catch { record = null; }
+        lock (_lock) return global::Mantle.Core.Look.Wash.Alpha(new JsonObject { ["glass"] = LookSyncCore.Clone(_glass) }, record, theme, unusable);
+    }
+
+    /// <summary>The desktop record's still (look.json <c>desktop.still</c>) and the record's rev, or null and why there is none.</summary>
+    public (string? Still, double Rev, string? Why) DesktopStill()
+    {
+        LookDesktop d;
+        try { d = Sync.CurrentDesktop(); } catch (Exception e) { return (null, 0, "the shared look could not be read (" + e.Message + ")"); }
+        if (d.Record is not JsonObject r) return (null, 0, d.Reason ?? "look.json has no desktop record from Mantle");
+        double rev = LookSyncCore.TryNum(r["rev"], out var rv) ? rv : 0;
+        if (LookSyncCore.IsBool(r["ok"], out var ok) && !ok)
+            return (null, rev, "Mantle has no desktop picture" + (LookSyncCore.Str(r["reason"]) is { Length: > 0 } why ? " (" + why + ")" : ""));
+        string? still = LookSyncCore.Str(r["still"]);
+        return string.IsNullOrEmpty(still) ? (null, rev, "the desktop record names no picture") : (still, rev, null);
+    }
 
     /// <summary>look.accent: <c>hue</c> null = Mantle's own; else an integer 0..360 (applied in dark only).</summary>
     public async Task<JsonObject> SetAccentAsync(JsonNode? hue)

@@ -49,8 +49,14 @@ internal sealed partial class TopBarSurface
 
     void InstallMenus()
     {
-        _win.Activated += (_, e) => { if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus"); };
+        _win.Activated += (_, e) =>
+        {
+            if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus");
+            else KeysHomeSoon();   // TopBarSurface.Motion.cs: the menu keys need the focus inside the bar
+        };
         _subs.Add(_ctx.On<bool>("topbar.peek", on => { _peeking = on; RefreshTitles(); }));
+        InstallPingTest();   // TopBarSurface.PingTest.cs
+        InstallDragEnd();    // TopBarSurface.Motion.cs
         _subs.Add(_ctx.On<JsonElement>("topbar.state", st =>
         {
             if (st.ValueKind == JsonValueKind.Object && st.TryGetProperty("overGames", out var og) && og.ValueKind is JsonValueKind.True or JsonValueKind.False)
@@ -154,7 +160,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         _open = null; _openKey = null;
-        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null;
+        _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null; _ptBox = null;
         _menus.Children.Clear(); _dds.Clear();
         _menus.Visibility = Visibility.Collapsed; _away.Visibility = Visibility.Collapsed;
         _asked = -1;
@@ -250,6 +256,7 @@ internal sealed partial class TopBarSurface
     {
         if (_open == null) return;
         var name = KeyName(e.Key);
+        if (PingKey(e, name)) return;   // TOP-091: the ping test's name box first (TopBarSurface.PingTest.cs)
         if (_open.Edit != null && _editBox != null && e.OriginalSource == _editBox && name is not ("Enter" or "Escape")) return;   // typing into the box
         if (name == null) return;
         _ctx.Log.Line($"key: {(name == " " ? "Space" : name)}");
@@ -367,6 +374,7 @@ internal sealed partial class TopBarSurface
             var box = new TextBox { Text = o.Edit!.Value.Value, MaxLength = 40, PlaceholderText = "Name it, e.g. Work", MinWidth = 150, Height = 20, MinHeight = 20, Padding = new Thickness(6, 0, 6, 0), FontSize = 12, IsSpellCheckEnabled = false };
             AutomationProperties.SetName(box, "Layout name");
             AutomationProperties.SetAutomationId(box, "topbar.menu.namebox");
+            NoClearButton(box);
             box.TextChanged += (_, _) => { if (_open?.Edit is { } e2) _open.Edit = (e2.Item, box.Text); };
             Grid.SetColumn(box, 1); g.Children.Add(box);
             _editBox = box;
@@ -383,6 +391,7 @@ internal sealed partial class TopBarSurface
         if (it.Checked) AutomationProperties.SetItemStatus(b, it.Radio ? "radio checked" : "checked");
         int li = level, ri = i;
         b.Click += (_, _) => { if (_open == o) Do(o.Activate(li, ri, NowMs, _focus, MenuSource())); };
+        if (!off) DragPick(b, () => { if (_open == o) Do(o.Activate(li, ri, NowMs, _focus, MenuSource())); });   // press on a title, release here
         b.PointerEntered += (_, _) => Hover(o, li, ri);
         return (b, b);
     }
@@ -442,6 +451,7 @@ internal sealed partial class TopBarSurface
             bool fits = d.Bottom <= _height + 0.5 || _open.GaveUp;
             d.Box.Opacity = fits ? 1 : 0;
             d.Box.IsHitTestVisible = fits;
+            if (fits) PopIn(d.Box, d.Lv);   // TOP-080 (TopBarSurface.Motion.cs)
             if (!fits) waiting++;
         }
         if (waiting == 0) { _waitT?.Stop(); return; }

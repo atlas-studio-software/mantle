@@ -20,7 +20,7 @@ How to read it:
     `live-only` means it can only be checked on a real desktop.
   - **Native** is the port status.
 
-## Counts (6,948 rows)
+## Counts (6,967 rows)
 
 | File | Rows | Prefixes |
 |---|---:|---|
@@ -33,6 +33,7 @@ How to read it:
 | [apps](docs/parity/apps.md) | 1445 | SHOT 254, PLAY 161, AUTO 132, NOTE 114, CLIPS 114, SPOT 113, REC 102, TIMER 81, APW 80, PROJ 62, LKA 59, MAXF 59, ONTOP 50, RAM 41, OCR 23 |
 | [core](docs/parity/core.md) | 207 | CORE 40, SAFE 37, WIN 34, KEY 30, FEAT 23, TRAY 22, LOG 21 |
 | [ship](docs/parity/ship.md) | 189 | UPD 58, DATA 49, PKG 36, INST 32, BOOT 14 |
+| [look](docs/parity/look.md) | 19 | SEE 19 (the see-through look, native only: washAlpha, dimAuto, the shared desktop-still backdrop, its windows) |
 | [sidecar](docs/parity/sidecar.md) | 119 | SC 119 (protocol, lanes, deadlines, hang handling, exit restore, hooks, guard and supervisor processes, elevation, build) |
 | **Total** | **6948** | |
 
