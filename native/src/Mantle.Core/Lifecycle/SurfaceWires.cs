@@ -149,9 +149,14 @@ public sealed class SurfaceLink : IDisposable
         return new ValueTask<CommandResult>(tcs.Task);
     }
 
+    /// bar.js on(): a subscription that could not be made, (event, reason), on the UI thread, when the caller gave no
+    /// <c>onFail</c> of its own (the bar shows it as the "Part of the bar not updating" chip, BAR-191).
+    public Action<string, string>? SubscribeFailed { get; set; }
+
     /// Subscribed on the host thread; every payload (the replayed current value first, when the event has a replay
-    /// source) is re-posted to the UI thread. Disposing it (UI thread) stops deliveries at once.
-    public IDisposable On<T>(string ev, Action<T> handler)
+    /// source) is re-posted to the UI thread. Disposing it (UI thread) stops deliveries at once. A subscription that
+    /// cannot be made is logged and said: <paramref name="onFail"/> (the caller's own words), else <see cref="SubscribeFailed"/>.
+    public IDisposable On<T>(string ev, Action<T> handler, Action<string>? onFail = null)
     {
         var sub = new EventSub();
         _subs.Add(sub);
@@ -165,7 +170,11 @@ public sealed class SurfaceLink : IDisposable
                         try { handler(p); } catch (Exception e) { Log.Line($"its \"{ev}\" handler failed ({e.GetType().Name}: {e.Message})"); }
                     });
                 });
-            } catch (Exception e) { Log.Line($"could not subscribe \"{ev}\": {e.Message}"); }
+            } catch (Exception e) {
+                Log.Line($"could not subscribe \"{ev}\": {e.Message}");
+                string why = e.Message;
+                _w.PostUi(() => { if (sub.Off || _gone) return; if (onFail != null) onFail(why); else SubscribeFailed?.Invoke(ev, why); });
+            }
         });
         sub.Unsubscribe = () => _w.PostHost(() => sub.Host?.Dispose());
         return sub;

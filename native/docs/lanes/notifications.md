@@ -69,12 +69,18 @@ BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host
 - `shell.restart` does not exist natively yet: the More menu's Restart says "Could not restart: restarting is not part of
   this build yet".
 - Nothing publishes `bar.winkey` natively yet (the switcher lane's hook); the bar listens for it.
-- Cards open on a pointer tap; keyboard focus / Enter (BAR-844) is not drawn (the bar's pop-ups never take the keyboard).
+- BAR-844 (media lane part 6, better): the centre takes the keyboard once it is on screen (PopupHost.OnScreen) and hands
+  it back on the close. It rests on a 0x0 stop first, so an Enter before any Tab presses nothing; Tab reaches Clear all,
+  the cards (a dead card is no stop: NotificationWords.TakesKeys) and their buttons; Enter opens a card, Esc closes. The
+  ring (light 1 px accent, dark 1.5 px pale) is drawn over the card for the keyboard only. A repaint keeps the focused
+  card. MANTLE_TEST_NOTIFS_KEYS=1 lets a test centre take the keyboard; a test run logs `notifs: key focus: card <id>`.
 - The edge bar's chip strip is not drawn (the island's pip stands for it, as before).
 
 ## Left
 
-- BAR-844 (keyboard on cards), BAR-856 (no panel fallback), BAR-191 (a push channel that cannot be subscribed).
+- BAR-856 is n/a (the centre is compiled in, it cannot be missing). BAR-191 is ported in SurfaceLink (onFail, else
+  SubscribeFailed -> the "Part of the bar not updating" chip through BarWindow.WatchChannels); the quick settings link
+  (its lane) does not call WatchChannels yet.
 - The calendar lane calls `OpenNotifications()` for BAR-855.
 
 ## State (part 2)

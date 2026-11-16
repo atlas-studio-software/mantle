@@ -70,6 +70,7 @@ public sealed partial class BarWindow
     /// key press for Windows' notification centre.
     internal void AttachCalendar(SurfaceLink link, Func<string, Task<string?>> keys)
     {
+        WatchChannels(link);   // BAR-191
         _calKeys = keys;
         if (_cal == null) { Host.Log.Line("cal: the host is up but the bar made no calendar, so nothing is attached"); return; }
         _cal.Attach(link);

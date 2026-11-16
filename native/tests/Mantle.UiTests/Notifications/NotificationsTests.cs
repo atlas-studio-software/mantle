@@ -1,6 +1,8 @@
 using System.Drawing;
 using System.Drawing.Imaging;
 using FlaUI.Core.AutomationElements;
+using FlaUI.Core.Input;
+using FlaUI.Core.WindowsAPI;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests.Notifications;
@@ -125,6 +127,49 @@ public class NotificationsTests
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), "the centre did not close for Windows' own");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("notifs: the panel could not be resized"), "a resize failed:\n" + Tail(dir));
     }
+
+    [TestMethod]
+    public void The_centre_takes_the_keyboard_an_early_Enter_presses_nothing_Tab_reaches_a_card_Enter_opens_it_and_Esc_closes()
+    {
+        // BAR-844; MANTLE_TEST_NOTIFS_KEYS=1 lets this test centre take the keyboard (a CI runner only); every open is a dry run
+        string dir = FrameProbe.NewDir("ntf-keys");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_NOTIFS"] = Toasts(), ["MANTLE_TEST_NOTIFS_KEYS"] = "1" };
+        using var app = BarApp.Launch("ntf-keys", "light", env: env, extra: new[] { "--bench-out=" + dir });
+        Host.LogContains(Log(dir), "notifs: a --test run with MANTLE_TEST_NOTIFS: 4 made-up notifications", "the fixture was not taken", 15000);
+        var bell = app.Find("bar.notifications");
+        ClickEl(bell);
+        Pop(app, dir, "Notifications", "notifs.panel");
+        Host.LogContains(Log(dir), "notifs: the centre has the keyboard", "the test centre did not take the keyboard");
+
+        // the keyboard rests on a stop that does nothing: an Enter before any Tab never clears or opens anything
+        Keyboard.Type(VirtualKeyShort.RETURN);
+        Thread.Sleep(700);
+        string log = FrameProbe.Log(dir);
+        Assert.IsFalse(log.Contains("would dismiss") || log.Contains("would open notification"), "an Enter before any Tab pressed something:
+" + Tail(dir));
+        Assert.IsTrue(FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), "the centre closed on an early Enter");
+
+        // Tab walks on until the newest card (Discord's, 104) has the keyboard; the dead card (90) is never a stop
+        for (int i = 0; i < 8 && !FrameProbe.Log(dir).Contains("notifs: key focus: card 104"); i++) { Keyboard.Type(VirtualKeyShort.TAB); Thread.Sleep(250); }
+        Host.LogContains(Log(dir), "notifs: key focus: card 104", "Tab never reached the newest card");
+        Host.Screenshot("notifs-card-focus-light");
+        Keyboard.Type(VirtualKeyShort.RETURN);
+        Host.LogContains(Log(dir), "notifs: key Enter: opens notification 104", "Enter on the card did nothing");
+        Host.LogContains(Log(dir), "notifs: dry run (--test): would open notification 104 (its app) and dismiss it", "the card was not opened as a dry run");
+        IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the centre did not close once the card opened");
+
+        // opened again: Esc closes it and the keyboard goes back
+        ClickEl(bell);
+        Pop(app, dir, "Notifications", "notifs.panel");
+        Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
+        Keyboard.Type(VirtualKeyShort.ESCAPE);
+        Host.LogContains(Log(dir), "notifs: the panel closed (Esc)", "Esc did not close the centre");
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), 3000), "the centre is still on screen after Esc");
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("90 (its app)"), "the dead card was opened");
+    }
+
+    static int Count(string s, string what) { int n = 0, i = 0; while ((i = s.IndexOf(what, i, StringComparison.Ordinal)) >= 0) { n++; i += what.Length; } return n; }
 
     [TestMethod]
     public void A_list_that_cannot_be_read_mutes_the_bell_says_why_and_a_right_click_opens_it_in_dark()
