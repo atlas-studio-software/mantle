@@ -70,7 +70,7 @@ internal static class StallMeter
                 while (!ran.Wait(20)) {
                     double late = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
                     if (late < SayMs) continue;
-                    string now = UiSlice.Now ?? "";
+                    string now = UiSlice.Now ?? (UiSlice.Last is { } last ? "unnamed work after " + last : "");
                     if (now.Length > 0 && !seen.Contains(now)) seen.Add(now);
                     if (late >= nextChain && chains.Count < 4) {
                         nextChain = late + 700;

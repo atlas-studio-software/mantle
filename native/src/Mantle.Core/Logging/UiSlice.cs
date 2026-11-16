@@ -18,7 +18,7 @@ public static class UiSlice
     public const double SayMs = 50;
 
     static volatile Action<string>? _log;
-    static volatile string? _now;
+    static volatile string? _now, _last;
 
     /// True while the meter is on.
     public static bool On => _log != null;
@@ -26,11 +26,14 @@ public static class UiSlice
     /// The innermost named slice the UI thread is in now, or null (any thread; read by the meter while the UI thread is held).
     public static string? Now => _now;
 
+    /// The last named slice that ended (any thread): what the UI thread did just before unnamed work.
+    public static string? Last => _last;
+
     /// The meter is on: slices are timed and logged through <paramref name="log"/>.
     public static void Begin(Action<string> log) => _log = log;
 
     /// The meter is off: slices are plain calls again.
-    public static void End() { _log = null; _now = null; }
+    public static void End() { _log = null; _now = null; _last = null; }
 
     /// Run <paramref name="work"/> as the slice "<paramref name="what"/> (<paramref name="who"/>)" (UI thread).
     public static void Run(string what, string? who, Action work)
@@ -44,7 +47,7 @@ public static class UiSlice
         try { work(); }
         finally {
             double ms = Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
-            _now = outer;
+            _now = outer; _last = name;
             if (ms >= SayMs) log("ui slice: " + name + " held the UI thread " + ms.ToString("0", CultureInfo.InvariantCulture) + " ms");
         }
     }
