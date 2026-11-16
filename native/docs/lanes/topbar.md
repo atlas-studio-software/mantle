@@ -273,7 +273,7 @@ this area.
 
 - **Merged** origin/native/main 86ae174f (d3af033d, clean). native/main is now 259926d6 (game mode, downloads, the Helm
   badge): NOT merged yet; merge it before the next full run.
-- **Commit message fix:** 0b1d4735's message says run "43066xxxx"; it was 43066176188 (history not rewritten).
+- **Commit message fix:** 0b1d4735's message has a placeholder run id; the run was 43066176188 (history not rewritten).
 - **Real causes** (from run 43067056971's ui.trx, fetched with `gh run download`; cloudtest had not brought it back):
   1. Stat test, "ArrowRight never arrived" after a real click on CPU. Two things. (a) `ArmDrag` released the pressed
      button's pointer capture, which cancels the button's own press, so it never took the focus a click gives it; it now
@@ -310,6 +310,35 @@ this area.
   mantle-native-public`; on green run `python -I native/tools/parity/topbar/mark-topbar-rows.py native ui <sha>` and
   commit the ledger and these notes. Then, if there is time: a submenu flipping left at the screen edge (TOP-072),
   losing focus closing the menu (TOP-078), an app menu that fills in late (TOP-067).
+
+## Part 8 (lane native-r8-topbar, same branch): the stat test's race, part 6 green, the ledger
+
+- **Merged** origin/native/main 8d4f7de4 (1bf1674d): App.xaml.cs conflicted on the wiring lines; both kept (the top
+  bar's ping history, game mode).
+- **The stat dropdown race** (`Stat_dropdowns_hang_from_their_cell...`, "ArrowRight never arrived" about half the runs
+  on main): part 7's fix (a2a081e9: `KeysHomeSoon` on `_win.Activated`, the tests wait for "window activated; keys go
+  to") had never compiled: CS0019, `(Control?)_ptBox ?? _editBox ?? <Button>` (the cast covered only the first
+  operand; run 43817960648). f1ba7b0d casts each operand. Then 2 of 2 runs (build,ui) at f1ba7b0d passed the stat test,
+  the pointer test and QuickSettingsViews: 43818345024 and 43819839744 (ui 78 of 79 each; the 1 was the ping test).
+- **The ping test** ("the second run (a slow router) does not say the lag starts at home", runs 43075038269,
+  43818345024, 43819839744). The first run's screenshot showed its verdict drawn, so the drawing was right; the test
+  looked for the verdict by walking every element on the bar and reading each name live. A 1 s sample redraws rows
+  while the walk reads them; a read of a row that went throws, and `Host.Until` swallows it, so the walk never
+  finished (the likely cause; not proven by a trace). eed9756d: the verdict line has its own id `topbar.pt.verdict`
+  (Electron's `.pt-verdict`), the test reads it by id and checks the whole start of the slow-router verdict ("... your
+  own router takes 28 ms on average"), says what it read if it fails, and keeps a screenshot `topbar-pingtest-second`.
+  The history row walk is retried the same way.
+- **QuickSettingsViews** (part 7's full run): passed in all 4 runs of this part, with no change. Part 7's one failure
+  was "the Wi-Fi view did not open" after a real click on the 22 px "›" right after the pop-up showed; nothing in this
+  branch touches quick settings. Not this lane's to chase.
+- **Not this lane's:** run 43821332422 (eed9756d, build,unit,ui,topbar: ui 79 of 79, topbar 4 of 4) failed unit 1 of
+  929: `HelmBadgeFeatureTests.A_count_hides_when_its_writer_exits_heard_not_polled` ("a live writer's count did not
+  show", from main). Its writer is `cmd /c ping -n 3` (about 2 s of life), so on a slow runner it can exit before the
+  badge file is read. It passed in the full run.
+- **Runs:** full 43823044229 at eed9756d: `NATIVE-CI: ok (17 ok, 0 skipped: )`, unit 929 of 929, ui 79 of 79.
+- **Ledger:** `mark-topbar-rows.py native ui eed9756d` marked 26 rows (24 todo rows, and TOP-030 / TOP-071 ported ->
+  tested): TOP-028, 080, 139..151, 153..159 tested; TOP-091, 152 ported. TOP rows now: 157 tested, 19 ported,
+  2 better, 204 todo (of 382).
 
 ## Left (exact list, in order)
 
