@@ -147,7 +147,9 @@ public class GcalEngineTests
         Assert.Equal(8000, GcalEngine.ResumeMs);
         Assert.True(period.Off);   // one plan, not a second timer beside the old one
         k.G.Calls.Clear();
-        k.Live!.Action();
+        var wake = k.Live!;
+        wake.Action();
+        wake.Dispose();   // a one-shot timer that has fired is done
         await Task.Delay(50);
         Assert.Contains(k.G.Calls, c => c.StartsWith("events", StringComparison.Ordinal));   // the wake sync ran
 

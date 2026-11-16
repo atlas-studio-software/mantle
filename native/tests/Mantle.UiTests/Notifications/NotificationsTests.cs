@@ -145,8 +145,7 @@ public class NotificationsTests
         Keyboard.Type(VirtualKeyShort.RETURN);
         Thread.Sleep(700);
         string log = FrameProbe.Log(dir);
-        Assert.IsFalse(log.Contains("would dismiss") || log.Contains("would open notification"), "an Enter before any Tab pressed something:
-" + Tail(dir));
+        Assert.IsFalse(log.Contains("would dismiss") || log.Contains("would open notification"), "an Enter before any Tab pressed something:\n" + Tail(dir));
         Assert.IsTrue(FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")), "the centre closed on an early Enter");
 
         // Tab walks on until the newest card (Discord's, 104) has the keyboard; the dead card (90) is never a stop

@@ -402,7 +402,7 @@ internal sealed class NotifPanel
         _cards["card:" + id] = stop;
         // over the whole card (its padding undone, as the unread dot is), drawn only while the keyboard is on it: no shift
         var ring = new Border { CornerRadius = new CornerRadius(6), Margin = new Thickness(-9, -8, -4, -8), IsHitTestVisible = false, Visibility = Visibility.Collapsed,
-            BorderThickness = new Thickness(_dark ? 1.5 : 1), BorderBrush = _dark ? new SolidColorBrush(global::Windows.UI.Color.FromArgb(242, 159, 180, 204)) : T("LgAcc") };
+            BorderThickness = new Thickness(_dark ? 1.5 : 1), BorderBrush = T("LgAcc") };   // dark's accent is --lg-focus's pale 159,180,204
         card.Children.Add(ring);
         stop.GotFocus += (_, _) => {
             bool kb = stop.FocusState == FocusState.Keyboard;
