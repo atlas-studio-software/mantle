@@ -55,6 +55,8 @@ internal sealed class ToastsSurface : ISurface
         public ToastCard B = null!;
         public Grid El = null!;
         public Border Face = null!, Ring = null!, Lip = null!;
+        public Mantle.App.Shell.Glass.GlassLayer? Glass;   // the see-through look (look.md SEE-011); null with MANTLE_TEST_GLASS=electron
+        public bool GlassUp;                               // the picture is painted, so the face's own fill is off
         public Image Shadow = null!;
         public Button X = null!;
         public TextBlock? Note, Say;
@@ -116,6 +118,7 @@ internal sealed class ToastsSurface : ISurface
         _win.AppWindow.IsShownInSwitchers = false;
         _win.SystemBackdrop = new Mantle.App.Surfaces.Osd.SeeThroughBackdrop(_ctx.Log.Line);
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(_win);
+        _win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange) foreach (var gi in _items) gi.Glass?.Moved(); };
         int pref = Win32.DWMWCP_DONOTROUND; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_WINDOW_CORNER_PREFERENCE, ref pref, 4);
         int none = Win32.DWMWA_COLOR_NONE; Win32.DwmSetWindowAttribute(_hwnd, Win32.DWMWA_BORDER_COLOR, ref none, 4);
         WindowKinds.Frameless(_hwnd);
@@ -133,7 +136,7 @@ internal sealed class ToastsSurface : ISurface
     {
         _idle?.Dispose(); _idle = null;
         if (_win == null) return;
-        foreach (var it in _items) { it.Timer?.Dispose(); it.SayT?.Dispose(); }
+        foreach (var it in _items) { it.Timer?.Dispose(); it.SayT?.Dispose(); it.Glass?.Release(); }
         _items.Clear();
         var w = _win; _win = null; _more = null; _visible = false; _lastLayout = "";
         try { w.Close(); } catch (Exception e) { _ctx.Log.Line("the window did not close cleanly (" + e.Message + ")"); }
@@ -180,6 +183,7 @@ internal sealed class ToastsSurface : ISurface
         }
         if (raise && on.Count > 0) Reveal();
         Layout();
+        foreach (var it in _items) if (it.Shown && !it.Leaving && _visible) it.Glass?.Up(_dark);   // lined up where the stack put it
     }
 
     List<Item> Live() => _items.Where(i => !i.Leaving).ToList();
@@ -226,7 +230,7 @@ internal sealed class ToastsSurface : ISurface
         it.Leaving = true;
         it.Timer?.Dispose(); it.Timer = null;
         _ctx.Log.Line($"card {it.B.Id} left ({why})");
-        if (!it.Shown) { _items.Remove(it); Refresh(false); return; }
+        if (!it.Shown) { _items.Remove(it); it.Glass?.Release(); Refresh(false); return; }
         bool reduced = Reduced();
         var sb = new Storyboard();
         double ms = InMs * .45;
@@ -240,7 +244,7 @@ internal sealed class ToastsSurface : ISurface
         it.El.IsHitTestVisible = false;
         sb.Begin();
         // never waits on an animation event: a timer takes the card out (toasts.js OUT_MS)
-        _ = new DispatcherQueueTimerHandle(_ctx.Dispatcher, OutMs, () => { _items.Remove(it); Refresh(false); });
+        _ = new DispatcherQueueTimerHandle(_ctx.Dispatcher, OutMs, () => { _items.Remove(it); it.Glass?.Release(); Refresh(false); });
     }
 
     void Keep(IReadOnlyList<long> ids)
@@ -266,7 +270,7 @@ internal sealed class ToastsSurface : ISurface
         int count = Live().Count(i => i.Shown);
         if (count == 0 && !_items.Any(i => i.Leaving))
         {
-            Win32.ShowWindow(_hwnd, 0);
+            Win32.ShowWindow(_hwnd, 0); foreach (var gi in _items) gi.Glass?.Down();
             _visible = false;
             Report(0, 0);
             _idle ??= new DispatcherQueueTimerHandle(_ctx.Dispatcher, IdleCloseMs, () => { _idle = null; if (Live().Count == 0) CloseWindow($"no banner for {IdleCloseMs / 1000} s"); });
@@ -308,7 +312,7 @@ internal sealed class ToastsSurface : ISurface
                 if (spot.Hide)
                 {
                     _ctx.Log.Line("banners held back: " + spot.Why);
-                    Win32.ShowWindow(_hwnd, 0); _visible = false;
+                    Win32.ShowWindow(_hwnd, 0); _visible = false; foreach (var gi in _items) gi.Glass?.Down();
                     return;
                 }
                 x = (int)Math.Round(spot.X * scale);
@@ -349,9 +353,17 @@ internal sealed class ToastsSurface : ISurface
         it.Face = new Border { Padding = new Thickness(12, 10, 12, 12) };
         it.Lip = new Border { BorderThickness = new Thickness(0, 1, 0, 0), IsHitTestVisible = false };
         it.El.Children.Add(it.Shadow); it.El.Children.Add(it.Ring); it.El.Children.Add(it.Face); it.El.Children.Add(it.Lip);
+        if (!Mantle.App.Shell.Glass.DesktopGlass.ElectronLook) {
+            // the card paints the desktop still lined up with the screen under its own rows' tint; no still: its own face
+            Mantle.App.Shell.Glass.GlassLayer? gl = null;
+            gl = it.Glass = new Mantle.App.Shell.Glass.GlassLayer("toast " + it.B.Id, _hwnd, new CornerRadius(D("LgRPop")), Mantle.App.Shell.Glass.GlassLayer.At(_hwnd, () => gl!.Picture),
+                plain => { it.GlassUp = !plain; it.Face.Background = plain ? Face() : null; });
+            it.El.Children.Insert(1, gl.Tint);
+            it.El.Children.Insert(1, gl.Picture);
+        }
         it.El.SizeChanged += (_, _) => Shade(it);
-        it.Face.PointerEntered += (_, _) => { if (!it.B.Own) it.Face.Background = Lift(Face(), "LgHover"); };
-        it.Face.PointerExited += (_, _) => it.Face.Background = Face();
+        it.Face.PointerEntered += (_, _) => { if (!it.B.Own) it.Face.Background = it.GlassUp ? B("LgHover") : Lift(Face(), "LgHover"); };
+        it.Face.PointerExited += (_, _) => it.Face.Background = it.GlassUp ? null : Face();
         it.Face.Tapped += (_, e) => { if (e.OriginalSource is DependencyObject d && Inside(d, it.X)) return; Click(it); };
         it.X = new Button { Width = 22, Height = 22, MinWidth = 0, MinHeight = 0, Padding = new Thickness(0), Margin = new Thickness(0, 0, -4, 0), BorderThickness = new Thickness(0),
             CornerRadius = new CornerRadius(6), Content = Glyph("M6 6l8 8M14 6l-8 8", "LgInk2"), IsTabStop = false, Opacity = b.Sticky ? 1 : 0 };
@@ -566,7 +578,9 @@ internal sealed class ToastsSurface : ISurface
         if (_root != null) _root.RequestedTheme = _dark ? ElementTheme.Dark : ElementTheme.Light;
         double r = D("LgRPop");
         it.Face.CornerRadius = new CornerRadius(r);
-        it.Face.Background = Face();
+        it.Face.Background = it.GlassUp ? null : Face();
+        it.Glass?.Radius(new CornerRadius(r));
+        it.Glass?.Theme(_dark);
         it.Ring.CornerRadius = new CornerRadius(r + 1);
         it.Ring.BorderBrush = B("LgEdgeOut");
         it.Lip.CornerRadius = new CornerRadius(r);

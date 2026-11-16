@@ -54,9 +54,11 @@ internal sealed class GlassLayer
     /// in it (their own offset, so a pane centred, inset or resized by layout is followed).
     public static Func<double, (double X, double Y)> At(IntPtr hwnd, Func<FrameworkElement> el) => s => {
         if (!Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(hwnd, out var r)) return (0.0, 0.0);
-        var e = el();
-        try { var p = e.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0)); return (r.Left + p.X * s, r.Top + p.Y * s); }
-        catch (Exception) { return (r.Left, r.Top); }   // not in the tree yet
+        // the layout position (each element's ActualOffset up the tree), not a render transform or a composition
+        // translation: a pane sliding or rising in is lined up where it comes to rest
+        double x = 0, y = 0;
+        for (DependencyObject? d = el(); d is UIElement u; d = Microsoft.UI.Xaml.Media.VisualTreeHelper.GetParent(d)) { var o = u.ActualOffset; x += o.X; y += o.Y; }
+        return (r.Left + x * s, r.Top + y * s);
     };
 
     /// The window's shape changed (the OSD's pill opening into its panel): both layers follow it.
