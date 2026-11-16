@@ -119,3 +119,16 @@ may show a "not up yet" state on a very early click; not traced here.
   skipped); unit 1032 of 1032; UI 5 of 5 (the stall test, EarlyClickTests, CornersRowTests, the desktop menu test,
   the OSD test). The longest UI-thread stall in the first 10 s: 26 ms (was 755 and 947 ms), no stall of 100 ms or
   more in 177 queued jobs.
+- Full run 43859364384 at 6576f9a4: NATIVE-CI: FAILED (ui failed; 16 ok, 0 skipped). UI 93 of 95. Both failures are
+  the same start-up ordering, newly reachable once the freeze is gone: the top bar's start-time show ("topbar: shown
+  (sidecar ready)") activates its window ("topbar: window activated; keys go to nothing") 10 to 30 ms after a pop-up
+  the test opened early took the keyboard.
+  - `DownloadsKeysTests.Arrows_walk_the_rows_...`: the shelf took the keyboard at 11:46:55.649, the top bar was shown
+    at 55.661 and activated at 55.662, and the shelf closed "(another window took focus)" at 55.655: "the first Down
+    did not reach the newest row".
+  - `NotificationsTests.The_centre_takes_the_keyboard_...`: the centre took the keyboard at 11:46:04.548, the top bar
+    was shown at 04.558 and activated at 04.577: "the centre did not give the keyboard back".
+  Before the fix the 0.6 to 2.3 s freeze delayed the top bar's show past these tests' first pop-up. A user who opens a
+  pop-up in Mantle's first second loses its keyboard the same way. The show is in the top bar lane's files
+  (Surfaces/TopBar), so it is reported, not changed here: the start-time show should not activate the top bar's
+  window (show it without activation, as the other surfaces are), or not while a pop-up holds the keyboard.
