@@ -42,7 +42,7 @@ public class CornersRowTests
         var w = Host.Uia.FromHandle(h);
 
         // the defaults: Task view top left, Show desktop bottom right, the other two Off
-        Assert.IsTrue(Host.Until(() => El(w, "qs.corners.sub").Name == "2 on · push the pointer in", 6000), $"the sub-caption says \"{El(w, "qs.corners.sub").Name}\"");
+        Assert.IsTrue(Host.Until(() => El(w, "qs.corners.sub").Name == "2 on · push the pointer in", 6000), $"the sub-caption says \"{El(w, "qs.corners.sub").Name}\" and the first line \"{w.FindFirstDescendant(cf => cf.ByAutomationId("qs.corners.line.0"))?.Name}\"; log: {string.Join(" / ", FrameProbe.Log(dir).Split((char)10).Where(l => l.Contains("corners")).TakeLast(6))}");
         Assert.AreEqual("Hot corners: pick what each screen corner does", El(w, "qs.corners.grid").Name);
         Assert.AreEqual("Top left corner: Task view", El(w, "qs.corners.tile.tl").Name);
         Assert.AreEqual("Top right corner: Off", El(w, "qs.corners.tile.tr").Name);

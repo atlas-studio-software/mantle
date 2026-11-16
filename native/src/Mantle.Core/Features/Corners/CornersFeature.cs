@@ -186,6 +186,8 @@ public sealed class CornersFeature : IFeature
 
     /// Every look the watch made (the unit tests' at-rest number).
     public int Looks { get; private set; }
+    /// A look or a poll is scheduled (false at rest when the pointer is watched).
+    public bool Ticking => _timer != null;
     /// True when the pointer could not be watched and the 100 ms poll runs instead.
     public bool Polling => _polling && _watching;
 

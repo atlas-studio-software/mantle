@@ -71,7 +71,7 @@ public class CornersFeatureTests
         Assert.Equal("taskview", S(st.GetProperty("actions"), "tl"));   // the defaults: Task view top left, Show desktop bottom right
         Assert.Equal("desktop", S(st.GetProperty("actions"), "br"));
         Assert.Equal(6, st.GetProperty("choices").GetArrayLength());
-        Assert.Equal("Top left", S(st.GetProperty("names"), "tl"));
+        Assert.Equal("top-left", S(st.GetProperty("names"), "tl"));
         Assert.True(B(st, "test") && B(st, "watching"));
     });
 
@@ -126,7 +126,7 @@ public class CornersFeatureTests
         int looks = k.F.Looks, reads = k.P.ButtonReads;
         k.Ms(60_000);                                       // a minute at rest
         Assert.Equal(looks, k.F.Looks);
-        Assert.Equal(0, k.T.PendingTimers);
+        Assert.False(k.F.Ticking);
         for (int x = 100; x < 1400; x += 7) k.P.Pt = new DipPoint(x, 300 + x % 200);   // a long sweep across the middle
         k.P.Pt = new DipPoint(1, 400);                      // along the left edge, away from its corners
         k.P.Pt = new DipPoint(1534, 1);                     // the top-right corner is Off by default
@@ -152,7 +152,7 @@ public class CornersFeatureTests
         int looks = k.F.Looks;
         k.Ms(10_000);                                       // still in the corner: once per arrival, and no timer
         Assert.Equal(looks, k.F.Looks);
-        Assert.Equal(0, k.T.PendingTimers);
+        Assert.False(k.F.Ticking);
         k.P.Pt = Mid;                                       // leaving re-arms
         Assert.Equal("idle", k.F.WatchState.Phase);
         k.P.Pt = Tl; k.Ms(400); await Task.Yield();
@@ -164,7 +164,7 @@ public class CornersFeatureTests
     {
         Assert.True(k.F.Polling);
         Assert.True(k.R.Logged("polled every 100 ms (the pointer watch could not start: the test pointer was told it cannot be watched)"));
-        k.P.Pt = Br; k.Ms(400); await Task.Yield();
+        k.Ms(150); k.P.Pt = Br; k.Ms(400); await Task.Yield();
         Assert.True(k.R.Logged("bottom-right corner -> Show desktop:"));
     }, before: k => k.P.CanWatch = false);
 
@@ -209,7 +209,7 @@ public class CornersFeatureTests
         await Call(k, "corners.set", "{\"corner\":\"br\",\"action\":\"off\"}");
         Assert.False(k.F.Watching || k.P.WatchRunning || k.Claims.Active);
         Assert.True(k.R.Logged("stopped watching the corners: every corner is off"));
-        Assert.Equal(0, k.T.PendingTimers);
+        Assert.False(k.F.Ticking);
     });
 
     [Fact]
@@ -233,7 +233,7 @@ public class CornersFeatureTests
         await k.R.Host.RestAllAsync("VALORANT runs");
         Assert.False(k.P.WatchRunning);
         Assert.False(k.Claims.Active);
-        Assert.Equal(0, k.T.PendingTimers);
+        Assert.False(k.F.Ticking);
         k.P.Pt = Tl; k.Ms(1000); await Task.Yield();
         Assert.Equal(0, k.Scans);
         await k.R.Host.WakeAllAsync("the game closed");

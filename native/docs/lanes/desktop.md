@@ -154,10 +154,44 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
   watch the windows". The cursor and the caret raise location-change events too; the hook thread drops them at once
   (one thread wake each), which is the price of hearing window moves without a poll.
 
+## Round 8 (lane native-r8-corners)
+
+- **A resting pointer costs nothing (CORN-008, better):** Electron reads the cursor every 100 ms for as long as any corner
+  is on. Native hears the cursor's own location-change event (`Win32CornerWatch` in CornerWatch.cs: an out-of-context
+  WinEvent hook for OBJID_CURSOR on a thread of its own). It sits outside the input path, so it cannot slow the pointer
+  and Windows never unhooks it for answering late. Each move costs one GetCursorPos and a few comparisons on that thread.
+  `CornerFilter` drops every move that is not near an active outer corner (its square plus 2 DIP), plus the one move that
+  leaves. Only those wake the host, one wake at a time. On the host, `Look` runs the same `CornerRules.Step`. While the
+  cursor dwells it looks again every 100 ms for the 250 ms (a button going down in it still disarms); once it has fired,
+  been disarmed or gone idle, no timer is left. The sign-in, lock and UAC desktops send no events, so nothing fires behind
+  the PIN box. A pointer that cannot be watched falls back to Electron's poll and says why in the watch line. Unit-tested
+  on a hand-moved clock (`CornersFeatureTests`): a minute at rest means no look, no timer and no button read, and a sweep
+  across the middle wakes nothing. Not run live: a --test run never reads the real cursor, so the live hook and its
+  thread are not exercised by any test, and the idle-CPU UI test does not cover it (the watch does not run in --test
+  without the self-test).
+- **Open question (not verified):** whether the cursor event still arrives while the pointer is over an elevated
+  window (UIPI) has not been checked. Electron's poll fires there; if the event does not, a corner over Task Manager
+  or an admin terminal would not fire.
+- **State shape:** `fails[c]` is `{action, said}` and a refused push is `last = {blocked: true, said}`, as in Electron
+  (it was a bare string before), so the row can name the failed action.
+- **Quick settings' Hot corners row (CORN-061..085):** `CornerRow` in Core holds view() and plain() as pure code
+  (`CornerRowTests`). `CornersRow` in the App (Surfaces/Desktop/CornersRow.cs) has the 2x2 tile grid, a chip wrap
+  (`ChipWrap`), the lines, Esc that closes the choices first, and pushes heard only while the panel is open. It goes into
+  QsPanel before the notes, as bar.js attaches it. The qs pair's part1 mode leaves it out, as Electron's PART2_OUT strips
+  `.hcrow`. UI: `CornersRowTests` (defaults, a chip saves into the TEST profile, the current chip just closes, two Escs).
+- **Desktop step 3:** `RemakeLadder` (Core) is the 1.5 / 3 / 5 / 8 / 12 / 20 s back-off, the retries, the give-up after
+  six tries and the Explorer-back try-now, on a HostClock. DesktopSurface.Remake.cs now uses it, with no behaviour
+  change: try n makes or attaches, and the done and give-up words are unchanged. `DeskMenuFeature(TimeProvider)`: the
+  30 s re-arm after a stand-down waits on the given clock. Tests: `RemakeLadderTests` (all on a hand-moved clock;
+  TaskbarCreated is never sent and Explorer is never restarted).
+- **Shared files touched:** QsPanel.cs (9 lines: the field, the row, Attach, Theme, Opened, Closed).
+
 ## Not built yet (left for later rounds)
 
-- Not run live by any test: the sidecar fit and rescale (DESK-016), the live remake attach / give-up and the Explorer-back
-  try-now / make / recheck paths (DESK-011/012), the put-back detach (DESK-013), the 30 s re-arm (DESK-124), a live corner
-  opening the quick settings panel (CORN-053).
+- Not run live by any test: the sidecar fit and rescale (DESK-016), the live attach itself (the ladder around it is
+  unit-tested now), the put-back detach (DESK-013), a live corner opening the quick settings panel (CORN-053), and the
+  live cursor watch (CORN-008).
 - The wallpaper player and backdrop (DESK-046..072) and the Mission Control live view (WebView2, DESK-036).
-- Quick settings' Hot corners row (CORN-061..085), Mantle Settings' rows (CORN-099..104).
+- Mantle Settings' Hot corners rows and the welcome page's block (CORN-099..104): native has no Mantle Settings or
+  welcome page yet. Task view taking the keyboard (CORN-049) waits on a native Task view. A known game in front
+  (CORN-039) waits on the game-mode lane's detectGame. The passive sidecar's refusal (CORN-059) belongs to the sidecar.
