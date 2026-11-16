@@ -1,6 +1,7 @@
 using System;
 using System.Linq;
 using System.Numerics;
+using System.Runtime.InteropServices;
 using Mantle.App.Native;
 using Mantle.Core.Features.TopBar;
 using Microsoft.UI.Composition;
@@ -85,6 +86,7 @@ internal sealed partial class TopBarSurface
     /// gives it to its name box or else the open title or stat cell. --test logs where the keys go, so a test sends keys only after this.
     void KeysHomeSoon() => _win.DispatcherQueue.TryEnqueue(DispatcherQueuePriority.Low, () =>
     {
+        IslandKeys();
         string where;
         if (_open == null) where = "nothing (no menu open)";
         else
@@ -101,6 +103,38 @@ internal sealed partial class TopBarSurface
         }
         if (_test) _ctx.Log.Line("window activated; keys go to " + where);
     });
+
+    /// TOP-221: a key reaches the XAML only through the island's own child window (WinUI's DesktopChildSiteBridge under
+    /// the bar's window), which must hold the Win32 keyboard focus. A Window that was Activate()d at its show gets that on
+    /// each activation; the bar's first show is inactive (no Activate), and then a click makes it the foreground window
+    /// with the Win32 focus left on the top-level window, so the XAML focus sits on the pressed button and no key comes
+    /// (runs 43868709747, 43869659697). So when the bar is the foreground window and the Win32 focus is not inside the
+    /// island, it is put on the island's window. Our own window, our own thread: nothing else's focus is touched.
+    void IslandKeys()
+    {
+        if (Win32.GetForegroundWindow() != _hwnd) return;
+        IntPtr island = IslandNative.FindWindowExW(_hwnd, IntPtr.Zero, "Microsoft.UI.Content.DesktopChildSiteBridge", null);
+        if (island == IntPtr.Zero) island = Win32.GetWindow(_hwnd, 5 /* GW_CHILD */);
+        IntPtr had = IslandNative.GetFocus();
+        if (island == IntPtr.Zero || had == island || IslandNative.IsChild(island, had))
+        {
+            if (_test && !_islandSaid) { _islandSaid = true; _ctx.Log.Line("keys: the Win32 focus is on " + Cls(had) + (island == IntPtr.Zero ? " (the bar has no island window)" : " (inside the island)")); }
+            return;
+        }
+        IslandNative.SetFocus(island);
+        if (_test) _ctx.Log.Line("keys: the Win32 focus was on " + Cls(had) + ", put on the island's window: now on " + Cls(IslandNative.GetFocus()));
+    }
+    bool _islandSaid;
+
+    string Cls(IntPtr h) => h == IntPtr.Zero ? "nothing" : h == _hwnd ? "the bar's own window" : Win32.ClassName(h);
+
+    static class IslandNative
+    {
+        [DllImport("user32.dll")] public static extern IntPtr GetFocus();
+        [DllImport("user32.dll")] public static extern IntPtr SetFocus(IntPtr hwnd);
+        [DllImport("user32.dll")] public static extern bool IsChild(IntPtr parent, IntPtr hwnd);
+        [DllImport("user32.dll", CharSet = CharSet.Unicode)] public static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);
+    }
 
     static bool Within(DependencyObject? d, DependencyObject root)
     {
