@@ -57,23 +57,31 @@ internal sealed partial class DesktopSurface
         if (v.Again) ScheduleAttach(0, true, null);
     }
 
-    /// Try n: make the window (first try only) and put it under the icons, after the back-off for n.
-    void ScheduleAttach(int n, bool make, string? when)
+    /// The back-off, the retries and the give-up are Core's RemakeLadder (unit-tested on a hand-moved clock); this
+    /// surface makes the window, attaches it and says the outcome.
+    RemakeLadder Ladder
     {
-        _attachT?.Stop();
-        _attachPending = (n, make, when);
-        int ms = DesktopLayer.AttachBackoffMs[Math.Min(n, DesktopLayer.AttachBackoffMs.Count - 1)];
-        _attachT = Timer(TimeSpan.FromMilliseconds(ms), () => {
-            if (_attachPending is not { } p) return;
-            _attachPending = null;
-            _ = RemakeAsync(p.N, p.Make, p.When);
-        });
-        _attachT.Start();
+        get {
+            if (_ladder != null) return _ladder;
+            var ui = System.Threading.SynchronizationContext.Current ?? new Microsoft.UI.Dispatching.DispatcherQueueSynchronizationContext(_ctx.Dispatcher);
+            _ladder = new RemakeLadder(new Mantle.Core.Features.HostClock(null, ui), AttemptAsync);
+            _ladder.Done += (n, when) => _ = UnderTheIconsAsync(n, when);
+            _ladder.GaveUp += GiveUp;
+            return _ladder;
+        }
     }
+    RemakeLadder? _ladder;
+    string? _lastMode;
 
-    async Task RemakeAsync(int n, bool make, string? when)
+    /// Try n: make the window (first try only) and put it under the icons, after the back-off for n.
+    void ScheduleAttach(int n, bool make, string? when) => Ladder.Schedule(n, make, when);
+
+    Task RemakeAsync(int n, bool make, string? when) => Ladder.RunAsync(n, make, when);
+
+    /// One try: null when it did not run (destroyed, put back, or a test run that makes it without attaching).
+    async Task<RemakeTry?> AttemptAsync(int n, bool make, string? when)
     {
-        if (_destroyed || Paused()) return;
+        if (_destroyed || Paused()) return null;
         if (make || _win == null) {
             MakeWindow();
             _made++;
@@ -83,28 +91,24 @@ internal sealed partial class DesktopSurface
                 SetDesktopPiece(new DesktopPiece(false, null, DesktopLayer.TestRemade));
                 Show("made again after it closed");
                 _ctx.Log.Line($"made again ({_made}) after it closed; a test run never puts it under the icons");
-                return;
+                return null;
             }
             _held = true;   // hidden until it is under the icons: shown over the apps it would eat every click
         }
         var r = await AttachAsync(when ?? "made again after Explorer restarted");
-        if (_destroyed) return;
-        switch (DesktopLayer.AttachNext(r.Ok, n)) {
-            case "done":
-                _held = false;
-                if (_fitPending != null) await FitAsync(_fitPending + ", now that it is under the icons", true);
-                Show(when != null ? $"under the icons {when}" : "made again and under the icons");
-                _ctx.Log.Line(when != null
-                    ? $"under the icons ({r.Mode ?? "mode not reported"}) on retry {n + 1} {when}"
-                    : $"made again and back under the icons ({r.Mode ?? "mode not reported"}) on attempt {n + 1}");
-                return;
-            case "retry":
-                ScheduleAttach(n + 1, false, when);
-                return;
-            default:
-                GiveUp(n + 1, r.Error, when);
-                return;
-        }
+        if (_destroyed) return null;
+        _lastMode = r.Mode;
+        return new RemakeTry(r.Ok, r.Error);
+    }
+
+    async Task UnderTheIconsAsync(int n, string? when)
+    {
+        _held = false;
+        if (_fitPending != null) await FitAsync(_fitPending + ", now that it is under the icons", true);
+        Show(when != null ? $"under the icons {when}" : "made again and under the icons");
+        _ctx.Log.Line(when != null
+            ? $"under the icons ({_lastMode ?? "mode not reported"}) on retry {n + 1} {when}"
+            : $"made again and back under the icons ({_lastMode ?? "mode not reported"}) on attempt {n + 1}");
     }
 
     /// Out of tries: the layer is closed, NEVER shown over the apps; Windows' own wallpaper shows (main.js desktopGiveUp).
@@ -140,15 +144,10 @@ internal sealed partial class DesktopSurface
         _shellBackAt = now;
         _shellBackCount++;
         _ctx.Log.Line(DesktopLayer.ShellBackLine(how, _shellBackCount, _ctx.Test));
-        switch (DesktopLayer.ShellBack(_ctx.Test, _destroyed, Paused(), _attachPending != null, _win != null, _held)) {
+        switch (DesktopLayer.ShellBack(_ctx.Test, _destroyed, Paused(), _ladder?.Pending == true, _win != null, _held)) {
             case "none": return;
             case "wait": _ctx.Log.Line("Explorer is back and a try to put it under the icons is already on its way"); return;
-            case "try-now": {
-                var p = _attachPending!.Value;
-                _attachT?.Stop(); _attachPending = null;
-                _ = RemakeAsync(p.N, p.Make, p.When);
-                return;
-            }
+            case "try-now": Ladder.TryNow(); return;
             case "make": {
                 var v = DesktopLayer.Verdict(false, Paused(), _remakeAt, now);
                 _remakeAt = v.At;

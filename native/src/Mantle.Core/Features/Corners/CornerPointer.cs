@@ -14,12 +14,30 @@ public interface ICornerPointer
     ButtonRead Buttons();
     /// Every display's bounds in DIP; the primary first.
     IReadOnlyList<DipRect> Displays();
+    /// Hear the cursor move: <paramref name="wake"/> runs (on any thread) when <paramref name="filter"/> wants a look.
+    /// Null with why when this pointer cannot be watched (the feature then polls).
+    (ICornerWatch? Watch, string? Why) Watch(CornerFilter filter, Action wake);
+}
+
+/// <summary>A running pointer watch. <see cref="Taken"/>: the host looked, so the next wanted move may wake it again.</summary>
+public interface ICornerWatch : IDisposable
+{
+    void Taken();
 }
 
 /// <summary>The test hook: a made-up cursor and buttons (the self-test and the unit tests drive it).</summary>
 public sealed class TestCornerPointer : ICornerPointer
 {
-    public DipPoint? Pt { get; set; }
+    DipPoint? _pt;
+    TestWatch? _watch;
+    /// Setting it is a cursor move: a running watch hears it as the live one would.
+    public DipPoint? Pt { get => _pt; set { _pt = value; _watch?.Moved(value); } }
+    /// Moves heard and host wakes asked for, across every watch (the unit tests' numbers).
+    public int Moves { get; private set; }
+    public int Wakes { get; private set; }
+    /// False: this pointer cannot be watched (the feature's poll fallback).
+    public bool CanWatch { get; set; } = true;
+    public bool WatchRunning => _watch != null;
     public string? Why { get; set; } = "the test has not reported a cursor yet";
     public ButtonRead Btn { get; set; } = new(true);
     public List<DipRect> Screens { get; } = new() { new DipRect(0, 0, 1536, 864) };
@@ -27,6 +45,29 @@ public sealed class TestCornerPointer : ICornerPointer
     public (DipPoint? Pt, string? Why) Read() => (Pt, Pt == null ? Why : null);
     public ButtonRead Buttons() { ButtonReads++; return Btn; }
     public IReadOnlyList<DipRect> Displays() => Screens.ToArray();
+
+    public (ICornerWatch? Watch, string? Why) Watch(CornerFilter filter, Action wake)
+    {
+        if (!CanWatch) return (null, "the test pointer was told it cannot be watched");
+        _watch?.Dispose();
+        return (_watch = new TestWatch(this, filter, wake), null);
+    }
+
+    sealed class TestWatch : ICornerWatch
+    {
+        readonly TestCornerPointer _p; readonly CornerFilter _f; readonly Action _wake; bool _pending, _gone;
+        public TestWatch(TestCornerPointer p, CornerFilter f, Action wake) { _p = p; _f = f; _wake = wake; }
+        public void Moved(DipPoint? pt)
+        {
+            if (_gone) return;
+            _p.Moves++;
+            if (!_f.Wants(pt) || _pending) return;
+            _pending = true; _p.Wakes++;
+            _wake();
+        }
+        public void Taken() => _pending = false;
+        public void Dispose() { _gone = true; if (_p._watch == this) _p._watch = null; }
+    }
 }
 
 /// <summary>The live reader: user32 GetCursorPos (physical pixels, Mantle is per-monitor DPI aware), converted to DIP
@@ -55,6 +96,15 @@ public sealed class Win32CornerPointer : ICornerPointer
             }
             return new ButtonRead(true, held, pressed);
         } catch (Exception e) { return new ButtonRead(false, Reason: "GetAsyncKeyState threw: " + e.Message); }
+    }
+
+    public (ICornerWatch? Watch, string? Why) Watch(CornerFilter filter, Action wake)
+    {
+        var w = new Win32CornerWatch(this, filter, wake);
+        var err = w.Start();
+        if (err == null) return (w, null);
+        w.Dispose();
+        return (null, err);
     }
 
     public IReadOnlyList<DipRect> Displays()

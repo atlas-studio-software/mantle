@@ -416,7 +416,7 @@ public class DesktopSurfaceTests
             int before = Checks(app.Log);
             Thread.Sleep(4000);
             int after = Checks(app.Log);
-            Assert.IsTrue(after - before <= 1, $"{after - before} cover checks in 4 s with no window moving (a 2 s poll would make 2)");
+            Assert.IsTrue(after - before <= 1, $"{after - before} cover checks in 4 s with no window moving (a 2 s poll would make 2): {string.Join(" / ", Regex.Matches(app.Log, @"desktop: cover check \d+ [^\r\n]*").Select(m => m.Value).TakeLast(after - before))}");
             Console.WriteLine($"COVER: {after} checks in all; {after - before} in 4 s at rest");
 
             // parked: the watch stops (nothing shown, nothing watched)
