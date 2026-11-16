@@ -46,6 +46,8 @@ public sealed partial class TopBarFeature
             Dark = cfg.Dark,
             Forward = ForwardHint,
             Log = line => _ctx.Log("hints: " + line),
+            // --test: every wake in words, so a test can show the listener costs nothing while nobody connects
+            OnWake = what => { if (_test) _ctx.Log("hints: listener woke: " + what); },
         });
         _hints.StartAsync().ContinueWith(t =>
         {

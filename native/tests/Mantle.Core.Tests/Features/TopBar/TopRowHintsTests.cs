@@ -214,6 +214,10 @@ public sealed class TopRowHintsTests
         blocker.Dispose();
         Assert.True(Until(() => h.View()["listening"]!.GetValue<bool>(), 5000), "it did not listen once the pipe was free");
         Assert.Contains(_logs, l => l.EndsWith("(it was busy before)", StringComparison.Ordinal));
+        // at rest (listening, nobody connected) the listener never wakes: one overlapped connect wait, no timer
+        long woke = h.Wakes;
+        await Task.Delay(1500);
+        Assert.Equal(woke, h.Wakes);
 
         using (var client = new NamedPipeClientStream(".", name, PipeDirection.Out))
         {
@@ -223,6 +227,7 @@ public sealed class TopRowHintsTests
             await client.FlushAsync();
             Assert.True(Until(() => Fwds() == 1), "a hint over the real pipe was not forwarded");
             Assert.Equal(("65552", "quartz", Flat, (string?)null), Last());
+            Assert.True(h.Wakes >= woke + 3, $"a connect, a read and a check should be 3 wakes; counted {h.Wakes - woke}");
         }
         Assert.True(Until(() => Fwds() == 2), "closing the client did not drop its hint");
         Assert.Equal("the app disconnected", Last().Why);

@@ -43,6 +43,9 @@ public sealed class TopRowHintsOptions
     public string? Home { get; init; }
     /// How often a busy pipe is tried again (tests).
     public int RetryMs { get; init; }
+    /// Each time the listener wakes (a connect, a read, a busy-pipe retry, a window check answering): --test logs it,
+    /// so a run where nobody connects can show the listener never woke at rest.
+    public Action<string>? OnWake { get; init; }
 }
 
 public sealed class TopRowHints : IDisposable
@@ -187,6 +190,10 @@ public sealed class TopRowHints : IDisposable
     readonly Dictionary<string, (string? Mismatch, long? Since)> _apps = new() { ["quartz"] = (null, null), ["helm"] = (null, null) };
     readonly HashSet<string> _mismatchLogged = new();
     bool _bugLogged, _listening, _stopped;
+    long _wakes;
+    /// How often the listener woke (see TopRowHintsOptions.OnWake). 0 while nobody connects.
+    public long Wakes => Interlocked.Read(ref _wakes);
+    void Woke(string what) { Interlocked.Increment(ref _wakes); try { _o.OnWake?.Invoke(what); } catch { /* a log must never break us */ } }
     string? _reason = "not started";
     CancellationTokenSource? _cts;
     Task<(bool Ok, string? Reason)>? _startT;
@@ -231,6 +238,7 @@ public sealed class TopRowHints : IDisposable
         catch (Exception e) { p = Task.FromResult(new HintProc(false, Reason: e.Message)); }
         p.ContinueWith(t =>
         {
+            Woke("a window check answered");
             var r = t.IsCompletedSuccessfully ? t.Result : new HintProc(false, Reason: t.Exception?.InnerException?.Message ?? "the check was cancelled");
             lock (_gate)
             {
@@ -441,6 +449,7 @@ public sealed class TopRowHints : IDisposable
         while (!ct.IsCancellationRequested)
         {
             try { await Task.Delay(_retryMs, ct).ConfigureAwait(false); } catch (OperationCanceledException) { return; }
+            Woke("the busy pipe is tried again");
             var r = ListenOnce(ct);
             lock (_gate)
             {
@@ -459,11 +468,13 @@ public sealed class TopRowHints : IDisposable
             catch (Exception e)
             {
                 server.Dispose();
-                if (ct.IsCancellationRequested) return;
+                if (ct.IsCancellationRequested) return;   // stopped: not a wake at rest
+                Woke("the connect wait failed: " + e.Message);
                 lock (_gate) { _listening = false; _reason = $"the pipe {_pipe} stopped listening ({e.Message}); trying again every {_retryMs / 1000.0:0.###} s"; Say("the pipe stopped listening: " + _reason); }
                 _ = RetryLoop(ct);
                 return;
             }
+            Woke("a client connected");
             var mine = server;
             NamedPipeServerStream next;
             try { next = NewServer(false); }
@@ -490,6 +501,7 @@ public sealed class TopRowHints : IDisposable
             for (; ; )
             {
                 int n = await s.ReadAsync(buf, ct).ConfigureAwait(false);
+                Woke($"a read ended ({n} bytes)");
                 if (n <= 0) break;
                 Feed(st, buf.AsSpan(0, n));
             }
@@ -525,7 +537,7 @@ public sealed class TopRowHints : IDisposable
             foreach (var kv in _apps) apps[kv.Key] = new JsonObject { ["mismatch"] = kv.Value.Mismatch, ["since"] = kv.Value.Since };
             return new JsonObject
             {
-                ["listening"] = _listening, ["reason"] = _reason, ["pipe"] = _pipe, ["clients"] = _conns.Count,
+                ["listening"] = _listening, ["wakes"] = Wakes, ["reason"] = _reason, ["pipe"] = _pipe, ["clients"] = _conns.Count,
                 ["hints"] = new JsonObject { ["quartz"] = q, ["helm"] = hl }, ["ignored"] = ign, ["apps"] = apps,
             };
         }
