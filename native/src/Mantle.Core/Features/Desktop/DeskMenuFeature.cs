@@ -29,6 +29,11 @@ public sealed class DeskMenuFeature : IFeature
     IFeatureContext _ctx = null!;
     bool _armed, _widgetsOn = true;
     int _standGen;
+    readonly TimeProvider _time;
+
+    public DeskMenuFeature() : this(null) { }
+    /// <param name="time">The clock the 30 s re-arm after a stand-down waits on (a test moves it by hand); null = the system clock.</param>
+    public DeskMenuFeature(TimeProvider? time) { _time = time ?? TimeProvider.System; }
 
     public ValueTask InstallAsync(IFeatureContext ctx)
     {
@@ -94,7 +99,7 @@ public sealed class DeskMenuFeature : IFeature
     async Task StandDownAsync()
     {
         int my = ++_standGen;
-        try { await Task.Delay(DeskMenu.StandDownRetryMs, _ctx.Stopping).ConfigureAwait(true); }
+        try { await Task.Delay(TimeSpan.FromMilliseconds(DeskMenu.StandDownRetryMs), _time, _ctx.Stopping).ConfigureAwait(true); }
         catch (OperationCanceledException) { return; }
         if (my != _standGen) return;
         await ArmAsync(_ctx.Enabled, "trying again after standing down").ConfigureAwait(true);

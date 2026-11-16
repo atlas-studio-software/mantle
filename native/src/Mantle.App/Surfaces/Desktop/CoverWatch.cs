@@ -112,6 +112,7 @@ internal sealed partial class CoverWatch : IDisposable
         // the window itself (OBJID_WINDOW): the cursor, the caret and every sub-object are dropped here, on this thread
         if (idObject != 0 || idChild != 0 || hwnd == IntPtr.Zero || _closed) return;
         if (ev != EVENT_SYSTEM_FOREGROUND && GetAncestor(hwnd, 2 /* GA_ROOT */) != hwnd) return;   // top-level windows only
+        _lastEv = ev; _lastHwnd = hwnd;   // what started the check, said in its words (a test reads them)
         if (_throttle.Event() == CoverThrottle.Next.Throttle) {
             Kill(ref _settleId);
             _throttleId = SetTimer(IntPtr.Zero, UIntPtr.Zero, WidgetCover.ThrottleMs, IntPtr.Zero);
@@ -122,7 +123,7 @@ internal sealed partial class CoverWatch : IDisposable
     {
         if (id == _throttleId && id != UIntPtr.Zero) {
             Kill(ref _throttleId);
-            Decide("a window changed");
+            Decide("a window changed: " + Trigger());
             if (_throttle.Fired() == CoverThrottle.Next.Throttle) _throttleId = SetTimer(IntPtr.Zero, UIntPtr.Zero, WidgetCover.ThrottleMs, IntPtr.Zero);
             else _settleId = SetTimer(IntPtr.Zero, UIntPtr.Zero, WidgetCover.SettleMs, IntPtr.Zero);
         } else if (id == _settleId && id != UIntPtr.Zero) {
@@ -132,6 +133,19 @@ internal sealed partial class CoverWatch : IDisposable
     }
 
     static void Kill(ref UIntPtr id) { if (id != UIntPtr.Zero) { KillTimer(IntPtr.Zero, id); id = UIntPtr.Zero; } }
+
+    uint _lastEv; IntPtr _lastHwnd;
+
+    /// "event 0x800B on ConsoleWindowClass of pid 1234": the last window event that let a check through.
+    string Trigger()
+    {
+        try {
+            var sb = new StringBuilder(64);
+            GetClassNameW(_lastHwnd, sb, sb.Capacity);
+            GetWindowThreadProcessId(_lastHwnd, out uint pid);
+            return $"event 0x{_lastEv:X4} on {(sb.Length > 0 ? sb.ToString() : "a window that is gone")} of pid {pid}";
+        } catch (Exception e) { return "the window could not be read: " + e.Message; }
+    }
 
     void Decide(string why)
     {

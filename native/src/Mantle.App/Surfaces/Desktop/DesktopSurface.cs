@@ -85,8 +85,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
     bool _held, _destroyed, _burstPending;
     string? _fitPending, _mode;
     string _burstWhy = "";
-    DispatcherQueueTimer? _burstT, _attachT;
-    (int N, bool Make, string? When)? _attachPending;
+    DispatcherQueueTimer? _burstT;
     int _made, _shellBackCount;
     long _shellBackAt = long.MinValue / 2;
     DeskStats.View? _lastStats;
@@ -252,7 +251,8 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
         _awake = false;
-        foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT, _burstT, _attachT }) t?.Stop();
+        foreach (var t in new[] { _clockT, _statsT, _mcT, _recheckT, _reportT, _burstT }) t?.Stop();
+        _ladder?.Cancel();
         _shellWatch?.Dispose(); _shellWatch = null;
         StopCover();
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
