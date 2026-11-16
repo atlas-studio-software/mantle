@@ -30,6 +30,7 @@ public sealed partial class CellVm
         if (n == _badgeN && warn == _badgeWarn && line == _badgeLine) return false;
         _badgeN = n; _badgeWarn = warn; _badgeLine = line;
         Changed(nameof(BadgeText)); Changed(nameof(BadgePad)); Changed(nameof(BadgeAccVisibility)); Changed(nameof(BadgeWarnVisibility)); Changed(nameof(Tip));
+        BadgeMoved();   // lane native-r7-strip-3: the keep-on-top pin goes top-left, "+N" sums the hidden counts (Tasks/)
         SetStatus(true);
         return true;
     }
