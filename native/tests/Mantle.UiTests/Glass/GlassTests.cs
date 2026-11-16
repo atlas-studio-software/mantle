@@ -140,7 +140,7 @@ public sealed class GlassTests
         var env = new Dictionary<string, string> { ["MANTLE_TEST_POPUPS"] = "1", ["LOOK_SYNC_DIR"] = Fixture(theme, still), ["MANTLE_TEST_GLASS"] = "" };
         using var app = BarApp.Launch("glass-" + theme + "-" + Guid.NewGuid().ToString("N")[..4], theme: theme, env: env, extra: new[] { "--bench-out=" + dir });
         int pid = app.Proc.Id;
-        Host.LogContains(() => FrameProbe.Log(dir), "glass: the desktop still is " + still, "the look's still reached the backdrop", 10000);
+        Host.LogContains(() => FrameProbe.Log(dir), Path.GetFileName(dir) + "\\still.png (record rev 3", "the look's still reached the backdrop (the log writes the profile folder as %USERPROFILE%)", 10000);
 
         // the instant kind, open
         ClickEl(app, "bar.more");
@@ -184,7 +184,7 @@ public sealed class GlassTests
         using var app = BarApp.Launch("glass-missing-" + Guid.NewGuid().ToString("N")[..4], theme: "dark", env: env, extra: new[] { "--bench-out=" + dir });
         int pid = app.Proc.Id;
         ClickEl(app, "bar.more");
-        Host.LogContains(() => FrameProbe.Log(dir), "glass pop-up More: no picture, a plain fill: the desktop still is missing: " + still, "a missing still says so", 8000);
+        Host.LogContains(() => FrameProbe.Log(dir), "glass pop-up More: no picture, a plain fill: the desktop still is missing: ", "a missing still says so", 8000);
         ClickEl(app, "bar.more");
 
         File.WriteAllBytes(still, Encoding.ASCII.GetBytes("this is not a picture"));
