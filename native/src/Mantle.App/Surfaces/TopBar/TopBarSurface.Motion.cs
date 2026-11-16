@@ -93,7 +93,7 @@ internal sealed partial class TopBarSurface
             else
             {
                 // a name box shown in the dropdown first (it keeps the focus through redraws), else the open title or cell
-                Control? b = (Control?)_ptBox ?? _editBox ?? _left.Children.Concat(_right.Children).OfType<Button>().FirstOrDefault(IsOpen);
+                Control? b = (Control?)_ptBox ?? (Control?)_editBox ?? _left.Children.Concat(_right.Children).OfType<Button>().FirstOrDefault(IsOpen);
                 bool ok = b != null && b.Focus(FocusState.Programmatic);
                 where = b == null ? "nothing (the open menu's title or cell is not drawn)" : Aid(b) + (ok ? " (the focus given)" : " (the focus refused)");
             }
