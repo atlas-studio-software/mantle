@@ -17,6 +17,7 @@ namespace Mantle.App.Shell.Glass;
 internal sealed class GlassBox
 {
     readonly Border _box, _pad, _edge;
+    readonly Grid _grid = new();
     readonly Brush _clear = new SolidColorBrush();   // all-zero ARGB: draws nothing, still hit-tests
     Brush? _face;
     bool _picture;
@@ -43,14 +44,13 @@ internal sealed class GlassBox
         box.Child = null;
         _pad = new Border { Child = body };
         _edge = new Border { IsHitTestVisible = false, Visibility = Visibility.Collapsed };
-        foreach (var e in new FrameworkElement[] { layer.Picture, layer.Tint })
+        foreach (var e in new FrameworkElement[] { layer.Picture, layer.Tint })   // a box that dressed them before: GlassBox.Detach
             if (e.Parent is Panel old) old.Children.Remove(e);
-        var grid = new Grid();
-        grid.Children.Add(layer.Picture);
-        grid.Children.Add(layer.Tint);
-        grid.Children.Add(_edge);
-        grid.Children.Add(_pad);
-        box.Child = grid;
+        _grid.Children.Add(layer.Picture);
+        _grid.Children.Add(layer.Tint);
+        _grid.Children.Add(_edge);
+        _grid.Children.Add(_pad);
+        box.Child = _grid;
         Sync();
         Plain(layer.State != "picture");   // a kept layer (a redrawn dropdown) is up already: no plain frame first
     }
@@ -70,6 +70,10 @@ internal sealed class GlassBox
         _edge.CornerRadius = _box.CornerRadius;
         Layer.Radius(_box.CornerRadius);
     }
+
+    /// The layer leaves this box for a new one (the dropdown was drawn again): taken out here, by this box's own grid (a
+    /// removed element's Parent is not to be relied on: WinUI threw "already the child of another element").
+    public void Detach() { _grid.Children.Remove(Layer.Picture); _grid.Children.Remove(Layer.Tint); }
 
     /// The layer's picture went (true: the box's own fill and hairline again) or came up (false).
     public void Plain(bool plain)
@@ -103,6 +107,7 @@ internal sealed class MenuGlass
             _slots.Add(s);
         }
         var slot = _slots[level];
+        slot.Box?.Detach();
         slot.Box = new GlassBox(box, slot.Layer);
         slot.Used = true;
     }
@@ -119,7 +124,7 @@ internal sealed class MenuGlass
         foreach (var s in _slots) {
             if (s.Used && !s.Up) { s.Up = true; s.Layer.Up(dark); }
             else if (s.Used) { if (themed) s.Layer.Theme(dark); s.Layer.Moved("placed"); }
-            else if (s.Up) { s.Up = false; s.Layer.Down(); s.Box = null; }
+            else if (s.Up) { s.Up = false; s.Layer.Down(); s.Box?.Detach(); s.Box = null; }
             s.Used = false;
         }
     }
@@ -128,5 +133,5 @@ internal sealed class MenuGlass
     public void Moved() { foreach (var s in _slots) if (s.Up) s.Layer.Moved(); }
 
     /// The menu closed: nothing more until the next one opens.
-    public void Down() { foreach (var s in _slots) { if (s.Up) s.Layer.Down(); s.Up = s.Used = false; s.Box = null; } }
+    public void Down() { foreach (var s in _slots) { if (s.Up) s.Layer.Down(); s.Up = s.Used = false; s.Box?.Detach(); s.Box = null; } }
 }
