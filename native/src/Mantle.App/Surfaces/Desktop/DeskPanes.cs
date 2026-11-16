@@ -13,8 +13,9 @@ namespace Mantle.App.Surfaces.Desktop;
 
 /// <summary>
 /// The desktop layer's panes (ui/desktop/index.html + desktop.css): one top-left column of Clock, System, Mission
-/// Control and Needs attention, each the taskbar's island glass (a 1 px hairline over the tint; the fallback tint
-/// --lg-fill-fb until a wallpaper picture arrives, which the native layer does not take yet). Code-built (no XamlReader:
+/// Control and Needs attention, each the taskbar's island glass (a 1 px hairline over the tint). The see-through look
+/// (look.md SEE-013): each pane paints the desktop still sharp, lined up with the screen, under one tint (Shell/Glass
+/// GlassBox, inside the pane so its fade carries it); no still: the fill --lg-fill-pop / --lg-fill-fb. Code-built (no XamlReader:
 /// AOT), every brush read from Theme/Tokens.xaml on each paint so a theme flip repaints all of it.
 /// </summary>
 internal sealed class DeskPanes
@@ -39,6 +40,7 @@ internal sealed class DeskPanes
     IReadOnlyList<DeskRow> _stripRows = Array.Empty<DeskRow>();
     bool _stripSet, _stripTest;
     bool _batShown;
+    readonly List<Mantle.App.Shell.Glass.GlassBox> _glass = new();   // one per pane; empty with MANTLE_TEST_GLASS=electron
 
     public DeskPanes(Func<string, Brush> brush)
     {
@@ -269,6 +271,20 @@ internal sealed class DeskPanes
         Strip.MaxHeight = Math.Max(60, c.MaxHeight - Clock.ActualHeight - Stats.ActualHeight - Mc.ActualHeight - 3 * c.Gap);
     }
 
+    // ---- the see-through look (look.md SEE-013) ----
+
+    /// Once the layer's window exists: each pane gets its picture and tint (nothing is shown until GlassUp).
+    public void Glass(IntPtr hwnd)
+    {
+        if (Mantle.App.Shell.Glass.DesktopGlass.ElectronLook || _glass.Count > 0) return;
+        foreach (var p in Panes) _glass.Add(Mantle.App.Shell.Glass.GlassBox.Make("desktop pane " + (string)p.Tag, hwnd, p));
+    }
+    public void GlassUp(bool dark) { foreach (var g in _glass) g.Layer.Up(dark); }
+    public void GlassDown() { foreach (var g in _glass) g.Layer.Down(); }
+    /// The window moved or the panes were laid out again: each picture re-reads its place (said only when it moved).
+    public void GlassMoved(string why) { foreach (var g in _glass) g.Layer.Moved(why); }
+    public void GlassRelease() { foreach (var g in _glass) g.Layer.Release(); _glass.Clear(); }
+
     // ---- the look ----
 
     public void Paint(bool dark, bool shortWindow)
@@ -283,7 +299,7 @@ internal sealed class DeskPanes
             // padding gives that DIP back and every pane is exactly as tall as Electron's
             p.Padding = new Thickness(c.Pad.L - 1, c.Pad.T - 1, c.Pad.R - 1, c.Pad.B - 1);
             p.CornerRadius = new CornerRadius(16);   // light: the tile radius; dark: --lg-r-pop (16 too)
-            p.Background = _b(dark ? "LgFillPop" : "LgFillFb");   // no wallpaper picture yet: the fallback tint
+            p.Background = _b(dark ? "LgFillPop" : "LgFillFb");   // the fill with no still (GlassBox keeps it for then)
             p.BorderBrush = _b("LgEdgeOut");
         }
         Strip.BorderBrush = dark ? _b("LgEdgeOut") : _b("LgWarnSoft");
@@ -309,5 +325,6 @@ internal sealed class DeskPanes
                 if (e is Ellipse pip) pip.Fill = _b("LgWarn");
                 else if (e is TextBlock t) { t.FontFamily = body; t.Foreground = _b("LgInk2"); if (t.Inlines.Count > 0) t.Inlines[0].Foreground = _b("LgInk"); }
             }
+        foreach (var g in _glass) { g.Sync(); g.Layer.Theme(dark); }   // the fill, padding and hairline just set: under the picture
     }
 }

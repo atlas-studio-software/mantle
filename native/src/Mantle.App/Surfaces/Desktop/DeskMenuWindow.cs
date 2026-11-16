@@ -48,6 +48,7 @@ internal sealed class DeskMenuWindow
     readonly List<(DeskMenuRow Row, Button B)> _items = new();
     readonly List<Border> _seps = new();
     bool _dark, _activated;
+    readonly Mantle.App.Shell.Glass.GlassBox? _glass;   // null with MANTLE_TEST_GLASS=electron
     int _sel = -1;
     PxRect _at;
 
@@ -104,6 +105,11 @@ internal sealed class DeskMenuWindow
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
+        // the see-through look (look.md SEE-013): the panel paints the desktop still lined up with the screen under one tint
+        // (its own fill with no still); its picture's corner is the window's plus the clear margin
+        if (!Mantle.App.Shell.Glass.DesktopGlass.ElectronLook)
+            _glass = Mantle.App.Shell.Glass.GlassBox.Make("desktop menu", _hwnd, _panel,
+                s => Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(_hwnd, out var r) ? (r.Left + DeskMenu.Inset * s, r.Top + DeskMenu.Inset * s) : (0.0, 0.0));
         // the outside watch (a click elsewhere, Esc) is armed live only: a --test run watches nothing real
         if (!ctx.Test) _watch = new Mantle.App.Shell.Popups.PopupWatch(ctx.Dispatcher, (_, pt) => { if (!Inside(pt.X, pt.Y)) outside(); }, esc, ctx.Log.Line);
         Paint(dark);
@@ -131,6 +137,7 @@ internal sealed class DeskMenuWindow
         Mantle.App.Shell.Windowing.WindowKinds.StripFrame(_hwnd);   // the presenter puts frame bits back at a show
         Mantle.App.Shell.Windowing.WindowKinds.Raise(_hwnd, _ctx.Dispatcher, "desktop menu");
         _watch?.Arm();
+        _glass?.Layer.Up(_dark);
         return _at;
     }
 
@@ -231,6 +238,7 @@ internal sealed class DeskMenuWindow
         Shadow();
         foreach (var s in _seps) s.Background = _b("LgEdgeOut");
         _note.Foreground = _b("LgWarn");
+        _glass?.Sync(); _glass?.Layer.Theme(dark);   // the fill and hairline just set: kept under the picture
         foreach (var (_, b) in _items) {
             b.Resources["ButtonBackgroundPointerOver"] = _b("LgHover");
             b.Resources["ButtonBackgroundPressed"] = _b("LgPress");
@@ -248,6 +256,7 @@ internal sealed class DeskMenuWindow
     public void Close()
     {
         _watch?.Disarm();
+        _glass?.Layer.Release();
         try { _win.Close(); } catch { /* already gone */ }
     }
 }

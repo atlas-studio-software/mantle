@@ -13,7 +13,7 @@ namespace Mantle.UiTests;
 /// never read. The check is on real screen pixels: at known screen points inside the pop-up, the pixel must be the still's
 /// pixel at that screen point composited with the tint, within a tolerance.
 [TestClass]
-public sealed class GlassTests
+public sealed partial class GlassTests
 {
     [TestCleanup]
     public void Cleanup() { FrameProbe.CursorAway(); Host.KillAll(); }
@@ -79,14 +79,17 @@ public sealed class GlassTests
     }
 
     /// The expected colour at a screen point: the still cover-fit and centred on the monitor (the desktop's fit), then the
-    /// wash composited in 8 bits. Null when the point is within 20 still px of a block edge (left to the scaler).
-    static (int R, int G, int B)? Expected(int sx, int sy, Win32.RECT mon, bool dark, double alpha)
+    /// wash composited in 8 bits. Null when the point is within 20 still px of a block edge (left to the scaler);
+    /// <paramref name="outer"/>: the still's own outer edges are not block edges (nothing there to blend with), so a
+    /// surface on the screen's top rows (the top bar) has points.
+    static (int R, int G, int B)? Expected(int sx, int sy, Win32.RECT mon, bool dark, double alpha, bool outer = false)
     {
         int mw = mon.Right - mon.Left, mh = mon.Bottom - mon.Top;
         double k = Math.Max(mw / (double)StillW, mh / (double)StillH);
         int tw = Math.Max(mw, (int)Math.Ceiling(StillW * k)), th = Math.Max(mh, (int)Math.Ceiling(StillH * k));
         double u = (sx - mon.Left + (tw - mw) / 2 + 0.5) * StillW / (double)tw, v = (sy - mon.Top + (th - mh) / 2 + 0.5) * StillH / (double)th;
-        if (u % Block < 20 || u % Block > Block - 20 || v % Block < 20 || v % Block > Block - 20) return null;
+        static bool Near(double t, int size) => (t % Block < 20 && t >= Block) || (t % Block > Block - 20 && t < size - Block);
+        if (outer ? Near(u, StillW) || Near(v, StillH) : u % Block < 20 || u % Block > Block - 20 || v % Block < 20 || v % Block > Block - 20) return null;
         var c = BlockColour((int)(u / Block), (int)(v / Block));
         double a = Math.Round(alpha * 255) / 255;
         int w0 = dark ? 9 : 255, w1 = dark ? 10 : 255, w2 = dark ? 11 : 255;
@@ -104,7 +107,7 @@ public sealed class GlassTests
 
     /// Sample screen rectangles (x0, x1, y0, y1) every <paramref name="step"/> px: every point not near a block edge.
     /// -> (points, worst channel error, points within the tolerance, the failures' words).
-    static (int N, int Worst, int Good, string Bad) CheckIn(IntPtr h, (int X0, int X1, int Y0, int Y1)[] rects, int step, bool dark, double alpha, string what)
+    static (int N, int Worst, int Good, string Bad) CheckIn(IntPtr h, (int X0, int X1, int Y0, int Y1)[] rects, int step, bool dark, double alpha, string what, bool outer = false)
     {
         var mon = Monitor(h);
         int n = 0, worst = 0, good = 0; var bad = new StringBuilder();
@@ -113,7 +116,7 @@ public sealed class GlassTests
             var px = Win32.Grab(x0, y0, x1 - x0, y1 - y0);
             for (int y = y0; y < y1; y += step)
                 for (int x = x0; x < x1; x += step) {
-                    if (Expected(x, y, mon, dark, alpha) is not { } e) continue;
+                    if (Expected(x, y, mon, dark, alpha, outer) is not { } e) continue;
                     int i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
                     int b = px[i], g = px[i + 1], rr = px[i + 2];
                     int err = Math.Max(Math.Abs(rr - e.R), Math.Max(Math.Abs(g - e.G), Math.Abs(b - e.B)));

@@ -73,17 +73,21 @@ internal sealed class GlassLayer
     /// The theme in effect changed (the tint follows; the picture is the same in both themes).
     public void Theme(bool dark) { _dark = dark; if (_up && _pic != null) Tinted(); }
 
-    /// The window moved (or was placed again): only the picture's translation changes.
+    /// The window moved (or was placed again, or the layers were laid out again): only the picture's translation changes.
+    /// Said only when the offset or the tint moved (the top bar is placed again at every menu open, in the same place).
     public void Moved(string why = "moved")
     {
         if (!_up || _pic == null) return;
         if (!Monitor(out var mon, out double scale)) { Plain("the window's monitor could not be read"); return; }
         if (mon.Right - mon.Left != _pic.W || mon.Bottom - mon.Top != _pic.H || scale != _scale) { Refresh("it moved to another monitor size"); return; }
         _mon = mon;
+        var (lx, ly) = (_tr.TranslateX, _tr.TranslateY);
         var (dx, dy) = Offset();
         var old = _wash;
         var w = Tinted();
-        string tint = old == null || Math.Abs(old.Alpha - w.Alpha) > 1e-9 ? $"; tint {(_dark ? "dark" : "light")} {w.Alpha:0.00} ({w.Text})" : "";
+        bool tinted = old == null || Math.Abs(old.Alpha - w.Alpha) > 1e-9;
+        if (!tinted && Math.Abs(dx - lx) < 0.005 && Math.Abs(dy - ly) < 0.005) return;
+        string tint = tinted ? $"; tint {(_dark ? "dark" : "light")} {w.Alpha:0.00} ({w.Text})" : "";
         Host.Log.Line($"glass {_name}: {why}: the picture's offset is now ({dx:0.##}, {dy:0.##}) DIP (no decode, no pixel work){tint}");
     }
 

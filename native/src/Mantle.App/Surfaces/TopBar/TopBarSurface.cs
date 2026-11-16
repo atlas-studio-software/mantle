@@ -36,7 +36,9 @@ namespace Mantle.App.Surfaces.TopBar;
 // The strip (TOP-002, TOP-018..027): the Mantle glyph, the focused app's bold name, its own menus (or "Window"), fitted
 // with TopBarModel.FitTitles (the app name gives way first, then "»"); on the right the stat cells (CPU, RAM, GPU,
 // NET, PING) and the two tool buttons (timer, notes). Light: --lg-fill-fb over what is behind with the inset
-// --lg-edge-out line at its bottom; dark: --lg-fill-pop, no line (the dark glass and colour under are later parts).
+// --lg-edge-out line at its bottom; dark: --lg-fill-pop, no line. The see-through look (look.md SEE-012, the user's
+// 2026-11-11 decision) replaces Electron's blurred strip and its colour under: the desktop still, sharp and lined up
+// with the screen (the bar is the top strip of it), under one tint, in both themes; those fills stay for no still.
 // The dropdowns and their keys are TopBarSurface.Menus.cs, the stat dropdowns TopBarSurface.Stats.cs. Not drawn yet
 // (docs/lanes/topbar.md "Left"): app power, the ping test, the menus' motion and glass.
 [Surface("topbar", AtStart = true)]
@@ -54,6 +56,10 @@ internal sealed partial class TopBarSurface : ISurface
     IntPtr _hwnd;
     Grid _root = null!, _bar = null!;
     Border _face = null!, _line = null!;
+    Grid _faceGrid = null!;
+    Mantle.App.Shell.Glass.GlassLayer? _glass;     // the strip's see-through look; null with MANTLE_TEST_GLASS=electron
+    Mantle.App.Shell.Glass.MenuGlass? _menuGlass;  // the dropdowns' (TopBarSurface.Menus.cs, .Stats.cs)
+    bool _glassUp, _themed;                         // the picture is up (the face's own fill is off); a theme was painted
     StackPanel _left = null!, _right = null!;
     readonly List<IDisposable> _subs = new();
     readonly HashSet<string> _missing = new();
@@ -103,6 +109,7 @@ internal sealed partial class TopBarSurface : ISurface
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
+        MakeGlass();
         // display changes: re-place at once, and tell the feature (its verdict and burst decide the app bar's part)
         _proc = Proc;
         FrameNative.SetWindowSubclass(_hwnd, _proc, new UIntPtr(0x5442), IntPtr.Zero);
@@ -130,7 +137,7 @@ internal sealed partial class TopBarSurface : ISurface
         _bar.ColumnDefinitions.Add(new ColumnDefinition { Width = GridLength.Auto });
         _face = new Border { Height = TopBarRules.BarDip, VerticalAlignment = VerticalAlignment.Top };
         _line = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom };   // inset 0 -1px 0 --lg-edge-out (light)
-        var faceGrid = new Grid { Height = TopBarRules.BarDip, VerticalAlignment = VerticalAlignment.Top };
+        var faceGrid = _faceGrid = new Grid { Height = TopBarRules.BarDip, VerticalAlignment = VerticalAlignment.Top };
         faceGrid.Children.Add(_face); faceGrid.Children.Add(_line);
         _left = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center };
         _right = new StackPanel { Orientation = Orientation.Horizontal, VerticalAlignment = VerticalAlignment.Center, Spacing = 2 };
@@ -166,12 +173,13 @@ internal sealed partial class TopBarSurface : ISurface
 
     void SetTheme(bool dark)
     {
-        if (_dark == dark && _face.Background != null) return;
-        _dark = dark;
+        if (_dark == dark && _themed) return;
+        _dark = dark; _themed = true;
         _root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         // TOP-004: 12.5 px light, 13 px dark
-        _face.Background = Br(dark ? "LgFillPop" : "LgFillFb");
+        _face.Background = _glassUp ? null : Br(dark ? "LgFillPop" : "LgFillFb");
         _line.Background = dark ? null : Br("LgEdgeOut");
+        _glass?.Theme(dark);
         Render();
         _ctx.Log.Line("theme " + (dark ? "dark" : "light"));
     }
@@ -478,6 +486,7 @@ internal sealed partial class TopBarSurface : ISurface
         // (a full-screen backdrop hid it), so the strip goes to the top of the plain z-order, still not topmost or active
         else Win32.SetWindowPos(_hwnd, IntPtr.Zero /* HWND_TOP */, 0, 0, 0, 0, Win32.SWP_NOMOVE | Win32.SWP_NOSIZE | Win32.SWP_NOACTIVATE);
         _shown = true;
+        _glass?.Up(_dark);   // placed already: the still for its monitor, lined up, in this theme
         _ = _ctx.CallAsync("topbar.shown", new JsonObject { ["on"] = true });
         _ctx.Log.Line("shown (" + why + ")");
     }
@@ -486,9 +495,28 @@ internal sealed partial class TopBarSurface : ISurface
         if (!_shown && !Win32.IsWindowVisible(_hwnd)) return;
         Win32.ShowWindow(_hwnd, 0 /* SW_HIDE */);
         _shown = false;
+        _glass?.Down();
         CloseAll(false, "the bar was hidden");
         _ = _ctx.CallAsync("topbar.shown", new JsonObject { ["on"] = false });
         _ctx.Log.Line("hidden (" + why + ")");
+    }
+
+    // ------------------------------------------------------------------ the see-through look (look.md SEE-012)
+    /// The strip paints look.json's desktop.still SHARP, cover-fit to the primary and lined up with the screen (the bar
+    /// is its top strip), under one tint: washAlpha's mode and Dim, raised in Automatic by the native guard's worst strip
+    /// over the bar's own band (at least 140 DIP; NativeGuard.ForWindow). Shared with every window (Shell/Glass): one
+    /// decoded picture, a move only shifts its brush, nothing runs at rest (no timer; the 1 s stats only redraw text).
+    /// No still: the earlier fills (TOP-180) and the log says why. The light bottom line stays in both cases.
+    void MakeGlass()
+    {
+        if (Mantle.App.Shell.Glass.DesktopGlass.ElectronLook) return;   // the Electron screenshot pairs keep the earlier look
+        _glass = new Mantle.App.Shell.Glass.GlassLayer("top bar", _hwnd, new CornerRadius(0),
+            s => FrameNative.GetWindowRect(_hwnd, out var r) ? (r.Left, r.Top) : (0.0, 0.0),
+            plain => { _glassUp = !plain; _face.Background = plain ? Br(_dark ? "LgFillPop" : "LgFillFb") : null; });
+        _faceGrid.Children.Insert(0, _glass.Tint);
+        _faceGrid.Children.Insert(0, _glass.Picture);
+        _menuGlass = new Mantle.App.Shell.Glass.MenuGlass("top bar menu", _hwnd);
+        _win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange) { _glass?.Moved(); _menuGlass?.Moved(); } };
     }
 
     // ------------------------------------------------------------------ placement (TOP-215, TOP-240, TOP-218)
@@ -559,6 +587,7 @@ internal sealed partial class TopBarSurface : ISurface
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
         _noteT?.Stop(); _noteT = null;
+        _glass?.Release(); _menuGlass?.Down();   // the see-through look: no look change reaches a closed window
         try { _win?.Close(); } catch (Exception) { /* already gone */ }
         _shown = false;
         _ctx?.Log.Line("destroyed (" + why + ")");

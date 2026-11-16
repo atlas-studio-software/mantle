@@ -45,6 +45,7 @@ internal sealed partial class DesktopSurface
     {
         if (_destroyed || _win != win) return;   // our own Destroy, or a window already replaced
         _win = null; _shown = false; _held = false;
+        _panes?.GlassRelease();   // its window is gone: the panes made with the next one get their own
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         _recheckT?.Stop();
         Rest("its window closed");

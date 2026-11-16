@@ -143,7 +143,7 @@ try {
         $tag = "$theme-$pct"
         $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-tbpar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
         New-Item -ItemType Directory -Force $ud | Out-Null
-        $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_TOPBAR = 'app=npp&stats=ok'
+        $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_TOPBAR = 'app=npp&stats=ok'
         $prof = "tbpar-$tag"
         $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
         $log = Join-Path $ud 'mantle-native.log'
@@ -185,7 +185,7 @@ try {
   }
 } finally {
   if ([ParityNative]::PrimaryDpi() -ne 96) { Say "scale back to 100 %: $(SetScale 100)" }
-  Remove-Item Env:MANTLE_TEST_TOPBAR -ErrorAction SilentlyContinue
+  Remove-Item Env:MANTLE_TEST_TOPBAR, Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue
 }
 $scored = @($rows | Where-Object { $_ -like 'TOPBAR-PARITY*' }).Count
 $lows = ($low.Keys | Sort-Object | ForEach-Object { "{0} {1:N4}" -f $_, $low[$_] }) -join ', '

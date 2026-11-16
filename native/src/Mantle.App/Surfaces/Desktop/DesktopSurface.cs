@@ -150,6 +150,8 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
+        _panes.Glass(_hwnd);   // the see-through look (look.md SEE-013): each pane's picture follows the window
+        _win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange && _shown) _panes?.GlassMoved("moved"); };
         Place();
         _root.SizeChanged += (_, _) => { Fit(); QueueReport("a resize"); };
         _panes.Cluster.SizeChanged += (_, _) => QueueReport("a layout change");
@@ -226,6 +228,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         _win.AppWindow.Show(false);
         Mantle.App.Shell.Windowing.WindowKinds.StripFrame(_hwnd);   // the presenter puts frame bits back at a show
         _shown = true;
+        _panes?.GlassUp(_dark);
         var pos = _win.AppWindow.Position; var size = _win.AppWindow.Size;
         string where = _ctx.Test ? "as an ordinary window (a test run never puts it under the icons)" : "on the primary display";
         _ctx.Log.Line($"shown {where} at {pos.X},{pos.Y} {size.Width}x{size.Height} px, scale {(Win32.GetDpiForWindow(_hwnd) / 96.0).ToString("0.##", CultureInfo.InvariantCulture)} ({why})");
@@ -241,6 +244,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         CloseMenu(why);
         _win.AppWindow.Hide();
         _shown = false;
+        _panes?.GlassDown();
         _ctx.Log.Line($"parked, hidden ({why})");
         Rest(why);
     }
@@ -258,6 +262,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         System.Threading.Interlocked.Exchange(ref s_attached, 0);
         _mcChain++;
         CloseMenu(why);
+        _panes?.GlassRelease();
         try { _win?.Close(); } catch (Exception e) { _ctx.Log.Line("its window did not close: " + e.Message); }
         _win = null; _root = null; _panes = null; _shown = false;
         if (Current == this) Current = null;
@@ -470,6 +475,7 @@ internal sealed partial class DesktopSurface : Mantle.App.Shell.ISurface
         string line = string.Join(" ", parts);
         if (line == _lastRects) return;
         _lastRects = line;
+        _panes.GlassMoved("laid out");   // a pane that moved inside the window: its picture is lined up again
         _areas = WidgetCover.Areas(rects);
         _ctx.Log.Line($"panes (physical px on screen): {line} (scale {scale.ToString("0.##", CultureInfo.InvariantCulture)}, window {_root.ActualWidth.ToString("0", CultureInfo.InvariantCulture)}x{_root.ActualHeight.ToString("0", CultureInfo.InvariantCulture)} DIP)");
         CoverSync("the widgets moved");

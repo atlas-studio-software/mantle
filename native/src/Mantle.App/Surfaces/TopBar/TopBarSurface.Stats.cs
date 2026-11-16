@@ -96,6 +96,7 @@ internal sealed partial class TopBarSurface
             Child = dd.Sv, Padding = new Thickness(5), MinWidth = TopBarStatMenu.MinW, MaxWidth = _dark ? TopBarStatMenu.MaxWDark : TopBarStatMenu.MaxWLight,
             BorderThickness = new Thickness(1), CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = MenuFace(), BorderBrush = Br("LgEdgeOut"),
         };
+        _menuGlass?.Dress(0, dd.Box);   // the see-through look (look.md SEE-012)
         AutomationProperties.SetAutomationId(dd.Sv, "topbar.menu.0");
         AutomationProperties.SetName(dd.Sv, "stat:" + o.Stat);
         view.Dd = dd;
@@ -112,6 +113,7 @@ internal sealed partial class TopBarSurface
         dd.Bottom = top + Math.Min(h, maxH ?? h);
         _dds.Add(dd);
         _menus.UpdateLayout();
+        _menuGlass?.Placed(_dark);
         if (scroll > 0) dd.Sv.ChangeView(null, scroll, null, true);
         AfterPingRender(boxFocused);
         NotifyMain();

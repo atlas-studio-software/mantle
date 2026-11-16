@@ -120,7 +120,7 @@ try {
   foreach ($theme in 'light', 'dark') {
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-deskpar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_DESKTOP = $fxJson
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_DESKTOP = $fxJson
     $prof = "deskpar-$theme"
     $common = @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $p = Start-Process $Exe -PassThru -ArgumentList $common
@@ -164,7 +164,7 @@ try {
   }
 } finally {
   Stop-Process -Id $back.Id -Force -ErrorAction SilentlyContinue
-  Remove-Item Env:MANTLE_TEST_DESKTOP -ErrorAction SilentlyContinue
+  Remove-Item Env:MANTLE_TEST_DESKTOP, Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue
 }
 foreach ($r in $rows) { $sm = [regex]::Match($r, 'ssim=([\d.]+)'); if ($r -like 'DESK-PARITY*' -and $sm.Success) { $v = [double]::Parse($sm.Groups[1].Value, [Globalization.CultureInfo]::InvariantCulture); if ($v -lt $low) { $low = $v } } }
 $scored = @($rows | Where-Object { $_ -like 'DESK-PARITY*' }).Count

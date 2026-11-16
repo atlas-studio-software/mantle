@@ -161,7 +161,7 @@ internal sealed partial class TopBarSurface
         if (_open == null) return;
         _open = null; _openKey = null;
         _hoverT?.Stop(); _waitT?.Stop(); _renewT?.Stop(); _editBox = null; _statView = null; _ptBox = null;
-        _menus.Children.Clear(); _dds.Clear();
+        _menus.Children.Clear(); _dds.Clear(); _menuGlass?.Down();   // the see-through look (look.md SEE-012)
         _menus.Visibility = Visibility.Collapsed; _away.Visibility = Visibility.Collapsed;
         _asked = -1;
         PaintTitles();
@@ -291,6 +291,7 @@ internal sealed partial class TopBarSurface
             _dds.Add(dd);
         }
         _menus.UpdateLayout();
+        _menuGlass?.Placed(_dark);   // each level's picture lined up where its box rests
         foreach (var dd in _dds)
         {
             if (dd.Lv.Scroll > 0) dd.Sv.ChangeView(null, dd.Lv.Scroll, null, true);
@@ -323,6 +324,7 @@ internal sealed partial class TopBarSurface
             Child = dd.Sv, Padding = new Thickness(_dark ? 4 : 5), MinWidth = _dark ? 180 : 220, MaxWidth = 420, BorderThickness = new Thickness(1),
             CornerRadius = new CornerRadius(Dbl("LgR", 8)), Background = MenuFace(), BorderBrush = Br("LgEdgeOut"),
         };
+        _menuGlass?.Dress(level, dd.Box);   // the desktop still and the tint inside the box (look.md SEE-012)
         AutomationProperties.SetAutomationId(dd.Sv, $"topbar.menu.{level}");   // a Border has no automation peer; the ScrollViewer has
         AutomationProperties.SetName(dd.Sv, level == 0 ? (o.IsMore ? "More menus" : KeyOf(o.Ti)) : "Submenu");
         lv.Shown = true;
