@@ -153,6 +153,11 @@ public class DesktopSurfaceTests
         using var app = Launch("uitest-deskmenu");
         try {
             Host.LogContains(() => app.Log, "desktop: shown as an ordinary window", "the layer is up", 15000);
+            // once the sidecar is up, the start holds the UI thread for 0.5..2.3 s on CI (the bar's beat says so); the
+            // menu opened inside that and UIA's first read of it waited past its 2 s connection timeout (run
+            // 43827392539: the menu shown at 41.979, the thread back at 44.322, 2282 ms late). The top bar is shown on
+            // that thread after it, so the menu is opened once the start is through (docs/lanes/flakes.md)
+            Host.LogContains(() => app.Log, "topbar: shown (sidecar ready)", "the start never finished (the top bar never showed)", 15000);
             IntPtr h = Layer(app);
             GetWindowRect(h, out var wr);
             Second(app, "--test-surface=show:deskmenu");

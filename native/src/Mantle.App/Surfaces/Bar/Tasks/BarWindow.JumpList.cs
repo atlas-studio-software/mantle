@@ -118,6 +118,9 @@ public sealed partial class BarWindow
             _jl = null;
         };
         Popups.KeyboardLost += key => { if (_jl != null && _jl.Key == key) _jl.Kbd = false; };
+        // the keyboard is asked for once the menu is on screen (its first frame), never on the open or a timer (the ask
+        // was refused as "not open" then, and a retry timer could go before it fired: see docs/lanes/flakes.md)
+        Popups.OnScreen += key => { if (_jl != null && _jl.Key == key) JlKeyboard(_jl); };
         _tasks.OnTopChanged += () => { foreach (var c in _cells) { c.OnTop = OnTopOf(c.Item) != null; c.OnTopCant = _tasks?.OnTopProblem; } };
         _tasks.OnTopToast += words => Host.Log.Line("bar tasks: keep on top: " + (Host.Args.Test ? words : "a result came back"));
     }
@@ -141,7 +144,6 @@ public sealed partial class BarWindow
             JlFill(m, r);
             Host.Log.Line($"bar tasks: menu: the jump list {(r.Ok ? $"arrived: {r.Sections.Sum(s => s.Items.Count(i => !i.Sep))} item(s) in {r.Sections.Count} section(s)" : "could not be read")} ({Environment.TickCount64 - t0} ms)");
         });
-        JlKeyboard(m, 0);
     }
 
     // ------------------------------------------------------------------ building
@@ -380,17 +382,13 @@ public sealed partial class BarWindow
 
     // ------------------------------------------------------------------ the keyboard (BAR-220, BAR-328)
 
-    void JlKeyboard(JlMenu m, int tries)
+    /// Asked once, when the menu is on screen (PopupHost.OnScreen).
+    void JlKeyboard(JlMenu m)
     {
         if (_jl != m || Popups == null) return;
         bool allowed = !Host.Args.Test || (Host.Env(JlKeysEnv) == "1" && !Host.Quiet);
         var (ok, words) = allowed ? Popups.TakeKeyboard(m.Key)
             : (false, "a test instance never takes the keyboard from whoever is at the machine, so the arrow keys stay where they are");
-        if (!ok && words == "the pop-up is not open" && tries < 20) {
-            var t = DispatcherQueue.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(50); t.IsRepeating = false;
-            t.Tick += (_, _) => JlKeyboard(m, tries + 1); t.Start();
-            return;
-        }
         m.Kbd = ok;
         // the keys need a focused element in the menu to reach its KeyDown: the list's scroller holds focus (no ring, no
         // row picked) until the first arrow moves onto a row

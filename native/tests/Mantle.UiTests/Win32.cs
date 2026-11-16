@@ -101,5 +101,16 @@ internal static class Win32
     {
         var d = new APPBARDATA { cbSize = Marshal.SizeOf<APPBARDATA>(), hWnd = FindWindowW("Shell_TrayWnd", null), lParam = new IntPtr(on ? 1 : 2) };
         SHAppBarMessage(0x0000000A, ref d);
+        // an auto-hidden taskbar still stays up while it holds the foreground (it gets it when the window in front goes
+        // away) or the pointer rests on it (a click on the bar leaves it there): hand the foreground to the runner's
+        // desktop and move the pointer off, so it drops off the bar (docs/lanes/flakes.md)
+        if (!on || d.hWnd == IntPtr.Zero) return;
+        if (GetForegroundWindow() == d.hWnd) ZOrder.Foreground(FindWindowW("Progman", null));
+        if (GetWindowRect(d.hWnd, out var r) && GetCursorPos(out var p) && p.X >= r.Left && p.X < r.Right && p.Y >= r.Top && p.Y < r.Bottom)
+            SetCursorPos((r.Left + r.Right) / 2, r.Top / 2);
     }
+    [DllImport("user32.dll")] static extern bool GetWindowRect(IntPtr h, out RECT r);
+    [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
+    [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
+    [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
 }

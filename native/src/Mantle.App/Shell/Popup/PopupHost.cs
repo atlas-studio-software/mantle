@@ -62,6 +62,10 @@ internal sealed class PopupHost
     /// The open no-focus pop-up that holds the keyboard on its own ask lost it to another window: its key.
     public event Action<string>? KeyboardLost;
 
+    /// A pop-up is on screen (its first frame painted, its state shown): its key. A no-focus pop-up asks for the keyboard
+    /// here, not on the open (the window is still being made then, so the ask is refused as "not open").
+    public event Action<string>? OnScreen;
+
     FrameworkElement? _anchor;
     PopupWindow? _kbWin;
     IntPtr _kbPrev;
@@ -212,6 +216,7 @@ internal sealed class PopupHost
         _watch?.Arm();
         if (_watch != null && k.Away && _watchAway) ArmAway();
         Host.Log.Line($"pop-up {k.Name}: shown at {FrameNative.Rect(w.Rect)}");
+        OnScreen?.Invoke(k.Key);
     }
 
     /// The outside-click close and this toggle were one click only if that click landed on the anchor itself.
