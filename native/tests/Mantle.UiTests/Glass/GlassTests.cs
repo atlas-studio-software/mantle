@@ -200,7 +200,7 @@ public sealed class GlassTests
         Thread.Sleep(400);
         Lined(dir, "pop-up Calendar", cal, dark, theme + "-cal-open");
         Assert.AreEqual(1, Count(FrameProbe.Log(dir), "glass: the desktop still 1600x900 cover-fit"), "the second window decoded the still again (it is shared):\n" + Tail(dir));
-        StringAssert.Contains(FrameProbe.Log(dir), $"tint {theme} {(dark ? DarkDim : LightDim):0.00} (Automatic: {(dark ? DarkDim : LightDim):0.00}, not raised: Mantle has not published a top band for this picture)");
+        StringAssert.Contains(FrameProbe.Log(dir), (dark ? "glass: tint dark " : "; light ") + $"{(dark ? DarkDim : LightDim):0.00} (Automatic: {(dark ? DarkDim : LightDim):0.00}, not raised: Mantle has not published a top band for this picture)");
     }
 
     [TestMethod]
@@ -240,6 +240,17 @@ public sealed class GlassTests
         foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
         using var p = System.Diagnostics.Process.Start(psi)!;
         Assert.IsTrue(p.WaitForExit(15000), "the second start (" + arg + ") did not exit in 15 s");
+    }
+
+    [DllImport("user32.dll")] static extern uint GetDpiForWindow(IntPtr h);
+
+    /// The OSD's pane: its window inset by the 18 DIP margin it keeps on every side for its shadow (OsdSurface.M; a Border
+    /// has no automation peer, so UIA cannot see the pane itself).
+    static Win32.RECT OsdPane(IntPtr h)
+    {
+        Assert.IsTrue(FrameProbe.GetWindowRect(h, out var r), "no OSD window rect");
+        int m = (int)Math.Round(18 * Math.Max(96u, GetDpiForWindow(h)) / 96.0);
+        return new Win32.RECT { Left = r.Left + m, Top = r.Top + m, Right = r.Right - m, Bottom = r.Bottom - m };
     }
 
     /// The pane's rectangle on screen (UIA), physical px.
@@ -290,7 +301,7 @@ public sealed class GlassTests
         Host.LogContains(() => FrameProbe.Log(dir), "glass osd: painted the desktop still", "the OSD painted the still", 8000);
         StringAssert.DoesNotMatch(FrameProbe.Log(dir), new Regex("glass osd: no picture"), "the OSD fell back to its plain face");
         // the rows just inside the pill's top and bottom edges, clear of its rounded ends (its glyph and level sit between)
-        PaneLined(dir, "osd", osd, () => { var r = PaneRect(osd, "osd"); int e = (r.Bottom - r.Top) / 2; return new[] { (r.Left + e, r.Right - e, r.Top + 3, r.Top + 7), (r.Left + e, r.Right - e, r.Bottom - 7, r.Bottom - 3) }; }, true, "dark-osd");
+        PaneLined(dir, "osd", osd, () => { var r = OsdPane(osd); int e = (r.Bottom - r.Top) / 2; return new[] { (r.Left + e, r.Right - e, r.Top + 3, r.Top + 7), (r.Left + e, r.Right - e, r.Bottom - 7, r.Bottom - 3) }; }, true, "dark-osd");
 
         // the launcher (SEE-010): its rounded pane, inset in a bigger window; the empty results area under the search line
         Second(app, env, "--test-surface=show:launcher");
