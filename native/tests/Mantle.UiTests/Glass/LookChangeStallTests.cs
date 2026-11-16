@@ -22,7 +22,6 @@ public sealed partial class GlassTests
 
     [DllImport("user32.dll", SetLastError = true)]
     static extern IntPtr SendMessageTimeoutW(IntPtr h, uint msg, IntPtr w, IntPtr l, uint flags, uint ms, out IntPtr result);
-    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
 
     /// WM_NULL round trips to one window of the app, timed; answers "the longest wait for probes sent in [from, to)".
     sealed class UiProbe : IDisposable
