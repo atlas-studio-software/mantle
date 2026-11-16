@@ -111,7 +111,7 @@ public class DownloadsKeysTests
             // BAR-897: resting (game mode's host.rest): the shelf says "Paused while you play"
             Second(profile, "--test-rest=on:uitest-game runs");
             Assert.IsTrue(Host.Until(() => Status(btn) == "resting", 10000), $"the button did not go resting ({Status(btn)})");
-            ClickEl(btn);
+            Mantle.UiTests.Notifications.NotificationsTests.ClickOnBar(app, btn);   // the runner taskbar may have the foreground back after Esc
             w = Shelf(app, dir);
             Assert.IsTrue(Host.Until(() => El(w, "dl.empty.big").Name == "Paused while you play", 5000), "the shelf does not say it is paused");
             Assert.AreEqual("resting", Status(El(w, "dl.empty")));

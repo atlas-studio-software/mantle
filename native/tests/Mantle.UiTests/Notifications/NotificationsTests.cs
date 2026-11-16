@@ -155,7 +155,7 @@ public class NotificationsTests
 
         // opened again (once its exit has finished): it takes the keyboard again
         Host.LogContains(Log(dir), "pop-up Notifications: exit done, parked", "the centre's exit did not finish");
-        for (int i = 0; i < 3 && !FrameProbe.Showing(FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications")); i++) { ClickEl(bell); Thread.Sleep(700); }
+        ClickOnBar(app, bell);
         Pop(app, dir, "Notifications", "notifs.panel");
         Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "notifs: the centre has the keyboard") == 2, 5000), "the second open did not take the keyboard");
 
@@ -169,6 +169,26 @@ public class NotificationsTests
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Notifications");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 3000), "the centre did not close once the card opened");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("90 (its app)"), "the dead card was opened");
+    }
+
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    static uint PidAt(Point p) { GetWindowThreadProcessId(GetAncestor(WindowFromPoint(p), 2), out uint pid); return pid; }
+
+    /// A press on a bar button once nothing covers it. Handing the keyboard back can give the foreground to the runner's
+    /// own taskbar (it had it before the open; desk-watch, run 43831510908), which then sits over the bar: hide it as
+    /// StripTests does, and say what covers the button if it stays covered.
+    internal static void ClickOnBar(BarApp app, AutomationElement e)
+    {
+        var r = e.BoundingRectangle;
+        var at = new Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
+        if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100)) {
+            Win32.TaskbarAutoHide(true);
+            if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100))
+                Assert.Fail($"the button at {at} is covered by another window ({Win32.Title(GetAncestor(WindowFromPoint(at), 2))})");
+        }
+        ZOrder.Click(at.X, at.Y); Thread.Sleep(350);
     }
 
     static int Count(string s, string what) { int n = 0, i = 0; while ((i = s.IndexOf(what, i, StringComparison.Ordinal)) >= 0) { n++; i += what.Length; } return n; }
