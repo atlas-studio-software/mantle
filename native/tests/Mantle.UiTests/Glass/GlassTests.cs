@@ -1,6 +1,8 @@
 using System.IO.Compression;
 using System.Runtime.InteropServices;
+using System.Globalization;
 using System.Text;
+using System.Text.RegularExpressions;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
 namespace Mantle.UiTests;
@@ -96,34 +98,57 @@ public sealed class GlassTests
     static (int N, int Worst, string Bad) Check(IntPtr h, bool dark, double alpha, string what)
     {
         Assert.IsTrue(FrameProbe.GetWindowRect(h, out var r), what + ": no window rect");
+        var c = CheckIn(h, new[] { (r.Left + 24, r.Right - 24, r.Top + (r.Bottom - r.Top) * 45 / 100, r.Top + (r.Bottom - r.Top) * 78 / 100) }, 7, dark, alpha, what);
+        return (c.N, c.Worst, c.Bad);
+    }
+
+    /// Sample screen rectangles (x0, x1, y0, y1) every <paramref name="step"/> px: every point not near a block edge.
+    /// -> (points, worst channel error, points within the tolerance, the failures' words).
+    static (int N, int Worst, int Good, string Bad) CheckIn(IntPtr h, (int X0, int X1, int Y0, int Y1)[] rects, int step, bool dark, double alpha, string what)
+    {
         var mon = Monitor(h);
-        int x0 = r.Left + 24, x1 = r.Right - 24, y0 = r.Top + (r.Bottom - r.Top) * 45 / 100, y1 = r.Top + (r.Bottom - r.Top) * 78 / 100;
-        var px = Win32.Grab(x0, y0, x1 - x0, y1 - y0);
-        int n = 0, worst = 0; var bad = new StringBuilder();
-        for (int y = y0; y < y1; y += 7)
-            for (int x = x0; x < x1; x += 7) {
-                if (Expected(x, y, mon, dark, alpha) is not { } e) continue;
-                int i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
-                int b = px[i], g = px[i + 1], rr = px[i + 2];
-                int err = Math.Max(Math.Abs(rr - e.R), Math.Max(Math.Abs(g - e.G), Math.Abs(b - e.B)));
-                n++; worst = Math.Max(worst, err);
-                if (err > Tol && bad.Length < 600) bad.Append($" ({x},{y}) got {rr},{g},{b} want {e.R},{e.G},{e.B};");
-            }
-        Console.WriteLine($"glass check {what}: {n} points, worst channel error {worst} (tolerance {Tol}), window {r.Left},{r.Top},{r.Right},{r.Bottom}, monitor {mon.Left},{mon.Top},{mon.Right},{mon.Bottom}");
+        int n = 0, worst = 0, good = 0; var bad = new StringBuilder();
+        foreach (var (x0, x1, y0, y1) in rects) {
+            if (x1 <= x0 || y1 <= y0) continue;
+            var px = Win32.Grab(x0, y0, x1 - x0, y1 - y0);
+            for (int y = y0; y < y1; y += step)
+                for (int x = x0; x < x1; x += step) {
+                    if (Expected(x, y, mon, dark, alpha) is not { } e) continue;
+                    int i = ((y - y0) * (x1 - x0) + (x - x0)) * 4;
+                    int b = px[i], g = px[i + 1], rr = px[i + 2];
+                    int err = Math.Max(Math.Abs(rr - e.R), Math.Max(Math.Abs(g - e.G), Math.Abs(b - e.B)));
+                    n++; worst = Math.Max(worst, err);
+                    if (err <= Tol) good++;
+                    else if (bad.Length < 600) bad.Append($" ({x},{y}) got {rr},{g},{b} want {e.R},{e.G},{e.B};");
+                }
+        }
+        FrameProbe.GetWindowRect(h, out var r);
+        Console.WriteLine($"glass check {what}: {n} points, {good} within {Tol}, worst channel error {worst}, tint {alpha:0.00}, window {r.Left},{r.Top},{r.Right},{r.Bottom}, monitor {mon.Left},{mon.Top},{mon.Right},{mon.Bottom}");
         Host.Screenshot("glass-" + what);
-        return (n, worst, bad.ToString());
+        return (n, worst, good, bad.ToString());
+    }
+
+    /// The tint the window says it lays now (its last "tint <theme> 0.00 (" line): Dim, or the native guard's raise over
+    /// the window's own rows (look.md SEE-017). Read from the log, so the pixels are checked against what it says.
+    static double TintOf(string dir, string name, bool dark)
+    {
+        var ms = Regex.Matches(FrameProbe.Log(dir), "glass " + Regex.Escape(name) + @": [^\r\n]*tint " + (dark ? "dark" : "light") + @" (\d\.\d\d) \(");
+        Assert.IsTrue(ms.Count > 0, $"{name} never said its tint:\n{Tail(dir)}");
+        double a = double.Parse(ms[^1].Groups[1].Value, CultureInfo.InvariantCulture);
+        Assert.IsTrue(a >= (dark ? DarkDim : LightDim) - 1e-9, $"{name}: the tint {a:0.00} is under Dim");
+        return a;
     }
 
     static void ClickEl(BarApp app, string id) { var r = app.Find(id).BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(450); }
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 30))); }
     static int Count(string log, string needle) { int c = 0, i = 0; while ((i = log.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { c++; i += needle.Length; } return c; }
 
-    static void Lined(string dir, IntPtr h, bool dark, string what)
+    static void Lined(string dir, string name, IntPtr h, bool dark, string what)
     {
-        double a = dark ? DarkDim : LightDim;
+        double a = TintOf(dir, name, dark);
         (int N, int Worst, string Bad) c = (0, 0, "");
         // the picture lands once decoded (first open) and the compositor shows it a frame later: a few looks, no more
-        for (int i = 0; i < 12; i++) { c = Check(h, dark, a, what); if (c.N >= 12 && c.Worst <= Tol) break; Thread.Sleep(250); }
+        for (int i = 0; i < 12; i++) { a = TintOf(dir, name, dark); c = Check(h, dark, a, what); if (c.N >= 12 && c.Worst <= Tol) break; Thread.Sleep(250); }
         Assert.IsTrue(c.N >= 12, $"{what}: only {c.N} sample points inside blocks");
         Assert.IsTrue(c.Worst <= Tol, $"{what}: the pixels are not the still at those screen points under the {a:0.00} tint (worst error {c.Worst} over {c.N} points):{c.Bad}\n{Tail(dir)}");
     }
@@ -147,14 +172,17 @@ public sealed class GlassTests
         IntPtr more = Host.Until(() => FrameProbe.Find(pid, "Mantle pop-up: More") is var h && FrameProbe.Showing(h) ? (object)h : null, 3000) is IntPtr m ? m : IntPtr.Zero;
         Assert.AreNotEqual(IntPtr.Zero, more, "More did not open:\n" + Tail(dir));
         Host.LogContains(() => FrameProbe.Log(dir), "glass pop-up More: painted the desktop still", "More painted the still", 8000);
-        Lined(dir, more, dark, theme + "-more-open");
+        Lined(dir, "pop-up More", more, dark, theme + "-more-open");
+        // Automatic: the native guard over the sharp still, the worst strip over the pop-up's own rows (not the top band)
+        StringAssert.Matches(FrameProbe.Log(dir), new Regex(@"glass pop-up More: painted the desktop still [^\r\n]*tint " + theme + @" \d\.\d\d \(Automatic: [0-9.]+, (raised to [0-9.]+ so text stays readable|text already reads) over this window's part of the picture"));
+        StringAssert.Contains(FrameProbe.Log(dir), "glass: the readability guard over the sharp still (");
 
         // moved from outside: only the offset changes, and the picture stays put on the screen
         Assert.IsTrue(FrameProbe.GetWindowRect(more, out var r0));
         int moves = Count(FrameProbe.Log(dir), "glass pop-up More: moved");
         Assert.IsTrue(SetWindowPos(more, IntPtr.Zero, r0.Left - 37, r0.Top - 23, 0, 0, 0x0001 | 0x0004 | 0x0010), "the pop-up could not be moved");
         Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "glass pop-up More: moved") > moves, 3000), "the move was not heard:\n" + Tail(dir));
-        Lined(dir, more, dark, theme + "-more-moved");
+        Lined(dir, "pop-up More", more, dark, theme + "-more-moved");
         Assert.AreEqual(1, Count(FrameProbe.Log(dir), "glass: the desktop still 1600x900 cover-fit"), "a move or a second window decoded the still again:\n" + Tail(dir));
 
         // parked (its button again) and opened again: placed where it belongs, still lined up
@@ -163,14 +191,14 @@ public sealed class GlassTests
         ClickEl(app, "bar.more");
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(more), 2000), "More did not open again");
         Thread.Sleep(400);   // the entrance (320 ms) has landed
-        Lined(dir, more, dark, theme + "-more-reopened");
+        Lined(dir, "pop-up More", more, dark, theme + "-more-reopened");
 
         // the other kind (made on demand, takes the keyboard) replaces it in place
         ClickEl(app, "bar.clock");
         IntPtr cal = Host.Until(() => FrameProbe.Find(pid, "Mantle pop-up: Calendar") is var h && FrameProbe.Showing(h) ? (object)h : null, 3000) is IntPtr c ? c : IntPtr.Zero;
         Assert.AreNotEqual(IntPtr.Zero, cal, "Calendar did not open:\n" + Tail(dir));
         Thread.Sleep(400);
-        Lined(dir, cal, dark, theme + "-cal-open");
+        Lined(dir, "pop-up Calendar", cal, dark, theme + "-cal-open");
         Assert.AreEqual(1, Count(FrameProbe.Log(dir), "glass: the desktop still 1600x900 cover-fit"), "the second window decoded the still again (it is shared):\n" + Tail(dir));
         StringAssert.Contains(FrameProbe.Log(dir), $"tint {theme} {(dark ? DarkDim : LightDim):0.00} (Automatic: {(dark ? DarkDim : LightDim):0.00}, not raised: Mantle has not published a top band for this picture)");
     }
@@ -199,7 +227,79 @@ public sealed class GlassTests
         ClickEl(app, "bar.more");
         IntPtr more = FrameProbe.Find(pid, "Mantle pop-up: More");
         Host.LogContains(() => FrameProbe.Log(dir), "glass pop-up More: painted the desktop still", "the fixed still is painted", 8000);
-        Lined(dir, more, true, "dark-more-after-fix");
+        Lined(dir, "pop-up More", more, true, "dark-more-after-fix");
+    }
+
+    /// A second start of the same profile (a --test surface command), waited for.
+    static void Second(BarApp app, IDictionary<string, string> env, string arg)
+    {
+        var psi = new System.Diagnostics.ProcessStartInfo(Host.ExePath) { UseShellExecute = false };
+        string ud = Path.Combine(Path.GetTempPath(), "mantle-native-uitest-" + app.Profile);
+        foreach (var a in new[] { "--test", $"--profile-name={app.Profile}", $"--user-data={ud}", arg }) psi.ArgumentList.Add(a);
+        psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
+        foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
+        using var p = System.Diagnostics.Process.Start(psi)!;
+        Assert.IsTrue(p.WaitForExit(15000), "the second start (" + arg + ") did not exit in 15 s");
+    }
+
+    /// The pane's rectangle on screen (UIA), physical px.
+    static Win32.RECT PaneRect(IntPtr h, string automationId)
+    {
+        var win = Host.Uia.FromHandle(h);
+        var el = Host.Until(() => win.FindFirstDescendant(cf => cf.ByAutomationId(automationId)), 5000) as FlaUI.Core.AutomationElements.AutomationElement;
+        Assert.IsNotNull(el, "no " + automationId + " element");
+        var b = el!.BoundingRectangle;
+        return new Win32.RECT { Left = b.Left, Top = b.Top, Right = b.Right, Bottom = b.Bottom };
+    }
+
+    /// Points of a pane checked against the still under the window's tint; most points, not all, because the pane's own
+    /// words and controls sit over some of them. -> passes when enough points are inside blocks and 90 % are the still.
+    static void PaneLined(string dir, string name, IntPtr h, Func<(int, int, int, int)[]> rects, bool dark, string what)
+    {
+        (int N, int Worst, int Good, string Bad) c = (0, 0, 0, "");
+        double a = 0;
+        for (int i = 0; i < 12; i++) {
+            a = TintOf(dir, name, dark);
+            c = CheckIn(h, rects(), 3, dark, a, what);
+            if (c.N >= 12 && c.Good >= c.N * 0.9) break;
+            Thread.Sleep(250);
+        }
+        Assert.IsTrue(c.N >= 12, $"{what}: only {c.N} sample points inside blocks");
+        Assert.IsTrue(c.Good >= c.N * 0.9, $"{what}: {c.Good} of {c.N} points are the still under the {a:0.00} tint (worst error {c.Worst}):{c.Bad}\n{Tail(dir)}");
+    }
+
+    [TestMethod]
+    public void The_osd_and_the_launcher_paint_the_desktop_still_sharp_lined_up_under_their_own_tint()
+    {
+        string dir = FrameProbe.NewDir("glass-osd");
+        string still = Path.Combine(dir, "still.png");
+        WritePng(still);
+        string apps = Path.Combine(dir, "no-apps");
+        Directory.CreateDirectory(apps);
+        var env = new Dictionary<string, string> { ["LOOK_SYNC_DIR"] = Fixture("osd", still), ["MANTLE_TEST_GLASS"] = "", ["MANTLE_TEST_OSD"] = "{\"level\":62}", ["MANTLE_TEST_LAUNCHER_DIR"] = apps };
+        using var app = BarApp.Launch("glass-osd-" + Guid.NewGuid().ToString("N")[..4], theme: "dark", env: env, extra: new[] { "--bench-out=" + dir });
+        int pid = app.Proc.Id;
+        Host.LogContains(() => FrameProbe.Log(dir), "still.png (record rev 3", "the look's still reached the backdrop", 10000);
+        // decoded ahead (item 5): the still and its guard are ready before any window asks
+        Host.LogContains(() => FrameProbe.Log(dir), "glass: decoded ahead for the primary monitor", "the still is decoded ahead at start", 10000);
+
+        // the OSD (SEE-011): its pill paints the still under its 1 px edge, its own rows' tint
+        Second(app, env, "--test-surface=show:osd");
+        IntPtr osd = Host.Until(() => FrameProbe.Find(pid, "Mantle volume") is var h && h != IntPtr.Zero && FrameProbe.Showing(h) ? (object)h : null, 5000) is IntPtr o ? o : IntPtr.Zero;
+        Assert.AreNotEqual(IntPtr.Zero, osd, "the OSD did not show:\n" + Tail(dir));
+        Host.LogContains(() => FrameProbe.Log(dir), "glass osd: painted the desktop still", "the OSD painted the still", 8000);
+        StringAssert.DoesNotMatch(FrameProbe.Log(dir), new Regex("glass osd: no picture"), "the OSD fell back to its plain face");
+        // the rows just inside the pill's top and bottom edges, clear of its rounded ends (its glyph and level sit between)
+        PaneLined(dir, "osd", osd, () => { var r = PaneRect(osd, "osd"); int e = (r.Bottom - r.Top) / 2; return new[] { (r.Left + e, r.Right - e, r.Top + 3, r.Top + 7), (r.Left + e, r.Right - e, r.Bottom - 7, r.Bottom - 3) }; }, true, "dark-osd");
+
+        // the launcher (SEE-010): its rounded pane, inset in a bigger window; the empty results area under the search line
+        Second(app, env, "--test-surface=show:launcher");
+        IntPtr lau = Host.Until(() => FrameProbe.Find(pid, "Mantle launcher") is var h && h != IntPtr.Zero && FrameProbe.Showing(h) ? (object)h : null, 5000) is IntPtr l ? l : IntPtr.Zero;
+        Assert.AreNotEqual(IntPtr.Zero, lau, "the launcher did not show:\n" + Tail(dir));
+        Host.LogContains(() => FrameProbe.Log(dir), "glass launcher: painted the desktop still", "the launcher painted the still", 8000);
+        Thread.Sleep(500);   // its unfold has landed
+        PaneLined(dir, "launcher", lau, () => { var r = PaneRect(lau, "panel"); int hh = r.Bottom - r.Top; return new[] { (r.Left + 24, r.Right - 24, r.Top + hh * 40 / 100, r.Top + hh * 75 / 100) }; }, true, "dark-launcher");
+        Assert.AreEqual(1, Count(FrameProbe.Log(dir), "glass: the desktop still 1600x900 cover-fit"), "a window decoded the still again (it is shared):\n" + Tail(dir));
     }
 
     [TestMethod]

@@ -27,6 +27,7 @@ internal sealed class GlassLayer
     bool _up, _dark, _released;
     int _seq;
     string? _said;
+    WashResult? _wash;
     GlassPic? _pic;
     Win32.RECT _mon;
     double _scale = 1;
@@ -45,7 +46,21 @@ internal sealed class GlassLayer
         Picture = new Border { Background = _brush, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         Tint = new Border { Background = _tint, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         DesktopGlass.Changed += OnChanged;
+        // the band the guard reads is the window's own rows: a new height may change the tint (a max over a few numbers)
+        Picture.SizeChanged += (_, e) => { if (_up && _pic != null) Moved("resized"); };
     }
+
+    /// An origin for layers placed anywhere in a frameless window: the window's top-left on screen plus where the layers sit
+    /// in it (their own offset, so a pane centred, inset or resized by layout is followed).
+    public static Func<double, (double X, double Y)> At(IntPtr hwnd, Func<FrameworkElement> el) => s => {
+        if (!Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(hwnd, out var r)) return (0.0, 0.0);
+        var e = el();
+        try { var p = e.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(0, 0)); return (r.Left + p.X * s, r.Top + p.Y * s); }
+        catch (Exception) { return (r.Left, r.Top); }   // not in the tree yet
+    };
+
+    /// The window's shape changed (the OSD's pill opening into its panel): both layers follow it.
+    public void Radius(CornerRadius r) { Picture.CornerRadius = r; Tint.CornerRadius = r; }
 
     /// The window is going up (placed already): the picture for its monitor, lined up, in this theme.
     public void Up(bool dark) { if (_released) return; _dark = dark; _up = true; Refresh("shown"); }
@@ -64,8 +79,12 @@ internal sealed class GlassLayer
         if (mon.Right - mon.Left != _pic.W || mon.Bottom - mon.Top != _pic.H || scale != _scale) { Refresh("it moved to another monitor size"); return; }
         _mon = mon;
         var (dx, dy) = Offset();
-        Host.Log.Line($"glass {_name}: {why}: the picture's offset is now ({dx:0.##}, {dy:0.##}) DIP (no decode, no pixel work)");
+        var old = _wash;
+        var w = Tinted();
+        string tint = old == null || Math.Abs(old.Alpha - w.Alpha) > 1e-9 ? $"; tint {(_dark ? "dark" : "light")} {w.Alpha:0.00} ({w.Text})" : "";
+        Host.Log.Line($"glass {_name}: {why}: the picture's offset is now ({dx:0.##}, {dy:0.##}) DIP (no decode, no pixel work){tint}");
     }
+
 
     /// The window is closed for good.
     public void Release() { _released = true; _up = false; DesktopGlass.Changed -= OnChanged; _brush.ImageSource = null; }
@@ -85,7 +104,7 @@ internal sealed class GlassLayer
     void Refresh(string why)
     {
         if (!Monitor(out var mon, out double scale)) { Plain("the window's monitor could not be read"); return; }
-        var t = DesktopGlass.Pic(mon.Right - mon.Left, mon.Bottom - mon.Top, out var none);
+        var t = DesktopGlass.Pic(mon.Right - mon.Left, mon.Bottom - mon.Top, scale, out var none);
         if (none != null) { Plain(none); return; }
         int seq = ++_seq;
         if (t.IsCompleted) Take(t.Result, mon, scale, seq, why);
@@ -102,13 +121,13 @@ internal sealed class GlassLayer
     void Take(GlassPic? p, Win32.RECT mon, double scale, int seq, string why)
     {
         if (seq != _seq || !_up) return;
-        if (p == null) { Plain(DesktopGlass.FailureFor(mon.Right - mon.Left, mon.Bottom - mon.Top) ?? "the desktop still could not be decoded"); return; }
+        if (p == null) { Plain(DesktopGlass.FailureFor(mon.Right - mon.Left, mon.Bottom - mon.Top, scale) ?? "the desktop still could not be decoded"); return; }
         _pic = p; _mon = mon; _scale = scale;
         if (!ReferenceEquals(_brush.ImageSource, p.Bitmap)) _brush.ImageSource = p.Bitmap;
         Picture.Visibility = Tint.Visibility = Visibility.Visible;
         _plain(false);
-        var w = Tinted();
         var (dx, dy) = Offset();
+        var w = Tinted();
         State = "picture";
         _said = null;
         Host.Log.Line($"glass {_name}: painted the desktop still ({why}): {p.Words}; monitor {FrameNative.Rect(mon)} at scale {scale:0.##}; offset ({dx:0.##}, {dy:0.##}) DIP; " +
@@ -124,10 +143,20 @@ internal sealed class GlassLayer
         return (_tr.TranslateX, _tr.TranslateY);
     }
 
+    /// The tint for the theme in effect: look-sync washAlpha's mode and Dim, and in Automatic the native guard's worst strip
+    /// over this window's rows (its top on its monitor, its height, at least 140 DIP; NativeGuard.ForWindow).
     WashResult Tinted()
     {
         var look = DesktopGlass.Look;
-        var w = look?.For(_dark) ?? Wash.Alpha(null, null, _dark ? "dark" : "light", "the look has not been read yet");
+        var shared = look?.For(_dark) ?? Wash.Alpha(null, null, _dark ? "dark" : "light", "the look has not been read yet");
+        var w = shared;
+        if (_pic != null) {
+            var (_, oy) = _origin(_scale);
+            double h = Picture.ActualHeight;
+            if (!(h > 0) && Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(_hwnd, out var wr)) h = (wr.Bottom - wr.Top) / _scale;
+            w = NativeGuard.ForWindow(shared, _pic.Guard(_dark), (oy - _mon.Top) / _scale, h);
+        }
+        _wash = w;
         int[] rgb = _dark ? LookHost.DarkBar : LookHost.LightFill;   // the wash colours (CONTRACT desktop.guard: rgb(9 10 11); light: white)
         _tint.Color = new Windows.UI.Color { A = (byte)Math.Round(Math.Clamp(w.Alpha, 0, 1) * 255), R = (byte)rgb[0], G = (byte)rgb[1], B = (byte)rgb[2] };
         return w;
