@@ -60,6 +60,26 @@ internal static class CssShadow
     static readonly object Gate = new();
     static byte[] s_px = Array.Empty<byte>();   // the BGRA bytes, reused (grown to the largest size asked for)
 
+    /// The same pixels as <see cref="Bitmap"/> into <paramref name="px"/> (w x h x 4 bytes or more), on ANY thread: the
+    /// blur is pure arithmetic on its own unmanaged planes, so a caller can run it off the UI thread and make the bitmap
+    /// there with <see cref="FromPixels"/> (lane native-r8-startup: the OSD's light shadow held the UI thread ~0.8 s at
+    /// start on a CI runner).
+    public static void Into(byte[] px, int w, int h, double scale, IReadOnlyList<Box> boxes, IReadOnlyList<Layer> layers)
+    {
+        w = Math.Max(1, w); h = Math.Max(1, h);
+        Pixels(w, h, scale, boxes, layers, px.AsSpan(0, w * h * 4));
+    }
+
+    /// The bitmap of pixels made by <see cref="Into"/> (UI thread): one copy.
+    public static WriteableBitmap FromPixels(byte[] px, int w, int h)
+    {
+        w = Math.Max(1, w); h = Math.Max(1, h);
+        var bmp = new WriteableBitmap(w, h);
+        px.CopyTo(0, bmp.PixelBuffer, 0, w * h * 4);
+        bmp.Invalidate();
+        return bmp;
+    }
+
     /// The premultiplied BGRA pixels (w x h) into px: the planes live in one unmanaged block.
     static unsafe void Pixels(int w, int h, double scale, IReadOnlyList<Box> boxes, IReadOnlyList<Layer> layers, Span<byte> px)
     {

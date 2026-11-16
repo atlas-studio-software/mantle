@@ -58,18 +58,12 @@ internal sealed class SurfaceHost
     public static IReadOnlyCollection<string> TestTargets()
         => Mantle.Generated.SurfaceCatalog.All.Select(d => d.Name).Where(SurfaceSet.IsTestOnly).ToArray();
 
-    const string LaterEnv = "MANTLE_TEST_SURFACES_LATER";
-
     /// Make the set from the catalog and the AtStart surfaces (UI thread, once the host's bus, events and state exist).
     public void Start(SurfaceWires wires, string why)
     {
         if (Set != null) { _log.Line("surfaces: the host was started twice; the second start is ignored"); return; }
-        // MANTLE_TEST_SURFACES_LATER=<name>,<name> (--test only): those AtStart surfaces are made on first use instead, so
-        // the start-up stall UI test can weigh each surface's share of the start (lane native-r8-startup)
-        var later = _test ? (Environment.GetEnvironmentVariable(LaterEnv) ?? "").Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries) : Array.Empty<string>();
-        if (later.Length > 0) _log.Line($"surfaces: test: made on first use instead of at start ({LaterEnv}): {string.Join(", ", later)}");
         var specs = Mantle.Generated.SurfaceCatalog.All
-            .Select(d => new SurfaceSpec(d.Name, d.AtStart && Array.IndexOf(later, d.Name) < 0, () => new Slot(d, wires, _q, _test)))
+            .Select(d => new SurfaceSpec(d.Name, d.AtStart, () => new Slot(d, wires, _q, _test)))
             .ToArray();
         Set = new SurfaceSet(specs, new SurfaceSetOptions { Test = _test, TestSurfaces = _testSurfaces, Log = _log.Line });
         Set.Start(why);

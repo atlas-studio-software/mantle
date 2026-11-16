@@ -23,30 +23,6 @@ public class StartupStallTests
     [TestCleanup]
     public void Cleanup() => Host.KillAll();
 
-    /// TEMPORARY (lane native-r8-startup, measurement only): each surface's share of the stall, made on first use instead.
-    [TestMethod]
-    [DataRow("", "")]
-    [DataRow("launcher", "")]
-    [DataRow("desktop", "")]
-    [DataRow("topbar", "")]
-    [DataRow("osd", "")]
-    [DataRow("ontop,toasts", "")]
-    [DataRow("desktop,launcher,ontop,osd,toasts,topbar", "")]
-    [DataRow("", "--no-backdrop")]
-    public void Stall_share_measure(string later, string arg)
-    {
-        string dir = FrameProbe.NewDir("startup-share");
-        var env = new Dictionary<string, string> { ["MANTLE_TEST_STALL"] = "1", ["MANTLE_TEST_SURFACES_LATER"] = later };
-        var extra = new List<string> { "--bench-out=" + dir };
-        if (arg.Length > 0) extra.Add(arg);
-        string log = "";
-        using (var app = BarApp.Launch("startup-share", "light", wait: false, env: env, extra: extra))
-            Host.LogContains(() => log = FrameProbe.Log(dir), "stall meter: the longest UI-thread stall in the first 10 s was ", "no longest line", 30000);
-        Host.KillAll();
-        var lines = log.Split('\n').Where(l => l.Contains("stall meter: ", StringComparison.Ordinal) || l.Contains("ui slice: ", StringComparison.Ordinal) || l.Contains("surfaces: test:", StringComparison.Ordinal)).Select(l => l.TrimEnd('\r'));
-        File.AppendAllText(Path.Combine(Host.OutDir, "startup-share.txt"), $"== later [{later}] arg [{arg}]\n" + string.Join("\n", lines) + "\n");
-    }
-
     [TestMethod]
     public void The_UI_thread_is_never_held_over_250_ms_in_the_first_10_s()
     {
