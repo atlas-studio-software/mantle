@@ -128,6 +128,9 @@ public sealed class HoverTests
             worst["hidden " + theme] = hidden.App; worst["shown " + theme] = shown.App;
             Assert.IsTrue(stillUp, "the bar hid during the shown measurement: " + line);
             if (theme == "light") Assert.IsTrue(pics >= 1, "light glass never logged its stop on hide: " + line);
+            // the top bar's top-row hints listener (lane native-r8-topbar): listening, and it never woke in this window
+            Assert.IsTrue(FrameProbe.Count(dir, "top-row hints: listening on") == 1, "the top-row hints listener did not start once: " + line);
+            Assert.AreEqual(0, FrameProbe.Count(dir, "hints: listener woke"), "the top-row hints listener woke at rest: " + line);
         }
         File.WriteAllLines(Path.Combine(Host.OutDir, "idle-cpu.txt"), lines);
         Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more:\n" + string.Join("\n", lines));
