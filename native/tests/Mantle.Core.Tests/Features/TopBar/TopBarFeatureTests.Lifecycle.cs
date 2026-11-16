@@ -239,7 +239,7 @@ public sealed partial class TopBarFeatureTests
             asked++;
             return a.GetProperty("hwnd").GetString() == "21"
                 ? Json("{\"ok\":true,\"menu\":{\"source\":\"uia\",\"hwnd\":\"21\",\"items\":[{\"label\":\"File\",\"pos\":0}]}}")
-                : Json("{\"ok\":false,\"reason\":\"the app's menu bar did not answer\"}");
+                : Json("{\"ok\":false,\"reason\":\"the menu bar did not answer\"}");
         });
         TopBarFocus Last() => r.Events.Published.Where(p => p.Name == "topbar.focus").Select(p => (TopBarFocus)p.Payload!).Last();
         r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"21\",\"exe\":\"C:\\\\x\\\\app.exe\",\"uia\":\"try\"}");
@@ -250,7 +250,7 @@ public sealed partial class TopBarFeatureTests
         r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"22\",\"exe\":\"C:\\\\x\\\\other.exe\",\"uia\":\"try\"}");
         await Tick(r, 100);
         Assert.Equal(2, asked);
-        Assert.Contains("the app's menu bar did not answer", Last().MenuJson);
+        Assert.Contains("the menu bar did not answer", Last().MenuJson);
         Assert.Contains("\"source\":\"none\"", Last().MenuJson);
         r.Platform.Raise("topbar", "{\"kind\":\"focus\",\"hwnd\":\"21\",\"exe\":\"C:\\\\x\\\\app.exe\",\"uia\":\"try\"}");
         await Tick(r, 100);
