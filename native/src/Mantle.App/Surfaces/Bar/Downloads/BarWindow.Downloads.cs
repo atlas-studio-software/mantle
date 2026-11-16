@@ -53,6 +53,17 @@ public sealed partial class BarWindow
         _dl.Root.KeyDown += DlKey_;
         _dl.Root.PreviewKeyDown += (_, e) => { if (e.Key == global::Windows.System.VirtualKey.Tab) _dlUser = true; };
         _dl.Root.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _dlUser = true), true);
+        if (Host.Args.Test) {
+            // a test run traces where the keyboard goes in the shelf and which element an Enter reaches (a lost Enter
+            // after a repaint, run 43854350493: no open and no "ignored" line)
+            Microsoft.UI.Xaml.Input.FocusManager.GotFocus += (_, e) => {
+                if (_dl?.Root.XamlRoot is { } xr && e.NewFocusedElement is UIElement u && u.XamlRoot == xr && Popups?.OpenKey == DlKey)
+                    Host.Log.Line($"downloads: the keyboard focus is on {DlWho(u)}");
+            };
+            _dl.Root.AddHandler(UIElement.KeyDownEvent, new Microsoft.UI.Xaml.Input.KeyEventHandler((_, e) => {
+                if (e.Key == global::Windows.System.VirtualKey.Enter) Host.Log.Line($"downloads: key Enter reached {DlWho(e.OriginalSource)}{(e.Handled ? " (handled)" : "")}");
+            }), true);
+        }
         _dlBtn.Click += (_, _) => OpenDownloads();
         _dlBtn.RightTapped += (_, e) => { e.Handled = true; OpenDownloads(); };
         RenderDlBtn();
@@ -256,6 +267,10 @@ public sealed partial class BarWindow
         rows[to].Focus(FocusState.Keyboard);
         rows[to].StartBringIntoView(new BringIntoViewOptions { AnimationDesired = false });
     }
+
+    static string DlWho(object? o) => o is FrameworkElement f
+        ? (AutomationProperties.GetAutomationId(f) is { Length: > 0 } id ? id : f.GetType().Name) + (f is Control c ? $" ({c.FocusState})" : "")
+        : o?.GetType().Name ?? "nothing";
 
     static string? Str(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 }

@@ -144,8 +144,8 @@ internal sealed class DownloadsShelf
             int n = 0;
             foreach (var i in items) _list.Children.Add(Row(i, n++, nowMs));
             if (focusItem != null && _rows.FirstOrDefault(r => (r.Tag as string) == focusItem) is { } back) {
-                if (focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back) rv.Focus(focusHow);
-                else back.Focus(focusHow);
+                bool got = focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back ? rv.Focus(focusHow) : back.Focus(focusHow);
+                if (!got) _log($"downloads: a repaint could not put the keyboard back on row {_rows.IndexOf(back) + 1} ({focusHow})");
             }
         }
         _scroll.UpdateLayout();
