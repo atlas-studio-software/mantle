@@ -321,5 +321,6 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
 
 ### Left (part 7)
 
-- The bell sometimes ignores presses right after the centre closed from an Enter on a card (notifications.md, OPEN).
+- Handing the keyboard back can give the foreground to Windows' own taskbar where it is shown (a CI runner): the tests
+  press through ClickOnBar; worth a look on a PC that keeps Windows' taskbar shown beside Mantle (notifications.md).
 - The calendar pair's size gap (measured in calendar.md).
