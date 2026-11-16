@@ -176,15 +176,21 @@ lib/corner.js), ported. Rows: docs/parity/shell.md DESK-001..127 and CORN-001..1
   (it was a bare string before), so the row can name the failed action.
 - **Quick settings' Hot corners row (CORN-061..085):** `CornerRow` in Core holds view() and plain() as pure code
   (`CornerRowTests`). `CornersRow` in the App (Surfaces/Desktop/CornersRow.cs) has the 2x2 tile grid, a chip wrap
-  (`ChipWrap`), the lines, Esc that closes the choices first, and pushes heard only while the panel is open. It goes into
+  (`ChipWrap`), the lines, an Esc handler for the open choices, and pushes heard only while the panel is open. It goes into
   QsPanel before the notes, as bar.js attaches it. The qs pair's part1 mode leaves it out, as Electron's PART2_OUT strips
-  `.hcrow`. UI: `CornersRowTests` (defaults, a chip saves into the TEST profile, the current chip just closes, two Escs).
+  `.hcrow`. UI: `CornersRowTests` (defaults, a chip saves into the TEST profile, the current chip just closes, one corner
+  open at a time). Esc (CORN-068) stays todo: native quick settings opens without focus and takes no keyboard, so Esc
+  never reaches it.
+- **A new watch looks at its first move:** a cursor that starts in a corner (at start, or on waking from a rest) begins
+  disarmed, and the host has to see it leave, so the first move after a watch starts always wakes the host once.
 - **Desktop step 3:** `RemakeLadder` (Core) is the 1.5 / 3 / 5 / 8 / 12 / 20 s back-off, the retries, the give-up after
   six tries and the Explorer-back try-now, on a HostClock. DesktopSurface.Remake.cs now uses it, with no behaviour
   change: try n makes or attaches, and the done and give-up words are unchanged. `DeskMenuFeature(TimeProvider)`: the
   30 s re-arm after a stand-down waits on the given clock. Tests: `RemakeLadderTests` (all on a hand-moved clock;
   TaskbarCreated is never sent and Explorer is never restarted).
 - **Shared files touched:** QsPanel.cs (9 lines: the field, the row, Attach, Theme, Opened, Closed).
+- **Ledger:** CORN 50 -> 98 of 108 done (10 todo: 039, 049, 059, 068, 099..104, each with its reason in the row or below);
+  DESK unchanged at 57 of 127 (DESK-011 and DESK-124 gained tests; neither was todo).
 
 ## Not built yet (left for later rounds)
 
