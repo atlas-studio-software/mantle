@@ -74,6 +74,16 @@ public class OnTopFeatureTests
     }
 
     [Fact]
+    public void The_pin_moves_top_left_while_a_count_holds_the_top_right_corner()
+    {
+        Assert.False(OnTopWords.PinOnLeft(0));
+        Assert.True(OnTopWords.PinOnLeft(1));
+        Assert.True(OnTopWords.PinOnLeft(12));   // "9+" still shows a disc
+        Assert.Equal((0d, -3d, -9d, 0d), OnTopWords.PinMargin(0));
+        Assert.Equal((-9d, -3d, 0d, 0d), OnTopWords.PinMargin(3));
+    }
+
+    [Fact]
     public void The_result_pop_up_reads_the_reason_or_the_hint_and_holds_a_refusal_longer()
     {
         static JsonElement P(string json) => JsonDocument.Parse(json).RootElement.Clone();
