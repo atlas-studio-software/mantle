@@ -183,7 +183,7 @@ internal sealed partial class TopBarSurface : ISurface
     Button MakeButton(string id, string name, bool bold = false)
     {
         var b = (Button)XamlReader.Load($"<Button {Ns} Height='22' Padding='9,0,9,0' VerticalAlignment='Center' ClickMode='Press' IsTabStop='True' UseSystemFocusVisuals='False'>"
-            + "<Button.Template><ControlTemplate TargetType='Button'><Border Background='{TemplateBinding Background}' CornerRadius='{TemplateBinding CornerRadius}' Padding='{TemplateBinding Padding}'>"
+            + "<Button.Template><ControlTemplate TargetType='Button'><Border Background='{TemplateBinding Background}' BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}' CornerRadius='{TemplateBinding CornerRadius}' Padding='{TemplateBinding Padding}'>"
             + "<ContentPresenter Content='{TemplateBinding Content}' Foreground='{TemplateBinding Foreground}' VerticalAlignment='Center' HorizontalAlignment='Left'/></Border></ControlTemplate></Button.Template></Button>");
         Step("corner", () => b.CornerRadius = new CornerRadius(Dbl("LgRCtl", 6)));
         Step("fill", () => b.Background = ClearBrush());
@@ -193,6 +193,7 @@ internal sealed partial class TopBarSurface : ISurface
         Step("weight", () => b.FontWeight = bold ? FontWeights.SemiBold : FontWeights.Normal);
         Step("automation id", () => AutomationProperties.SetAutomationId(b, id));
         Step("automation name", () => AutomationProperties.SetName(b, name));
+        Step("focus ring", () => { b.BorderThickness = new Thickness(0); FocusRing(b); });   // TOP-028 (TopBarSurface.Motion.cs)
         Step("hover", () =>
         {
             b.PointerEntered += (_, _) => { if (!IsOpen(b)) b.Background = Br("LgHover"); };
@@ -239,6 +240,7 @@ internal sealed partial class TopBarSurface : ISurface
             if (!t.Enabled) b.Foreground = Br("LgInk3");   // TOP-021: a disabled title is dimmed
             if (IsOpen(b)) b.Background = Br("LgPress");
             b.Click += (_, _) => OnTitlePress(idx);
+            ArmDrag(b);
             b.PointerEntered += (_, _) => Slide(idx);
             _left.Children.Add(b);
         }
@@ -285,6 +287,7 @@ internal sealed partial class TopBarSurface : ISurface
                 _cells[c.Key] = new Cell { B = b, V = run, T = v, Ink = ink, Name = c.Label + " " + c.Value, Tip = tip };
                 if (IsOpen(b)) b.Background = Br("LgPress");
                 b.Click += (_, _) => OnStat(c.Key);
+                ArmDrag(b);
                 _right.Children.Add(b);
             }
         }
