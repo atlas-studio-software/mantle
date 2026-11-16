@@ -169,6 +169,74 @@ public static class IdleCmp
         return list.ToArray();
     }
 
+    // ------------------------------------------------------------------ per thread (read only): which thread burns it
+    [DllImport("kernel32.dll")] static extern IntPtr CreateToolhelp32Snapshot(uint flags, int pid);
+    [DllImport("kernel32.dll")] static extern bool Thread32First(IntPtr snap, ref THREADENTRY32 e);
+    [DllImport("kernel32.dll")] static extern bool Thread32Next(IntPtr snap, ref THREADENTRY32 e);
+    [DllImport("kernel32.dll")] static extern IntPtr OpenThread(uint access, bool inherit, int tid);
+    [DllImport("kernel32.dll")] static extern int GetThreadDescription(IntPtr h, out IntPtr desc);
+    [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
+    [StructLayout(LayoutKind.Sequential)]
+    struct THREADENTRY32 { public uint dwSize, cntUsage, th32ThreadID, th32OwnerProcessID; public int tpBasePri, tpDeltaPri; public uint dwFlags; }
+
+    public sealed class Th { public int Tid; public string Name = ""; public IntPtr H; public ulong C0, C1; public bool New; public double CycleMs; }
+    public sealed class Threads { public int Pid; public Dictionary<int, Th> ById = new Dictionary<int, Th>(); public Stopwatch Sw = new Stopwatch(); public double WallMs; }
+
+    static List<int> TidsOf(int pid)
+    {
+        var l = new List<int>();
+        IntPtr s = CreateToolhelp32Snapshot(0x4 /* TH32CS_SNAPTHREAD */, 0);
+        if (s == new IntPtr(-1)) return l;
+        var e = new THREADENTRY32 { dwSize = (uint)Marshal.SizeOf(typeof(THREADENTRY32)) };
+        for (bool ok = Thread32First(s, ref e); ok; ok = Thread32Next(s, ref e)) if (e.th32OwnerProcessID == pid) l.Add((int)e.th32ThreadID);
+        CloseHandle(s);
+        return l;
+    }
+
+    static Th OpenTh(int tid, bool isNew)
+    {
+        var t = new Th { Tid = tid, New = isNew };
+        t.H = OpenThread(0x0800 /* THREAD_QUERY_LIMITED_INFORMATION */, false, tid);
+        if (t.H == IntPtr.Zero) return t;
+        IntPtr d;
+        if (GetThreadDescription(t.H, out d) >= 0 && d != IntPtr.Zero) { t.Name = Marshal.PtrToStringUni(d) ?? ""; LocalFree(d); }
+        if (!isNew) QueryThreadCycleTime(t.H, out t.C0);
+        return t;
+    }
+
+    /// Opens every thread of pid and takes its starting cycles.
+    public static Threads ThreadsBegin(int pid)
+    {
+        var w = new Threads { Pid = pid };
+        CyclesPerMs(false);
+        foreach (int tid in TidsOf(pid)) w.ById[tid] = OpenTh(tid, false);
+        w.Sw.Start();
+        return w;
+    }
+
+    /// The cycles each thread ran in the window: threads that were there at the start (an exited one still answers through
+    /// its handle) and threads made during it (counted from zero, marked new). The busiest first, top lines.
+    public static string ThreadsEnd(Threads w, int top)
+    {
+        w.Sw.Stop(); w.WallMs = w.Sw.Elapsed.TotalMilliseconds;
+        foreach (int tid in TidsOf(w.Pid)) if (!w.ById.ContainsKey(tid)) w.ById[tid] = OpenTh(tid, true);
+        var list = new List<Th>(w.ById.Values);
+        double total = 0;
+        foreach (var t in list)
+        {
+            if (t.H == IntPtr.Zero) continue;
+            QueryThreadCycleTime(t.H, out t.C1); CloseHandle(t.H); t.H = IntPtr.Zero;
+            t.CycleMs = (t.C1 - t.C0) / _perMs; total += t.CycleMs;
+        }
+        list.Sort((a, b) => b.CycleMs.CompareTo(a.CycleMs));
+        var sb = new StringBuilder();
+        sb.AppendLine(string.Format("    threads of pid {0}: {1} ({2:0.00} cycle ms in {3:0.0} s = {4:0.000} % of one core; a thread that came AND went inside the window is not seen)",
+            w.Pid, list.Count, total, w.WallMs / 1000, 100 * total / w.WallMs));
+        for (int i = 0; i < list.Count && i < top; i++)
+            sb.AppendLine(string.Format("      tid {0,-6} {1,9:0.00} ms  {2}{3}", list[i].Tid, list[i].CycleMs, list[i].Name.Length > 0 ? list[i].Name : "-", list[i].New ? "  (new in the window)" : ""));
+        return sb.ToString();
+    }
+
     [DllImport("kernel32.dll")] static extern bool GetSystemTimes(out long idle, out long kernel, out long user);
     /// { idle, busy } in 100 ns units summed over all cores (kernel time includes idle, so busy = kernel + user - idle):
     /// how busy the whole runner was during a window, to show the noise floor beside an app's number.
