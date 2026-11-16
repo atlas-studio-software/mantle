@@ -436,8 +436,8 @@ this area.
     priority; top bar ui only, 8 of 10: same 2; the log says "first press: the bar activated for its keys (in front:
     yes)" but no "window activated" came), 43869659697 (4dc160e2: KeysHomeSoon after it; 8 of 10, same 2: the log
     says "window activated; keys go to topbar.stat.cpu (it held the focus)", the bar is in front, and still no key
-    arrives). Not yet known whether the first-show test itself passed in those runs (the trx lists only failures
-    read here). So the window is foreground, XAML focus is on the button, and the keys do not reach XAML: the island's
+    arrives). The first-show test itself PASSED in 43869659697 (with the game, put-back and
+    the other 6 top bar UI tests). So the window is foreground, XAML focus is on the button, and the keys do not reach XAML: the island's
     own HWND likely never gets the Win32 keyboard focus. Next tries, in order: (1) after the first-press Activate,
     `SetFocus` on the XAML island's child HWND (FindWindowEx for the DesktopChildSiteBridge /
     InputSite class) and log what has the Win32 focus (GetFocus on the bar's thread); (2) Activate once at creation
