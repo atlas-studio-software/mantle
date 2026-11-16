@@ -52,7 +52,7 @@ param(
   [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = '',
-  [string]$UiFilter = ''   # the ui stage runs only the tests this dotnet test --filter picks (a flake loop: -Stages build,ui,ui,ui)
+  [string]$UiFilter = ''   # the ui stage runs only the tests this dotnet test --filter picks (a flake loop: -Stages ui, run again and again)
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -779,7 +779,7 @@ foreach ($s in $Stages) {
   }
   if ($gui) { Desk-During $s $watchFrom }
   $secs = [math]::Round(((Get-Date) - $t0).TotalSeconds)
-  if ($results[$s] -notlike 'FAILED*') { $results[$s] = $r }   # a stage run twice keeps its failure
+  $results[$s] = $r
   Say "STAGE ${s}: $r [${secs}s]"
 }
 if ($watcher -and -not $watcher.HasExited) { Stop-Process -Id $watcher.Id -Force -ErrorAction SilentlyContinue }

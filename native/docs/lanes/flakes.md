@@ -109,10 +109,14 @@ of the sidecar's ready/state change, to name it.
 
 ## The flake loop
 
-`tools/ci.ps1 -UiFilter "<dotnet test --filter>"` runs only those UI tests; a stage named more than once runs more
-than once (`-Stages build,ui,ui,ui`), each with its own desk reset and STAGE line, and the NATIVE-CI line keeps a
-failure from any of them. Shared lines: `native/tools/ci.ps1` +1 parameter, the filter on the `dotnet test` line,
-and the result line.
+`tools/ci.ps1 -UiFilter "<dotnet test --filter>"` runs only those UI tests. ci.ps1 runs each named stage once (it
+puts them in the documented order), so the loop calls it again and again after one build, each call with its own
+desk reset and NATIVE-CI line:
+
+    pwsh -NoProfile -File native/tools/ci.ps1 -Stages build && for i in 1 2 3 4 5 6; do
+      pwsh -NoProfile -File native/tools/ci.ps1 -Stages ui -UiFilter '<filter>'; done
+
+Shared lines: `native/tools/ci.ps1` +1 parameter and the filter on the `dotnet test` line.
 
 ## Runs
 
