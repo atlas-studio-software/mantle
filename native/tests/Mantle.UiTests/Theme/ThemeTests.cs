@@ -54,7 +54,32 @@ public class ThemeTests
     {
         var pill = Host.Until(() => app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.pill")), 8000) ?? throw new AssertFailedException("no bar.pill");
         var r = pill.BoundingRectangle;
-        return new Rectangle(r.X + 64, r.Y + r.Height / 2 - 6, Math.Min(160, r.Width / 5), 12);
+        var probe = new Rectangle(r.X + 64, r.Y + r.Height / 2 - 6, Math.Min(160, r.Width / 5), 12);
+        Uncover(app, probe);
+        return probe;
+    }
+
+    /// The probe reads the screen's pixels, so they must be the bar's. The runner's own taskbar (auto-hidden) stays up
+    /// while it holds the foreground and then lies over the bar: run 43836206025 read its flat 238 grey as the "light"
+    /// pill and waited 8 s for it to go dark. Win32.TaskbarAutoHide takes the taskbar off the bar, and the test waits
+    /// until the bar is what lies under the probe; anything still over it fails here, by name.
+    static void Uncover(App app, Rectangle probe)
+    {
+        if (Covering(app, probe) == null) return;
+        Win32.TaskbarAutoHide(true);
+        if (!Host.Until(() => Covering(app, probe) == null, 3000, 100))
+            Assert.Fail($"the probe {probe} is covered by {Covering(app, probe)}: its pixels would not be the bar's");
+    }
+
+    /// What lies over the probe (its corners and centre) when that is not the app's own window: its title, else null.
+    static string? Covering(App app, Rectangle probe)
+    {
+        foreach (var p in new[] { new Point(probe.Left, probe.Top), new Point(probe.Right - 1, probe.Bottom - 1), new Point(probe.Left + probe.Width / 2, probe.Top + probe.Height / 2) }) {
+            IntPtr top = GetAncestor(WindowFromPoint(p), 2);
+            GetWindowThreadProcessId(top, out uint pid);
+            if (pid != (uint)app.Proc.Id) return $"'{Win32.Title(top)}' (pid {pid}) at {p}";
+        }
+        return null;
     }
 
     /// Poll the pill until it is clearly darker than <paramref name="light"/>: the ms it took, or -1 after <paramref name="ms"/>.
@@ -87,7 +112,7 @@ public class ThemeTests
         string file = Path.Combine(app.Ud, "look-sync", "look.json");
         Assert.IsTrue(Host.Until(() => File.Exists(file) && app.Log.Contains("look: sync with Helm and Quartz is on"), 8000), "look sync never seeded the test's own look.json:\n" + Tail(app.Log));
         Thread.Sleep(1500);   // first frame + backdrop, and the seed settled
-        double light = Host.Luminance(probe);
+        Uncover(app, probe); double light = Host.Luminance(probe);   // the light read is the bar, never what lies over it
 
         // the write Helm makes: one field changed, the document's rev and the field's rev one higher, Helm as the writer
         var doc = (JsonObject)JsonNode.Parse(File.ReadAllText(file))!;
@@ -118,7 +143,7 @@ public class ThemeTests
             Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Mantle is light"), 8000), "the host never said its theme:\n" + Tail(app.Log));
             Host.LogContains(() => app.Log, "(MANTLE_TEST_THEME_KEY), never the user's own");
             Thread.Sleep(1200);
-            double light = Host.Luminance(probe);
+            Uncover(app, probe); double light = Host.Luminance(probe);   // the light read is the bar, never what lies over it
             Assert.IsFalse(app.Log.Contains("Windows apps are dark now"), "the log said dark before the key changed:\n" + Tail(app.Log));
             var sw = Stopwatch.StartNew();
             using (var k = Registry.CurrentUser.OpenSubKey(sub, true)!) k.SetValue("AppsUseLightTheme", 0, RegistryValueKind.DWord);
@@ -146,7 +171,7 @@ public class ThemeTests
         var probe = Probe(app);
         Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Mantle is light"), 8000), "the host never said its theme:\n" + Tail(app.Log));
         Thread.Sleep(1500);   // first frame + backdrop
-        double light = Host.Luminance(probe);
+        Uncover(app, probe); double light = Host.Luminance(probe);   // the light read is the bar, never what lies over it
         var psi = new ProcessStartInfo(Host.ExePath) { UseShellExecute = false };
         foreach (var a in new[] { "--test", $"--profile-name={profile}", $"--user-data={app.Ud}", "--test-theme=dark" }) psi.ArgumentList.Add(a);
         psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
@@ -162,7 +187,7 @@ public class ThemeTests
             second.WaitForExit(10000);
             Console.WriteLine($"theme.set: second start handed off at {handed} ms, the pill went dark at {dark} ms (luminance {light:0.0} -> {last:0.0}); from the call {(dark >= 0 && handed >= 0 ? Math.Max(0, dark - handed) : -1)} ms");
             Assert.IsTrue(handed >= 0, "the running Mantle never logged the hand-off:\n" + Tail(app.Log));
-            Assert.IsTrue(dark >= 0, $"the bar never went dark within 8 s of theme.set (luminance {light:0.0} -> {last:0.0}):\n" + Tail(app.Log));
+            Assert.IsTrue(dark >= 0, $"the bar never went dark within 8 s of theme.set (luminance {light:0.0} -> {last:0.0}; over the probe now: {Covering(app, probe) ?? "the bar"}):\n" + Tail(app.Log));
             Assert.IsTrue(dark - handed < 1000, $"the bar went dark {dark - handed} ms after the call reached Mantle; the target is under 1 s");
         }
         Assert.IsTrue(Host.Until(() => app.Log.Contains("mantle: test-theme dark: ok: "), 3000), "theme.set did not answer ok:\n" + Tail(app.Log));
@@ -191,6 +216,8 @@ public class ThemeTests
 
     [DllImport("user32.dll", CharSet = CharSet.Unicode)] static extern IntPtr FindWindowExW(IntPtr parent, IntPtr after, string? cls, string? title);
     [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
 
     static IntPtr SessionWindowOf(int pid)
     {

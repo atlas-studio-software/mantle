@@ -142,7 +142,26 @@ public sealed partial class GlassTests
         return a;
     }
 
-    static void ClickEl(BarApp app, string id) { var r = app.Find(id).BoundingRectangle; ZOrder.Click(r.Left + r.Width / 2, r.Top + r.Height / 2); Thread.Sleep(450); }
+    static void ClickEl(BarApp app, string id)
+    {
+        var r = app.Find(id).BoundingRectangle;
+        var at = new System.Drawing.Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
+        // the click must land on the bar: the runner's own taskbar (auto-hidden) stays up while it holds the foreground
+        // and then lies over the bar, so the click reached it and nothing in Mantle heard it (run 43833241748: "More did
+        // not open" with no press of any kind in the log). Win32.TaskbarAutoHide takes the taskbar off the bar.
+        if (PidAt(at) != (uint)app.Proc.Id) {
+            Win32.TaskbarAutoHide(true);
+            if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100))
+                Assert.Fail($"{id} at {at} is covered by '{Win32.Title(GetAncestor(WindowFromPoint(at), 2))}': the click would not reach the bar");
+        }
+        ZOrder.Click(at.X, at.Y);
+        Thread.Sleep(450);
+    }
+
+    [DllImport("user32.dll")] static extern IntPtr WindowFromPoint(System.Drawing.Point p);
+    [DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
+    [DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    static uint PidAt(System.Drawing.Point p) { GetWindowThreadProcessId(GetAncestor(WindowFromPoint(p), 2), out uint pid); return pid; }
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 30))); }
     static int Count(string log, string needle) { int c = 0, i = 0; while ((i = log.IndexOf(needle, i, StringComparison.Ordinal)) >= 0) { c++; i += needle.Length; } return c; }
 

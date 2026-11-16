@@ -108,6 +108,10 @@ public sealed partial class BarWindow
             _ovfHooked = true;
             Popups.Anchor(DockMore);
             Popups.Closed += (key, _) => { if (key != OvfKey) return; _ovfRoot = null; _ovfTiles.Clear(); Popups.GiveBackKeyboard("the panel closed"); };
+            // the keyboard is asked for once the panel is on screen (its first frame), never on the open or a timer: on
+            // the open the window is still being made and the ask is refused, and the old retry timer sometimes never
+            // fired, so the keys reached nothing (runs 43830388635, 43836510792)
+            Popups.OnScreen += key => { if (key == OvfKey) OvfKeyboard(); };
         }
         int hidden = _cells.Count - OnStripCount;
         if (hidden <= 0) return;
@@ -125,10 +129,7 @@ public sealed partial class BarWindow
             _ovfRoot = root;
             return root;
         }), DockMore);
-        if (Popups.OpenKey == OvfKey) {
-            Host.Log.Line($"bar tasks: overflow: the panel opened with {hidden} app(s)");
-            OvfKeyboard(0);
-        }
+        if (Popups.OpenKey == OvfKey) Host.Log.Line($"bar tasks: overflow: the panel opened with {hidden} app(s)");
     }
 
     /// bar.js buildOvfPop: one tile per app behind "+N", in the strip's order, up to 4 across.
@@ -209,18 +210,15 @@ public sealed partial class BarWindow
     }
 
     /// The panel asks for the keyboard like the app menu (Esc, Tab between tiles, Enter / Space opens one): never in a
-    /// test instance unless MANTLE_TEST_JL_KEYS=1. A refusal is said in the log and the panel's help text.
-    void OvfKeyboard(int tries)
+    /// test instance unless MANTLE_TEST_JL_KEYS=1. Asked once, when the panel is on screen (PopupHost.OnScreen). A refusal
+    /// is said in the log and the panel's help text.
+    void OvfKeyboard()
     {
-        if (Popups == null || Popups.OpenKey != OvfKey || _ovfRoot == null) return;
+        if (Popups == null || Popups.OpenKey != OvfKey) return;
+        if (_ovfRoot == null) { Host.Log.Line("bar tasks: overflow: keys do not reach the panel: it is on screen without its tiles"); return; }
         bool allowed = !Host.Args.Test || (Host.Env(JlKeysEnv) == "1" && !Host.Quiet);
         var (ok, words) = allowed ? Popups.TakeKeyboard(OvfKey)
             : (false, "a test instance never takes the keyboard from whoever is at the machine");
-        if (!ok && words == "the pop-up is not open" && tries < 20) {
-            var t = DispatcherQueue.CreateTimer(); t.Interval = TimeSpan.FromMilliseconds(50); t.IsRepeating = false;
-            t.Tick += (_, _) => OvfKeyboard(tries + 1); t.Start();
-            return;
-        }
         if (ok) {
             if (FirstTile(_ovfRoot) is Button first) first.Focus(FocusState.Keyboard);
             Host.Log.Line("bar tasks: overflow: the panel has the keyboard");
