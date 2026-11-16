@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -47,10 +48,13 @@ public sealed partial class GlassTests
         string dir = FrameProbe.NewDir("glass-top-" + theme);
         string still = Path.Combine(dir, "still.png");
         WritePng(still);
-        var env = new Dictionary<string, string> { ["LOOK_SYNC_DIR"] = Fixture("top-" + theme, still), ["MANTLE_TEST_GLASS"] = "", ["MANTLE_TEST_TOPBAR"] = "app=npp&stats=ok" };
-        using var app = BarApp.Launch("glass-top-" + theme + "-" + Guid.NewGuid().ToString("N")[..4], theme: theme, env: env, extra: new[] { "--bench-out=" + dir });
+        string lookDir = Fixture("top-" + theme, still);
+        // MANTLE_TEST_HOVER=1: the bottom bar hides at rest (the cursor stays away; the menus are opened through UI
+        // Automation), so the at-rest CPU below is the top bar's and not the shown bottom bar's (HoverTests measures that)
+        var env = new Dictionary<string, string> { ["LOOK_SYNC_DIR"] = lookDir, ["MANTLE_TEST_GLASS"] = "", ["MANTLE_TEST_TOPBAR"] = "app=npp&stats=ok", ["MANTLE_TEST_HOVER"] = "1" };
+        using var app = BarApp.Launch("glass-top-" + theme + "-" + Guid.NewGuid().ToString("N")[..4], theme: theme, wait: false, env: env, extra: new[] { "--bench-out=" + dir });
         int pid = app.Proc.Id;
-        Host.LogContains(() => FrameProbe.Log(dir), "topbar: shown (", "the top bar was never shown", 15000);
+        Host.LogContains(() => FrameProbe.Log(dir), "topbar: shown (", "the top bar was never shown", 20000);
         IntPtr bar = Host.Until(() => FrameProbe.Find(pid, "Mantle top bar") is var h && FrameProbe.Showing(h) ? (object)h : null, 5000) is IntPtr b ? b : IntPtr.Zero;
         Assert.AreNotEqual(IntPtr.Zero, bar, "no top bar window:\n" + Tail(dir));
         Host.LogContains(() => FrameProbe.Log(dir), "glass top bar: painted the desktop still", "the top bar painted the still", 8000);
@@ -84,18 +88,78 @@ public sealed partial class GlassTests
         El(bar, "topbar.title.mantle").AsButton().Invoke();
         Host.LogContains(() => FrameProbe.Log(dir), "topbar: menu closed", "the Mantle menu did not close", 4000);
 
-        // at rest the look does nothing (one picture, no timer, no redraw on the stats tick): no glass line, and the CPU
+        // at rest the look does nothing (one picture, no timer, no redraw on the stats tick): no glass line, and the CPU.
+        // The bottom bar is hidden at rest (MANTLE_TEST_HOVER=1), so what is measured is the top bar with its still; then the
+        // SAME window with no still (the record says there is no picture: its plain fill) is measured the same way, and the
+        // still must add ~0. Two clocks: Windows' tick-charged CPU time (whole 15.6 ms ticks: the 1.0 % limit, as
+        // HoverTests) and the precise cycle count (QueryProcessCycleTime, as % of one core) for the comparison.
+        Assert.IsTrue(FrameProbe.LogHas(dir, "bar hidden: at rest", 10000), "the bottom bar never hid at rest, so the top bar cannot be measured alone:\n" + Tail(dir));
         Thread.Sleep(1500);
         int said = Count(FrameProbe.Log(dir), "glass top bar");
-        var c1 = FrameProbe.Cpu(app.Proc, 6000);
-        var c2 = FrameProbe.Cpu(app.Proc, 6000);
-        string line = $"GLASS-IDLE top bar {theme}: painted at rest {c1.App} % and {c2.App} % of one core (dwm {c1.Dwm} %, {c2.Dwm} %); strip {strip.N} points worst {strip.Worst}, menu {menu.N} points worst {menu.Worst}";
+        double perMs = CyclesPerMs();
+        var withStill = (A: Rest(app.Proc, 6000, perMs), B: Rest(app.Proc, 6000, perMs));
+        Assert.AreEqual(said, Count(FrameProbe.Log(dir), "glass top bar"), "the top bar's look did work at rest:\n" + Tail(dir));
+
+        // the same window without a still: look.json's desktop record says there is no picture (another rev, as Mantle writes it)
+        string doc = "{\"schema\":1,\"rev\":10,\"writer\":{\"app\":\"quartz\",\"pid\":1,\"at\":\"2026-11-15T00:00:10.000Z\"},\"look\":{" +
+            "\"glass\":{\"v\":{\"dark\":{\"blurPx\":5,\"dim\":" + DarkDim.ToString(CultureInfo.InvariantCulture) + ",\"panel\":0},\"light\":{\"blurPx\":12,\"dim\":" +
+            LightDim.ToString(CultureInfo.InvariantCulture) + ",\"panel\":0},\"render\":\"picture\"},\"rev\":2,\"by\":\"quartz\"}}," +
+            "\"desktop\":{\"rev\":10,\"ok\":false,\"reason\":\"the at-rest comparison\",\"by\":\"mantle\"}}";
+        File.WriteAllText(Path.Combine(lookDir, "look.json.tmp"), doc);
+        File.Move(Path.Combine(lookDir, "look.json.tmp"), Path.Combine(lookDir, "look.json"), overwrite: true);
+        Host.LogContains(() => FrameProbe.Log(dir), "glass top bar: no picture, a plain fill: Mantle has no desktop picture (the at-rest comparison)", "the top bar did not drop the still for the comparison", 8000);
+        Thread.Sleep(2500);   // the change has settled (the data files look every 2 s)
+        var noStill = (A: Rest(app.Proc, 6000, perMs), B: Rest(app.Proc, 6000, perMs));
+
+        double tickWith = Math.Min(withStill.A.Tick, withStill.B.Tick), cyWith = Math.Min(withStill.A.Cy, withStill.B.Cy), cyWithout = Math.Min(noStill.A.Cy, noStill.B.Cy);
+        string line = FormattableString.Invariant($"GLASS-IDLE top bar {theme} (bottom bar hidden): with the still {withStill.A.Tick} % and {withStill.B.Tick} % of one core by ticks, ") +
+            FormattableString.Invariant($"{withStill.A.Cy:0.000} % and {withStill.B.Cy:0.000} % by cycles; without a still {noStill.A.Tick} % and {noStill.B.Tick} % by ticks, {noStill.A.Cy:0.000} % and {noStill.B.Cy:0.000} % by cycles; ") +
+            FormattableString.Invariant($"the still adds {cyWith - cyWithout:+0.000;-0.000} points (limit {StillAddsPoints}); {perMs:0} cycles/ms; strip {strip.N} points worst {strip.Worst}, menu {menu.N} points worst {menu.Worst}");
         Console.WriteLine(line);
         File.AppendAllLines(Path.Combine(Host.OutDir, "glass-idle.txt"), new[] { line });
-        Assert.AreEqual(said, Count(FrameProbe.Log(dir), "glass top bar"), "the top bar's look did work at rest:\n" + Tail(dir));
-        // dark: the bottom bar holds one still, so the app at rest is the top bar's cost; light's bottom bar refreshes its
-        // own glass while up (HoverTests), so light is measured, not judged
-        if (dark) Assert.IsTrue(Math.Min(c1.App, c2.App) < 1.0, "the top bar painting the still costs 1 % of a core or more at rest: " + line);
+        // the top bar alone, painting the still, at rest: under 1 % of a core in both themes (the idle limit)
+        Assert.IsTrue(tickWith < 1.0, "the top bar painting the still costs 1 % of a core or more at rest: " + line);
+        // and the still itself adds ~0: no timer, no redraw, one static brush the compositor draws
+        Assert.IsTrue(cyWith - cyWithout < StillAddsPoints, "the still costs the top bar CPU at rest: " + line);
+    }
+
+    /// How much more of one core the top bar at rest may use with the still than without it, in percentage points of the
+    /// cycle count (the best of two 6 s readings each). Nothing of the look runs at rest, so the expected difference is 0;
+    /// this is the jitter of the app's own work at rest (the clock and stats ticks, a collection) between two windows.
+    const double StillAddsPoints = 0.25;
+
+    [DllImport("kernel32.dll")] static extern bool QueryProcessCycleTime(IntPtr process, out ulong cycles);
+    [DllImport("kernel32.dll")] static extern bool QueryThreadCycleTime(IntPtr thread, out ulong cycles);
+    [DllImport("kernel32.dll")] static extern IntPtr GetCurrentThread();
+
+    /// The cycle counter's rate for one busy core (a 400 ms spin on a test thread), to say a cycle count as % of one core.
+    static double CyclesPerMs()
+    {
+        double best = 0;
+        var t = new Thread(() => {
+            QueryThreadCycleTime(GetCurrentThread(), out var c0);
+            var sw = System.Diagnostics.Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 400) { }
+            QueryThreadCycleTime(GetCurrentThread(), out var c1);
+            best = (c1 - c0) / sw.Elapsed.TotalMilliseconds;
+        }) { IsBackground = true, Priority = ThreadPriority.AboveNormal };
+        t.Start(); t.Join();
+        Assert.IsTrue(best > 0, "the cycle counter could not be read");
+        return best;
+    }
+
+    /// The app's CPU over <paramref name="ms"/>: by Windows' ticks (FrameProbe.Cpu's clock) and by cycles, as % of one core.
+    static (double Tick, double Cy) Rest(System.Diagnostics.Process p, int ms, double perMs)
+    {
+        p.Refresh();
+        double t0 = p.TotalProcessorTime.TotalMilliseconds;
+        QueryProcessCycleTime(p.Handle, out var c0);
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+        Thread.Sleep(ms);
+        QueryProcessCycleTime(p.Handle, out var c1);
+        p.Refresh();
+        double wall = sw.Elapsed.TotalMilliseconds, t1 = p.TotalProcessorTime.TotalMilliseconds;
+        return (Math.Round(100 * (t1 - t0) / wall, 3), 100 * (c1 - c0) / perMs / wall);
     }
 
     /// "desktop: panes (physical px on screen): clock=x,y,w,h ..." -> that pane's screen rect (the last line).

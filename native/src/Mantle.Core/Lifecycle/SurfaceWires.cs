@@ -149,6 +149,9 @@ public sealed class SurfaceLink : IDisposable
         return new ValueTask<CommandResult>(tcs.Task);
     }
 
+    /// An event handler that runs this long on the UI thread is said in the log (log-only; never changes what runs).
+    public const double SlowUiMs = 30;
+
     /// Subscribed on the host thread; every payload (the replayed current value first, when the event has a replay
     /// source) is re-posted to the UI thread. Disposing it (UI thread) stops deliveries at once.
     public IDisposable On<T>(string ev, Action<T> handler)
@@ -162,7 +165,11 @@ public sealed class SurfaceLink : IDisposable
                     if (sub.Off) return;
                     _w.PostUi(() => {
                         if (sub.Off || _gone) return;
+                        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
                         try { handler(p); } catch (Exception e) { Log.Line($"its \"{ev}\" handler failed ({e.GetType().Name}: {e.Message})"); }
+                        // log-only: a handler that holds the UI thread long enough to be felt is named (look.md, the look.json timing)
+                        double ms = (System.Diagnostics.Stopwatch.GetTimestamp() - t0) * 1000.0 / System.Diagnostics.Stopwatch.Frequency;
+                        if (ms >= SlowUiMs) Log.Line(FormattableString.Invariant($"its \"{ev}\" handler held the UI thread {ms:0} ms"));
                     });
                 });
             } catch (Exception e) { Log.Line($"could not subscribe \"{ev}\": {e.Message}"); }

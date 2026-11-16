@@ -93,7 +93,7 @@ public partial class MantleApp : Application
         _window.ShowBar();
 
         Host.Data.Changed += c => {
-            _queue.TryEnqueue(() => _window?.OnDataChanged(c));
+            _queue.TryEnqueue(() => UiTimed("data changed: the bar's handler", () => _window?.OnDataChanged(c)));
             // the host's theme follows theme.json too (Electron's Settings writes it), so every surface hears "theme"
             if (c.File == DataFile.Theme) _hostLoop?.Post(() => _look?.ThemeFileChanged());
         };
@@ -258,7 +258,7 @@ public partial class MantleApp : Application
             Post = loop.Post, Events = _events, Log = Host.Log, PinnedTheme = Host.Args.Theme,
         });
         _offs.Add(Catalogs.Register(_bus, _look));
-        _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => ThemeShown?.Invoke(p)); };
+        _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => UiTimed("theme: the bar taking the host's theme", () => ThemeShown?.Invoke(p))); };
         ThemeNow = _look.Payload();
         _look.Start();
         if (_queue != null) Mantle.App.Shell.Glass.DesktopGlass.Feed(_look.Look, _queue);   // the see-through look's still and tint (look.md)
@@ -618,6 +618,15 @@ public partial class MantleApp : Application
     {
         if (_look != null) _look.Refresh(why);
         else Host.Log.Line($"mantle: {why}; the look is not up yet, so there is nothing to re-read");
+    }
+
+    /// Log-only (look.md, the look.json timing): a UI-thread job of the look path long enough to be felt is named.
+    static void UiTimed(string what, Action job)
+    {
+        long t0 = System.Diagnostics.Stopwatch.GetTimestamp();
+        job();
+        double ms = System.Diagnostics.Stopwatch.GetElapsedTime(t0).TotalMilliseconds;
+        if (ms >= SurfaceLink.SlowUiMs) Host.Log.Line(FormattableString.Invariant($"{what} held the UI thread {ms:0} ms"));
     }
 
     // ------------------------------------------------------------------ the ONE shutdown (CORE-025/026)

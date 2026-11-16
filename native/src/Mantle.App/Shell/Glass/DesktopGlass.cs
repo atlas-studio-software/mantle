@@ -83,25 +83,33 @@ internal static class DesktopGlass
             if (System.Threading.Interlocked.Exchange(ref pending, 1) == 1) return;
             ui.TryEnqueue(() => {
                 System.Threading.Interlocked.Exchange(ref pending, 0);
+                long t0 = Stopwatch.GetTimestamp();
                 GlassLook g;
                 try {
                     var s = look.DesktopStill();
                     g = new GlassLook(s.Still, s.Rev, s.Why, look.Wash("dark"), look.Wash("light"));
                 } catch (Exception e) { Host.Log.Line("glass: the look could not be read (" + e.Message + ")"); return; }
-                Take(g, why);
+                double read = Ms(t0);
+                int told = Take(g, why);
+                // the UI thread's share of a look change, said when the look moved (a theme or wallpaper change in Quartz or
+                // Helm rewrites look.json; the windows that are up re-apply here, a new still decodes on the pool thread)
+                if (told >= 0) Host.Log.Line(FormattableString.Invariant($"glass: the look change took {Ms(t0):0.0} ms on the UI thread (read {read:0.0} ms; {told} window layer(s) told)"));
             });
         }
         look.OnChange(e => Post(e.Why));
         Post("start");
     }
 
-    static void Take(GlassLook g, string why)
+    static double Ms(long t0) => (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+
+    /// The look as read now (UI thread): -1 when nothing the windows paint moved, else how many layers were told.
+    static int Take(GlassLook g, string why)
     {
         var old = _look;
         _look = g;
         bool stillMoved = old == null || old.Still != g.Still || old.Rev != g.Rev;
         bool tintMoved = old == null || old.Dark != g.Dark || old.Light != g.Light;
-        if (!stillMoved && !tintMoved) return;
+        if (!stillMoved && !tintMoved) return -1;
         if (stillMoved) {
             // the cache key carries the file's stamp: a new file decodes anew, a rev bump over the same file does not
             Host.Log.Line(g.Still != null ? $"glass: the desktop still is {g.Still} (record rev {g.Rev}; {why})" : "glass: no desktop still: " + g.Why);
@@ -109,7 +117,9 @@ internal static class DesktopGlass
             if (g.Still != null) Ahead();
         }
         if (tintMoved) Host.Log.Line($"glass: tint dark {g.Dark.Alpha:0.00} ({g.Dark.Text}); light {g.Light.Alpha:0.00} ({g.Light.Text})");
-        Changed?.Invoke(stillMoved ? "the desktop still changed" : "the tint changed");
+        var told = Changed;
+        told?.Invoke(stillMoved ? "the desktop still changed" : "the tint changed");
+        return told?.GetInvocationList().Length ?? 0;
     }
 
     /// A new still (at start, or the desktop changed it): decode it for the primary monitor now, on the pool thread, so the
@@ -191,12 +201,13 @@ internal static class DesktopGlass
             return null;
         }
         // back on the UI thread (the caller's await): the one copy into the shared bitmap
+        long c0 = Stopwatch.GetTimestamp();
         var bmp = new WriteableBitmap(w, h);
         px.CopyTo(bmp.PixelBuffer);
         bmp.Invalidate();
-        double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+        double ms = Ms(t0), copy = Ms(c0);
         string words = $"{iw}x{ih} cover-fit to {w}x{h}, sharp (no blur, no saturate), decoded once in {ms:0} ms";
-        Host.Log.Line("glass: the desktop still " + words);
+        Host.Log.Line("glass: the desktop still " + words + FormattableString.Invariant($" (the copy into the shared bitmap: {copy:0.0} ms on the UI thread)"));
         var (dn, ds) = gd.NeedOver(0, gd.HeightDip); var (ln, ls) = gl.NeedOver(0, gl.HeightDip);
         Host.Log.Line(FormattableString.Invariant($"glass: the readability guard over the sharp still ({gd.Strips} strips of {NativeGuard.StripDip:0} DIP, a {gd.BoxPx} px glyph box, 4.5:1, 8-bit) worked out once in {gms:0} ms: dark needs up to {Math.Min(1, dn):0.00} (at {gd.StripTop(ds) / scale:0} DIP), light up to {Math.Min(1, ln):0.00} (at {gl.StripTop(ls) / scale:0} DIP)"));
         return new GlassPic { Key = key, Bitmap = bmp, W = w, H = h, Words = words, GuardDark = gd, GuardLight = gl };
