@@ -1,6 +1,8 @@
 using System;
 using System.Numerics;
 using Mantle.App.Native;
+using Mantle.App.Shell.Glass;
+using Mantle.App.Surfaces.Bar.Frame;
 using Mantle.App.Shell.Windowing;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Windowing;
@@ -33,8 +35,19 @@ internal sealed class PopupWindow
     {
         Key = key; Name = name; Focusable = focusable; Instant = instant;
         Root = new Grid { RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light };
-        // the pop-up surface: --lg-fill-pop with the outer hairline, radius --lg-r-pop (the thicker fill: no picture yet, BAR-374)
-        var face = (Border)XamlReader.Load("<Border xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' Background='{ThemeResource LgFillPop}' BorderBrush='{ThemeResource LgEdgeOut}' BorderThickness='1' CornerRadius='{ThemeResource LgRPopCorner}'/>");
+        const string X = "<Border xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' ";
+        Border face;
+        if (DesktopGlass.ElectronLook) {
+            // MANTLE_TEST_GLASS=electron (the Electron pairs): --lg-fill-pop with the outer hairline, radius --lg-r-pop
+            face = (Border)XamlReader.Load(X + "Background='{ThemeResource LgFillPop}' BorderBrush='{ThemeResource LgEdgeOut}' BorderThickness='1' CornerRadius='{ThemeResource LgRPopCorner}'/>");
+        } else {
+            // the see-through look (look.md SEE-009): the desktop still lined up with the screen and one tint, under the
+            // hairline and the body; with no still, the thicker fill --lg-fill-pop inside the hairline (BAR-374) and the log says why
+            face = (Border)XamlReader.Load(X + "BorderBrush='{ThemeResource LgEdgeOut}' BorderThickness='1' CornerRadius='{ThemeResource LgRPopCorner}'/>");
+            var fill = (Border)XamlReader.Load(X + "Background='{ThemeResource LgFillPop}' BorderBrush='Transparent' BorderThickness='1' CornerRadius='{ThemeResource LgRPopCorner}' IsHitTestVisible='False'/>");
+            _glassFill = fill;
+            Root.Children.Add(fill);
+        }
         face.Child = body;
         Root.Children.Add(face);
         Win = new Window { Title = "Mantle pop-up: " + name, Content = Root };
@@ -55,6 +68,24 @@ internal sealed class PopupWindow
         Win32.SetWindowLongPtr(Hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Host.Quiet) Win32.SetLayeredWindowAttributes(Hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(Hwnd);
+        if (_glassFill is { } f) {
+            // the layers sit at the window's top-left (the pop-up fills its window above the motion slack)
+            Glass = new GlassLayer("pop-up " + name, Hwnd, new CornerRadius(16), _ => (Rect.Left, Rect.Top), plain => f.Visibility = plain ? Visibility.Visible : Visibility.Collapsed);
+            Root.Children.Insert(0, Glass.Tint);
+            Root.Children.Insert(0, Glass.Picture);
+            Win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange && Glass != null) { Rect = Now(); Glass.Moved(); } };
+        }
+    }
+
+    readonly Border? _glassFill;
+    /// The shared desktop-still backdrop (Shell/Glass), null in a MANTLE_TEST_GLASS=electron run.
+    public GlassLayer? Glass { get; }
+
+    /// The window's rectangle now, keeping the pop-up's height (the window is taller by the motion slack).
+    Win32.RECT Now()
+    {
+        if (!FrameNative.GetWindowRect(Hwnd, out var r)) return Rect;
+        return new Win32.RECT { Left = r.Left, Top = r.Top, Right = r.Left + (Rect.Right - Rect.Left), Bottom = r.Top + (Rect.Bottom - Rect.Top) };
     }
 
     /// Physical px. The window is `Slack` taller than the pop-up (room below it for the entrance's rise and the
@@ -180,6 +211,7 @@ internal sealed class PopupWindow
         }
         else Win32.ShowWindow(Hwnd, Win32.SW_SHOWNOACTIVATE);
         WindowKinds.StripFrame(Hwnd);   // the presenter puts frame bits back at a show
+        Glass?.Up(Root.RequestedTheme == ElementTheme.Dark);   // lined up where it was placed, the tint of its theme
     }
 
     /// An instant kind stays made, cloaked in place; the next open only uncloaks it.
@@ -187,8 +219,9 @@ internal sealed class PopupWindow
     {
         if (!Parked) Win32.ShowWindow(Hwnd, Win32.SW_SHOWNOACTIVATE);
         WindowKinds.Cloak(Hwnd, true);
+        Glass?.Down();
         Parked = true;
     }
 
-    public void Close() { try { Win.Close(); } catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException) { } }
+    public void Close() { Glass?.Release(); try { Win.Close(); } catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException) { } }
 }

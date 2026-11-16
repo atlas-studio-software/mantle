@@ -137,7 +137,7 @@ try {
     # as files ("@<path>"): the pictures make the lists too long for an environment variable
     $nf = Join-Path $ud 'notifs.json'; $tf = Join-Path $ud 'tray.json'
     [IO.File]::WriteAllText($nf, $notifs); [IO.File]::WriteAllText($tf, $trayJson)
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_NOTIFS = "@$nf"; $env:MANTLE_TEST_TRAY = "@$tf"
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_NOTIFS = "@$nf"; $env:MANTLE_TEST_TRAY = "@$tf"
     $prof = "ntfpar-$theme"
     [void][ParityNative]::ToBottom($back.Id)
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")

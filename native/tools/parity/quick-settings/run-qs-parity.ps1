@@ -78,7 +78,7 @@ try {
     $tag = "qs-$theme"
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-qspar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_QS = $state
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_QS = $state
     # part1 takes Electron's Game mode row (.gmrow) out with the other rows (electron-qs.cjs PART2_OUT); native leaves it out too
     if ($Mode -eq 'part1') { $env:MANTLE_TEST_QS_NO_GAMEMODE = '1' } else { Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue }
     $prof = "qspar-$theme"
