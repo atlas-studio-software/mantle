@@ -174,6 +174,7 @@ public class NotificationsTests
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr WindowFromPoint(Point p);
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern IntPtr GetAncestor(IntPtr h, uint flags);
     [System.Runtime.InteropServices.DllImport("user32.dll")] static extern uint GetWindowThreadProcessId(IntPtr h, out uint pid);
+    [System.Runtime.InteropServices.DllImport("user32.dll", CharSet = System.Runtime.InteropServices.CharSet.Unicode)] static extern IntPtr FindWindowW(string cls, string? title);
     static uint PidAt(Point p) { GetWindowThreadProcessId(GetAncestor(WindowFromPoint(p), 2), out uint pid); return pid; }
 
     /// A press on a bar button once nothing covers it. Handing the keyboard back can give the foreground to the runner's
@@ -184,7 +185,10 @@ public class NotificationsTests
         var r = e.BoundingRectangle;
         var at = new Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
         if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100)) {
+            // an auto-hidden taskbar stays up while it holds the foreground (run 43835062492): hand that to the runner's
+            // desktop, as the harness's desk reset does by clicking it
             Win32.TaskbarAutoHide(true);
+            ZOrder.Foreground(FindWindowW("Progman", null));
             if (!Host.Until(() => PidAt(at) == (uint)app.Proc.Id, 3000, 100))
                 Assert.Fail($"the button at {at} is covered by another window ({Win32.Title(GetAncestor(WindowFromPoint(at), 2))})");
         }
