@@ -78,6 +78,9 @@ BAR-370 / 371 (Mantle's own tray menu batch) were already ported by feature-host
   taskbar; handed back the foreground, it sits over the bar and takes the next presses on the bell (desk-watch, run
   43831510908). The UI tests press bar buttons through ClickOnBar (waits until nothing covers the button, hides that
   taskbar as StripTests does). For the user, Mantle hides Windows' taskbar while it is live.
+- Fixed (media lane part 7): the hand-back (PopupHost.BackTarget) never gives the keyboard to Windows' taskbar or to a
+  gone, hidden or cloaked window; it goes to the desktop instead (the log: "to the desktop (the window that had it was
+  Windows' taskbar)"). The keyboard test asserts the taskbar does not have the foreground after the Esc close.
 - The edge bar's chip strip is not drawn (the island's pip stands for it, as before).
 
 ## Left

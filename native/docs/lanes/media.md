@@ -323,4 +323,24 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
 
 - Handing the keyboard back can give the foreground to Windows' own taskbar where it is shown (a CI runner): the tests
   press through ClickOnBar; worth a look on a PC that keeps Windows' taskbar shown beside Mantle (notifications.md).
+  Done in part 7.
 - The calendar pair's size gap (measured in calendar.md).
+
+## Part 7 (lane native-r8-media7)
+
+- The centre's keyboard test (reopen covered by "another window ()"): the window that had the keyboard before the open
+  was the runner's own taskbar (it gets the foreground whenever the app before it dies). The close handed it back, so
+  it came up over the bar; part 6's fallback (auto-hide, desktop foreground) did not clear it because the pointer still
+  rested on the bell, inside the taskbar's rect, and an auto-hidden taskbar stays up under the pointer. Fixed in the
+  product: PopupHost.BackTarget never hands the keyboard to Windows' taskbar (Shell_TrayWnd, Shell_SecondaryTrayWnd)
+  nor to a window that is gone, hidden or cloaked; those fall back to the desktop (GetShellWindow), and the log says
+  where it went. The test asserts the foreground is not the taskbar after the Esc close; ClickOnBar's fallback moves
+  the pointer off the bar first. Desk-watch on run 43843467577: taskbar before the open, Progman after both closes.
+- Quick settings views ("the Wi-Fi view did not open"): both failures (this branch's 43838363746 and native-r4-core's
+  11-11 run) came with the runner's taskbar holding the foreground after the sidecar-kill tests, and the chevron press
+  logged nothing at all. The cause was not pinned down from the artifacts. Not the hot corners row (it is not in
+  QsPanel on native/main or this branch). The test now waits for the pop-up's "shown at" line and presses the chevron
+  only once UI Automation's hit test puts it under the press (a stray press now fails saying what is there).
+  QsPanel.Enter logs why a view did not open.
+- Not touched (other lanes' files), same pattern: PopupWindow.Show and BarWindow.xaml.cs hand the foreground straight
+  back to the window that had it, which on a runner can be Windows' taskbar; BackTarget could serve them too.
