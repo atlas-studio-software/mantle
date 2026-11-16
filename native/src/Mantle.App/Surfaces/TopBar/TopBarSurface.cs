@@ -464,11 +464,14 @@ internal sealed partial class TopBarSurface : ISurface
         Place("before show");   // never drawn out of place (TOP-232)
         if (!_activated)
         {
-            // WinUI starts drawing at the first Activate; the bar never keeps the keyboard (TOP-221 showInactive)
+            // TOP-221 showInactive, the FIRST show too: an Activate here (handing the foreground back after) took the
+            // keyboard for a moment, so a pop-up the user opened in Mantle's first second lost it and closed (the
+            // downloads shelf, the notification centre; lane native-r8-startup run 43859364384). A non-resizable
+            // presenter draws without an Activate (DesktopSurface's finding). The window is activated only by the user:
+            // a click on it, or its keys (the "window activated; keys go to" road).
             _activated = true;
-            IntPtr prev = Win32.GetForegroundWindow();
-            _win.Activate();
-            if (prev != IntPtr.Zero && prev != _hwnd && Win32.GetForegroundWindow() == _hwnd) Win32.SetForegroundWindow(prev);
+            _win.AppWindow.Show(false);
+            if (_test) _ctx.Log.Line(Win32.GetForegroundWindow() == _hwnd ? "first show: the bar took the foreground" : "first show: shown inactive, the foreground stays where it was");
         }
         else Win32.ShowWindow(_hwnd, Win32.SW_SHOWNOACTIVATE);
         WindowKinds.StripFrame(_hwnd);
