@@ -28,13 +28,14 @@ function Copy-TestLogs([string]$tag) {
 }
 
 # 1) the real suite
-& pwsh -NoProfile -File (Join-Path $root 'native\tools\ci.ps1') -Stages build, ui 2>&1 | ForEach-Object { if ("$_" -match '^(STAGE|NATIVE-CI)|IDLE-CPU|Failed ') { Write-Host $_ } }
+& pwsh -NoProfile -File (Join-Path $root 'native\tools\ci.ps1') -Stages 'build,ui' 2>&1 | ForEach-Object { if ("$_" -match '^(STAGE|NATIVE-CI)|IDLE-CPU|Failed ') { Write-Host $_ } }
 $idle = Join-Path $root 'native\out\ui\idle-cpu.txt'
 if (Test-Path $idle) { Get-Content $idle | ForEach-Object { Say "suite: $_" }; Copy-Item $idle (Join-Path $Out 'suite-idle-cpu.txt') }
 Copy-TestLogs 'suite'
 
 # 2) the idle test alone
 $exe = Join-Path $root 'native\out\bin\MantleNative\MantleNative.exe'
+if (-not (Test-Path $exe)) { Write-Host "DARK-PROBE: FAILED (no native exe at $exe after the build stage)"; exit 3 }
 $proj = @(Get-ChildItem -Path (Join-Path $root 'native\tests\Mantle.UiTests') -Filter *.csproj)[0].FullName
 $env:MANTLE_NATIVE_EXE = $exe; $env:MANTLE_TEST_VISIBLE = '1'
 for ($i = 1; $i -le $Repeat; $i++) {
