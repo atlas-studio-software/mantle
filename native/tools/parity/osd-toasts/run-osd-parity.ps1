@@ -102,7 +102,7 @@ try {
       $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-osdpar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
       New-Item -ItemType Directory -Force $ud | Out-Null
       $spec = $all[$st].n.Clone(); $spec['at'] = @($atX, $atY)
-      $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_OSD = ($spec | ConvertTo-Json -Compress)
+      $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_OSD = ($spec | ConvertTo-Json -Compress)
       $prof = "osdpar-$tag"
       $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
       $log = Join-Path $ud 'mantle-native.log'
@@ -138,7 +138,7 @@ try {
   }
 } finally {
   Stop-Process -Id $back.Id -Force -ErrorAction SilentlyContinue
-  Remove-Item Env:MANTLE_TEST_OSD -ErrorAction SilentlyContinue
+  Remove-Item Env:MANTLE_TEST_OSD, Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue
 }
 $scored = @($rows | Where-Object { $_ -like 'OSD-PARITY*' }).Count
 Write-Host ("OSD-PARITY summary: {0} scored of {1}, lowest ssim {2:N4}; no masks" -f $scored, ($pick.Count * 2), $low)
