@@ -75,6 +75,39 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
   Translation on its box and a pane fades by its own Opacity, so layers behind them would stay put or stay shown.
 - The light strip keeps its bottom hairline (it is there in every state, so it is not a line that comes and goes).
 
+## The look.json timing and the top bar at rest (part 4, 2026-11-16)
+- **No 600 ms stall on a look.json change.** The ~600 ms gap in the downloads keys test's logs (runs 43854350493 and
+  43857488257) is that test's own `Thread.Sleep(600)` after its first Enter. The look.json lines that fell inside it are
+  Mantle's own start-up seed ("rev 1 by mantle", LookSync.SeedAsync "first" when look.json is missing), read back 2 s
+  later by the data files' poll: one log line and a compare on the UI thread (the bar's blur check). It is left as it is,
+  because the bar's live glass follows look.json only through that path, so it also needs Mantle's own glass writes.
+  The test's real failure (the second Enter of a pair is lost after the shelf repaints) belongs to the downloads lane.
+- **What runs on the UI thread when look.json changes** (another app's write): LookSync reads the file on a pool thread,
+  then the look host's listeners fire. DesktopGlass reads the look once per burst and tells every window layer that is up
+  (the tint re-applies, or a new still is asked for). A new still decodes on the pool thread, together with its guard,
+  and only the copy into the shared bitmap runs on the UI thread. Each surface's "theme" handler runs when the look's
+  variables moved.
+- **Timed, log-only.** DesktopGlass logs "the look change took N ms on the UI thread (read N ms; M window layer(s) told)"
+  and the copy's ms after a decode. SurfaceLink.On (Mantle.Core/Lifecycle/SurfaceWires.cs) and App.xaml.cs (the bar's
+  theme job and its data-change job) log any job that holds the UI thread 30 ms or more.
+- **Measured** (run 43864153617, cloud runner): the glass part took 0.8 to 1.1 ms for 8 window layers, the copy 1.9 ms,
+  and the decodes 371 ms and 214 ms on the pool thread. No look handler reached 30 ms. Seen from outside the app
+  (GlassTests.A_look_json_change_from_another_app_never_holds_the_UI_thread_long, WM_NULL round trips to the bar's
+  window), the UI thread was held at most 1.6 ms (glass Dim), 1.0 ms (accent and theme) and 0.4 ms (a new still), and
+  0.2 ms at rest. The test's limit is 50 ms per job.
+- **Seen in passing, another lane's:** "topbar: its "topbar.focus" handler held the UI thread 66 ms" (a foreign Edge
+  window came to the front on the runner, in the tray test).
+- **The top bar at rest** (GlassSurfacesTests). The old check kept the bottom bar shown, so its 1.041 % and 1.561 % in
+  dark (run 43858736115) measured the bottom bar: 1.561 % is the shown bottom bar's own dark idle in the same run. The
+  check now does three things:
+  - it runs with MANTLE_TEST_HOVER=1, so the bottom bar is hidden at rest;
+  - it keeps the 1.0 % tick limit, now in both themes;
+  - it measures the same window again with no still (look.json's record says there is no picture). The still may add
+    at most 0.25 points by cycle count (QueryProcessCycleTime, best of two 6 s readings each).
+  Run 43864153617: dark had 0.26 % and 0 % by ticks with the still, 0.072 % and 0.074 % by cycles; without the still,
+  0.072 % and 0.067 %, so the still adds +0.005 points. Light had +0.001 points. The 0.25-point margin is about 50 times
+  that, and it is the app's own jitter at rest (its clock and stats ticks) between two windows.
+
 ## Open questions for the user
 - **The top-row hints receiver.** With the colour under gone, the hints have nothing to paint; native still listens on the
   pipe and forwards kept hints to the sidecar's `underhint`, which refuses them (said once). Retire the receiver and the

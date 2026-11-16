@@ -13,7 +13,11 @@ namespace Mantle.UiTests;
 /// that held the UI thread (to within the probe's own rest, one Sleep(1), at most one 15.6 ms timer tick).
 public sealed partial class GlassTests
 {
-    /// The longest the UI thread may be held by one job of a look.json change (set from the measured fix: look.md).
+    /// The longest the UI thread may be held by one job of a look.json change (look.md, "the look.json timing"). Measured
+    /// (run 43864153617, at c517c29f): at most 1.6 ms (the glass Dim), 1.0 ms (accent + theme) and 0.4 ms (a new still),
+    /// 0.2 ms at rest; the app's own timing says 0.8 to 1.1 ms for 8 window layers and 1.9 ms for the copy of a decoded
+    /// still (the decode itself, 214 to 371 ms, and the guard stay on the pool thread). 50 ms is the slice budget: far over
+    /// the runner's jitter, far under a decode or a guard (100 ms and more) that came back onto the UI thread.
     const double LookStallLimitMs = 50;
 
     [DllImport("user32.dll", SetLastError = true)]
@@ -92,6 +96,10 @@ public sealed partial class GlassTests
         using var app = BarApp.Launch("glass-stall-" + Guid.NewGuid().ToString("N")[..4], theme: "dark", env: env, extra: new[] { "--bench-out=" + dir });
         int pid = app.Proc.Id;
         string Log() => FrameProbe.Log(dir);
+        // the probe runs from the bar's first frame: what it sees over the start-up is the control (it does see a long hold
+        // when there is one: the start-up lane's freeze, not judged here), the look changes below are what is judged
+        using var probe = new UiProbe(app.Hwnd);
+        long launched = UiProbe.Now;
         // the windows a look change re-applies are up and painting the still: the top bar and a pop-up (More)
         Host.LogContains(Log, "glass top bar: painted the desktop still", "the top bar painted the still", 15000);
         ClickEl(app, "bar.more");
@@ -105,8 +113,9 @@ public sealed partial class GlassTests
 
         var lines = new List<string> { "LOOK-STALL windows: " + threads };
         var worst = new Dictionary<string, double>();
-        using (var probe = new UiProbe(app.Hwnd)) {
-            Thread.Sleep(200);
+        {
+            var start = probe.Worst(launched, UiProbe.Now);
+            lines.Add($"LOOK-STALL start-up and the first More open (the control, not judged here): the UI thread was held at most {start.Ms} ms ({start.N} probes, worst at {start.At})");
             long r0 = UiProbe.Now; Thread.Sleep(1500);
             var rest = probe.Worst(r0, UiProbe.Now);
             lines.Add($"LOOK-STALL at rest: the UI thread answered within {rest.Ms} ms ({rest.N} probes, worst at {rest.At})");
