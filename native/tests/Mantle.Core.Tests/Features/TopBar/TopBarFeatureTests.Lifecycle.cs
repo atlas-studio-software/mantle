@@ -120,7 +120,7 @@ public sealed partial class TopBarFeatureTests
     {
         var f = await Up(r, s);
         bool fire = true;
-        r.Platform.Handle("topbar.reserve", _ =>
+        r.Platform.Handle("topbar.reserve", x =>
         {
             if (fire) { fire = false; _ = f.SeenForTest((JsonObject)JsonNode.Parse("{\"ok\":true,\"procs\":[{\"pid\":9,\"file\":\"cs2.exe\"}]}")!); }
             return Json("{\"ok\":true}");
@@ -218,7 +218,7 @@ public sealed partial class TopBarFeatureTests
     {
         var f = await Up(r, s);
         int before = r.Platform.Calls.Count;
-        await f.StopAsync(new FeatureStop("Mantle is putting Windows back"));
+        await f.StopAsync(new FeatureStop("Mantle is putting Windows back", false));
         var after = r.Platform.Calls.Skip(before).Select(c => c.Verb + (c.ArgsJson.Contains("\"on\":false") ? " off" : "")).ToArray();
         Assert.Equal(new[] { "topbar.watch off", "topbar.guard off", "topbar.stats off", "topbar.release" }, after);
         Assert.False(Vis(r)[^1].Show);
