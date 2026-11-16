@@ -81,7 +81,7 @@ try {
     $tag = "$kind-$theme"
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-mediapar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_MEDIA = $state
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_MEDIA = $state
     $prof = "mediapar-$theme"
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $log = Join-Path $ud 'mantle-native.log'

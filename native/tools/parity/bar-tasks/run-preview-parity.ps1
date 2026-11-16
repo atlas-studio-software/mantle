@@ -218,7 +218,7 @@ foreach ($t in $themes) {
   for ($run = 1; $run -le 3 -and -not $grabs.electron; $run++) {
     $eo = Join-Path $dir 'electron-stdout.txt'; $ee = Join-Path $dir 'electron-stderr.txt'
     Clear-Bottom "electron $t run $run" @($fixture.Id)
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_BAR_TEST_CURSOR = '1'
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_BAR_TEST_CURSOR = '1'
     $ep = Start-Process -FilePath $electronExe -ArgumentList '.', '--test', "--profile-name=prevpar-$t", "--theme=$t", '--test-live-bar', '--no-desktop', '--flyout=powershell', "--screenshot=$(Join-Path $dir 'electron-own')" `
       -WorkingDirectory $root -PassThru -RedirectStandardOutput $eo -RedirectStandardError $ee
     $end = (Get-Date).AddSeconds(150); $asked = $null

@@ -86,6 +86,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     readonly List<UIElement> _want = [];
     readonly Dictionary<string, Microsoft.UI.Xaml.Media.Imaging.BitmapImage?> _pics = new(StringComparer.Ordinal);
     LauncherLook? _look;
+    Mantle.App.Shell.Glass.GlassLayer? _glass;   // the shared desktop-still backdrop (look.md SEE-010); null with MANTLE_TEST_GLASS=electron
 
     public bool Shown => _shown;
 
@@ -123,6 +124,14 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Mantle.App.Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
+        if (!Mantle.App.Shell.Glass.DesktopGlass.ElectronLook) {
+            // the pane paints the desktop still lined up with the screen under one tint; no still: its own fill (and the log says why)
+            _glass = new Mantle.App.Shell.Glass.GlassLayer("launcher", _hwnd, _panel.CornerRadius, s => Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(_hwnd, out var r) ? (r.Left + InsetDip * s, r.Top + InsetDip * s) : (0.0, 0.0),
+                plain => _fill.Visibility = plain ? Visibility.Visible : Visibility.Collapsed);
+            _panelGrid.Children.Insert(0, _glass.Tint);
+            _panelGrid.Children.Insert(0, _glass.Picture);
+            _win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange && _shown) _glass?.Moved(); };
+        }
 
         // TextChanging, not TextChanged: it comes synchronously with the edit, so the rows are made before the frame that
         // draws the new text (TextChanged is posted after it, which put some keystrokes' rows one frame late: LAU-016)
@@ -287,6 +296,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         double r = dark ? 18 : 20;                                           // --lg-r-xl in dark, --panel-r in light
         _panel.CornerRadius = _edge.CornerRadius = _bdrop.CornerRadius = _fill.CornerRadius = new CornerRadius(r);
         _dim.CornerRadius = new CornerRadius(0, r, r, 0);
+        if (_glass != null) { _glass.Picture.CornerRadius = _glass.Tint.CornerRadius = new CornerRadius(r); _glass.Theme(dark); }
         // the pooled rows and headings carry this theme's sizes and brushes: made again on the next render
         _pool.Clear(); _heads.Clear(); _empty = null; _list?.Children.Clear(); _rows.Clear(); _hintKey = "";
         if (!_shown && _look?.Folding == true) _win?.AppWindow.Hide();        // a fold cut short by the theme still ends hidden
@@ -337,7 +347,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         _look.Shadow(_dark, p.Win.Right - p.Win.Left, p.Win.Bottom - p.Win.Top, p.Scale, InsetDip, _dark ? 18 : 20);
         if (_look.Folding) return;                                          // still on screen from a fold: keep the picture it has
         var pane = new Win32.RECT { Left = p.Win.Left + ins, Top = p.Win.Top + ins, Right = p.Win.Right - ins, Bottom = p.Win.Bottom - ins };
-        _look.Picture(pane, p.Screen, p.Scale, _dark);
+        if (_glass != null) _glass.Up(_dark);                                // the see-through look: the shared still, sharp and lined up
+        else _look.Picture(pane, p.Screen, p.Scale, _dark);
     }
 
     public void Show(string why)
@@ -374,6 +385,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         {
             if (_shown) return;
             _win.AppWindow.Hide();
+            _glass?.Down();
             _look.Rest();
             _look.ClearPicture();                                            // panelDown: clearBackdrop()
         });

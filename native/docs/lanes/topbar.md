@@ -215,6 +215,102 @@ this area.
 - **Ledger:** `mark-topbar-rows.py native ui 7b5260b3` marked 24 rows (19 tested, 4 ported, 1 better: TOP-102). TOP
   rows in shell.md after it: 133 tested, 19 ported, 2 better (TOP-102, TOP-218), 228 todo.
 
+## Part 6 (lane native-r7-topbar-6, same branch): the ping test, its history, and part 4's leftovers
+
+- **Core:** `PingTestPanel.cs` is ui/topbar/pingtest.js as a pure machine: the last run and the history are pushed in
+  (`OnRun`, `OnHistory`), a row press is `Act("pt-...")`, the name box's keys are `Key`, and `Rows()` returns `PtRow`s
+  (Sep, Tabs, Head, Info with classes, Progress, Table with `PtCell`s, Row2, Go, NameBox, Chips, HistRow). Calls go
+  through an injected `CallFn`, so the unit tests drive it with no app. `PingTestHistory.cs` is _pingtest-history.js:
+  `<data root>\ping-tests.json` through `SafeFile` (the one write gate), last 50 unsaved + every saved one, a damaged file
+  moved aside, a refused or failed write kept in memory with the reason. `PingTestFake.cs` plays a made-up run
+  (starting, ping, down, up, done; 350 ms a step) for --test fixture runs: odd runs on "Test Wi-Fi" with a quick router,
+  even runs on "Test Wi-Fi 5G" with a slow one, so two runs give two networks, amber and both verdicts. Documentation
+  addresses only (192.0.2.1, 02:00:5e:...): the oss-guard refuses LAN IPs and real-looking MACs.
+- **Feature:** `TopBarFeature.PingTest.cs`: `pingTest` (start / cancel / state; checked, then the sidecar's
+  `topbar.pingtest`, or the fake in a fixture run), `pingTests` (list / save / rename / delete; the id must match
+  `^[0-9]{1,16}-[0-9]{1,6}$`, the name `checkName`), and the sidecar's `pingtest` pushes forwarded as
+  `topbar.pingtest` (without `ev`), a finished run added to the history and pushed as `topbar.pingtests`.
+  `TopBarFeature.Configure(new(DataRoot, Files))` in App.xaml.cs gives it the run's data root; unconfigured (unit
+  tests), every write is refused and the history says so.
+  - **Nothing at rest:** the fake has no timer until a start and stops with its run; a live run asks the sidecar only on
+    the user's press (and once at load for the last state and the history list, as Electron's page does).
+  - **Deviation (safer):** a second damaged history file never replaces an older `ping-tests.bad.json` (Electron's
+    rename would); it is kept as `ping-tests.bad-<ms>.json` and the problem line names it.
+- **Surface:** `TopBarSurface.PingTest.cs` draws the rows at the end of the PING dropdown. The rows' signature joins
+  the stat dropdown's shape, so a 1 s sample with the same ping rows still updates in place, and a ping push redraws.
+  The name box keeps its text, caret and focus across redraws (`AfterPingRender`); `PingKey` takes keys typed in it
+  before the menu keys (TOP-091). AutomationIds: `topbar.pt.tab.*`, `topbar.pt.<act verb>`, `topbar.pt.name`,
+  `topbar.pt.c<row>.<col>`, `topbar.pt.h.<n>`, `topbar.pt.chip.<n>`, `topbar.pt.speed.*`; amber cells and lines carry
+  ItemStatus "amber".
+- **Part 4 leftovers:** `TopBarSurface.Motion.cs`.
+  - TOP-080: a dropdown pops in once per menu session (`MenuLevel.Popped`; part 4 already had `Shown`, set when drawn), from `Reveal()` when it is first seen:
+    light up 3 px on the bar's spring over 240 ms and a 96 ms fade, reduced motion a 120 ms fade, dark none.
+    Composition animations only.
+  - Press-drag-release: a press on a title or stat cell releases the button's pointer capture, so the rows hear the
+    drag (hover, slide) and a release on a row picks it (`DragPick`; any release ends the drag).
+  - TOP-028: the strip buttons' template now binds BorderBrush / BorderThickness; keyboard focus shows a 2 px accent
+    ring (dark: 1.5 px accent, --lg-focus's outer ring; its inner dark band is not drawn).
+- **Tests:** Core `PingTestPanelTests.cs` (7), `PingTestHistoryTests.cs` (7), `TopBarPingTestCommandsTests.cs` (2).
+  UI `TopBar/TopBarPingTestTests.cs` (run, amber cells, closing does not cancel, history in the test profile, save by
+  UI Automation, rename by the keyboard with Enter, compare, delete on a second press) and
+  `TopBar/TopBarMenuPointerTests.cs` (a real pointer: press on File, slide to Edit and back, hover Recent Files opens
+  its submenu, no second pop-in on a re-render, release on Open… picks it, click-away, Tab focus ring).
+
+- **Runs:** 43063412200 (4e75cea9, build,unit,ui,topbar): unit 9 of 812 failed (an in-memory JsonValue made from an
+  int throws on GetValue<double>; fixed with `PingTestPanel.Number`), ui: the ping test failed. 43065420632 and
+  43066176188 (full): build failed (CS0102 `MenuLevel.Shown` already existed, then CS0246 a missing using); unit
+  812/812 in the second. 43067056971 (0b1d4735, full): `NATIVE-CI: FAILED (ui failed; 15 ok, 0 skipped)`, ui 3 of 64 failed:
+  the two new UI tests and part 5's `Stat_dropdowns_hang_from_their_cell...`. The log has no assertion text and no trx
+  was fetched, so the causes are NOT known. Suspect first: `ArmDrag` (TopBarSurface.Motion.cs) releases the pointer
+  capture on a press of a stat cell or title, which can change what a real click does (the stat test's real click on
+  CPU, then ArrowRight). Try removing `ArmDrag(b)` from the stat cells first and fetch ui.trx for the messages.
+- **Ledger:** NOT marked this part (no green run). `mark-topbar-rows.py` has the part 6 rows and an `upgrade` pass
+  (ported -> tested for TOP-030 / TOP-071); run it only after a green full run.
+- **Coordinator note (open):** part 5's stat UI test once missed "key: ArrowRight" (run 43064259180, with game mode's
+  extra quick settings row); passed in 43064426559. Not looked at yet; harden with a log-line wait if a cause shows.
+
+## Part 7 (lane native-r7-topbar-7, same branch): part 6's three UI failures (HANDOFF, not green yet)
+
+- **Merged** origin/native/main 86ae174f (d3af033d, clean). native/main is now 259926d6 (game mode, downloads, the Helm
+  badge): NOT merged yet; merge it before the next full run.
+- **Commit message fix:** 0b1d4735's message says run "43066xxxx"; it was 43066176188 (history not rewritten).
+- **Real causes** (from run 43067056971's ui.trx, fetched with `gh run download`; cloudtest had not brought it back):
+  1. Stat test, "ArrowRight never arrived" after a real click on CPU. Two things. (a) `ArmDrag` released the pressed
+     button's pointer capture, which cancels the button's own press, so it never took the focus a click gives it; it now
+     focuses the opener itself (Pointer state, no ring) and --test logs `drag armed: <id> (focus kept|taken|refused)`.
+     Run 43072038005 passed the stat test with this. (b) The coordinator saw the same miss on main with no ArmDrag
+     (3 runs). Likely race: a click (or the test's `ZOrder.Foreground`) ACTIVATES the inactive bar, and the island then
+     puts its own focus back, which can be nothing (the element it had, the PING cell focused by the UIA Invoke, was
+     redrawn away on close), so PreviewKeyDown on `_root` never fires. Fix (committed, NOT yet run): `KeysHomeSoon()`
+     in Motion.cs runs on `_win.Activated` (not Deactivated) at Low priority, after the island's own restore: with a
+     menu open and no focus inside `_root`, it focuses the ping name box, else the in-menu name box, else the open title
+     or stat cell; --test logs `window activated; keys go to <id> (...)`. The stat, ping and pointer tests now wait for
+     that line (a new one) before sending keys whenever the bar was not already foreground.
+  2. Ping test, "Enter did not rename the test": the real click at the name box's right end hit the WinUI TextBox's
+     clear (x) button and emptied it, so the name became "2". Electron's inputs have none: both top bar name boxes
+     hide it (`NoClearButton`, the launcher's way), and the test checks the typed text before Enter. Passed in
+     43072038005. Then "no topbar.pt.compare on the top bar": a plain Grid makes no automation peer, so the ids on the
+     result / compare tables and the progress bar never reached UI Automation; they are `UiaGrid`s now (shared type in
+     Uia.cs, used, not edited). Also: a name box that had the focus and is redrawn away (Enter saved, Escape left it)
+     dropped the XAML focus, so later menu keys (the test's final Escape) reached nothing; `AfterPingRender(boxFocused)`
+     gives the focus to the PING cell. The test keeps the app log as `uitest-topbar-pingtest-native-log.txt`.
+  3. Pointer test, "the dropdown did not pop in": the hosted runner has Windows' animation effects OFF, so the app
+     (correctly) did the reduced-motion fade. The old check assumed animations on; the test now reads
+     SPI_GETCLIENTAREAANIMATION (what UISettings.AnimationsEnabled reports) and expects the matching line. Passed in
+     43072038005.
+- **Runs:** 43072038005 (643a9ac7, build,unit,ui,topbar): `NATIVE-CI: FAILED (ui failed; 3 ok, 0 skipped)`, ui 1 of
+  71 (ping test: no topbar.pt.compare). 43075038269 (6c9632d7, full): `NATIVE-CI: FAILED (ui failed; 16 ok, 0
+  skipped)`, ui 2 of 71: the ping test (message not read: the artifact download had not finished at the handoff) and
+  `QuickSettingsViewsTests.The_three_views_open_draw_their_rows_and_every_click_is_a_dry_run` (not this lane's; it came
+  with main). Every other stage ok, topbar parity 4 of 4. The last commit (KeysHomeSoon + the tests' activation waits)
+  has NO run.
+- **Ledger:** NOT marked (no green full run on a HEAD).
+- **Next, in order:** merge origin/native/main (259926d6); read 43075038269's ui.trx for the ping test's message (if not
+  already in `.cloudtest/20261111-180914-a7809b/artifacts`); run the fast loop, then `cloudtest --recipe
+  mantle-native-public`; on green run `python -I native/tools/parity/topbar/mark-topbar-rows.py native ui <sha>` and
+  commit the ledger and these notes. Then, if there is time: a submenu flipping left at the screen edge (TOP-072),
+  losing focus closing the menu (TOP-078), an app menu that fills in late (TOP-067).
+
 ## Left (exact list, in order)
 
 1. **Sections not started** (shell.md order):
