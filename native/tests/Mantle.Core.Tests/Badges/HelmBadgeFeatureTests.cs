@@ -91,12 +91,17 @@ public class HelmBadgeFeatureTests
     [Fact]
     public void A_count_hides_when_its_writer_exits_heard_not_polled() => T(async b =>
     {
-        using var p = Process.Start(new ProcessStartInfo("cmd.exe", "/c ping -n 3 127.0.0.1 > nul") { UseShellExecute = false, CreateNoWindow = true })!;
-        b.Write($"{{\"v\":1,\"count\":4,\"pid\":{p.Id}}}");
-        Assert.True(await b.Until(() => b.Badge0.GetProperty("count").GetInt32() == 4), "a live writer's count did not show");
-        p.WaitForExit(15000);
-        Assert.True(await b.Until(() => b.Badge0.GetProperty("count").GetInt32() == 0), "the writer's exit was not heard");
-        Assert.Equal(HelmBadge.NotRunning, b.Badge0.GetProperty("reason").GetString());
+        // the writer lives until this test ends it (ping.exe itself, no cmd.exe parent, so its one PID is the whole
+        // writer): a short-lived one could exit on a slow runner before the badge file was read, and count 4 never showed
+        using var p = Process.Start(new ProcessStartInfo("ping.exe", "-n 600 127.0.0.1") { UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true })!;
+        try {
+            b.Write($"{{\"v\":1,\"count\":4,\"pid\":{p.Id}}}");
+            Assert.True(await b.Until(() => b.Badge0.GetProperty("count").GetInt32() == 4), "a live writer's count did not show");
+            p.Kill();   // by its own PID, never by name; not the tree (it has none)
+            Assert.True(p.WaitForExit(15000), "the writer did not exit when the test ended it");
+            Assert.True(await b.Until(() => b.Badge0.GetProperty("count").GetInt32() == 0), "the writer's exit was not heard");
+            Assert.Equal(HelmBadge.NotRunning, b.Badge0.GetProperty("reason").GetString());
+        } finally { try { if (!p.HasExited) p.Kill(); } catch (InvalidOperationException) { } }
     }, before: b => b.Write("{\"v\":1,\"count\":0}"));
 
     [Fact]
