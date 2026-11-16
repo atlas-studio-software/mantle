@@ -50,6 +50,9 @@ internal sealed class OsdSurface : ISurface
     IntPtr _hwnd;
     Grid _root = null!, _shadowHost = null!, _pill = null!, _level = null!;
     Border _pane = null!, _lip = null!, _fill = null!, _track = null!, _pillLine = null!;
+    Grid _inner = null!;
+    Mantle.App.Shell.Glass.GlassLayer? _glass;   // the see-through look (look.md SEE-011); null with MANTLE_TEST_GLASS=electron
+    bool _glassUp;                               // the picture is painted, so the pane's own face is off
     Button _glyph = null!, _more = null!;
     Ellipse _knob = null!;
     StackPanel _stack = null!, _panel = null!, _apps = null!;
@@ -95,6 +98,15 @@ internal sealed class OsdSurface : ISurface
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
+        if (!Mantle.App.Shell.Glass.DesktopGlass.ElectronLook) {
+            // the pane paints the desktop still lined up with the screen under one tint, under its 1 px edge too; no still:
+            // its own face (and the log says why)
+            _glass = new Mantle.App.Shell.Glass.GlassLayer("osd", _hwnd, new CornerRadius(0), Mantle.App.Shell.Glass.GlassLayer.At(_hwnd, () => _glass!.Picture),
+                plain => { _glassUp = !plain; _pane.Background = plain ? Face() : null; });
+            _glass.Picture.Margin = _glass.Tint.Margin = new Thickness(-1);
+            _inner.Children.Insert(0, _glass.Tint);
+            _inner.Children.Insert(0, _glass.Picture);
+        }
 
         _subs.Add(ctx.On<ThemePayload>("theme", t => SetTheme(t.View.Theme == "dark")));
         _subs.Add(ctx.On<OsdShow>("osd.show", OnShow));
@@ -155,7 +167,7 @@ internal sealed class OsdSurface : ISurface
 
         _stack = new StackPanel();
         _lip = new Border { IsHitTestVisible = false, BorderThickness = new Thickness(0, 1, 0, 0) };
-        var inner = new Grid();
+        var inner = _inner = new Grid();
         inner.Children.Add(_stack); inner.Children.Add(_lip);
         _pane = new Border { BorderThickness = new Thickness(1), BackgroundSizing = BackgroundSizing.OuterBorderEdge, Child = inner, Width = PillW, HorizontalAlignment = HorizontalAlignment.Center, VerticalAlignment = VerticalAlignment.Bottom, Margin = new Thickness(M) };
         AutomationProperties.SetAutomationId(_pane, "osd");
@@ -230,6 +242,7 @@ internal sealed class OsdSurface : ISurface
         _root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
         Paint();
         Shadow();
+        _glass?.Theme(dark);
     }
 
     /// The --lg-* token of the current theme (Theme/Tokens.xaml), read in code so every paint follows a theme change.
@@ -274,10 +287,11 @@ internal sealed class OsdSurface : ISurface
         var d = OsdModel.Describe(_kind, s.Ok, s.Level, s.Muted, s.Reason);
         bool vol = _kind == "volume";
         bool muted = vol && d.Muted;
-        _pane.Background = Face();
+        _pane.Background = _glassUp ? null : Face();
         _pane.BorderBrush = B("LgEdgeOut");
         double r = _open ? D("LgRPop") : D("LgRPill");
         _pane.CornerRadius = new CornerRadius(r);
+        _glass?.Radius(new CornerRadius(r));
         _lip.CornerRadius = new CornerRadius(Math.Max(0, r - 1));
         _lip.BorderBrush = _dark ? B("LgLip") : B("LgFill0");   // dark: --lg-lip-up, no outer shadow
         _pane.Width = _open ? OpenW : PillW;
@@ -537,6 +551,7 @@ internal sealed class OsdSurface : ISurface
         _fader.Reset();
         _why_ = null;
         Win32.ShowWindow(_hwnd, 0 /* SW_HIDE */);
+        _glass?.Down();
         if (was && _ctx.Test) _ctx.Log.Line($"faded and hidden (seq {_seq})");
     }
 
@@ -588,6 +603,7 @@ internal sealed class OsdSurface : ISurface
         WindowKinds.Raise(_hwnd, _ctx.Dispatcher, "osd", over, (ok, why) => { if (_ctx.Test) _ctx.Log.Line(ok ? "raised: on top of everything" + (over != IntPtr.Zero ? " (above the app in front)" : "") : "raised: NOT on top: " + why); });
         _lastSize = "";
         Report();
+        _glass?.Up(_dark);   // lined up where it was placed, the tint of its theme over its own rows
     }
 
     /// osd.size: what the pane drew (w x h in DIP with the margin), so the feature's state and the test log know.

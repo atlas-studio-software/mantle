@@ -39,6 +39,11 @@ internal sealed class GlassPic
     public required int W { get; init; }
     public required int H { get; init; }
     public required string Words { get; init; }
+    /// The readability guard's need profile of this picture (Core NativeGuard, look.md SEE-017), per theme: worked out once,
+    /// on the pool thread right after the decode, from these very pixels; a window takes the worst strip over its rows.
+    public required GuardRows GuardDark { get; init; }
+    public required GuardRows GuardLight { get; init; }
+    public GuardRows Guard(bool dark) => dark ? GuardDark : GuardLight;
 }
 
 internal static class DesktopGlass
@@ -101,16 +106,40 @@ internal static class DesktopGlass
             // the cache key carries the file's stamp: a new file decodes anew, a rev bump over the same file does not
             Host.Log.Line(g.Still != null ? $"glass: the desktop still is {g.Still} (record rev {g.Rev}; {why})" : "glass: no desktop still: " + g.Why);
             Watch(g.Still);
+            if (g.Still != null) Ahead();
         }
         if (tintMoved) Host.Log.Line($"glass: tint dark {g.Dark.Alpha:0.00} ({g.Dark.Text}); light {g.Light.Alpha:0.00} ({g.Light.Text})");
         Changed?.Invoke(stillMoved ? "the desktop still changed" : "the tint changed");
     }
 
+    /// A new still (at start, or the desktop changed it): decode it for the primary monitor now, on the pool thread, so the
+    /// first pop-up paints the picture in its first frame instead of its plain fill for the length of a decode. It is the
+    /// decode the first window would make anyway (the same key, shared), made once per still; nothing runs at rest.
+    static void Ahead()
+    {
+        try {
+            IntPtr mon = Mantle.App.Native.Win32.MonitorFromPoint(new Mantle.App.Native.Win32.POINT { X = 0, Y = 0 }, 1 /* PRIMARY */);
+            var mi = new Mantle.App.Native.Win32.MONITORINFO { cbSize = System.Runtime.InteropServices.Marshal.SizeOf<Mantle.App.Native.Win32.MONITORINFO>() };
+            if (mon == IntPtr.Zero || !Mantle.App.Native.Win32.GetMonitorInfoW(mon, ref mi)) { Host.Log.Line("glass: the primary monitor could not be read, so the still is decoded at the first window"); return; }
+            double scale = (Mantle.App.Native.Win32.GetDpiForMonitor(mon, 0, out uint d, out _) == 0 ? d : 96) / 96.0;
+            int w = mi.rcMonitor.Right - mi.rcMonitor.Left, h = mi.rcMonitor.Bottom - mi.rcMonitor.Top;
+            long t0 = Stopwatch.GetTimestamp();
+            var t = Pic(w, h, scale, out var why);
+            if (why != null) { Host.Log.Line("glass: nothing decoded ahead: " + why); return; }
+            if (t.IsCompleted) return;   // this size is decoded already
+            _ = t.ContinueWith(r => {
+                double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
+                if (r.Status == TaskStatus.RanToCompletion && r.Result != null) Host.Log.Line($"glass: decoded ahead for the primary monitor ({w}x{h} at {scale:0.##}) in {ms:0} ms, before any window asked");
+            }, TaskScheduler.Default);
+        } catch (Exception e) { Host.Log.Line("glass: the still could not be decoded ahead (" + e.Message + "); the first window decodes it"); }
+    }
+
     // ------------------------------------------------------------------ the picture, once per file and monitor size
 
-    /// The still cover-fit to a monitor of <paramref name="w"/> x <paramref name="h"/> physical px: decoded once (pool thread),
-    /// the bitmap made on the UI thread, then shared. Null with <paramref name="why"/> when there is none.
-    public static Task<GlassPic?> Pic(int w, int h, out string? why)
+    /// The still cover-fit to a monitor of <paramref name="w"/> x <paramref name="h"/> physical px at DPI scale
+    /// <paramref name="scale"/>: decoded once (pool thread) and its readability guard worked out there too, the bitmap made on
+    /// the UI thread, then shared. Null with <paramref name="why"/> when there is none.
+    public static Task<GlassPic?> Pic(int w, int h, double scale, out string? why)
     {
         why = null;
         var g = _look;
@@ -122,29 +151,39 @@ internal static class DesktopGlass
             if (!fi.Exists) { why = "the desktop still is missing: " + path; return Task.FromResult<GlassPic?>(null); }
             stamp = fi.LastWriteTimeUtc.Ticks + ":" + fi.Length;
         } catch (Exception e) { why = "the desktop still could not be read (" + e.Message + "): " + path; return Task.FromResult<GlassPic?>(null); }
-        string key = path + "|" + stamp + "|" + w + "x" + h;
+        string key = path + "|" + stamp + "|" + Size(w, h, scale);
         if (_failed.TryGetValue(key, out var bad)) { why = bad; return Task.FromResult<GlassPic?>(null); }
         if (_pics.TryGetValue(key, out var have)) return have;
         var ui = _ui!;
-        var t = Make(path, key, w, h, ui);
+        var t = Make(path, key, w, h, scale, ui);
         _pics[key] = t;
         _order.AddLast(key);
         while (_order.Count > KeepPics) { _pics.Remove(_order.First!.Value); _order.RemoveFirst(); }
         return t;
     }
 
+    static string Size(int w, int h, double scale) => w + "x" + h + "@" + scale.ToString("0.###", System.Globalization.CultureInfo.InvariantCulture);
+
     /// Why the still could not be made for a monitor of that size (the decode's own words), or null.
-    public static string? FailureFor(int w, int h)
+    public static string? FailureFor(int w, int h, double scale)
     {
-        foreach (var kv in _failed) if (kv.Key.EndsWith("|" + w + "x" + h, StringComparison.Ordinal)) return kv.Value;
+        foreach (var kv in _failed) if (kv.Key.EndsWith("|" + Size(w, h, scale), StringComparison.Ordinal)) return kv.Value;
         return null;
     }
 
-    static async Task<GlassPic?> Make(string path, string key, int w, int h, DispatcherQueue ui)
+    static async Task<GlassPic?> Make(string path, string key, int w, int h, double scale, DispatcherQueue ui)
     {
         long t0 = Stopwatch.GetTimestamp();
-        byte[] px; int iw, ih;
-        try { (px, iw, ih) = await Task.Run(() => Decode(path, w, h)); }
+        byte[] px; int iw, ih; GuardRows gd, gl; double gms;
+        try {
+            (px, iw, ih, gd, gl, gms) = await Task.Run(() => {
+                var (p, a, b) = Decode(path, w, h);
+                long g0 = Stopwatch.GetTimestamp();
+                var d = NativeGuard.Rows(p, w, h, scale, dark: true);
+                var l = NativeGuard.Rows(p, w, h, scale, dark: false);
+                return (p, a, b, d, l, (Stopwatch.GetTimestamp() - g0) * 1000.0 / Stopwatch.Frequency);
+            });
+        }
         catch (Exception e) {
             string why = "the desktop still could not be decoded (" + e.Message + "): " + path;
             _failed[key] = why;
@@ -158,7 +197,9 @@ internal static class DesktopGlass
         double ms = (Stopwatch.GetTimestamp() - t0) * 1000.0 / Stopwatch.Frequency;
         string words = $"{iw}x{ih} cover-fit to {w}x{h}, sharp (no blur, no saturate), decoded once in {ms:0} ms";
         Host.Log.Line("glass: the desktop still " + words);
-        return new GlassPic { Key = key, Bitmap = bmp, W = w, H = h, Words = words };
+        var (dn, ds) = gd.NeedOver(0, gd.HeightDip); var (ln, ls) = gl.NeedOver(0, gl.HeightDip);
+        Host.Log.Line(FormattableString.Invariant($"glass: the readability guard over the sharp still ({gd.Strips} strips of {NativeGuard.StripDip:0} DIP, a {gd.BoxPx} px glyph box, 4.5:1, 8-bit) worked out once in {gms:0} ms: dark needs up to {Math.Min(1, dn):0.00} (at {gd.StripTop(ds) / scale:0} DIP), light up to {Math.Min(1, ln):0.00} (at {gl.StripTop(ls) / scale:0} DIP)"));
+        return new GlassPic { Key = key, Bitmap = bmp, W = w, H = h, Words = words, GuardDark = gd, GuardLight = gl };
     }
 
     /// Cover-fit and centred, the way the desktop draws the still (and look-sync's guard reads it): scale = max(w/iw, h/ih),
