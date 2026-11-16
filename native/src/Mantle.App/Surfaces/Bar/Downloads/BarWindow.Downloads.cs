@@ -29,6 +29,10 @@ public sealed partial class BarWindow
     SurfaceLink? _dlLink;
     JsonElement _dlState;
     bool _dlKbd;
+    // the user moved the focus since the shelf took the keyboard (a walk, Tab, a press in the shelf); until then a row
+    // that has the focus got it from Windows (the window's first focus), whatever its FocusState says (run 43818332316:
+    // that focus reads as a keyboard one), so the first Down is the newest
+    bool _dlUser;
     DispatcherTimer? _dlTick;
 
     /// Called once from the bar's start, after the pop-up framework (BarWindow.xaml.cs).
@@ -47,6 +51,8 @@ public sealed partial class BarWindow
         _dl.Act = (verb, item, what) => _ = DlAct(verb, item, what);
         _dl.Drag = (item, nm) => _ = DlDrag(item, nm);
         _dl.Root.KeyDown += DlKey_;
+        _dl.Root.PreviewKeyDown += (_, e) => { if (e.Key == global::Windows.System.VirtualKey.Tab) _dlUser = true; };
+        _dl.Root.AddHandler(UIElement.PointerPressedEvent, new Microsoft.UI.Xaml.Input.PointerEventHandler((_, _) => _dlUser = true), true);
         _dlBtn.Click += (_, _) => OpenDownloads();
         _dlBtn.RightTapped += (_, e) => { e.Handled = true; OpenDownloads(); };
         RenderDlBtn();
@@ -222,7 +228,7 @@ public sealed partial class BarWindow
         bool allowed = !Host.Args.Test || (Host.Env(DlKeysEnv) == "1" && !Host.Quiet);
         var (ok, words) = allowed ? Popups.TakeKeyboard(DlKey)
             : (false, "a test instance never takes the keyboard from whoever is at the machine");
-        _dlKbd = ok;
+        _dlKbd = ok; _dlUser = false;
         _dl.KbdNote = ok ? "" : "Arrow keys do not reach this panel: " + words.Split(", so ")[0];
         Host.Log.Line(ok ? "downloads: the shelf has the keyboard (asked once it was on screen)" : $"downloads: the keyboard was not taken ({words})");
         if (ok && _dl.Rows.Count > 0) _dl.Root.Focus(FocusState.Programmatic);
@@ -242,8 +248,8 @@ public sealed partial class BarWindow
         var fe = Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(_dl.Root.XamlRoot) as Button;
         // a row Windows focused on its own (the window's first focus when it took the keyboard) is not one the user
         // walked to or clicked: the first Down is still the newest (Electron: nothing has the focus yet)
-        int at = Mantle.Core.Features.Downloads.DownloadsKeys.From(fe != null ? rows.ToList().IndexOf(fe) : -1,
-            fe != null && fe.FocusState is FocusState.Keyboard or FocusState.Pointer);
+        int at = Mantle.Core.Features.Downloads.DownloadsKeys.From(fe != null ? rows.ToList().IndexOf(fe) : -1, _dlUser);
+        _dlUser = true;
         int to = Mantle.Core.Features.Downloads.DownloadsKeys.Walk(home ? "Home" : end ? "End" : down ? "Down" : "Up", at, rows.Count) ?? 0;
         e.Handled = true;
         if (Host.Args.Test) Host.Log.Line($"downloads: key {k}: row {to + 1} of {rows.Count} (from {(at < 0 ? "none" : "row " + (at + 1))})");
