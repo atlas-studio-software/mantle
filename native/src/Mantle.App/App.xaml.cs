@@ -232,6 +232,8 @@ public partial class MantleApp : Application
         Mantle.Core.Features.Calendar.GcalFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
         // ---- top bar wiring (lane native-r7-topbar): the ping test history (ping-tests.json) in the data root, through the ONE write gate
         Mantle.Core.Features.TopBar.TopBarFeature.Configure(new(Host.Paths.DataRoot, Host.Files));
+        // the top-row hints keep a hint in dark only (the look made below; until then, light: nothing kept)
+        Mantle.Core.Features.TopBar.TopBarFeature.ConfigureHints(new(() => _look?.Now == "dark"));
         // ---- game mode wiring (lane native-r7-media3): [Feature("gamemode")] keeps gamemode-restore.json in <userData> through
         // the ONE write gate; a --test run is a dry run (nothing sent) and reads only the test profile's record.
         Mantle.Core.Features.GameMode.GameModeFeature.Configure(new(Host.Paths.DataRoot, OwnPids: () => new[] { Environment.ProcessId }, Files: Host.Files));

@@ -122,6 +122,7 @@ public sealed partial class TopBarFeature : IFeature
         ctx.Command("state", _ => Ok(ViewObj()));
         InstallMenuCommands(ctx);   // TopBarFeature.Commands.cs: about, settings, winSettings, taskmgr, newWindow
         InstallPingTest(ctx);       // TopBarFeature.PingTest.cs: topbar.pingTest / pingTests and the pingtest pushes
+        InstallHints();             // TopBarFeature.Hints.cs: the top-row hints pipe (TOP-362..371)
         ctx.Command("status", _ => Ok(Status()));
         ctx.Command("overGames", async c =>
         {
@@ -166,7 +167,7 @@ public sealed partial class TopBarFeature : IFeature
         }, "overGames"));
         ctx.Platform.On("topbar", e => OnTopbar(e.Body));
         ctx.Platform.On("topbarstats", e => { if (_fixture == null && !_stopped) { _stats = JsonNode.Parse(e.Body.GetRawText()) as JsonObject; Broadcast("topbar.stats", StatsPayload()); } });
-        ctx.Platform.OnReady(() => _ = Run(async () => { await Apply("sidecar ready"); return null; }, "start"));
+        ctx.Platform.OnReady(() => _ = Run(async () => { HintsSidecarReady(); await Apply("sidecar ready"); return null; }, "start"));   // a new sidecar: every kept hint again (TOP-374)
         ctx.OnEnabled(on => _ = Run(async () => { if (on) await Apply("switched on"); else await Off("the top bar is switched off in the tray"); return null; }, "switch"));
         // a window made before this install (or kept across a rest) reports itself again on this push
         Broadcast("topbar.place", new TopBarPlace(TopBarRules.BarDip, "the top bar started"));
@@ -204,7 +205,7 @@ public sealed partial class TopBarFeature : IFeature
         ["watch"] = new JsonObject { ["ok"] = _watch.Ok, ["reason"] = _watch.Reason },
         ["stats"] = new JsonObject { ["on"] = _statsOn.On, ["reason"] = _statsOn.Reason },
         ["display"] = new JsonObject(_displayCounters.Select(kv => KeyValuePair.Create(kv.Key, (JsonNode?)JsonValue.Create(kv.Value.ToString())))),
-        ["dpiAware"] = _dpiAware, ["live"] = _live, ["state"] = ViewObj(),
+        ["dpiAware"] = _dpiAware, ["live"] = _live, ["state"] = ViewObj(), ["hints"] = _hints?.View(),
     };
 
     // ------------------------------------------------------------------ health (topbar.js health)
@@ -640,6 +641,7 @@ public sealed partial class TopBarFeature : IFeature
     public async ValueTask StopAsync(FeatureStop stop)
     {
         if (_stopped) return;
+        StopHints();   // TopBarFeature.Hints.cs: kept hints forgotten, the pipe closed
         _burst?.Stop();
         _peekT?.Dispose(); _peekT = null; _peekWatching = false;
         _graceT?.Dispose(); _graceT = null;
