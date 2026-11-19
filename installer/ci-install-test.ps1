@@ -140,6 +140,13 @@ if (Test-Path -LiteralPath $rl) {
   $lnk = $sc.CreateShortcut($rl)
   Check 'the restore entry opens tools\restore-windows.cmd' ($lnk.TargetPath -ieq (Join-Path $app 'tools\restore-windows.cmd')) $lnk.TargetPath
 }
+$pb = Join-Path $menu 'Put back the previous Mantle version.lnk'
+Check 'Start menu: Mantle > Put back the previous Mantle version' (Test-Path -LiteralPath $pb)
+if (Test-Path -LiteralPath $pb) {
+  $lnk = $sc.CreateShortcut($pb)
+  Check 'the put-back entry opens tools\put-back-previous.cmd' ($lnk.TargetPath -ieq (Join-Path $app 'tools\put-back-previous.cmd')) $lnk.TargetPath
+}
+Check 'installed: tools\put-back-previous.ps1 and .cmd' ((Test-Path -LiteralPath (Join-Path $app 'tools\put-back-previous.ps1')) -and (Test-Path -LiteralPath (Join-Path $app 'tools\put-back-previous.cmd')))
 $un = Uninstall-Cmd
 Check 'Settings > Apps lists Mantle (per-user uninstall key)' ($null -ne $un -and $un.UninstallString -match 'Uninstall Mantle\.exe')
 # The name a person sees: the Apps entry's publisher and the file properties of Mantle.exe and Mantle-Setup.exe.
@@ -314,7 +321,7 @@ Check 'uninstall: Windows was confirmed back before the files went' ($ul -match 
 Check 'uninstall: nothing runs' (Wait-Gone 20)
 Wait-Baseline 'after uninstall'
 Check 'uninstall: the program folder is gone' (-not (Test-Path -LiteralPath $exe) -and -not (Test-Path -LiteralPath $app))
-Check 'uninstall: both Start menu entries are gone' (-not (Test-Path -LiteralPath $menu))
+Check 'uninstall: the Start menu entries are gone' (-not (Test-Path -LiteralPath $menu))
 Check 'uninstall: Settings > Apps no longer lists Mantle' ($null -eq (Uninstall-Cmd))
 Check 'uninstall: no "Mantle" logon task' ($null -eq (Tasks))
 if ($Live) { Check 'uninstall: the profile (%APPDATA%\mantle) is kept' (Test-Path -LiteralPath $profileDir) }

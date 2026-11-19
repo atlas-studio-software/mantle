@@ -14,7 +14,8 @@
 ; un.onInit, and again in customUnInstall after the logon task is gone (a Mantle the task restarted in between
 ; is asked to quit too). Then, and only then, electron-builder removes the files.
 ;
-; Also: the Start menu entry "Restore Windows taskbar" beside Mantle's, which runs the restore script through
+; Also: the Start menu entries "Restore Windows taskbar" and "Put back the previous Mantle version" beside
+; Mantle's; the first runs the restore script through
 ; tools\restore-windows.cmd (PowerShell with -ExecutionPolicy Bypass, so neither the execution policy nor a
 ; Mark-of-the-Web on the file can stop it), and removal of the "Mantle" logon task on uninstall, only when it
 ; starts THIS copy's Mantle.exe.
@@ -68,6 +69,9 @@ FunctionEnd
   ; -ExecutionPolicy Bypass and waits for a key so its result can be read.
   CreateDirectory "$SMPROGRAMS\Mantle"
   CreateShortCut "$SMPROGRAMS\Mantle\Restore Windows taskbar.lnk" "$INSTDIR\resources\app\tools\restore-windows.cmd" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0 SW_SHOWNORMAL "" "Puts the Windows taskbar back the way it was before Mantle, with no Mantle running"
+  ; The way back to the previous release when this one will not start (tools\put-back-previous.cmd): it says
+  ; which release it would install, checks the download's sha256 against the release, and acts only on "Y".
+  CreateShortCut "$SMPROGRAMS\Mantle\Put back the previous Mantle version.lnk" "$INSTDIR\resources\app\tools\put-back-previous.cmd" "" "$INSTDIR\${APP_EXECUTABLE_FILENAME}" 0 SW_SHOWNORMAL "" "Installs the previous published Mantle release over this one, with no Mantle running"
 !macroend
 
 !macro customUnInstall
@@ -87,5 +91,6 @@ FunctionEnd
   Call un.mantleBack
   ${ifNot} ${isUpdated}
     Delete "$SMPROGRAMS\Mantle\Restore Windows taskbar.lnk"
+    Delete "$SMPROGRAMS\Mantle\Put back the previous Mantle version.lnk"
   ${endIf}
 !macroend
