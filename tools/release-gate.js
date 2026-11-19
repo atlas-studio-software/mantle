@@ -3,6 +3,7 @@
  * tools/release-gate.js -- the gate in front of a Mantle PATCH release (lane release-gate, 2026-11-18).
  *
  *   node tools/release-gate.js <commit> [--core=<cloudtest run dir>] [--ui=<cloudtest run dir>]
+ *                              [--upgrade=<cloudtest run dir>] [--rollback-of=<bad tag>]
  *                              [--changelog-ok=<12 hex>] [--send]
  *
  * Without the run dirs it checks what it can locally, prints the changelog for review and the exact cloudtest
@@ -19,7 +20,13 @@
  *               and the latest PUBLISHED release's tag (drafts and pre-releases ignored) is an ancestor of the
  *               commit (clones only fast-forward, lib/updater.js)
  *   new tag     v<version> exists neither here nor on origin (a tag is never moved or reused)
- *   48 h        the latest published release is at least 48 h old
+ *   48 h        at least 48 h since the last release: the latest published release's publish time, or later
+ *               when a release above it was published and then drafted back (its published_at, else its
+ *               tag's date). Skipped ONLY with --rollback-of=<bad tag>, and only when all of these hold: <bad>
+ *               is a release that is back to DRAFT; the release just below it is the latest published one
+ *               (the last good release); and the commit's tree equals that good release's tree apart from the
+ *               version in package.json and package-lock.json (what tools/release-rollback.js makes). A
+ *               --rollback-of that does not hold fails this gate; it never falls back to the clock.
  *   build       a DRAFT release v<version> exists whose target is this exact commit and which holds
  *               Mantle-Setup.exe (installer.yml builds and install-tests it from that commit)
  *   blockers    every item in BLOCKERS below is done (rollback runbook: release blocked until they exist)
@@ -27,6 +34,11 @@
  *               TOTAL line inside the job log, never run.json's conclusion or exit code; run.json's base is
  *               the commit, its mode is "committed", the snapshot commit is here and differs from the commit
  *               only in cloudtest's own files, and the job's command is exactly the recipe's (no "; echo")
+ *   upgrade     a cloudtest run of installer/ci-upgrade-test.ps1 at the commit (run dir --upgrade=, checked like the
+ *               suite runs: base, committed mode, snapshot tree, exact command): exactly one
+ *               "UPGRADE TEST: <latest published tag> -> <version>: n passed, 0 failed" line inside the markers
+ *               (it installs the latest published Mantle-Setup.exe, takes it live, installs this commit's
+ *               build over it while live, and proves the upgraded copy comes up live on the old profile)
  *   review      --changelog-ok equals the changelog's hash (printed below), so the reviewed text is the one shipped
  *
  * Read-only network use without --send: `git fetch origin --tags`, `git ls-remote`, `gh api` GETs.
@@ -43,6 +55,101 @@ const BLOCKERS = Object.freeze([
   { id: 'oob-restore', done: false, what: 'an out-of-band restore that works with Mantle not running' },
 ]);
 const RECIPES = { core: 'mantle-core-public', ui: 'mantle-ui-public' };
+/** The upgrade check's job command (no recipe: run as `cloudtest --committed ... -- "<this>"`, see the CLOUDTEST lines). */
+const UPGRADE_CMD = 'powershell -NoProfile -ExecutionPolicy Bypass -File installer/ci-upgrade-test.ps1 -Out upgrade-out';
+/** The files a rollback's tree may differ in from the good release's, and then only in their version fields. */
+const VERSION_FILES = ['package.json', 'package-lock.json'];
+const UPGRADE_RE = /^UPGRADE TEST: (v\d+\.\d+\.\d+) -> (\d+\.\d+\.\d+): (\d+) passed, (\d+) failed$/;
+
+/** A package.json / package-lock.json with its version fields taken out, as one string to compare. */
+function withoutVersion(text) {
+  const j = JSON.parse(text);
+  delete j.version;
+  if (j.packages && j.packages['']) delete j.packages[''].version;
+  return JSON.stringify(j);
+}
+
+/** --rollback-of=<bad>: is the commit a real rollback of <bad> (see "48 h" above)? -> { why } | { good } */
+function rollbackWhy(bad, list, latest, sha, git) {
+  const bv = L.parseVersion(bad);
+  if (!bv || !String(bad).startsWith('v')) return { why: `--rollback-of=${bad} is not a release tag like v1.2.3` };
+  const rel = list.find((r) => r && r.tag_name === bad);
+  if (!rel) return { why: `--rollback-of=${bad}: there is no release ${bad}` };
+  if (!rel.draft) return { why: `--rollback-of=${bad}: ${bad} is still published; put it back to draft first (node tools/release-rollback.js ${bad} --send)` };
+  const good = L.previousPublished(list, bad);
+  if (!good) return { why: `--rollback-of=${bad}: there is no published release before ${bad}` };
+  if (!latest || latest.r.tag_name !== good.r.tag_name) return { why: `--rollback-of=${bad}: the latest published release is ${latest ? latest.r.tag_name : 'none'}, not ${good.r.tag_name} (the last good one below ${bad})` };
+  const gt = `refs/tags/${good.r.tag_name}`;
+  const dn = git(['diff', '--name-only', gt, sha]);
+  if (dn.code !== 0) return { why: `--rollback-of=${bad}: git could not compare the commit with ${good.r.tag_name} (exit ${dn.code})` };
+  const changed = dn.out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
+  const other = changed.filter((f) => !VERSION_FILES.includes(f));
+  if (other.length) return { why: `--rollback-of=${bad}: the tree is not ${good.r.tag_name}'s; it also differs in ${other.slice(0, 5).join(', ')}${other.length > 5 ? ` and ${other.length - 5} more` : ''}` };
+  for (const f of changed) {
+    const a = git(['show', `${gt}:${f}`]);
+    const b = git(['show', `${sha}:${f}`]);
+    let same = false;
+    try { same = a.code === 0 && b.code === 0 && withoutVersion(a.out) === withoutVersion(b.out); } catch (_) { same = false; }
+    if (!same) return { why: `--rollback-of=${bad}: ${f} differs from ${good.r.tag_name}'s in more than its version` };
+  }
+  return { good: good.r.tag_name };
+}
+
+/** When the 48 h clock starts: the latest published release, or a later release that was published and drafted back. */
+function clockStart(list, latest, git) {
+  let at = Date.parse(latest.r.published_at), what = `${latest.r.tag_name} was published`;
+  for (const r of list) {
+    const v = r && L.parseVersion(r.tag_name);
+    if (!v || L.cmpVersion(v, latest.v) <= 0) continue;
+    const t = r.published_at ? Date.parse(r.published_at) : NaN;
+    if (Number.isFinite(t) && !(t <= at)) { at = t; what = `${r.tag_name} was published (it is a ${r.draft ? 'draft' : 'pre-release'} now)`; }
+  }
+  const tl = git(['tag', '--list', 'v*']);
+  for (const tag of (tl.code === 0 ? tl.out : '').split(/\r?\n/).map((x) => x.trim())) {
+    const v = L.parseVersion(tag);
+    if (!v || L.cmpVersion(v, latest.v) <= 0) continue;
+    const d = git(['for-each-ref', '--format=%(creatordate:unix)', `refs/tags/${tag}`]);
+    const t = d.code === 0 ? Number(d.out.trim()) * 1000 : NaN;
+    if (Number.isFinite(t) && t > 0 && !(t <= at)) { at = t; what = `the tag ${tag} was made`; }
+  }
+  return { at, what };
+}
+
+/** The checks a cloudtest run dir must pass before its log is read. -> { why } | { log } */
+function runDirWhy(dir, k, sha, expected, readFile, git) {
+  if (!dir) return { why: `no --${k}=<cloudtest run dir> given` };
+  let rj = null, log = null;
+  try { rj = JSON.parse(readFile(path.join(dir, 'run.json'))); } catch (err) { return { why: `run.json could not be read (${err.message})` }; }
+  try { log = readFile(path.join(dir, 'log.txt')); } catch (err) { return { why: `log.txt could not be read (${err.message})` }; }
+  if (rj.base !== sha) return { why: `the run tested ${String(rj.base).slice(0, 8)}, not ${String(sha).slice(0, 8)}` };
+  if (rj.mode !== 'committed') return { why: `the run's mode is "${rj.mode}", not "committed" (a working-tree snapshot is not the commit)` };
+  const snap = typeof rj.snapshot === 'string' ? rj.snapshot : '';
+  if (git(['cat-file', '-e', `${snap}^{commit}`]).code !== 0) return { why: `the snapshot commit ${snap.slice(0, 8) || '(none)'} is not here, so its tree cannot be compared` };
+  const dn = git(['diff', '--name-only', sha, snap]);
+  if (dn.code !== 0) return { why: `git could not compare the snapshot with the commit (exit ${dn.code})` };
+  const tw = L.harnessOnlyWhy(dn.out.split(/\r?\n/).filter(Boolean));
+  if (tw) return { why: tw };
+  const cmd = git(['show', `${snap}:.cloudtest-job/command.sh`]);
+  const cw = L.commandWhy(cmd.code === 0 ? cmd.out : '', expected);
+  if (cw) return { why: cw };
+  return { log };
+}
+
+/** The upgrade run's log: exactly one UPGRADE TEST line inside cloudtest's markers, from `from` to `to`, 0 failed. */
+function judgeUpgrade(text, from, to) {
+  const lines = String(text || '').split(/\r?\n/);
+  const b = lines.findIndex((l) => l.includes('@@cloudtest-begin@@'));
+  const e = lines.findIndex((l, i) => i > b && l.includes('@@cloudtest-exit='));
+  if (b < 0 || e < 0) return { ok: false, why: 'the job log lacks the cloudtest begin/exit markers' };
+  const hits = lines.slice(b + 1, e).map((l) => l.replace(/^\S+Z /, '').trim()).filter((l) => l.startsWith('UPGRADE TEST:'));
+  if (hits.length !== 1) return { ok: false, why: `the job log has ${hits.length} UPGRADE TEST lines, not exactly one` };
+  const m = UPGRADE_RE.exec(hits[0]);
+  if (!m) return { ok: false, why: `the UPGRADE TEST line is not in its format: ${hits[0].slice(0, 200)}` };
+  if (m[1] !== from) return { ok: false, why: `it upgraded from ${m[1]}, not from the latest published release ${from}`, line: hits[0] };
+  if (m[2] !== to) return { ok: false, why: `it upgraded to ${m[2]}, not to ${to}`, line: hits[0] };
+  if (Number(m[4]) !== 0 || Number(m[3]) === 0) return { ok: false, why: `not green: ${m[3]} passed, ${m[4]} failed`, line: hits[0] };
+  return { ok: true, line: hits[0] };
+}
 
 function recipeCommand(name, dir) {
   const d = dir || process.env.CLOUDTEST_RECIPES_DIR || path.join(os.homedir(), '.claude', 'tools', 'cloudtest', 'recipes.local');
@@ -101,11 +208,17 @@ async function gate(o) {
     else if (git(['merge-base', '--is-ancestor', latest.r.tag_name, sha]).code !== 0) fail('patch', `${latest.r.tag_name} is not an ancestor of the commit: clones could not fast-forward to it`);
     else pass('patch', `${tag} after v${L.vstr(highest)}${L.cmpVersion(highest, latest.v) ? ` (the highest tag; the latest published is ${latest.r.tag_name})` : ''}`);
   }
-  if (latest) {
-    const ageH = (now() - Date.parse(latest.r.published_at)) / 3600000;
-    if (!(ageH >= 48)) fail('48 h', `${latest.r.tag_name} was published ${Number.isFinite(ageH) ? `${ageH.toFixed(1)} h` : 'at an unreadable time'} ago (at most one release per 48 h)`);
-    else pass('48 h', `${latest.r.tag_name} is ${ageH.toFixed(1)} h old`);
-  } else fail('48 h', 'no published release to measure from');
+  if (!latest) fail('48 h', 'no published release to measure from');
+  else if (o.rollbackOf) {
+    const rb = sha ? rollbackWhy(o.rollbackOf, list, latest, sha, git) : { why: 'no commit' };
+    if (rb.why) fail('48 h', rb.why);
+    else pass('48 h', `skipped: the rollback of ${o.rollbackOf} (back to draft); the tree is ${rb.good}'s apart from the version`);
+  } else {
+    const c = clockStart(list, latest, git);
+    const ageH = (now() - c.at) / 3600000;
+    if (!(ageH >= 48)) fail('48 h', `${c.what} ${Number.isFinite(ageH) ? `${ageH.toFixed(1)} h` : 'at an unreadable time'} ago (at most one release per 48 h; a rollback passes --rollback-of=<bad tag>)`);
+    else pass('48 h', `${c.what} ${ageH.toFixed(1)} h ago`);
+  }
 
   // new tag
   if (tag) {
@@ -146,30 +259,29 @@ async function gate(o) {
   out(`  git -C "${root}" worktree add --detach "${wt}" ${sha || o.commit}`);
   out(`  cd "${wt}" && cloudtest --recipe ${RECIPES.core}`);
   out(`  cd "${wt}" && cloudtest --recipe ${RECIPES.ui}`);
-  out(`  then: node tools/release-gate.js ${sha || o.commit} --core="${wt}/.cloudtest/<id>" --ui="${wt}/.cloudtest/<id>"`);
+  out(`  cd "${wt}" && cloudtest --committed --os windows --timeout 50 --artifacts "upgrade-out/**" -- "${UPGRADE_CMD}"`);
+  out(`  then: node tools/release-gate.js ${sha || o.commit} --core="${wt}/.cloudtest/<id>" --ui="${wt}/.cloudtest/<id>" --upgrade="${wt}/.cloudtest/<id>"${o.rollbackOf ? ` --rollback-of=${o.rollbackOf}` : ''}`);
 
   // suite
   for (const k of ['core', 'ui']) {
     const id = `suite ${k}`;
-    const dir = o[k];
-    if (!dir) { fail(id, `no --${k}=<cloudtest run dir> given`); continue; }
-    let rj = null, log = null;
-    try { rj = JSON.parse(readFile(path.join(dir, 'run.json'))); } catch (err) { fail(id, `run.json could not be read (${err.message})`); continue; }
-    try { log = readFile(path.join(dir, 'log.txt')); } catch (err) { fail(id, `log.txt could not be read (${err.message})`); continue; }
-    if (rj.base !== sha) { fail(id, `the run tested ${String(rj.base).slice(0, 8)}, not ${String(sha).slice(0, 8)}`); continue; }
-    if (rj.mode !== 'committed') { fail(id, `the run's mode is "${rj.mode}", not "committed" (a working-tree snapshot is not the commit)`); continue; }
-    const snap = typeof rj.snapshot === 'string' ? rj.snapshot : '';
-    if (git(['cat-file', '-e', `${snap}^{commit}`]).code !== 0) { fail(id, `the snapshot commit ${snap.slice(0, 8) || '(none)'} is not here, so its tree cannot be compared`); continue; }
-    const dn = git(['diff', '--name-only', sha, snap]);
-    if (dn.code !== 0) { fail(id, `git could not compare the snapshot with the commit (exit ${dn.code})`); continue; }
-    const tw = L.harnessOnlyWhy(dn.out.split(/\r?\n/).filter(Boolean));
-    if (tw) { fail(id, tw); continue; }
-    const cmd = git(['show', `${snap}:.cloudtest-job/command.sh`]);
-    const cw = L.commandWhy(cmd.code === 0 ? cmd.out : '', expected[k]);
-    if (cw) { fail(id, cw); continue; }
-    const j = L.judgeLog(log);
+    const rd = runDirWhy(o[k], k, sha, expected[k], readFile, git);
+    if (rd.why) { fail(id, rd.why); continue; }
+    const j = L.judgeLog(rd.log);
     if (!j.ok) { fail(id, `${j.why}${j.total ? ` (${j.total})` : ''}`); continue; }
     pass(id, `${j.total} (run.json's conclusion and exit code are not used)`);
+  }
+
+  // upgrade: the latest published release, then this commit's build over it, live
+  {
+    const rd = runDirWhy(o.upgrade, 'upgrade', sha, o.expectedUpgrade || UPGRADE_CMD, readFile, git);
+    if (rd.why) fail('upgrade', rd.why);
+    else if (!latest || !ver) fail('upgrade', 'no latest published release or no version to check the run against');
+    else {
+      const u = judgeUpgrade(rd.log, latest.r.tag_name, L.vstr(ver));
+      if (!u.ok) fail('upgrade', `${u.why}${u.line ? ` (${u.line})` : ''}`);
+      else pass('upgrade', u.line);
+    }
   }
 
   // review
@@ -207,11 +319,13 @@ function argsOf(argv) {
     if (a === '--send') o.send = true;
     else if (a.startsWith('--core=')) o.core = a.slice(7);
     else if (a.startsWith('--ui=')) o.ui = a.slice(5);
+    else if (a.startsWith('--upgrade=')) o.upgrade = a.slice(10);
+    else if (a.startsWith('--rollback-of=')) o.rollbackOf = a.slice(14);
     else if (a.startsWith('--changelog-ok=')) o.changelogOk = a.slice(15);
     else if (!a.startsWith('--') && !o.commit) o.commit = a;
     else throw new Error(`unknown argument ${a}`);
   }
-  if (!o.commit) throw new Error('usage: node tools/release-gate.js <commit> [--core=<dir>] [--ui=<dir>] [--changelog-ok=<hash>] [--send]');
+  if (!o.commit) throw new Error('usage: node tools/release-gate.js <commit> [--core=<dir>] [--ui=<dir>] [--upgrade=<dir>] [--rollback-of=<bad tag>] [--changelog-ok=<hash>] [--send]');
   return o;
 }
 
@@ -221,4 +335,4 @@ if (require.main === module) {
   gate(o).then((r) => process.exit(r.go ? 0 : 1), (err) => { console.log(`RELEASE GATE: NO-GO (it threw: ${err.message})`); process.exit(1); });
 }
 
-module.exports = { gate, argsOf, BLOCKERS, RECIPES, recipeCommand };
+module.exports = { gate, argsOf, BLOCKERS, RECIPES, UPGRADE_CMD, VERSION_FILES, recipeCommand, rollbackWhy, judgeUpgrade, withoutVersion };

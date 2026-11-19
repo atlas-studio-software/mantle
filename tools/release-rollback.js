@@ -16,8 +16,9 @@
  *       nothing for them (that commit is already in their history). Everything merged after <good> is left out of
  *       that tree on purpose; it comes back in a later release.
  *       Then, each with the owner's OK first: push that commit to master (installer.yml builds the draft), run the cloudtest
- *       suites, and release it with tools/release-gate.js. The 48 h rule does not stop a rollback's
- *       patch (the gate's 48 h check is against the latest PUBLISHED release, and (a) has drafted the bad one).
+ *       suites and the upgrade check, and release it with tools/release-gate.js --rollback-of=<bad>. Only that
+ *       flag lifts the gate's 48 h cap (spec v1.0 2.1), and only while <bad> is a draft and the commit's tree is
+ *       the good release's apart from the version; without it the clock runs from <bad>'s own publishing.
  *
  * Every outward step prints one AUTONOMY line (class "mantle-rollback"); the last line is
  * "RELEASE ROLLBACK: ...". Read-only network use without --send: git fetch, gh api GETs.
@@ -122,8 +123,8 @@ async function rollback(o) {
   if (res.b === 'prepared' || res.b === 'would') {
     out('NEXT (each needs the owner\'s OK first; this tool never does them):');
     out(`  1. push ${branch}'s commit to master (installer.yml then builds the draft v${res.next})`);
-    out(`  2. node tools/release-gate.js <that commit>: it prints the cloudtest commands and judges the runs`);
-    out(`  3. node tools/release-gate.js <that commit> --core=... --ui=... --changelog-ok=... --send`);
+    out(`  2. node tools/release-gate.js <that commit> --rollback-of=${bad}: it prints the cloudtest commands and judges the runs`);
+    out(`  3. node tools/release-gate.js <that commit> --rollback-of=${bad} --core=... --ui=... --upgrade=... --changelog-ok=... --send`);
     out(`USER NOTICE (release notes / README / Discord): "Mantle ${bad} was pulled. v${res.next} puts back ${res.good}. If Mantle does not start: installed copy, download Mantle-Setup.exe from the v${res.next} release page and run it; git clone, run: git fetch --tags && git merge --ff-only v${res.next}. To get the taskbar back now: Start > Mantle > Restore Windows taskbar (installed) or npm run restore (clone)."`);
   }
   return done();

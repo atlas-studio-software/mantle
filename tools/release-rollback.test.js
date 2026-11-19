@@ -76,6 +76,7 @@ const destroys = (w) => w.calls.filter((c) => /release delete|tag -d|push .*--de
     check('dry run: one AUTONOMY line, class mantle-rollback, result would', auto.length === 1 && auto[0].class === 'mantle-rollback' && auto[0].result === 'would' && /v0\.1\.2 back to draft \(tag kept\)/.test(auto[0].target), auto);
     check('dry run: the next steps and the user notice are printed', lines.some((l) => /^NEXT/.test(l)) && lines.some((l) => /^USER NOTICE/.test(l) && /git merge --ff-only v0\.1\.3/.test(l)), lines.slice(-6));
     check('dry run: the last line is the summary', /^RELEASE ROLLBACK: \(a\) would, \(b\) would, next patch v0\.1\.3, good v0\.1\.1$/.test(lines[lines.length - 1]), lines[lines.length - 1]);
+    check('dry run: the gate steps pass --rollback-of=v0.1.2 and --upgrade (the only way past the 48 h cap)', lines.filter((l) => /release-gate\.js <that commit> --rollback-of=v0\.1\.2/.test(l)).length === 2 && lines.some((l) => /--upgrade=\.\.\./.test(l)), lines.filter((l) => /release-gate/.test(l)));
   }
   {
     const w = world();
