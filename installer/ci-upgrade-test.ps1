@@ -51,7 +51,7 @@ function Check([string]$name, $ok, [string]$detail = '') {
   else { [void]$script:failed.Add($name); Write-Output "FAIL $name$(if ($detail) { " -- $detail" })" }
 }
 function Step([string]$text) { Write-Output ''; Write-Output "== $text" }
-function Give-Up([string]$why) { Check $why $false; if ((From-Install).Count) { Kill-All }; Summary; exit 1 }
+function Give-Up([string]$why) { Check $why $false; if (@(From-Install).Count) { Kill-All }; Summary; exit 1 }
 # Anything that stops the script (a terminating error anywhere) still ends on the summary line, with a failure counted.
 trap {
   if ($null -eq $script:failed) { $script:failed = New-Object System.Collections.ArrayList }
@@ -59,7 +59,7 @@ trap {
   $at = "line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
   Write-Output "HARNESS ERROR at $at"
   [void]$script:failed.Add("the script ran to its end (it stopped at $at)")
-  try { if ((From-Install).Count) { Kill-All } } catch { }
+  try { if (@(From-Install).Count) { Kill-All } } catch { }
   Summary
   exit 1
 }
@@ -111,7 +111,7 @@ $prefix = $inst.ToLowerInvariant() + '\'
 function From-Install { @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLowerInvariant().StartsWith($prefix) }) }
 function Wait-Gone([int]$seconds) {
   $end = (Get-Date).AddSeconds($seconds)
-  do { if ((From-Install).Count -eq 0) { return $true }; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $end)
+  do { if (@(From-Install).Count -eq 0) { return $true }; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $end)
   return $false
 }
 function Kill-All { From-Install | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch { } } }
@@ -249,7 +249,7 @@ Check "an upgrade: $script:toVer is newer than $prevVer" ([bool]($pv -and $cv -a
 Step "install $($rel.tag_name) and take it live"
 Run-Setup $prevSetup "install $($rel.tag_name)"
 Check "installed: $($rel.tag_name) ($prevVer)" ((Installed-Version) -eq $prevVer) "$(Installed-Version)"
-Check 'a silent install starts nothing' ((From-Install).Count -eq 0)
+Check 'a silent install starts nothing' (@(From-Install).Count -eq 0)
 $from = Log-Offset
 $g = Start-Process -FilePath $exe -WorkingDirectory $inst -PassThru
 $w = Find-Window $g.Id 60
@@ -315,7 +315,7 @@ Check "uninstall: the program folder is gone (uninstaller exit $($u.ExitCode))" 
 Check 'uninstall: nothing runs' (Wait-Gone 20)
 Wait-Baseline 'after uninstall'
 
-if ((From-Install).Count) { Kill-All }
+if (@(From-Install).Count) { Kill-All }
 Summary
 if ($script:failed.Count) { exit 1 }
 exit 0

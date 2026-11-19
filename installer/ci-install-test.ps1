@@ -68,7 +68,7 @@ $prefix = $inst.ToLowerInvariant() + '\'
 function From-Install { @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath -and $_.ExecutablePath.ToLowerInvariant().StartsWith($prefix) }) }
 function Wait-Gone([int]$seconds) {
   $end = (Get-Date).AddSeconds($seconds)
-  do { $left = From-Install; if ($left.Count -eq 0) { return $true }; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $end)
+  do { $left = @(From-Install); if ($left.Count -eq 0) { return $true }; Start-Sleep -Milliseconds 500 } while ((Get-Date) -lt $end)
   return $false
 }
 function Kill-All { From-Install | ForEach-Object { try { Stop-Process -Id $_.ProcessId -Force } catch { } } }
@@ -176,7 +176,7 @@ if ($Live) {
   $null = & schtasks.exe /Delete /TN Mantle /F 2>&1
   $ErrorActionPreference = 'Stop'
 }
-Check 'a silent install starts nothing' ((From-Install).Count -eq 0)
+Check 'a silent install starts nothing' (@(From-Install).Count -eq 0)
 Check 'installing registers no logon task' ($null -eq (Tasks))
 Check 'installing records no consent' (-not (Test-Path -LiteralPath $consent))
 Wait-Baseline 'after install'
@@ -333,7 +333,7 @@ Check 'uninstall: Settings > Apps no longer lists Mantle' ($null -eq (Uninstall-
 Check 'uninstall: no "Mantle" logon task' ($null -eq (Tasks))
 if ($Live) { Check 'uninstall: the profile (%APPDATA%\mantle) is kept' (Test-Path -LiteralPath $profileDir) }
 
-if ((From-Install).Count) { Kill-All }
+if (@(From-Install).Count) { Kill-All }
 Write-Output ''
 foreach ($f in $script:failed) { Write-Output "FAIL $f" }
 Write-Output "INSTALL TEST: $script:passed passed, $($script:failed.Count) failed"
