@@ -2372,6 +2372,7 @@
       if (window.MantleGameMode) MantleGameMode.closed();   // its push subscription stops
       if (window.MantleTopbarHide) MantleTopbarHide.closed();
       if (window.MantleCorners) MantleCorners.closed();     // its push subscription stops
+      if (window.MantleQsPower) MantleQsPower.closed();     // its 2 s Now re-read stops
     }
     var reChip = false;               // an idle-Spotify card closed: the chip re-decides (see mediaShown)
     if (popKey === 'media') {
@@ -2860,6 +2861,14 @@
       });
     } }, notes);
     else fail('corners', 'Hot corners row missing', MISSING + 'Quick Settings cannot change what the screen corners do', 'warn', 'corners.js did not load');
+    /* POWER USE (lane mantle-ps-qs, 2026-11-18): the 'Power use >' row and its sub-view, Now | Today | Last 24 h
+       (ui/bar/qs-power.js over lib/features/usage.js); its sub-view asks for room again, as the corners do. */
+    if (window.MantleQsPower) MantleQsPower.attach(pop, { call: call, on: on, svg: svg, resize: function () {
+      if (popKey === 'qs') callR('bar.popover', { open: true, height: popNeed(), key: 'qs' }).catch(function (e) {
+        if (popKey === 'qs') popNote('Part of this panel may be cut off: ' + plain(msg(e)));
+      });
+    } }, notes);
+    else fail('qspower', 'Power use row missing', MISSING + 'Quick Settings has no Power use view', 'warn', 'qs-power.js did not load');
 
     var foot = document.createElement('div'); foot.className = 'qsfoot';
     var power = document.createElement('div'); power.className = 'qspower';

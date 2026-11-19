@@ -366,6 +366,49 @@ you switch it on (the tray, or Mantle Settings > Mantle). No other part of Mantl
   Windows can also block it: Settings > Privacy & security > Camera > "Let desktop apps access your
   camera". The feature then says the camera was not allowed or would not start.
 
+## Privacy: screen time and power use
+
+**Screen time** (Mantle Settings > Screen time) records how long each app is in front. It is **off
+until you turn it on**; until then nothing is recorded.
+
+- **What is kept.** For each app: its program's file name (`code.exe`), its product name ("Visual
+  Studio Code") and its icon, and the seconds it was in front per day and per hour. Never the folder a
+  program is in (that would include your Windows user name) and never a window title. Time while the
+  PC is locked, asleep or idle doesn't count. Two programs with the same file name share one row.
+- **Where.** In one file on this PC: `%APPDATA%\mantle\usage\screentime.json`.
+- **How long.** 30 days. Older days are deleted automatically when Mantle starts and every 24 hours
+  after, even if you never open the page and even with screen time switched off.
+- **Off and Clear history.** Switching it off stops recording at once and keeps what is already
+  recorded. **Clear history** deletes it at once: the file, its leftover copies, and the copy in
+  memory.
+- **Nothing leaves your PC.** Nothing is sent anywhere and nothing is shared with other apps
+  (Helm and Quartz never see it). It is Mantle's own record: screen time does not read Windows' own
+  app usage database. Screen time writes no app names, file names or folders to Mantle's log.
+- **Uninstalling keeps it.** The uninstaller leaves Mantle's data folder in place; delete
+  `%APPDATA%\mantle\usage` yourself to remove it.
+
+**Power history** (quick settings > Power use) is **on by default**. Every 5 minutes it stores one
+reading in `%APPDATA%\mantle\usage\power-<date>.jsonl`, kept 3 days and deleted automatically the
+same way. It is never sent anywhere.
+
+- **While Screen time is off** (the default), a reading holds **totals only**: the battery draw, the
+  processor's and the graphics' power. No app names and no program file names are written. Which apps
+  are using power is shown live in the **Now** tab, worked out in memory and never written to disk.
+  **Today** and **Last 24 h** then show the totals, "Apps and Windows" as one row, and the line
+  "Per-app history is kept only while Screen time is on".
+- **While Screen time is on**, a reading also keeps an estimate of each app's share, with the program's
+  file name and product name only (no folders, no titles), under the same 3-day limit and the same
+  Clear. Today and Last 24 h show per-app rows only for the time Screen time was on.
+- **Switching Screen time off** deletes the per-app rows already stored at once; the totals stay.
+- **Clear power history** (under Today and Last 24 h; it asks first) deletes every power file at once,
+  with any leftover copy (`.tmp`, `.bad`), and the readings in memory.
+- **Switching Power use off** (**Power use in quick settings** in Mantle Settings, Power use and screen
+  time) stops measuring and deletes every power file the same way.
+- A damaged power line is deleted, not kept aside, because it could name apps.
+- **Updating from an earlier Mantle:** on the first start, power history written before this rule
+  loses its app names and keeps its totals; its leftover copies are deleted.
+- Uninstalling keeps the folder, as above.
+
 ## Nothing fails silently
 
 Every helper, poller and fallback carries a **reason in plain words**, and the
@@ -561,7 +604,8 @@ specifically requested by the user" is **not** true for Mantle, because of the f
   browser at Google or Bing. Mantle itself sends nothing; your browser does.
 
 Everything else stays on your PC: the camera for the look-away blur (see
-[Privacy: the camera](#privacy-the-camera)), the bundled wallpapers, the face-detection model, settings and
+[Privacy: the camera](#privacy-the-camera)), screen time and power history (see
+[Privacy: screen time and power use](#privacy-screen-time-and-power-use)), the bundled wallpapers, the face-detection model, settings and
 caches. Mantle's local checks (Mission Control and similar) only ever talk to `127.0.0.1`.
 
 ## Licence

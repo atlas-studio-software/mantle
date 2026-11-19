@@ -219,14 +219,27 @@ namespace Mantle {
       } finally { N.CloseHandle(h); }
     }
 
+    // Locked: Usage.cs asks it from its own watch thread too (2026-11-18).
     internal static string DescOf(string path) {
       if (string.IsNullOrEmpty(path)) return null;
       string d;
-      if (_descs.TryGetValue(path, out d)) return d;
+      lock (_descs) if (_descs.TryGetValue(path, out d)) return d;
       try { d = FileVersionInfo.GetVersionInfo(path).FileDescription; } catch (Exception) { d = null; }
       d = string.IsNullOrEmpty(d) ? null : d.Trim();
-      _descs[path] = d;
+      lock (_descs) _descs[path] = d;
       return d;
+    }
+
+    /// A Store app's frame (ApplicationFrameWindow, ApplicationFrameHost's) holds the app's own window as
+    /// a child from another process: that process is the app. `pid` itself when there is none (yet).
+    internal static int FramedPid(IntPtr frame, int pid) {
+      int inner = 0;
+      Win32.EnumChildWindows(frame, delegate (IntPtr c, IntPtr l2) {
+        int cp; Win32.GetWindowThreadProcessId(c, out cp);
+        if (cp != pid) { inner = cp; return false; }
+        return true;
+      }, IntPtr.Zero);
+      return inner > 0 ? inner : pid;
     }
 
     /// Visible, unowned, uncloaked, titled, non-tool top-level windows: the ones that make a
@@ -241,15 +254,7 @@ namespace Mantle {
           if (Win32.GetWindowTextLengthW(hwnd) == 0 || Win32.IsCloaked(hwnd)) return true;
           int pid;
           Win32.GetWindowThreadProcessId(hwnd, out pid);
-          if (Win32.GetClassName(hwnd) == "ApplicationFrameWindow") {
-            int inner = 0;
-            Win32.EnumChildWindows(hwnd, delegate (IntPtr c, IntPtr l2) {
-              int cp; Win32.GetWindowThreadProcessId(c, out cp);
-              if (cp != pid) { inner = cp; return false; }
-              return true;
-            }, IntPtr.Zero);
-            if (inner > 0) pid = inner;
-          }
+          if (Win32.GetClassName(hwnd) == "ApplicationFrameWindow") pid = FramedPid(hwnd, pid);
           List<IntPtr> l;
           if (!m.TryGetValue((uint)pid, out l)) m[(uint)pid] = l = new List<IntPtr>();
           l.Add(hwnd);
@@ -301,7 +306,7 @@ namespace Mantle {
       var dead = new List<string>();
       foreach (string k in _paths.Keys) if (!live.Contains(k)) dead.Add(k);
       foreach (string k in dead) _paths.Remove(k);
-      if (_descs.Count > 2000) _descs.Clear();
+      lock (_descs) if (_descs.Count > 2000) _descs.Clear();
       // idle: the Idle process's CPU time (100 ns units, summed over cores): the machine's busy share is
       // 1 - its growth / (elapsed x cores), the number Windows' Task Manager shows as CPU.
       result = Json.Obj("t", DateTime.UtcNow.Ticks / 10000.0, "cpus", Environment.ProcessorCount, "mem", memo, "idle", idle,
