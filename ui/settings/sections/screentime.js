@@ -123,11 +123,11 @@ const M = {
   },
   privacy(idleMin, keptDays) {
     const idle = num(idleMin) || 5, kept = num(keptDays) || 30;
-    // General Counsel's wording (2026-11-19); the per-app power estimate is stored only while Power use
-    // is on as well (lib/features/usage.js runTick + privacyPass), hence "while Power use is on"
+    // General Counsel's final wording (2026-11-19, v3); the per-app power estimate is stored only while
+    // Power use is on as well (lib/features/usage.js runTick + privacyPass), hence "while Power use is on"
     return 'Recorded only on this PC and never sent anywhere or shared with other apps. '
-      + `Only each app’s file name, icon and time in front are kept, for ${kept} days, plus an estimate of its processor and graphics power while Power use is on, for 3 days. Never window titles or full paths, and nothing leaves this PC. `
-      + `Kept for ${kept} days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for ${idle} min) doesn’t count.`;
+      + `Mantle keeps each app’s file name, product name, icon and time in front for ${kept} days, then deletes them automatically, plus an estimate of its processor and graphics power for 3 days while Power use is on. `
+      + `Never window titles or full paths. Time while the PC is locked, asleep, or idle (no input for ${idle} min) doesn’t count.`;
   },
   /** What the page shows for a get answer: 'loading' | 'feature-off' | 'error' | 'invite' (off, nothing kept) | 'empty' | 'ok'. */
   view(r) {

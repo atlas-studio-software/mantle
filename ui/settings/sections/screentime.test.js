@@ -119,9 +119,9 @@ function nodeTests() {
     && M.cleared({ ok: true, cleared: 0 }) === 'There was no screen time to clear' && M.cleared({ ok: true }) === 'Cleared your screen time history');
   check('cleared: a dry run says so, a failure is not a result', M.cleared({ ok: true, dryRun: true, reason: 'Test run: nothing was cleared' }) === 'Test run: nothing was cleared' && M.cleared({ ok: false, reason: 'x' }) === null);
   // privacy
-  check('privacy: the promise, word for word, with the idle minutes and kept days', M.privacy(5, 30) === 'Recorded only on this PC and never sent anywhere or shared with other apps. Only each app’s file name, icon and time in front are kept, for 30 days, plus an estimate of its processor and graphics power while Power use is on, for 3 days. Never window titles or full paths, and nothing leaves this PC. Kept for 30 days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.',
+  check('privacy: the promise, word for word, with the idle minutes and kept days', M.privacy(5, 30) === 'Recorded only on this PC and never sent anywhere or shared with other apps. Mantle keeps each app’s file name, product name, icon and time in front for 30 days, then deletes them automatically, plus an estimate of its processor and graphics power for 3 days while Power use is on. Never window titles or full paths. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.',
     M.privacy(5, 30));
-  check('privacy: its numbers follow the reply, else 5 min and 30 days', /no input for 9 min/.test(M.privacy(9)) && /Kept for 30 days, then deleted automatically\./.test(M.privacy(undefined, undefined)) && /Kept for 14 days,/.test(M.privacy(5, 14)) && /are kept, for 14 days, plus /.test(M.privacy(5, 14)));
+  check('privacy: its numbers follow the reply, else 5 min and 30 days', /no input for 9 min/.test(M.privacy(9)) && /in front for 30 days, then deletes them automatically,/.test(M.privacy(undefined, undefined)) && /in front for 14 days, then deletes them automatically,/.test(M.privacy(5, 14)));
   // states
   check('view: loading / feature off / error / empty / ok', M.view(undefined).kind === 'loading' && M.view({ ok: false, off: true, reason: 'off' }).kind === 'feature-off'
     && M.view({ ok: false, reason: 'boom' }).kind === 'error' && M.view({ ok: false, reason: 'boom' }).reason === 'boom' && M.view({ ok: false }).reason === 'no answer came back'
@@ -197,7 +197,7 @@ async function browserTests() {
       const shown = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); return !!e && !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length); }, sel);
       const appNames = (p, list) => p.locator(`[data-list="${list}"] .st-app .row-t`).allTextContents();
       const appVals = (p, list) => p.locator(`[data-list="${list}"] .st-app .val`).allTextContents();
-      const PRIV = 'Recorded only on this PC and never sent anywhere or shared with other apps. Only each app’s file name, icon and time in front are kept, for 30 days, plus an estimate of its processor and graphics power while Power use is on, for 3 days. Never window titles or full paths, and nothing leaves this PC. Kept for 30 days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.';
+      const PRIV = 'Recorded only on this PC and never sent anywhere or shared with other apps. Mantle keeps each app’s file name, product name, icon and time in front for 30 days, then deletes them automatically, plus an estimate of its processor and graphics power for 3 days while Power use is on. Never window titles or full paths. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.';
 
       // ---- normal: today, the week, icons, picking a day, the switch, clear
       let { page, problems } = await open('normal');
