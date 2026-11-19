@@ -60,7 +60,11 @@ const BLOCKERS = Object.freeze([
   { id: 'upgrade-check', done: true, what: 'an upgrade-from-previous live check in cloudtest (c6fcca85: working-tree run 44489706024, 37/0)' },
   // done: cloudtest run 44475938920 of 1ae43a7b alone (updater.e2e + toasts): 252 passed, 0 failed; updater.e2e 148/148
   { id: 'updater-e2e', done: true, what: 'lib/updater.e2e.test.js green in cloudtest (1ae43a7b: run 44475938920, 252/0, updater.e2e 148/148)' },
-  { id: 'oob-restore', done: false, what: 'an out-of-band restore that works with Mantle not running' },
+  // done: cloudtest run 44554511821 of installer/ci-restore-test.ps1 on the tree committed as 0ebb3229 (a WORKING-TREE run, recipe
+  // mantle-core-wt-public): "RESTORE TEST: v0.1.1 -> 0.1.2-ci.550 -> v0.1.1: 60 passed, 0 failed" (the candidate killed,
+  // the INSTALLED put-back-previous.ps1 -Tag v0.1.1 -Run brought v0.1.1 back live on the old profile; -Run refused while an
+  // outside Mantle ran). That proves the check works; a release still needs the gate's own committed run.
+  { id: 'oob-restore', done: true, what: 'an out-of-band restore that works with Mantle not running (0ebb3229: working-tree run 44554511821, 60/0)' },
 ]);
 const RECIPES = { core: 'mantle-core-public', ui: 'mantle-ui-public' };
 /** The upgrade check's job command (no recipe: run as `cloudtest --committed ... -- "<this>"`, see the CLOUDTEST lines). */
