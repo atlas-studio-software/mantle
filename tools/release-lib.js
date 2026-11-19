@@ -74,13 +74,33 @@ function autonomy(cls, target, result, out) {
  * `TOTAL:` line between "@@cloudtest-begin@@" and "@@cloudtest-exit=" with 0 FAIL, 0 could-not-start and
  * 0 timeout. -> { ok, why, total, counts }
  */
+/**
+ * git's arguments for "which paths differ between two commits": --no-renames, so a file moved (say into .cloudtest/)
+ * lists BOTH its old and its new path (porcelain diff detects renames by default and would list only the new one),
+ * and core.quotePath=false, so an odd file name comes out as itself, not as a quoted octal string.
+ */
+const nameDiffArgs = (a, b) => ['-c', 'core.quotePath=false', 'diff', '--no-renames', '--name-only', a, b];
+
+/**
+ * cloudtest's markers in a job log: exactly ONE line with "@@cloudtest-begin@@" and exactly ONE
+ * "@@cloudtest-exit=<n>@@" in the whole log, the exit after the begin. -> { b, e } (line indexes) or { why }
+ */
+const EXIT_RE = /@@cloudtest-exit=\d+@@/;
+function markers(lines) {
+  const begins = [], exits = [];
+  lines.forEach((l, i) => { if (l.includes('@@cloudtest-begin@@')) begins.push(i); if (EXIT_RE.test(l)) exits.push(i); });
+  if (begins.length !== 1) return { why: begins.length ? `the job log has ${begins.length} "@@cloudtest-begin@@" markers, not exactly one` : 'the job log has no "@@cloudtest-begin@@" marker, so the suite\'s own output cannot be found' };
+  if (exits.length !== 1) return { why: exits.length ? `the job log has ${exits.length} "@@cloudtest-exit=N@@" markers, not exactly one` : 'the job log has no "@@cloudtest-exit=N@@" marker: the suite did not finish inside the job' };
+  if (exits[0] < begins[0]) return { why: 'the job log\'s "@@cloudtest-exit=N@@" marker comes before its "@@cloudtest-begin@@"' };
+  return { b: begins[0], e: exits[0] };
+}
+
 const TOTAL_RE = /TOTAL: (\d+) files: (\d+) pass, (\d+) FAIL, (\d+) known-env, (\d+) could-not-start, (\d+) timeout(?:, (\d+) skipped)? \| checks (\d+) passed, (\d+) failed/;
 function judgeLog(text) {
   const lines = String(text || '').split(/\r?\n/);
-  const b = lines.findIndex((l) => l.includes('@@cloudtest-begin@@'));
-  const e = lines.findIndex((l, i) => i > b && l.includes('@@cloudtest-exit='));
-  if (b < 0) return { ok: false, why: 'the job log has no "@@cloudtest-begin@@" marker, so the suite\'s own output cannot be found' };
-  if (e < 0) return { ok: false, why: 'the job log has no "@@cloudtest-exit=" marker: the suite did not finish inside the job' };
+  const mk = markers(lines);
+  if (mk.why) return { ok: false, why: mk.why };
+  const { b, e } = mk;
   const totals = lines.slice(b + 1, e).filter((l) => /\bTOTAL: /.test(l));
   if (totals.length !== 1) return { ok: false, why: `the suite's output has ${totals.length} TOTAL lines, not exactly one` };
   const m = TOTAL_RE.exec(totals[0]);
@@ -119,4 +139,4 @@ function realRun(file, args, opt) {
   return { code: r.status, out: r.stdout || '', err: r.stderr || '' };
 }
 
-module.exports = { REPO, ASSET, HARNESS, parseVersion, vstr, cmpVersion, patchWhy, latestPublished, previousPublished, autonomy, judgeLog, harnessOnlyWhy, commandWhy, sha12, realRun, TOTAL_RE };
+module.exports = { REPO, ASSET, HARNESS, parseVersion, vstr, cmpVersion, patchWhy, latestPublished, previousPublished, autonomy, markers, nameDiffArgs, judgeLog, harnessOnlyWhy, commandWhy, sha12, realRun, TOTAL_RE };

@@ -80,7 +80,7 @@ function rollbackWhy(bad, list, latest, sha, git) {
   if (!good) return { why: `--rollback-of=${bad}: there is no published release before ${bad}` };
   if (!latest || latest.r.tag_name !== good.r.tag_name) return { why: `--rollback-of=${bad}: the latest published release is ${latest ? latest.r.tag_name : 'none'}, not ${good.r.tag_name} (the last good one below ${bad})` };
   const gt = `refs/tags/${good.r.tag_name}`;
-  const dn = git(['diff', '--name-only', gt, sha]);
+  const dn = git(L.nameDiffArgs(gt, sha));
   if (dn.code !== 0) return { why: `--rollback-of=${bad}: git could not compare the commit with ${good.r.tag_name} (exit ${dn.code})` };
   const changed = dn.out.split(/\r?\n/).map((x) => x.trim()).filter(Boolean);
   const other = changed.filter((f) => !VERSION_FILES.includes(f));
@@ -125,7 +125,7 @@ function runDirWhy(dir, k, sha, expected, readFile, git) {
   if (rj.mode !== 'committed') return { why: `the run's mode is "${rj.mode}", not "committed" (a working-tree snapshot is not the commit)` };
   const snap = typeof rj.snapshot === 'string' ? rj.snapshot : '';
   if (git(['cat-file', '-e', `${snap}^{commit}`]).code !== 0) return { why: `the snapshot commit ${snap.slice(0, 8) || '(none)'} is not here, so its tree cannot be compared` };
-  const dn = git(['diff', '--name-only', sha, snap]);
+  const dn = git(L.nameDiffArgs(sha, snap));
   if (dn.code !== 0) return { why: `git could not compare the snapshot with the commit (exit ${dn.code})` };
   const tw = L.harnessOnlyWhy(dn.out.split(/\r?\n/).filter(Boolean));
   if (tw) return { why: tw };
@@ -138,9 +138,9 @@ function runDirWhy(dir, k, sha, expected, readFile, git) {
 /** The upgrade run's log: exactly one UPGRADE TEST line inside cloudtest's markers, from `from` to `to`, 0 failed. */
 function judgeUpgrade(text, from, to) {
   const lines = String(text || '').split(/\r?\n/);
-  const b = lines.findIndex((l) => l.includes('@@cloudtest-begin@@'));
-  const e = lines.findIndex((l, i) => i > b && l.includes('@@cloudtest-exit='));
-  if (b < 0 || e < 0) return { ok: false, why: 'the job log lacks the cloudtest begin/exit markers' };
+  const mk = L.markers(lines);
+  if (mk.why) return { ok: false, why: mk.why };
+  const { b, e } = mk;
   const hits = lines.slice(b + 1, e).map((l) => l.replace(/^\S+Z /, '').trim()).filter((l) => l.startsWith('UPGRADE TEST:'));
   if (hits.length !== 1) return { ok: false, why: `the job log has ${hits.length} UPGRADE TEST lines, not exactly one` };
   const m = UPGRADE_RE.exec(hits[0]);

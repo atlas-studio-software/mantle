@@ -47,11 +47,14 @@ function world(over) {
     rollbackDiff: 'package.json\npackage-lock.json\n', goodPkg: GOOD_PKG, goodLock: GOOD_LOCK, lock: null, pkg: null, tagDates: {},
     pushOk: true, editOk: true, latestAfter: 'v0.1.2',
   }, over || {});
-  w.calls = [];
+  w.calls = []; w.gitOpts = []; w.diffFlags = [];
   w.run = (file, args) => {
     w.calls.push([file].concat(args).join(' '));
-    const a = args;
+    let a = args;
     if (file === 'git') {
+      // git's own options first ("-c core.quotePath=false"), then diff's flags: recorded, then taken out
+      if (a[0] === '-c') { w.gitOpts.push(a[1]); a = a.slice(2); }
+      if (a[0] === 'diff') { w.diffFlags.push(a.filter((x) => /^--/.test(x)).join(' ')); a = a.filter((x) => !/^--(no-renames|name-only)$/.test(x)); a.splice(1, 0, '--name-only'); }
       if (a[0] === 'fetch') return { code: 0, out: '' };
       if (a[0] === 'rev-parse' && a[3] === `${C}^{commit}`) return { code: 0, out: C + '\n' };
       if (a[0] === 'rev-parse' && /^refs\/tags\//.test(a[3])) return { code: w.localTag ? 0 : 1, out: '' };
@@ -68,7 +71,14 @@ function world(over) {
       if (a[0] === 'ls-remote') return { code: 0, out: w.remoteTag };
       if (a[0] === 'log') return { code: 0, out: '- Top bar: steps aside for full screen (cc81d79)\n- Task View on demand (512ec27)\n' };
       if (a[0] === 'cat-file') return { code: w.snaps[a[2].replace('^{commit}', '')] ? 0 : 1, out: '' };
-      if (a[0] === 'diff') { const s = w.snaps[a[3]]; return s ? { code: 0, out: s.diff } : { code: 128, out: '' }; }
+      if (a[0] === 'diff') {
+        const s = w.snaps[a[3]];
+        if (!s) return { code: 128, out: '' };
+        // a rename [old, new]: real git lists only the new path unless --no-renames
+        const noRen = /--no-renames/.test(w.diffFlags[w.diffFlags.length - 1] || '');
+        const ren = (s.renames || []).map(([o, n]) => (noRen ? `${o}\n${n}\n` : `${n}\n`)).join('');
+        return { code: 0, out: s.diff + ren };
+      }
       if (a[0] === 'tag' && a[1] === '--list') return { code: 0, out: w.tags };
       if (a[0] === 'tag') return { code: 0, out: '' };
       if (a[0] === 'push') return { code: w.pushOk ? 0 : 1, out: '', err: w.pushOk ? '' : 'rejected' };
@@ -115,6 +125,12 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
   check('lib: the AUTONOMY line is exactly the agreed shape', lines[0] === 'AUTONOMY: {"class":"mantle-release","target":"tag v0.1.2 on origin","result":"would"}', lines[0]);
   check('lib: judgeLog reads a green TOTAL inside the markers', L.judgeLog(`@@cloudtest-begin@@\n${GREEN}\n@@cloudtest-exit=0@@`).ok === true);
   check('lib: judgeLog refuses 1 FAIL whatever the exit marker says', /1 FAIL/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN.replace('154 pass, 0 FAIL', '153 pass, 1 FAIL')}\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses two begin markers', /2 "@@cloudtest-begin@@" markers/.test(L.judgeLog(`@@cloudtest-begin@@\n@@cloudtest-begin@@\n${GREEN}\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses two exit markers (an echoed second exit after a green TOTAL)', /2 "@@cloudtest-exit=N@@" markers/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN}\n@@cloudtest-exit=1@@\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses an exit marker before the begin', /comes before/.test(L.judgeLog(`@@cloudtest-exit=0@@\n@@cloudtest-begin@@\n${GREEN}`).why || ''));
+  check('lib: judgeLog refuses no exit marker', /no "@@cloudtest-exit=N@@" marker/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN}`).why || ''));
+  check('lib: judgeLog still reads timestamp-prefixed markers', L.judgeLog(`2026-11-20T01:00:00Z @@cloudtest-begin@@\n2026-11-20T01:00:01Z ${GREEN}\n2026-11-20T01:00:02Z @@cloudtest-exit=0@@`).ok === true);
+  check('lib: nameDiffArgs = git -c core.quotePath=false diff --no-renames --name-only', L.nameDiffArgs('A', 'B').join(' ') === '-c core.quotePath=false diff --no-renames --name-only A B');
   check('lib: judgeLog refuses a TOTAL only after the exit marker (an appended echo)', !L.judgeLog(`@@cloudtest-begin@@\nsomething\n@@cloudtest-exit=0@@\n${GREEN}`).ok);
   check('lib: judgeLog refuses two TOTAL lines', /2 TOTAL lines/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN}\n${GREEN}\n@@cloudtest-exit=0@@`).why || ''));
   check('lib: judgeLog refuses counts that do not add up', /do not add up/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN.replace('156 files', '160 files')}\n@@cloudtest-exit=0@@`).why || ''));
@@ -310,6 +326,21 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
   }
   check('lib: withoutVersion drops only the version fields', G.withoutVersion(GOOD_LOCK) === G.withoutVersion(GOOD_LOCK.split('0.1.1').join('0.1.3')) && G.withoutVersion('{"version":"1.0.0","a":1}') !== G.withoutVersion('{"version":"1.0.0","a":2}'));
 
+  {
+    // a source file MOVED into .cloudtest/ in the snapshot: without --no-renames git lists only .cloudtest/x.js
+    const w = world();
+    w.snaps[SNAP].renames = [['lib/updater.js', '.cloudtest/updater.js']];
+    const { r } = await go(w);
+    const g = r.gates.find((x) => x.id === 'suite core') || {};
+    check('gate: a snapshot that moved lib/updater.js into .cloudtest/ = NO-GO on "suite core" (the old path is named)', !r.go && failed(r).join() === 'suite core' && /outside cloudtest's own files: lib\/updater\.js/.test(g.why || ''), { failed: failed(r), g });
+    check('gate: every name diff runs with --no-renames and core.quotePath=false', w.diffFlags.length > 0 && w.diffFlags.every((f) => /--no-renames/.test(f)) && w.gitOpts.filter((o) => o === 'core.quotePath=false').length === w.diffFlags.length, { flags: w.diffFlags, opts: w.gitOpts });
+  }
+  {
+    const w = rbWorld({ rollbackDiff: 'package.json\n' });
+    const { r } = await go(w, { rollbackOf: 'v0.1.2' });
+    check('48 h: the rollback tree check runs with --no-renames too', r.go && w.diffFlags.some((f) => /--no-renames/.test(f)), { failed: failed(r), flags: w.diffFlags });
+  }
+
   // ---- the upgrade gate (the eleventh)
   {
     const w = world();
@@ -326,6 +357,8 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
   await upCase('an upgrade from v0.1.0 (not the latest published)', (w) => { w.runs.upgrade.log = w.runs.upgrade.log.replace('v0.1.1 ->', 'v0.1.0 ->'); }, /upgraded from v0.1.0, not from the latest published release v0.1.1/);
   await upCase('an upgrade to another version', (w) => { w.runs.upgrade.log = w.runs.upgrade.log.replace('-> 0.1.2', '-> 0.1.4'); }, /upgraded to 0.1.4, not to 0.1.2/);
   await upCase('the line only after the exit marker', (w) => { w.runs.upgrade.log = `@@cloudtest-begin@@\nx\n@@cloudtest-exit=0@@\n${UP_LINE}\n`; }, /0 UPGRADE TEST lines/);
+  await upCase('two exit markers', (w) => { w.runs.upgrade.log = w.runs.upgrade.log.replace('@@cloudtest-exit=0@@', '@@cloudtest-exit=1@@\n@@cloudtest-exit=0@@'); }, /2 "@@cloudtest-exit=N@@" markers/);
+  await upCase('two begin markers', (w) => { w.runs.upgrade.log = `@@cloudtest-begin@@\n${w.runs.upgrade.log}`; }, /2 "@@cloudtest-begin@@" markers/);
   await upCase('a changed job command', (w) => { w.snaps[SNAP_UP].cmd = `${G.UPGRADE_CMD} -From v0.1.0`; }, /the job ran/);
   await upCase('no --upgrade run dir', (w) => { delete w.runs.upgrade; }, /run.json could not be read/);
   {
