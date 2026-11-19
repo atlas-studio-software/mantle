@@ -1,0 +1,224 @@
+'use strict';
+/*
+ * tools/release-gate.test.js -- tools/release-gate.js and tools/release-lib.js on a FAKE git, a FAKE GitHub and
+ * fake cloudtest run folders (lane release-gate, 2026-11-18). Pure node: nothing here runs git, gh or cloudtest,
+ * and nothing reaches the network.
+ *
+ *   node tools/release-gate.test.js   -> "RELEASE GATE TEST: n passed, m failed"
+ */
+const path = require('path');
+const L = require('./release-lib');
+const G = require('./release-gate');
+
+let passed = 0;
+const failures = [];
+function check(name, ok, detail) { if (ok) passed++; else failures.push(`${name}${detail !== undefined ? ` (${String(typeof detail === 'string' ? detail : JSON.stringify(detail)).slice(0, 400)})` : ''}`); }
+
+const C = 'c'.repeat(40);          // the candidate
+const PREV = 'a'.repeat(40);       // v0.1.1's commit
+const SNAP = 's'.repeat(40);       // cloudtest's snapshot commit
+const SNAP_UI = 'u'.repeat(40);
+const NOW = Date.parse('2026-11-20T12:00:00Z');
+const CORE_CMD = 'node tools/run-suite.js --skip=ui/ --out=suite-out --lane=cloud-core';
+const UI_CMD = 'node tools/run-suite.js --only=ui/ --out=suite-out --lane=cloud-ui';
+const GREEN = 'TOTAL: 156 files: 154 pass, 0 FAIL, 0 known-env, 0 could-not-start, 0 timeout, 2 skipped | checks 12707 passed, 0 failed (+0 known-env)';
+
+function world(over) {
+  const w = Object.assign({
+    version: '0.1.2', onMaster: true, prevAncestor: true, localTag: false, remoteTag: '',
+    releases: [
+      { tag_name: 'v0.1.1', draft: false, prerelease: false, published_at: '2026-11-10T00:00:00Z', target_commitish: PREV },
+      { tag_name: 'v0.1.0', draft: false, prerelease: false, published_at: '2026-10-22T00:00:00Z' },
+      { tag_name: 'v0.1.2', draft: true, prerelease: false, published_at: null, target_commitish: C, assets: [{ name: 'Mantle-Setup.exe', state: 'uploaded' }] },
+    ],
+    snaps: { [SNAP]: { diff: '.cloudtest-job/command.sh\n.cloudtest/setup.ps1\n.github/workflows/cloudtest.yml\n.github/workflows/oss-guard.yml\n', cmd: CORE_CMD },
+      [SNAP_UI]: { diff: '.cloudtest-job/test.sh\n', cmd: UI_CMD } },
+    runs: {
+      core: { json: { base: C, mode: 'committed', snapshot: SNAP, conclusion: 'failure', exitCode: 1 }, log: `x\n@@cloudtest-begin@@\n2026-11-20T01:00:00Z ${GREEN}\n@@cloudtest-exit=0@@\n` },
+      ui: { json: { base: C, mode: 'committed', snapshot: SNAP_UI, conclusion: 'success', exitCode: 0 }, log: `@@cloudtest-begin@@\nTOTAL: 92 files: 92 pass, 0 FAIL, 0 known-env, 0 could-not-start, 0 timeout, 0 skipped | checks 13830 passed, 0 failed\n@@cloudtest-exit=0@@\n` },
+    },
+    pushOk: true, editOk: true, latestAfter: 'v0.1.2',
+  }, over || {});
+  w.calls = [];
+  w.run = (file, args) => {
+    w.calls.push([file].concat(args).join(' '));
+    const a = args;
+    if (file === 'git') {
+      if (a[0] === 'fetch') return { code: 0, out: '' };
+      if (a[0] === 'rev-parse' && a[3] === `${C}^{commit}`) return { code: 0, out: C + '\n' };
+      if (a[0] === 'rev-parse' && /^refs\/tags\//.test(a[3])) return { code: w.localTag ? 0 : 1, out: '' };
+      if (a[0] === 'rev-parse') return { code: 1, out: '' };
+      if (a[0] === 'merge-base' && a[3] === 'origin/master') return { code: w.onMaster ? 0 : 1, out: '' };
+      if (a[0] === 'merge-base' && a[2] === 'v0.1.1') return { code: w.prevAncestor ? 0 : 1, out: '' };
+      if (a[0] === 'show' && a[1] === `${C}:package.json`) return { code: 0, out: JSON.stringify({ name: 'mantle', version: w.version }) };
+      if (a[0] === 'show' && /:\.cloudtest-job\/command\.sh$/.test(a[1])) { const s = w.snaps[a[1].split(':')[0]]; return s ? { code: 0, out: s.cmd + '\n' } : { code: 128, out: '' }; }
+      if (a[0] === 'ls-remote') return { code: 0, out: w.remoteTag };
+      if (a[0] === 'log') return { code: 0, out: '- Top bar: steps aside for full screen (cc81d79)\n- Task View on demand (512ec27)\n' };
+      if (a[0] === 'cat-file') return { code: w.snaps[a[2].replace('^{commit}', '')] ? 0 : 1, out: '' };
+      if (a[0] === 'diff') { const s = w.snaps[a[3]]; return s ? { code: 0, out: s.diff } : { code: 128, out: '' }; }
+      if (a[0] === 'tag') return { code: 0, out: '' };
+      if (a[0] === 'push') return { code: w.pushOk ? 0 : 1, out: '', err: w.pushOk ? '' : 'rejected' };
+    }
+    if (file === 'gh') {
+      if (a[0] === 'api' && /\/releases\?per_page=100$/.test(a[1])) return { code: 0, out: JSON.stringify(w.releases) };
+      if (a[0] === 'api' && /\/releases\/latest$/.test(a[1])) return { code: 0, out: JSON.stringify({ tag_name: w.latestAfter }) };
+      if (a[0] === 'release' && a[1] === 'edit') return { code: w.editOk ? 0 : 1, out: '' };
+    }
+    return { code: 99, out: '', err: `the fake has no answer for ${file} ${a.join(' ')}` };
+  };
+  w.readFile = (p) => {
+    const k = path.basename(path.dirname(p)); const r = w.runs[k];
+    if (!r) throw new Error('ENOENT ' + p);
+    if (path.basename(p) === 'run.json') return JSON.stringify(r.json);
+    if (path.basename(p) === 'log.txt') return r.log;
+    throw new Error('ENOENT ' + p);
+  };
+  return w;
+}
+const DONE = [{ id: 'x', done: true, what: 'x' }];
+async function go(w, extra) {
+  const lines = [];
+  const o = Object.assign({ commit: C, root: path.join('Z:', 'repo'), core: path.join('Z:', 'runs', 'core'), ui: path.join('Z:', 'runs', 'ui'), now: () => NOW, run: w.run, readFile: w.readFile,
+    out: (l) => lines.push(l), expected: { core: CORE_CMD, ui: UI_CMD }, blockers: DONE }, extra || {});
+  const first = await G.gate(Object.assign({}, o, { send: false }));
+  if (o.changelogOk === undefined) o.changelogOk = first.hash;
+  const lines2 = []; o.out = (l) => lines2.push(l);
+  w.calls.length = 0;
+  const r = await G.gate(o);
+  return { r, lines: lines2, auto: lines2.filter((l) => l.startsWith('AUTONOMY: ')).map((l) => JSON.parse(l.slice(10))) };
+}
+const outward = (w) => w.calls.filter((c) => /^git (push|tag) |^gh release /.test(c));
+const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
+
+(async () => {
+  // ---- release-lib, pure
+  check('lib: patchWhy accepts exactly the next patch', L.patchWhy(L.parseVersion('v0.1.1'), L.parseVersion('0.1.2')) === null);
+  check('lib: patchWhy refuses a minor bump', /not a patch/.test(L.patchWhy(L.parseVersion('0.1.1'), L.parseVersion('0.2.0'))));
+  check('lib: patchWhy refuses a skipped patch', /not the next patch/.test(L.patchWhy(L.parseVersion('0.1.1'), L.parseVersion('0.1.3'))));
+  check('lib: parseVersion refuses a pre-release', L.parseVersion('0.1.2-beta.1') === null);
+  check('lib: latestPublished ignores drafts and pre-releases', L.latestPublished([{ tag_name: 'v0.2.0', draft: true }, { tag_name: 'v0.1.9', prerelease: true }, { tag_name: 'v0.1.1' }, { tag_name: 'v0.1.0' }]).r.tag_name === 'v0.1.1');
+  const lines = []; L.autonomy('mantle-release', 'tag v0.1.2 on origin', 'would', (l) => lines.push(l));
+  check('lib: the AUTONOMY line is exactly the agreed shape', lines[0] === 'AUTONOMY: {"class":"mantle-release","target":"tag v0.1.2 on origin","result":"would"}', lines[0]);
+  check('lib: judgeLog reads a green TOTAL inside the markers', L.judgeLog(`@@cloudtest-begin@@\n${GREEN}\n@@cloudtest-exit=0@@`).ok === true);
+  check('lib: judgeLog refuses 1 FAIL whatever the exit marker says', /1 FAIL/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN.replace('154 pass, 0 FAIL', '153 pass, 1 FAIL')}\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses a TOTAL only after the exit marker (an appended echo)', !L.judgeLog(`@@cloudtest-begin@@\nsomething\n@@cloudtest-exit=0@@\n${GREEN}`).ok);
+  check('lib: judgeLog refuses two TOTAL lines', /2 TOTAL lines/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN}\n${GREEN}\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses counts that do not add up', /do not add up/.test(L.judgeLog(`@@cloudtest-begin@@\n${GREEN.replace('156 files', '160 files')}\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: judgeLog refuses could-not-start and timeout', /could-not-start/.test(L.judgeLog(`@@cloudtest-begin@@\nTOTAL: 3 files: 1 pass, 0 FAIL, 0 known-env, 1 could-not-start, 1 timeout, 0 skipped | checks 1 passed, 0 failed\n@@cloudtest-exit=0@@`).why || ''));
+  check('lib: commandWhy refuses "; echo X=$?" appended', !!L.commandWhy(`${CORE_CMD}; echo X=$?`, `${CORE_CMD}; echo X=$?`));
+  check('lib: harnessOnlyWhy names a real file that differs', /lib\/x\.js/.test(L.harnessOnlyWhy(['.cloudtest-job/a', 'lib/x.js']) || ''));
+
+  // ---- the gate
+  {
+    const w = world();
+    const { r, auto } = await go(w);
+    check('gate: everything green, no --send = GO and both steps "would", nothing outward run', r.go && auto.length === 2 && auto.every((a) => a.result === 'would' && a.class === 'mantle-release') && outward(w).length === 0, { failed: failed(r), auto, out: outward(w) });
+    check('gate: run.json\'s conclusion "failure" / exitCode 1 is NOT used (core is green by its TOTAL line)', r.gates.find((g) => g.id === 'suite core').ok);
+  }
+  {
+    const w = world();
+    const { r, auto, lines: ls } = await go(w, { send: true });
+    const oc = outward(w);
+    check('gate: --send and GO = tag, push the tag, publish the draft, in that order, each "done"', r.go && auto.map((a) => a.result).join() === 'done,done' && oc.length === 3 && /^git tag -a v0\.1\.2/.test(oc[0]) && /^git push origin refs\/tags\/v0\.1\.2$/.test(oc[1]) && /^gh release edit v0\.1\.2 .*--draft=false/.test(oc[2]), { auto, oc });
+    check('gate: --send checks releases/latest afterwards', ls.includes('check: releases/latest is v0.1.2'), ls.slice(-4));
+  }
+  {
+    const w = world({ pushOk: false });
+    const { auto } = await go(w, { send: true });
+    check('gate: the tag push fails = "failed", and publishing is then refused', auto.map((a) => a.result).join() === 'failed,refused' && !outward(w).some((c) => /^gh release/.test(c)), { auto, oc: outward(w) });
+  }
+  const refusedCase = async (name, over, extra, wantGate) => {
+    const w = world(over);
+    const { r, auto } = await go(w, Object.assign({ send: true }, extra || {}));
+    check(`gate: ${name} = NO-GO on "${wantGate}", both steps refused, nothing outward`, !r.go && failed(r).includes(wantGate) && auto.every((a) => a.result === 'refused') && outward(w).length === 0, { failed: failed(r), auto, oc: outward(w) });
+  };
+  await refusedCase('a minor bump', { version: '0.2.0' }, null, 'patch');
+  await refusedCase('a skipped patch', { version: '0.1.3' }, null, 'patch');
+  await refusedCase('the last release is not an ancestor', { prevAncestor: false }, null, 'patch');
+  await refusedCase('not on origin/master', { onMaster: false }, null, 'commit');
+  await refusedCase('the tag exists on origin', { remoteTag: `${C}\trefs/tags/v0.1.2\n` }, null, 'new tag');
+  await refusedCase('the tag exists here', { localTag: true }, null, 'new tag');
+  await refusedCase('a release less than 48 h ago', {}, { now: () => Date.parse('2026-11-11T12:00:00Z') }, '48 h');
+  {
+    const w = world();
+    w.releases = w.releases.map((x) => (x.draft ? Object.assign({}, x, { target_commitish: PREV }) : x));
+    const { r } = await go(w, { send: true });
+    check('gate: a draft built from another commit = NO-GO on "build"', !r.go && failed(r).includes('build'), failed(r));
+  }
+  {
+    const w = world();
+    w.releases = w.releases.map((x) => (x.draft ? Object.assign({}, x, { assets: [] }) : x));
+    const { r } = await go(w);
+    check('gate: a draft without Mantle-Setup.exe = NO-GO on "build"', !r.go && failed(r).includes('build'), failed(r));
+  }
+  {
+    const w = world();
+    const { r } = await go(w, { blockers: undefined });
+    check('gate: the real BLOCKERS are open today, so the gate is NO-GO on "blockers"', !r.go && failed(r).includes('blockers') && G.BLOCKERS.length === 3 && G.BLOCKERS.every((b) => !b.done), failed(r));
+  }
+  {
+    const w = world();
+    w.runs.core.json.conclusion = 'success'; w.runs.core.json.exitCode = 0;
+    w.runs.core.log = `@@cloudtest-begin@@\n${GREEN.replace('154 pass, 0 FAIL', '152 pass, 2 FAIL')}\n@@cloudtest-exit=0@@\n`;
+    const { r } = await go(w);
+    check('gate: run.json says success / exit 0 but the TOTAL line has 2 FAIL = NO-GO on "suite core"', !r.go && failed(r).join() === 'suite core', failed(r));
+  }
+  {
+    const w = world();
+    w.snaps[SNAP].cmd = `${CORE_CMD}; echo X=$?`;
+    const { r } = await go(w);
+    check('gate: a job command with "; echo X=$?" = NO-GO on "suite core"', !r.go && failed(r).join() === 'suite core', r.gates.find((g) => g.id === 'suite core'));
+  }
+  {
+    const w = world();
+    w.snaps[SNAP].diff += 'lib/updater.js\n';
+    const { r } = await go(w);
+    check('gate: a snapshot that differs from the commit in lib/ (a working-tree snapshot) = NO-GO', !r.go && /outside cloudtest's own files: lib\/updater\.js/.test(r.gates.find((g) => g.id === 'suite core').why || ''), r.gates.find((g) => g.id === 'suite core'));
+  }
+  {
+    const w = world();
+    w.runs.ui.json.mode = 'working-tree';
+    const { r } = await go(w);
+    check('gate: a run not in committed mode = NO-GO on "suite ui"', !r.go && failed(r).join() === 'suite ui', failed(r));
+  }
+  {
+    const w = world();
+    w.runs.ui.json.base = PREV;
+    const { r } = await go(w);
+    check('gate: a run of another commit = NO-GO on "suite ui"', !r.go && failed(r).join() === 'suite ui', failed(r));
+  }
+  {
+    const w = world();
+    delete w.snaps[SNAP_UI];
+    const { r } = await go(w);
+    check('gate: a snapshot commit that is not here = NO-GO (the tree cannot be compared)', !r.go && /is not here/.test(r.gates.find((g) => g.id === 'suite ui').why || ''), r.gates.find((g) => g.id === 'suite ui'));
+  }
+  {
+    const w = world();
+    const { r } = await go(w, { core: undefined, ui: undefined });
+    check('gate: no run dirs = NO-GO on both suite gates', !r.go && failed(r).join() === 'suite core,suite ui', failed(r));
+  }
+  {
+    const w = world();
+    const { r } = await go(w, { changelogOk: '000000000000' });
+    check('gate: a changelog hash that does not match = NO-GO on "review"', !r.go && failed(r).join() === 'review', failed(r));
+  }
+  {
+    const w = world();
+    const { lines: ls } = await go(w);
+    const i = ls.findIndex((l) => l.startsWith('CHANGELOG v0.1.1..'));
+    check('gate: the changelog is printed between CHANGELOG and END CHANGELOG with its hash', i >= 0 && ls[i + 1].startsWith('- Top bar') && ls.includes('END CHANGELOG') && /hash [0-9a-f]{12}/.test(ls[i]), ls.slice(i, i + 4));
+    check('gate: the exact cloudtest commands are printed (both public recipes, from a worktree at the commit)', ls.some((l) => /cloudtest --recipe mantle-core-public$/.test(l)) && ls.some((l) => /cloudtest --recipe mantle-ui-public$/.test(l)) && ls.some((l) => /worktree add --detach .* c{40}$/.test(l)));
+    check('gate: the last line is the summary', /^RELEASE GATE: GO \(\d+ of \d+ gates passed\)$/.test(ls[ls.length - 1]), ls[ls.length - 1]);
+  }
+  {
+    let threw = null; try { G.argsOf([]); } catch (err) { threw = err.message; }
+    check('cli: no commit = usage', /usage/.test(threw || ''));
+    const a = G.argsOf(['abc', '--core=x', '--ui=y', '--changelog-ok=h', '--send']);
+    check('cli: arguments parse', a.commit === 'abc' && a.core === 'x' && a.ui === 'y' && a.changelogOk === 'h' && a.send === true, a);
+  }
+
+  for (const f of failures) console.log('FAIL ' + f);
+  console.log(`RELEASE GATE TEST: ${passed} passed, ${failures.length} failed`);
+  process.exit(failures.length ? 1 : 0);
+})().catch((err) => { console.log(`FAIL threw: ${err.stack}`); console.log(`RELEASE GATE TEST: ${passed} passed, ${failures.length + 1} failed`); process.exit(1); });
