@@ -126,6 +126,15 @@ Mantle Settings calls those. Declared now: gamemode (auto, liftSaver), topbar (h
 screenshot (mode, saveDir), spotify (closeForGames, reviveAfterGames, trimAboveMB),
 unfold (when), lookaway (delay, turn), usage (power, screentime, idleMin).
 
+`usage`'s options also decide what is on disk (General Counsel, 2026-11-18: nothing per-app is
+recorded until the user switches it on). Power history (`<userData>/usage/power-<date>.jsonl`, 3 days)
+stores per-app rows ONLY while `screentime` is on; with it off each 5-minute line holds the totals only
+(battery, processor and graphics power, `perApp:false`, `apps:[]`) and per-app attribution lives only
+in memory for the Now view. `screentime` switched off strips the stored per-app rows (totals kept);
+`power` switched off, or `usage.power.clear` (Clear power history), deletes every power* file at once,
+`.tmp` and `.bad` copies included. A power file from before the rule loses its app rows on the first
+start (the migration). Proved by usage.test.js section 14 and _usage-core.test.js.
+
 ## Keys: what the hook does with your chords
 
 Main sends `hotkey {chords, observe}` (sidecar/Hotkey.cs) with the chords of every feature that is

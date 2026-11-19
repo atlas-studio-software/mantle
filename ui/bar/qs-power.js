@@ -8,7 +8,10 @@
  *                 always, where Windows has them), then the apps by share, then the fixed rows
  *                 (Windows, the rest of the processor, the screen and the rest of the PC). Re-read
  *                 every 2 s, ONLY while Now is the tab on screen and the view is open.
- *   Today / 24 h  one read per tab open: a static hourly column chart, the totals, the apps.
+ *   Today / 24 h  one read per tab open: a static hourly column chart, the totals, the apps. Per-app
+ *                 rows are kept only while Screen time is on (General Counsel, 2026-11-18); otherwise
+ *                 the reply's perAppWhy line says so and "Apps and Windows" is one total. Under it,
+ *                 "Clear power history…" asks in the view (Keep it / Clear history), then deletes.
  * Per-app numbers are an ESTIMATE (an app's share of processor and graphics time times the measured
  * power), share first; the reply's caption says so at the bottom of every tab, always.
  *
@@ -16,7 +19,8 @@
  * replies"):
  *   usage.state               {ok, on, power, screentime, idleMin, reason}: the row shows when on && power
  *   usage.power.now           {ok, at, source, battery, total, chip, shareOf, rows, caption, notes}
- *   usage.power.history       {range:'today'|'24h'} -> {ok, hours, rows, totals, empty, emptyWhy, caption, notes}
+ *   usage.power.history       {range:'today'|'24h'} -> {ok, hours, rows, totals, empty, emptyWhy, perApp, perAppWhy, caption, notes}
+ *   usage.power.clear         {} -> {ok, cleared (readings)}: every power file deleted at once
  *   usage.icons {paths}       {ok, icons:{path: dataUrl|null}, why:{path: reason}}: cached for the page's life
  * Every failure is {ok:false, reason}; the feature switched off in the tray is {ok:false, off:true, reason}.
  * Every one of them is drawn in words, never as an empty view.
@@ -203,10 +207,18 @@
     v.totals = 'Processor ' + (wh(t.chipWh) || 'not measured') + (num(t.totalWh) ? ' · Whole PC ' + wh(t.totalWh) : '');
     v.totalsWhy = num(t.totalWh) ? '' : (str(t.totalWhy) || AC_TOTAL);
     v.shareOf = SHARE_OF[r.shareOf] || '';
+    v.perAppWhy = str(r.perAppWhy);
     v.rows = (Array.isArray(r.rows) ? r.rows : []).map(function (x) {
       return rowView(x, function (y) { return approxWh(y.wh); });
     });
     return v;
+  }
+
+  /* usage.power.clear's reply -> {ok, said} in words. */
+  function clearedView(r) {
+    if (!r || r.ok !== true) return { ok: false, said: 'Nothing was cleared: ' + ((r && str(r.reason)) || 'no answer came back') };
+    var n = r.cleared;
+    return { ok: true, said: num(n) && n <= 0 ? 'There was no power history to clear' : 'Power history cleared' };
   }
 
   /* ------------------------------------------------------------------ glyphs */
@@ -267,7 +279,7 @@
     C = ctx || {};
     if (!C.call) return null;
     gen++;
-    var me = S = { pop: pop, view: null, el: null, tab: 'now', timer: 0, body: null, notesEl: null, capEl: null, rowEls: {}, nowKind: '', notes: {}, rowOn: false };
+    var me = S = { pop: pop, view: null, el: null, tab: 'now', timer: 0, body: null, notesEl: null, capEl: null, rowEls: {}, nowKind: '', notes: {}, rowOn: false, cleared: '' };
 
     var row = button('qspw-open', null, null);
     row.hidden = true;                                   // until usage.state says on && power
@@ -331,6 +343,7 @@
     pop.appendChild(el);
     S.view = true;
     S.el = el;
+    S.cleared = '';
 
     var head = h('div', 'qsx-head');
     var b = button('qsx-icon qsx-back', null, 'Back to quick settings');
@@ -599,7 +612,7 @@
     }
     setCaption(v.caption);
     paintNotes(v.notes);
-    if (v.kind === 'empty') { stateBlock(v.title, v.why, false, null, 'empty'); return; }
+    if (v.kind === 'empty') { stateBlock(v.title, v.why, false, null, 'empty'); S.body.appendChild(clearBlock(range)); return; }
     var body = S.body;
     body.textContent = '';
     S.rowEls = {};
@@ -627,9 +640,55 @@
     body.appendChild(h('div', 'qspw-totals', v.totals));
     if (v.totalsWhy) body.appendChild(h('div', 'qspw-subline', v.totalsWhy));
     if (v.shareOf) body.appendChild(h('div', 'qspw-of', v.shareOf));
+    if (v.perAppWhy) body.appendChild(h('div', 'qspw-subline qspw-perapp', v.perAppWhy));
     var list = body.appendChild(h('div', 'qspw-list'));
     list.setAttribute('role', 'list');
     drawRows(list, v.rows, S.rowEls);
+    body.appendChild(clearBlock(range));
+  }
+
+  /* "Clear power history…": asks in the view first (Keep it / Clear history), then deletes every
+     power file at once and re-reads the tab; a refusal stays on screen with its reason. */
+  function clearBlock(range) {
+    var box = h('div', 'qspw-clear');
+    var st = { asking: false, busy: false, error: '' };
+    function paint() {
+      box.textContent = '';
+      if (!st.asking) {
+        var row = box.appendChild(h('div', 'qsx-btns'));
+        var b = row.appendChild(button('qsx-btn qspw-clearbtn', 'Clear power history\u2026'));
+        b.title = 'Deletes every power reading kept on this PC';
+        b.addEventListener('click', function (ev) { ev.stopPropagation(); st.asking = true; st.error = ''; paint(); });
+        var said = S && S.cleared ? S.cleared : '';
+        if (st.error || said) box.appendChild(h('div', 'qspw-subline qspw-cleared' + (st.error ? ' bad' : ''), st.error || said));
+        return;
+      }
+      var q = box.appendChild(h('div', 'qspw-confirm'));
+      q.setAttribute('role', 'alertdialog');
+      q.setAttribute('aria-label', 'Clear all power history?');
+      q.appendChild(h('div', 'qspw-line', 'Clear all power history?'));
+      q.appendChild(h('div', 'qspw-subline', 'Every reading kept on this PC is deleted. This can\u2019t be undone.'));
+      var btns = q.appendChild(h('div', 'qsx-btns'));
+      var no = btns.appendChild(button('qsx-btn qspw-keep', 'Keep it'));
+      var yes = btns.appendChild(button('qsx-btn qspw-clearyes', st.busy ? 'Clearing\u2026' : 'Clear history'));
+      no.disabled = st.busy; yes.disabled = st.busy;
+      no.addEventListener('click', function (ev) { ev.stopPropagation(); st.asking = false; paint(); });
+      yes.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var g = gen;
+        st.busy = true; paint();
+        ask('usage.power.clear', {}).then(function (r) { done(clearedView(r)); }, function (e) { done(clearedView({ ok: false, reason: msg(e) })); });
+        function done(c) {
+          if (!alive(g)) return;
+          st.busy = false; st.asking = false;
+          if (c.ok) { S.cleared = c.said; select(range); return; }
+          st.error = c.said; paint();
+        }
+      });
+      setTimeout(function () { if (box.isConnected && !st.busy) no.focus(); }, 0);
+    }
+    paint();
+    return box;
   }
   function pctH(f) { return f > 0 ? Math.max(2, Math.round(f * 100)) + '%' : '0'; }
 
@@ -666,7 +725,7 @@
   }
 
   return {
-    nowView: nowView, historyView: historyView,
+    nowView: nowView, historyView: historyView, clearedView: clearedView,
     watts: watts, approxWatts: approxWatts, wh: wh, approxWh: approxWh, pct: pct, timeLeft: timeLeft, hourLabel: hourLabel,
     SHARE_OF: SHARE_OF, CAPTION: CAPTION, AC_TOTAL: AC_TOTAL, NO_HISTORY: NO_HISTORY, POLL_MS: POLL_MS,
     attach: attach, closed: closed,

@@ -147,6 +147,17 @@ v = P.historyView({ ok: false, reason: 'the history file could not be read' });
 check('history error', v.kind === 'error' && v.why === 'the history file could not be read' && /power history/.test(v.title), v);
 v = P.historyView({ ok: false, off: true, reason: 'off in the tray' });
 check('history off', v.kind === 'off' && v.why === 'off in the tray');
+// per-app rows only while Screen time is on: the reply's one-line reason is drawn as it is
+v = P.historyView(Object.assign({}, hist, { perApp: 'none', perAppWhy: 'Per-app history is kept only while Screen time is on',
+  rows: [{ key: 'apps', kind: 'apps', name: 'Apps and Windows', path: null, share: 0.6, wh: 1.2, why: null }] }));
+check('history, Screen time off: the reason line, and Apps and Windows as a row', v.perAppWhy === 'Per-app history is kept only while Screen time is on' && v.rows.length === 1 && v.rows[0].kind === 'apps' && v.rows[0].name === 'Apps and Windows' && v.rows[0].amount === '~1.2 Wh', v);
+v = P.historyView(hist);
+check('history, Screen time on throughout: no reason line', v.perAppWhy === '', v.perAppWhy);
+// Clear power history's answer in words
+check('cleared: some readings', JSON.stringify(P.clearedView({ ok: true, cleared: 12 })) === JSON.stringify({ ok: true, said: 'Power history cleared' }));
+check('cleared: nothing kept', P.clearedView({ ok: true, cleared: 0 }).said === 'There was no power history to clear');
+check('cleared: refused, with the reason', P.clearedView({ ok: false, reason: 'a file is in use' }).ok === false && P.clearedView({ ok: false, reason: 'a file is in use' }).said === 'Nothing was cleared: a file is in use');
+check('cleared: no answer', P.clearedView(null).said === 'Nothing was cleared: no answer came back');
 
 for (const f of fails) console.log('  FAIL ' + f);
 console.log('QS POWER TEST: ' + passed + ' passed, ' + fails.length + ' failed');

@@ -1120,9 +1120,10 @@
          error              usage.power.now fails (ok:false + reason)   off  the feature is off (off:true)
          flaky              the first read works, every later one fails
        ?pwstate= on (default) | off (the user's switch: no row) | fail (usage.state fails: the row says why)
-       ?pwh= data (default) | empty | error picks usage.power.history's case.
-       __mockMain.usage({pw, pwstate, pwh}) switches any of them mid-test (the next read answers it). */
-  var PW = { pw: q.get('pw') || 'battery', pwstate: q.get('pwstate') || 'on', pwh: q.get('pwh') || 'data', nowReads: 0 };
+       ?pwh= data (default) | totals (Screen time off: no per-app rows, the reason) | empty | error picks
+       usage.power.history's case. ?pwclear= ok (default: the history is then empty) | fail picks usage.power.clear's.
+       __mockMain.usage({pw, pwstate, pwh, pwclear}) switches any of them mid-test (the next read answers it). */
+  var PW = { pw: q.get('pw') || 'battery', pwstate: q.get('pwstate') || 'on', pwh: q.get('pwh') || 'data', pwclear: q.get('pwclear') || 'ok', nowReads: 0 };
   var PW_CAPTION = 'Estimated: each app\u2019s share of processor and graphics time, times the power Windows measured.';
   var PW_OFF = { ok: false, off: true, reason: 'Power use and screen time is switched off in Mantle\u2019s tray menu' };
   var PW_QUARTZ = 'C:\\Program Files\\Quartz\\Quartz.exe', PW_HELM = 'C:\\Program Files\\Helm\\Helm.exe';
@@ -1175,6 +1176,13 @@
       var bat = i % 4 === 1;
       hours.push({ t: top.getTime() - i * 3600e3, chipWh: 2 + (i % 5) * 0.8, totalWh: bat ? 6 + (i % 3) : null, power: bat ? 'battery' : 'ac', covered: i === 0 ? 0.4 : 1 });
     }
+    if (PW.pwh === 'totals') return { ok: true, range: range, from: hours[0].t, to: top.getTime() + 3600e3, shareOf: 'chip', hours: hours,
+      rows: [
+        { key: 'apps', kind: 'apps', name: 'Apps and Windows', path: null, share: 0.62, wh: 11.4, why: null },
+        { key: 'chip-rest', kind: 'chip-rest', name: 'Rest of the processor', path: null, share: 0.38, wh: 7, why: null }
+      ],
+      totals: { chipWh: 18.4, totalWh: null, totalWhy: 'Windows only reports total draw on battery', coveredMs: (n - 0.6) * 3600e3, spanMs: n * 3600e3 },
+      empty: false, emptyWhy: null, perApp: 'none', perAppWhy: 'Per-app history is kept only while Screen time is on', caption: PW_CAPTION, notes: [] };
     return { ok: true, range: range, from: hours[0].t, to: top.getTime() + 3600e3, shareOf: 'chip', hours: hours,
       rows: [
         { key: 'quartz.exe', kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.41, wh: 5.2 },
@@ -1194,6 +1202,13 @@
     }
     if (name === 'usage.power.now') return pwNow();
     if (name === 'usage.power.history') return pwHistory(p);
+    if (name === 'usage.power.clear') {
+      if (PW.pw === 'off') return PW_OFF;
+      if (PW.pwclear === 'fail') return { ok: false, reason: 'Power history was not fully deleted: a file is in use; try again' };
+      var had = PW.pwh === 'empty' ? 0 : 12;
+      PW.pwh = 'empty';
+      return { ok: true, cleared: had };
+    }
     var icons = {}, why = {};
     ((p && p.paths) || []).forEach(function (x) {
       if (x === PW_QUARTZ) icons[x] = PW_DOT;
@@ -1489,7 +1504,7 @@
       case 'gamemode.state': return Object.assign({}, gmState);
       case 'topbar.state': case 'topbar.hidden': return tbCall(channel, payload);
       case 'corners.state': case 'corners.set': return hcCall(channel, payload);
-      case 'usage.state': case 'usage.power.now': case 'usage.power.history': case 'usage.icons': return pwCall(channel, payload);
+      case 'usage.state': case 'usage.power.now': case 'usage.power.history': case 'usage.power.clear': case 'usage.icons': return pwCall(channel, payload);
       case 'corners.ack': return { ok: false };
       case 'downloads.list': case 'downloads.seen': case 'downloads.open': case 'downloads.reveal':
       case 'downloads.folder': case 'downloads.drag': return dlCall(channel, payload);

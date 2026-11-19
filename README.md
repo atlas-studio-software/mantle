@@ -387,11 +387,27 @@ until you turn it on**; until then nothing is recorded.
 - **Uninstalling keeps it.** The uninstaller leaves Mantle's data folder in place; delete
   `%APPDATA%\mantle\usage` yourself to remove it.
 
-**Power history** (quick settings > Power use) is **on by default**. Every 5 minutes it stores an
-estimate of each app's power use, with the program's file name and product name only (no folders, no
-titles), in `%APPDATA%\mantle\usage\power-<date>.jsonl`, kept 3 days and deleted automatically the
-same way. It is never sent anywhere. To stop it, turn off **Power use in quick settings** in Mantle
-Settings (Power use and screen time).
+**Power history** (quick settings > Power use) is **on by default**. Every 5 minutes it stores one
+reading in `%APPDATA%\mantle\usage\power-<date>.jsonl`, kept 3 days and deleted automatically the
+same way. It is never sent anywhere.
+
+- **While Screen time is off** (the default), a reading holds **totals only**: the battery draw, the
+  processor's and the graphics' power. No app names and no program file names are written. Which apps
+  are using power is shown live in the **Now** tab, worked out in memory and never written to disk.
+  **Today** and **Last 24 h** then show the totals, "Apps and Windows" as one row, and the line
+  "Per-app history is kept only while Screen time is on".
+- **While Screen time is on**, a reading also keeps an estimate of each app's share, with the program's
+  file name and product name only (no folders, no titles), under the same 3-day limit and the same
+  Clear. Today and Last 24 h show per-app rows only for the time Screen time was on.
+- **Switching Screen time off** deletes the per-app rows already stored at once; the totals stay.
+- **Clear power history** (under Today and Last 24 h; it asks first) deletes every power file at once,
+  with any leftover copy (`.tmp`, `.bad`), and the readings in memory.
+- **Switching Power use off** (**Power use in quick settings** in Mantle Settings, Power use and screen
+  time) stops measuring and deletes every power file the same way.
+- A damaged power line is deleted, not kept aside, because it could name apps.
+- **Updating from an earlier Mantle:** on the first start, power history written before this rule
+  loses its app names and keeps its totals; its leftover copies are deleted.
+- Uninstalling keeps the folder, as above.
 
 ## Nothing fails silently
 

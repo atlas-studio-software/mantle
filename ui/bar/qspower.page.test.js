@@ -96,6 +96,32 @@ const POLL = 2000;
     hc = await pg.calls('usage.power.history');
     t.check('Last 24 h: read with range 24h', hc.length === 2 && hc[1].p.range === '24h', hc.map((c) => c.p));
     t.check('Last 24 h: 24 columns', (await pg.count('.qspw-col')) === 24, await pg.count('.qspw-col'));
+    t.check('Last 24 h, Screen time on: no per-app reason line', !(await pg.visible('.qspw-perapp')));
+
+    // 3b) Screen time off: totals, "Apps and Windows", the one-line reason; then Clear power history
+    await pg.eval(() => window.__mockMain.usage({ pwh: 'totals' }));
+    await pg.click('.qspw-tab[data-tab="today"]', { wait: 400 });
+    t.check('Screen time off: the reason line', (await pg.text('.qspw-perapp')) === 'Per-app history is kept only while Screen time is on', await pg.text('.qspw-perapp'));
+    rs = await rows(pg);
+    t.check('Screen time off: no app rows, Apps and Windows as one total', rs.length === 2 && rs[0].name === 'Apps and Windows' && !rs.some((r) => /Quartz|Helm/.test(r.name)), rs);
+    t.check('Clear: the button is there, nothing asked yet', await pg.visible('.qspw-clearbtn') && !(await pg.visible('.qspw-confirm')) && (await pg.calls('usage.power.clear')).length === 0);
+    await pg.click('.qspw-clearbtn', { wait: 200 });
+    t.check('Clear asks first, in the view', await pg.visible('.qspw-confirm') && (await pg.eval(() => document.querySelector('.qspw-confirm').getAttribute('role'))) === 'alertdialog'
+      && /can\u2019t be undone/.test(await pg.text('.qspw-confirm')) && (await pg.calls('usage.power.clear')).length === 0, await pg.text('.qspw-clear'));
+    t.check('Clear: Keep it has the focus', await pg.eval(() => document.activeElement && document.activeElement.classList.contains('qspw-keep')));
+    await pg.click('.qspw-keep', { wait: 200 });
+    t.check('Keep it: the question closes, nothing cleared', !(await pg.visible('.qspw-confirm')) && await pg.visible('.qspw-clearbtn') && (await pg.calls('usage.power.clear')).length === 0);
+    await pg.eval(() => window.__mockMain.usage({ pwclear: 'fail' }));
+    await pg.click('.qspw-clearbtn', { wait: 200 });
+    await pg.click('.qspw-clearyes', { wait: 400 });
+    t.check('Clear refused: the reason stays on screen', /Nothing was cleared: Power history was not fully deleted/.test(await pg.text('.qspw-cleared.bad')) && (await pg.calls('usage.power.clear')).length === 1, await pg.text('.qspw-clear'));
+    await pg.eval(() => window.__mockMain.usage({ pwclear: 'ok' }));
+    const hBefore = (await pg.calls('usage.power.history')).length;
+    await pg.click('.qspw-clearbtn', { wait: 200 });
+    await pg.click('.qspw-clearyes', { wait: 500 });
+    t.check('Clear: sent once more, the tab re-read', (await pg.calls('usage.power.clear')).length === 2 && (await pg.calls('usage.power.history')).length === hBefore + 1);
+    t.check('Clear: the history is empty and says it was cleared', /No power history/.test(await pg.text('.qspw-state')) && (await pg.text('.qspw-cleared')) === 'Power history cleared', await pg.text('.qspw-view'));
+    await pg.eval(() => window.__mockMain.usage({ pwh: 'data' }));
 
     // 4) back to Now restarts the re-read; back to the main view stops it
     await pg.click('.qspw-tab[data-tab="now"]', { wait: 400 });
