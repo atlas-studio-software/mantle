@@ -20,6 +20,10 @@
  *       flag lifts the gate's 48 h cap (spec v1.0 2.1), and only while <bad> is a draft and the commit's tree is
  *       the good release's apart from the version; without it the clock runs from <bad>'s own publishing.
  *
+ * AUTONOMOUS MODE (contracts/autonomy.md section 1): with --send, before anything else, PAUSED refuses, and ON
+ * refuses when mode.json "holds" lists "mantle-rollback": AUTONOMY "refused" with why "paused" or "held", (a) and
+ * (b) not done, exit 3. A dry run (no --send) is not outward and runs in every state.
+ *
  * Every outward step prints one AUTONOMY line (class "mantle-rollback"); the last line is
  * "RELEASE ROLLBACK: ...". Read-only network use without --send: git fetch, gh api GETs.
  */
@@ -39,10 +43,19 @@ async function rollback(o) {
   const fsx = o.fsx || { exists: (p) => fs.existsSync(p), read: (p) => fs.readFileSync(p, 'utf8'), write: (p, s) => fs.writeFileSync(p, s) };
   const git = (args, cwd) => run('git', args, { cwd: cwd || root });
   const gh = (args) => run('gh', args, { cwd: root });
-  const res = { a: 'refused', b: 'refused', next: null, good: null, branch: null, commit: null };
-  const done = () => { out(`RELEASE ROLLBACK: (a) ${res.a}, (b) ${res.b}${res.next ? `, next patch v${res.next}` : ''}${res.good ? `, good ${res.good}` : ''}`); return res; };
+  const res = { a: 'refused', b: 'refused', next: null, good: null, branch: null, commit: null, refused: null };
+  const done = () => { out(`RELEASE ROLLBACK: (a) ${res.a}, (b) ${res.b}${res.next ? `, next patch v${res.next}` : ''}${res.good ? `, good ${res.good}` : ''}${res.refused ? `, refused: ${res.refused}` : ''}`); return res; };
 
   const bad = String(o.bad || '');
+  if (o.send) {
+    const ref = L.autonomyRefusal('mantle-rollback', { dir: o.autonomyDir, now: o.now ? o.now() : Date.now() });
+    if (ref) {
+      res.refused = ref.why;
+      out(`refused: autonomous mode is ${ref.state}${ref.why === 'held' ? ' and holds mantle-rollback' : ''}, so --send does nothing (no draft, no commit)`);
+      L.autonomy('mantle-rollback', `${bad || '?'} back to draft (tag kept)`, 'refused', out, ref.why);
+      return done();
+    }
+  }
   if (!L.parseVersion(bad) || !bad.startsWith('v')) {
     out(`refused: "${bad}" is not a release tag like v1.2.3`);
     L.autonomy('mantle-rollback', `${bad || '?'} back to draft`, 'refused', out);
@@ -130,6 +143,9 @@ async function rollback(o) {
   return done();
 }
 
+/** 3 refused by autonomous mode, 1 a step failed, 0 otherwise. */
+function exitCode(r) { return r && r.refused ? L.REFUSED_EXIT : r && (r.a === 'failed' || r.b === 'failed') ? 1 : 0; }
+
 function argsOf(argv) {
   const o = { bad: null, good: null, send: false };
   for (const a of argv) {
@@ -145,7 +161,7 @@ function argsOf(argv) {
 if (require.main === module) {
   let o;
   try { o = argsOf(process.argv.slice(2)); } catch (err) { console.log(`RELEASE ROLLBACK: refused (${err.message})`); process.exit(2); }
-  rollback(o).then((r) => process.exit(r.a === 'failed' || r.b === 'failed' ? 1 : 0), (err) => { console.log(`RELEASE ROLLBACK: failed (it threw: ${err.message})`); process.exit(1); });
+  rollback(o).then((r) => process.exit(exitCode(r)), (err) => { console.log(`RELEASE ROLLBACK: failed (it threw: ${err.message})`); process.exit(1); });
 }
 
-module.exports = { rollback, argsOf };
+module.exports = { rollback, argsOf, exitCode };

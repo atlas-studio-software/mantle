@@ -41,6 +41,10 @@
  *               build over it while live, and proves the upgraded copy comes up live on the old profile)
  *   review      --changelog-ok equals the changelog's hash (printed below), so the reviewed text is the one shipped
  *
+ * AUTONOMOUS MODE (contracts/autonomy.md section 1, read through release-lib modeState): with --send, before any
+ * other check, PAUSED refuses, and ON refuses when mode.json "holds" lists "mantle-release". Both print the AUTONOMY
+ * lines "refused" with why "paused" or "held", nothing else runs, and the exit code is 3. OFF: as before.
+ *
  * Read-only network use without --send: `git fetch origin --tags`, `git ls-remote`, `gh api` GETs.
  */
 const fs = require('fs');
@@ -51,7 +55,8 @@ const L = require('./release-lib');
 /** The rollback runbook's three preconditions. Flip one only in a reviewed commit, with the proof named. */
 const BLOCKERS = Object.freeze([
   { id: 'upgrade-check', done: false, what: 'an upgrade-from-previous live check in cloudtest' },
-  { id: 'updater-e2e', done: false, what: 'lib/updater.e2e.test.js green in cloudtest (fix in 1ae43a7b, not proven yet)' },
+  // done: cloudtest run 44475938920 of 1ae43a7b alone (updater.e2e + toasts): 252 passed, 0 failed; updater.e2e 148/148
+  { id: 'updater-e2e', done: true, what: 'lib/updater.e2e.test.js green in cloudtest (1ae43a7b: run 44475938920, 252/0, updater.e2e 148/148)' },
   { id: 'oob-restore', done: false, what: 'an out-of-band restore that works with Mantle not running' },
 ]);
 const RECIPES = { core: 'mantle-core-public', ui: 'mantle-ui-public' };
@@ -169,6 +174,15 @@ async function gate(o) {
   const now = o.now || Date.now;
   const git = (args) => run('git', args, { cwd: root });
   const gh = (args) => run('gh', args, { cwd: root });
+  if (o.send) {
+    const ref = L.autonomyRefusal('mantle-release', { dir: o.autonomyDir, now: now() });
+    if (ref) {
+      out(`refused: autonomous mode is ${ref.state}${ref.why === 'held' ? ' and holds mantle-release' : ''}, so --send does nothing (no check, no tag, no publish)`);
+      for (const t of [`tag for ${o.commit} on origin`, `release for ${o.commit} published`]) L.autonomy('mantle-release', t, 'refused', out, ref.why);
+      out(`RELEASE GATE: NO-GO (refused: ${ref.why})`);
+      return { go: false, refused: ref.why, gates: [], changelog: '', hash: null, version: null, tag: null };
+    }
+  }
   const gates = [];
   const pass = (id, why) => { gates.push({ id, ok: true, why: why || null }); out(`ok    ${id}${why ? `: ${why}` : ''}`); };
   const fail = (id, why) => { gates.push({ id, ok: false, why }); out(`FAIL  ${id}: ${why}`); };
@@ -313,6 +327,9 @@ async function gate(o) {
   return { go, gates, changelog, hash, version: ver ? L.vstr(ver) : null, tag };
 }
 
+/** 0 GO, 3 refused by autonomous mode, 1 otherwise. */
+function exitCode(r) { return r && r.refused ? L.REFUSED_EXIT : r && r.go ? 0 : 1; }
+
 function argsOf(argv) {
   const o = { commit: null, send: false };
   for (const a of argv) {
@@ -332,7 +349,7 @@ function argsOf(argv) {
 if (require.main === module) {
   let o;
   try { o = argsOf(process.argv.slice(2)); } catch (err) { console.log(`RELEASE GATE: NO-GO (${err.message})`); process.exit(2); }
-  gate(o).then((r) => process.exit(r.go ? 0 : 1), (err) => { console.log(`RELEASE GATE: NO-GO (it threw: ${err.message})`); process.exit(1); });
+  gate(o).then((r) => process.exit(exitCode(r)), (err) => { console.log(`RELEASE GATE: NO-GO (it threw: ${err.message})`); process.exit(1); });
 }
 
-module.exports = { gate, argsOf, BLOCKERS, RECIPES, UPGRADE_CMD, VERSION_FILES, recipeCommand, rollbackWhy, judgeUpgrade, withoutVersion };
+module.exports = { gate, argsOf, exitCode, BLOCKERS, RECIPES, UPGRADE_CMD, VERSION_FILES, recipeCommand, rollbackWhy, judgeUpgrade, withoutVersion };

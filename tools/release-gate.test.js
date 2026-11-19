@@ -6,7 +6,10 @@
  *
  *   node tools/release-gate.test.js   -> "RELEASE GATE TEST: n passed, m failed"
  */
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const L = require('./release-lib');
 const G = require('./release-gate');
 
@@ -100,10 +103,22 @@ function world(over) {
   return w;
 }
 const DONE = [{ id: 'x', done: true, what: 'x' }];
+// autonomy folders (contracts/autonomy.md section 1): an empty one (OFF) for every case, and made-up states
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-gate-autonomy-'));
+function modeDir(name, mode) {
+  const d = path.join(TMP, name); fs.mkdirSync(d);
+  if (mode) {
+    const pol = '{"v":1}\n';
+    fs.writeFileSync(path.join(d, 'policy.json'), pol);
+    fs.writeFileSync(path.join(d, 'mode.json'), JSON.stringify(Object.assign({ v: 1, on: true, stage: 'supervised', length: { kind: 'open' }, policySha: crypto.createHash('sha256').update(pol).digest('hex'), paused: null }, mode)));
+  }
+  return d;
+}
+const OFFDIR = modeDir('off', null);
 async function go(w, extra) {
   const lines = [];
   const o = Object.assign({ commit: C, root: path.join('Z:', 'repo'), core: path.join('Z:', 'runs', 'core'), ui: path.join('Z:', 'runs', 'ui'), upgrade: path.join('Z:', 'runs', 'upgrade'), now: () => NOW, run: w.run, readFile: w.readFile,
-    out: (l) => lines.push(l), expected: { core: CORE_CMD, ui: UI_CMD }, blockers: DONE }, extra || {});
+    out: (l) => lines.push(l), expected: { core: CORE_CMD, ui: UI_CMD }, blockers: DONE, autonomyDir: OFFDIR }, extra || {});
   const first = await G.gate(Object.assign({}, o, { send: false }));
   if (o.changelogOk === undefined) o.changelogOk = first.hash;
   const lines2 = []; o.out = (l) => lines2.push(l);
@@ -184,7 +199,8 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
   {
     const w = world();
     const { r } = await go(w, { blockers: undefined });
-    check('gate: the real BLOCKERS are open today, so the gate is NO-GO on "blockers"', !r.go && failed(r).includes('blockers') && G.BLOCKERS.length === 3 && G.BLOCKERS.every((b) => !b.done), failed(r));
+    const open = G.BLOCKERS.filter((b) => !b.done).map((b) => b.id).join();
+    check('gate: the real BLOCKERS: updater-e2e done (run 44475938920), upgrade-check and oob-restore open, so NO-GO on "blockers"', !r.go && failed(r).includes('blockers') && G.BLOCKERS.length === 3 && open === 'upgrade-check,oob-restore' && /44475938920/.test(G.BLOCKERS.find((b) => b.id === 'updater-e2e').what), { failed: failed(r), open });
   }
   {
     const w = world();
@@ -341,6 +357,36 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
     check('48 h: the rollback tree check runs with --no-renames too', r.go && w.diffFlags.some((f) => /--no-renames/.test(f)), { failed: failed(r), flags: w.diffFlags });
   }
 
+  // ---- autonomous mode (contracts/autonomy.md section 1)
+  const refusedBy = async (name, dir, why) => {
+    const w = world();
+    const { r, auto, lines: ls } = await go(w, { send: true, autonomyDir: dir });
+    check(`autonomy: ${name}: --send refused (${why}), both AUTONOMY lines refused with why, exit 3, nothing run at all`,
+      r.refused === why && !r.go && auto.length === 2 && auto.every((a) => a.result === 'refused' && a.why === why && a.class === 'mantle-release') && w.calls.length === 0 && G.exitCode(r) === 3 && ls[ls.length - 1] === `RELEASE GATE: NO-GO (refused: ${why})`, { r: { refused: r.refused, go: r.go }, auto, calls: w.calls, last: ls[ls.length - 1] });
+  };
+  await refusedBy('PAUSED (paused object)', modeDir('paused', { paused: { reason: 'usage' } }), 'paused');
+  await refusedBy('PAUSED with holds listing other classes', modeDir('paused2', { paused: 'mail', holds: ['x-post'] }), 'paused');
+  await refusedBy('ON, holds mantle-release', modeDir('held', { holds: ['discord-post', 'mantle-release'] }), 'held');
+  {
+    for (const [name, mode] of [['ON, holds mantle-rollback only', { holds: ['mantle-rollback'] }], ['ON, holds not an array', { holds: 'mantle-release' }], ['ON, no holds', {}]]) {
+      const w = world();
+      const { r, auto } = await go(w, { send: true, autonomyDir: modeDir(name.replace(/\W+/g, '-'), mode) });
+      check(`autonomy: ${name}: --send goes on (GO, both steps done, exit 0)`, r.go && !r.refused && auto.map((a) => a.result).join() === 'done,done' && G.exitCode(r) === 0, { failed: failed(r), auto });
+    }
+  }
+  {
+    const w = world();
+    const { r, auto } = await go(w, { autonomyDir: modeDir('paused-dry', { paused: 'mail' }) });
+    check('autonomy: PAUSED without --send: the dry run runs as always (GO, both steps "would")', r.go && !r.refused && auto.every((a) => a.result === 'would'), { failed: failed(r), auto });
+  }
+  {
+    const d = modeDir('stop', { paused: 'mail' }); fs.writeFileSync(path.join(d, 'STOP'), '');
+    const w = world();
+    const { r } = await go(w, { send: true, autonomyDir: d });
+    check('autonomy: STOP while paused = OFF, so --send goes on', r.go && !r.refused, { failed: failed(r) });
+  }
+  check('autonomy: exit codes: GO 0, NO-GO 1, refused 3', G.exitCode({ go: true }) === 0 && G.exitCode({ go: false }) === 1 && G.exitCode({ go: false, refused: 'paused' }) === 3);
+
   // ---- the upgrade gate (the eleventh)
   {
     const w = world();
@@ -379,6 +425,7 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
     check('cli: arguments parse', a.commit === 'abc' && a.core === 'x' && a.ui === 'y' && a.upgrade === 'z' && a.rollbackOf === 'v0.1.2' && a.changelogOk === 'h' && a.send === true, a);
   }
 
+  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* a temp folder */ }
   for (const f of failures) console.log('FAIL ' + f);
   console.log(`RELEASE GATE TEST: ${passed} passed, ${failures.length} failed`);
   process.exit(failures.length ? 1 : 0);

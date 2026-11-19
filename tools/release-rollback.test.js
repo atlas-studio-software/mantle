@@ -5,7 +5,10 @@
  *
  *   node tools/release-rollback.test.js   -> "RELEASE ROLLBACK TEST: n passed, m failed"
  */
+const fs = require('fs');
+const os = require('os');
 const path = require('path');
+const crypto = require('crypto');
 const R = require('./release-rollback');
 
 let passed = 0;
@@ -59,9 +62,21 @@ function world(over) {
   w.fsx = { exists: (p) => Object.prototype.hasOwnProperty.call(w.files, p), read: (p) => w.files[p], write: (p, s) => { w.files[p] = s; } };
   return w;
 }
+// autonomy folders (contracts/autonomy.md section 1): an empty one (OFF) for every case, and made-up states
+const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-rollback-autonomy-'));
+function modeDir(name, mode) {
+  const d = path.join(TMP, name); fs.mkdirSync(d);
+  if (mode) {
+    const pol = '{"v":1}\n';
+    fs.writeFileSync(path.join(d, 'policy.json'), pol);
+    fs.writeFileSync(path.join(d, 'mode.json'), JSON.stringify(Object.assign({ v: 1, on: true, stage: 'supervised', length: { kind: 'open' }, policySha: crypto.createHash('sha256').update(pol).digest('hex'), paused: null }, mode)));
+  }
+  return d;
+}
+const OFFDIR = modeDir('off', null);
 async function go(w, extra) {
   const lines = [];
-  const r = await R.rollback(Object.assign({ bad: 'v0.1.2', root: ROOT, wtRoot: WTROOT, run: w.run, fsx: w.fsx, out: (l) => lines.push(l) }, extra || {}));
+  const r = await R.rollback(Object.assign({ bad: 'v0.1.2', root: ROOT, wtRoot: WTROOT, run: w.run, fsx: w.fsx, out: (l) => lines.push(l), autonomyDir: OFFDIR }, extra || {}));
   return { r, lines, auto: lines.filter((l) => l.startsWith('AUTONOMY: ')).map((l) => JSON.parse(l.slice(10))) };
 }
 const writes = (w) => w.calls.filter((c) => /^gh release |^git (worktree add|read-tree|commit|push|tag -d|tag -a)/.test(c));
@@ -132,6 +147,25 @@ const destroys = (w) => w.calls.filter((c) => /release delete|tag -d|push .*--de
     const a = R.argsOf(['v0.1.2', '--good=v0.1.1', '--send']);
     check('cli: arguments parse', a.bad === 'v0.1.2' && a.good === 'v0.1.1' && a.send === true, a);
   }
+
+  // ---- autonomous mode
+  for (const [name, mode, why] of [['PAUSED', { paused: { reason: 'usage' } }, 'paused'], ['ON, holds mantle-rollback', { holds: ['mantle-rollback'] }, 'held']]) {
+    const w = world();
+    const { r, auto, lines } = await go(w, { send: true, autonomyDir: modeDir(name.replace(/\W+/g, '-'), mode) });
+    check(`autonomy: ${name}: --send refused (${why}): one AUTONOMY refused line with why, (a) and (b) not done, nothing run, exit 3`,
+      r.refused === why && r.a === 'refused' && r.b === 'refused' && auto.length === 1 && auto[0].result === 'refused' && auto[0].why === why && auto[0].class === 'mantle-rollback' && w.calls.length === 0 && R.exitCode(r) === 3 && /, refused: /.test(lines[lines.length - 1]), { r, auto, calls: w.calls });
+  }
+  {
+    const w = world();
+    const { r } = await go(w, { send: true, autonomyDir: modeDir('on-held-release', { holds: ['mantle-release'] }) });
+    check('autonomy: ON holding only mantle-release: the rollback --send goes on ((a) done)', !r.refused && r.a === 'done' && R.exitCode(r) === 0, r);
+  }
+  {
+    const w = world();
+    const { r } = await go(w, { autonomyDir: modeDir('paused-dry', { paused: 'mail' }) });
+    check('autonomy: PAUSED without --send: the dry run runs ((a) would, (b) would)', !r.refused && r.a === 'would' && r.b === 'would', r);
+  }
+  try { fs.rmSync(TMP, { recursive: true, force: true }); } catch (_) { /* a temp folder */ }
 
   for (const f of failures) console.log('FAIL ' + f);
   console.log(`RELEASE ROLLBACK TEST: ${passed} passed, ${failures.length} failed`);

@@ -15,6 +15,9 @@
  *     patch, a commit on top of master (clones update by fast-forward only, lib/updater.js).
  */
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
+const path = require('path');
 const { spawnSync } = require('child_process');
 
 const REPO = 'atlas-studio-software/mantle';
@@ -62,9 +65,9 @@ function previousPublished(list, tag) {
   return best;
 }
 
-/** The one stdout line for an outward step. */
-function autonomy(cls, target, result, out) {
-  const line = `AUTONOMY: ${JSON.stringify({ class: cls, target, result })}`;
+/** The one stdout line for an outward step (`why`, when given, is an extra key; readers ignore unknown keys). */
+function autonomy(cls, target, result, out, why) {
+  const line = `AUTONOMY: ${JSON.stringify(why ? { class: cls, target, result, why } : { class: cls, target, result })}`;
   (out || ((l) => process.stdout.write(l + '\n')))(line);
   return line;
 }
@@ -74,6 +77,61 @@ function autonomy(cls, target, result, out) {
  * `TOTAL:` line between "@@cloudtest-begin@@" and "@@cloudtest-exit=" with 0 FAIL, 0 could-not-start and
  * 0 timeout. -> { ok, why, total, counts }
  */
+/*
+ * AUTONOMOUS MODE (contracts/autonomy.md section 1, the canonical states, 2026-11-19). The folder is
+ * <home>/helm-team/atlas-studio/autonomy; this code only READS mode.json, policy.json and STOP there.
+ *   ACTIVE = mode.json parses to an object (not an array) && mode.on === true && live(mode.length, now)
+ *            && policy.json exists && mode.policySha === sha256hex(policy.json bytes) (exact, no case folding)
+ *            && STOP does not exist
+ *   live   = length is an object && (kind "open" || (kind "fixed" && endsAt parses && now < endsAt))
+ *   ON = ACTIVE && !paused; PAUSED = ACTIVE && !!paused; OFF = everything else (any read error = OFF)
+ * The contract's 21 vectors (tools/autonomy-mode-vectors.json, a byte-for-byte copy) are in
+ * tools/release-autonomy.test.js.
+ */
+/** The autonomy folder. MANTLE_TEST_AUTONOMY_DIR replaces it, for tests only. */
+function autonomyDir() {
+  return process.env.MANTLE_TEST_AUTONOMY_DIR || path.join(os.homedir(), 'helm-team', 'atlas-studio', 'autonomy');
+}
+function live(l, now) {
+  if (!l || typeof l !== 'object' || Array.isArray(l)) return false;
+  if (l.kind === 'open') return true;
+  return l.kind === 'fixed' && typeof l.endsAt === 'string' && Number.isFinite(Date.parse(l.endsAt)) && now < Date.parse(l.endsAt);
+}
+/** -> { state: 'ON'|'PAUSED'|'OFF', mode } (mode: the parsed mode.json when ACTIVE, else null) */
+function readMode(dir, now) {
+  const OFF = { state: 'OFF', mode: null };
+  try {
+    let mode;
+    try { mode = JSON.parse(fs.readFileSync(path.join(dir, 'mode.json'), 'utf8')); } catch (_) { return OFF; }
+    if (!mode || typeof mode !== 'object' || Array.isArray(mode)) return OFF;
+    if (mode.on !== true) return OFF;
+    if (!live(mode.length, now)) return OFF;
+    let policy;
+    try { policy = fs.readFileSync(path.join(dir, 'policy.json')); } catch (_) { return OFF; }
+    if (typeof mode.policySha !== 'string' || mode.policySha !== crypto.createHash('sha256').update(policy).digest('hex')) return OFF;
+    try { fs.statSync(path.join(dir, 'STOP')); return OFF; } catch (err) { if (!err || err.code !== 'ENOENT') return OFF; }
+    return { state: mode.paused ? 'PAUSED' : 'ON', mode };
+  } catch (_) { return OFF; }
+}
+/** 'ON' | 'PAUSED' | 'OFF'. o: { dir (default autonomyDir()), now (ms, default Date.now()) } */
+function modeState(o) {
+  const x = o || {};
+  return readMode(x.dir || autonomyDir(), Number.isFinite(x.now) ? x.now : Date.now()).state;
+}
+/**
+ * Whether an outward --send of class `cls` must refuse: null = go on, else { why: 'paused'|'held', state }.
+ * PAUSED refuses everything; ON refuses a class listed in mode.json "holds" (missing or not an array = none).
+ */
+function autonomyRefusal(cls, o) {
+  const x = o || {};
+  const { state, mode } = readMode(x.dir || autonomyDir(), Number.isFinite(x.now) ? x.now : Date.now());
+  if (state === 'PAUSED') return { why: 'paused', state };
+  if (state === 'ON' && Array.isArray(mode.holds) && mode.holds.includes(cls)) return { why: 'held', state };
+  return null;
+}
+/** The exit code for a --send that autonomous mode refused (contracts/autonomy.md: exit 3). */
+const REFUSED_EXIT = 3;
+
 /**
  * git's arguments for "which paths differ between two commits": --no-renames, so a file moved (say into .cloudtest/)
  * lists BOTH its old and its new path (porcelain diff detects renames by default and would list only the new one),
@@ -139,4 +197,4 @@ function realRun(file, args, opt) {
   return { code: r.status, out: r.stdout || '', err: r.stderr || '' };
 }
 
-module.exports = { REPO, ASSET, HARNESS, parseVersion, vstr, cmpVersion, patchWhy, latestPublished, previousPublished, autonomy, markers, nameDiffArgs, judgeLog, harnessOnlyWhy, commandWhy, sha12, realRun, TOTAL_RE };
+module.exports = { autonomyDir, modeState, autonomyRefusal, REFUSED_EXIT, REPO, ASSET, HARNESS, parseVersion, vstr, cmpVersion, patchWhy, latestPublished, previousPublished, autonomy, markers, nameDiffArgs, judgeLog, harnessOnlyWhy, commandWhy, sha12, realRun, TOTAL_RE };
