@@ -14,6 +14,8 @@
  *          btoff     the Bluetooth radio is off
  *          nobridge  no window.mantle at all: the page must say it cannot reach Mantle
  *        taskmgr=on | off | rest   Mantle's task manager feature (absent by default)
+ *        usage=normal | idle | recoff | empty | off | fail | failonce | refuse | slow   Screen time's usage.*
+ *                 replies (made-up apps and times; sections/screentime.test.js plays every state with it)
  *        real=1   load the REAL category files (sections/<id>.js, the eleven Windows categories) instead of
  *                 fixtures: the whole app as a person sees it. Their settings.<id>.* reads are NOT played
  *                 (each answers ok:false with a made-up reason), so every page shows its error state;
@@ -349,6 +351,82 @@
     return lookView();
   }
 
+  /* ---- screen time (lib/features/usage.js: usage.state, usage.screentime.get/.set/.clear, usage.icons; lane mantle-ps-st)
+     ?usage=normal | idle | recoff | empty | off | fail | failonce | refuse | slow. MADE-UP apps, paths and times;
+     the replies carry no window titles (the real feature never reads one). */
+  const USG = (() => {
+    const scn = FAIL ? 'fail' : (q.get('usage') || 'normal');
+    const pad = (n) => String(n).padStart(2, '0');
+    const dayOf = (ago) => { const d = new Date(); d.setHours(12, 0, 0, 0); d.setDate(d.getDate() - ago); return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`; };
+    const icon = (hue) => 'data:image/svg+xml,' + encodeURIComponent(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><rect width="20" height="20" rx="4" fill="hsl(${hue},55%,52%)"/><rect x="5" y="5" width="10" height="10" rx="2" fill="hsl(${hue},60%,88%)"/></svg>`);
+    const APPS = [
+      { key: 'c:\\program files\\made-up editor\\editor.exe', name: 'Code Editor', path: 'C:\\Program Files\\Made-up Editor\\editor.exe', icon: icon(220) },
+      { key: 'c:\\program files\\example browser\\browser.exe', name: 'Example Browser', path: 'C:\\Program Files\\Example Browser\\browser.exe', icon: icon(20) },
+      { key: 'c:\\program files\\tunes\\tunes.exe', name: 'Tunes', path: 'C:\\Program Files\\Tunes\\tunes.exe', icon: null },
+      { key: 'c:\\program files\\chatter\\chatter.exe', name: 'Chatter', path: 'C:\\Program Files\\Chatter\\chatter.exe', icon: icon(140) },
+      { key: 'file:sketchpad.exe', name: 'Sketchpad', path: null, icon: null },
+      { key: 'c:\\windows\\explorer.exe', name: 'File Explorer', path: 'C:\\Windows\\explorer.exe', icon: icon(45) },
+    ];
+    // today: 3 h 12 min (1 h 30, 1 h 12, 20 min, 8 min, under a minute, 1 min); then six earlier days (one with nothing)
+    const TODAY = [5400, 4320, 1200, 480, 40, 80];
+    const EARLIER = [7200, 9000, 0, 12600, 5400, 10800];   // 6 days ago .. yesterday
+    const SPLIT = [0.4, 0.3, 0.15, 0.1, 0, 0.05];
+    const st = { on: scn !== 'recoff', kept: 12, gets: 0 };
+    const appsOf = (secs) => secs.map((s, i) => ({ key: APPS[i].key, name: APPS[i].name, path: APPS[i].path, seconds: s })).filter((a) => a.seconds > 0).sort((a, b) => b.seconds - a.seconds);
+    const sum = (a) => a.reduce((x, y) => x + y, 0);
+    const blank = () => scn === 'empty' || st.kept === 0;
+    function get() {
+      const today = blank() ? [0, 0, 0, 0, 0, 0] : TODAY;
+      const hours = Array(24).fill(0);
+      if (!blank()) [[9, 2400], [10, 3000], [11, 1800], [12, 600], [13, 2520], [14, 1200]].forEach(([h, s]) => { hours[h] = s; });
+      const days = EARLIER.map((tot, i) => {
+        const t = blank() ? 0 : tot;
+        return { date: dayOf(6 - i), totalSec: t, apps: appsOf(SPLIT.map((f) => Math.round(f * t))).slice(0, 8) };
+      });
+      days.push({ date: dayOf(0), totalSec: sum(today), apps: appsOf(today).slice(0, 8) });
+      return { ok: true, on: st.on, idleMin: 5, keptDays: 30,
+        today: { date: dayOf(0), totalSec: sum(today), hours, apps: appsOf(today) },
+        days, since: blank() ? null : dayOf(st.kept - 1),
+        current: st.on && scn === 'normal' && !blank() ? { key: APPS[0].key, name: APPS[0].name } : null,
+        paused: !st.on ? 'off' : scn === 'idle' ? 'idle' : null,
+        notes: scn === 'idle' ? ['made up: yesterday from 2 pm to 4 pm was not recorded because Mantle was not running'] : [] };
+    }
+    const OFF = { ok: false, off: true, reason: 'Power use and screen time is switched off in Mantle’s features' };
+    return {
+      state() { return scn === 'off' ? Object.assign({}, OFF) : { ok: true, on: true, power: true, screentime: st.on, idleMin: 5, reason: null }; },
+      get() {
+        st.gets++;
+        if (scn === 'off') return later(40, Object.assign({}, OFF));
+        if (scn === 'fail' || (scn === 'failonce' && st.gets === 1)) return later(60, { ok: false, reason: 'made up: the screen time file could not be read (it is locked by another program)' });
+        return later(scn === 'slow' ? 4000 : 40, get());
+      },
+      set(a) {
+        if (scn === 'off') return later(40, Object.assign({}, OFF));
+        if (scn === 'refuse') return later(80, { ok: false, reason: 'made up: Mantle could not save the switch (its settings file is locked by another program)' });
+        if (TEST) return later(60, { ok: true, dryRun: true, reason: 'Test run: nothing was changed' });
+        st.on = !!(a && a.on);
+        return later(60, { ok: true, on: st.on });
+      },
+      clear() {
+        if (scn === 'off') return later(40, Object.assign({}, OFF));
+        if (TEST) return later(60, { ok: true, dryRun: true, reason: 'Test run: nothing was cleared' });
+        const n = blank() ? 0 : st.kept;
+        st.kept = 0;
+        return later(120, { ok: true, cleared: n });
+      },
+      icons(a) {
+        if (scn === 'off') return later(40, Object.assign({}, OFF));
+        const icons = {}, why = {};
+        for (const p of (a && Array.isArray(a.paths) ? a.paths : [])) {
+          const x = APPS.find((y) => y.path === p);
+          icons[p] = x && x.icon ? x.icon : null;
+          if (!icons[p]) why[p] = 'made up: the app has no icon in its file';
+        }
+        return later(30, { ok: true, icons, why });
+      },
+    };
+  })();
+
   const TOASTS = { mode: q.get('toasts') || 'on', on: q.get('toasts') !== 'off', status: q.get('tstatus') };
   function answer(name, a) {
     a = a || {};
@@ -509,6 +587,11 @@
       }
       case 'gcal.signIn': case 'gcal.signOut': case 'gcal.pickClient': return later(120, { ok: true, dryRun: true, reason: 'test run: nothing is sent to Google' });
       case 'gcal.setCalendar': return later(80, { ok: true, value: !!(a && a.on) });
+      case 'usage.state': return USG.state();
+      case 'usage.screentime.get': return USG.get();
+      case 'usage.screentime.set': return USG.set(a);
+      case 'usage.screentime.clear': return USG.clear();
+      case 'usage.icons': return USG.icons(a);
       case 'qs.wifi.disconnect': nets.forEach((x) => { x.connected = false; }); qs.wifi.connected = false; return later(400, { ok: true, reason: null });
       default:
         // a fixture section's main-side command: settings.<id>.<name> answers with what it was sent
