@@ -191,6 +191,9 @@ Step 'the previous release: its Mantle-Setup.exe, checked against GitHub''s dige
 [Net.ServicePointManager]::SecurityProtocol = [Net.ServicePointManager]::SecurityProtocol -bor [Net.SecurityProtocolType]::Tls12
 $ProgressPreference = 'SilentlyContinue'
 $hdr = @{ 'User-Agent' = 'mantle-ci-upgrade-test'; 'Accept' = 'application/vnd.github+json' }
+# A runner's anonymous API calls share a rate limit (one 403 seen 2026-11-18): use the job's token when it has one.
+# Only the API call gets it, and the token is never printed.
+if ($env:GITHUB_TOKEN) { $hdr['Authorization'] = "Bearer $($env:GITHUB_TOKEN)" }
 $api = if ($From) { "https://api.github.com/repos/$Repo/releases/tags/$From" } else { "https://api.github.com/repos/$Repo/releases/latest" }
 try { $rel = Invoke-RestMethod -Uri $api -Headers $hdr } catch { Give-Up "the previous release could be read ($api): $($_.Exception.Message)" }
 $script:fromTag = "$($rel.tag_name)"
