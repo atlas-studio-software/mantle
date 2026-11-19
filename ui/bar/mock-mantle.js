@@ -1112,6 +1112,96 @@
     return Object.assign({ ok: true }, hcState);
   }
 
+  /* ---- Power use (lane mantle-ps-qs, 2026-11-18): lib/features/usage.js's replies, in the shapes of the
+       power-pull design's addendum ("Command replies"). ?pw= picks usage.power.now's case:
+         battery (default)  7.8 W on battery, 3 h 40 min left      ac         charging at 18 W
+         acfull             plugged in, not charging              nobattery  a desktop PC
+         norapl             no processor counters: CPU-time shares, no watts
+         error              usage.power.now fails (ok:false + reason)   off  the feature is off (off:true)
+         flaky              the first read works, every later one fails
+       ?pwstate= on (default) | off (the user's switch: no row) | fail (usage.state fails: the row says why)
+       ?pwh= data (default) | empty | error picks usage.power.history's case.
+       __mockMain.usage({pw, pwstate, pwh}) switches any of them mid-test (the next read answers it). */
+  var PW = { pw: q.get('pw') || 'battery', pwstate: q.get('pwstate') || 'on', pwh: q.get('pwh') || 'data', nowReads: 0 };
+  var PW_CAPTION = 'Estimated: each app\u2019s share of processor and graphics time, times the power Windows measured.';
+  var PW_OFF = { ok: false, off: true, reason: 'Power use and screen time is switched off in Mantle\u2019s tray menu' };
+  var PW_QUARTZ = 'C:\\Program Files\\Quartz\\Quartz.exe', PW_HELM = 'C:\\Program Files\\Helm\\Helm.exe';
+  function pwApps(watts) {
+    var a = [
+      { key: PW_QUARTZ.toLowerCase(), kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.34, mw: 2600, why: null },
+      { key: PW_HELM.toLowerCase(), kind: 'app', name: 'Helm', path: PW_HELM, share: 0.12, mw: 900, why: null },
+      { key: 'c:\\windows\\explorer.exe', kind: 'app', name: 'File Explorer', path: 'C:\\Windows\\explorer.exe', share: 0.05, mw: 400, why: null }
+    ];
+    return a.map(function (r) { return watts ? r : Object.assign({}, r, { mw: null }); });
+  }
+  function pwNow() {
+    PW.nowReads++;
+    if (PW.pw === 'off') return PW_OFF;
+    if (PW.pw === 'error' || (PW.pw === 'flaky' && PW.nowReads > 1)) return { ok: false, reason: 'the power counters could not be read: the sidecar is restarting' };
+    var r = { ok: true, at: Date.now(), windowMs: 2000, source: 'battery', shareOf: 'pc', caption: PW_CAPTION, notes: [],
+      chip: { pkgMw: 4100, coresMw: 3300, gfxMw: 200, why: null },
+      battery: { percent: 62, charging: false, chargeMw: null, secondsLeft: 13200, why: null }, total: { mw: 7800, why: null } };
+    var fixed = [
+      { key: 'windows', kind: 'windows', name: 'Windows', path: null, share: 0.08, mw: 600, why: null },
+      { key: 'chip-rest', kind: 'chip-rest', name: 'Rest of the processor', path: null, share: 0.06, mw: 500, why: null },
+      { key: 'pc-rest', kind: 'pc-rest', name: 'Screen and the rest of the PC', path: null, share: 0.35, mw: 2700, why: null }
+    ];
+    if (PW.pw === 'ac' || PW.pw === 'acfull' || PW.pw === 'nobattery' || PW.pw === 'norapl') {
+      r.source = PW.pw === 'nobattery' ? 'nobattery' : 'ac';
+      r.shareOf = 'chip';
+      r.total = { mw: null, why: 'Windows only reports total draw on battery' };
+      r.battery = PW.pw === 'nobattery' ? { percent: null, charging: false, chargeMw: null, secondsLeft: null, why: 'This PC has no battery' }
+        : { percent: 80, charging: PW.pw !== 'acfull', chargeMw: PW.pw === 'acfull' ? null : 18000, secondsLeft: null, why: null };
+      fixed = fixed.slice(0, 2).concat([{ key: 'pc-rest', kind: 'pc-rest', name: 'Screen and the rest of the PC', path: null, share: null, mw: null,
+        why: 'Not measured while plugged in: Windows only reports total draw on battery' }]);
+    }
+    if (PW.pw === 'norapl') {
+      r.shareOf = 'cpu';
+      r.chip = { pkgMw: null, coresMw: null, gfxMw: null, why: 'This processor does not report its power to Windows' };
+      fixed = [{ key: 'windows', kind: 'windows', name: 'Windows', path: null, share: 0.08, mw: null, why: null }];
+    }
+    r.rows = pwApps(PW.pw !== 'norapl').concat(fixed);
+    return r;
+  }
+  function pwHistory(p) {
+    if (PW.pw === 'off') return PW_OFF;
+    if (PW.pwh === 'error') return { ok: false, reason: 'the power history could not be read: power-2026-11-18.jsonl is not valid JSON' };
+    var range = (p && p.range) === '24h' ? '24h' : 'today';
+    if (PW.pwh === 'empty') return { ok: true, range: range, from: null, to: null, shareOf: 'chip', hours: [], rows: [],
+      totals: { chipWh: 0, totalWh: null, totalWhy: null, coveredMs: 0, spanMs: 0 }, empty: true, emptyWhy: null, caption: PW_CAPTION, notes: [] };
+    var n = range === '24h' ? 24 : 6, top = new Date(); top.setMinutes(0, 0, 0);
+    var hours = [];
+    for (var i = n - 1; i >= 0; i--) {
+      var bat = i % 4 === 1;
+      hours.push({ t: top.getTime() - i * 3600e3, chipWh: 2 + (i % 5) * 0.8, totalWh: bat ? 6 + (i % 3) : null, power: bat ? 'battery' : 'ac', covered: i === 0 ? 0.4 : 1 });
+    }
+    return { ok: true, range: range, from: hours[0].t, to: top.getTime() + 3600e3, shareOf: 'chip', hours: hours,
+      rows: [
+        { key: PW_QUARTZ.toLowerCase(), kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.41, wh: 5.2 },
+        { key: PW_HELM.toLowerCase(), kind: 'app', name: 'Helm', path: PW_HELM, share: 0.18, wh: 0.8 },
+        { key: 'windows', kind: 'windows', name: 'Windows', path: null, share: 0.1, wh: 0.4 },
+        { key: 'chip-rest', kind: 'chip-rest', name: 'Rest of the processor', path: null, share: 0.07, wh: 0.3 }
+      ],
+      totals: { chipWh: 18.4, totalWh: null, totalWhy: 'Windows only reports total draw on battery', coveredMs: (n - 0.6) * 3600e3, spanMs: n * 3600e3 },
+      empty: false, emptyWhy: null, caption: PW_CAPTION, notes: [] };
+  }
+  /* Quartz gets a 1x1 picture; every other path its reason (a neutral glyph stays). */
+  var PW_DOT = 'data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==';
+  function pwCall(name, p) {
+    if (name === 'usage.state') {
+      if (PW.pwstate === 'fail') return { ok: false, reason: 'the usage feature did not answer: it is still starting' };
+      return { ok: true, on: PW.pwstate !== 'off', power: true, screentime: true, idleMin: 5, reason: null };
+    }
+    if (name === 'usage.power.now') return pwNow();
+    if (name === 'usage.power.history') return pwHistory(p);
+    var icons = {}, why = {};
+    ((p && p.paths) || []).forEach(function (x) {
+      if (x === PW_QUARTZ) icons[x] = PW_DOT;
+      else { icons[x] = null; why[x] = 'the file has no icon Windows could read'; }
+    });
+    return { ok: true, icons: icons, why: why };
+  }
+
   /* ---- Spotify's "Up next" queue (spotq lane; desktop-app rebuild by the spotapp lane, 2026-09-25):
        lib/features/spotify.js's replies, in its shapes. Needs ?media=playing (the card must be
        showing Spotify). ?spq=
@@ -1399,6 +1489,7 @@
       case 'gamemode.state': return Object.assign({}, gmState);
       case 'topbar.state': case 'topbar.hidden': return tbCall(channel, payload);
       case 'corners.state': case 'corners.set': return hcCall(channel, payload);
+      case 'usage.state': case 'usage.power.now': case 'usage.power.history': case 'usage.icons': return pwCall(channel, payload);
       case 'corners.ack': return { ok: false };
       case 'downloads.list': case 'downloads.seen': case 'downloads.open': case 'downloads.reveal':
       case 'downloads.folder': case 'downloads.drag': return dlCall(channel, payload);
@@ -1660,6 +1751,8 @@
     /* The sessions change (?media= names): main pushes 'media'. mediapick shots: Spotify blinking
        out of the list and back while it is the pick. */
     media: function (name) { MEDIA = name; emit('media', mediaPayload()); },
+    /* Power use's cases (?pw= / ?pwstate= / ?pwh=), switched mid-test; the next read answers the new one. */
+    usage: function (o) { Object.keys(o || {}).forEach(function (k) { PW[k] = o[k]; }); PW.nowReads = 0; return Object.assign({}, PW); },
     /* Any push main can send, for the functional page tests (bar lane, 2026-09-29). */
     emit: function (channel, payload) { emit(channel, payload); },
     /* Google Calendar: a new ?gcal= case pushed to the open page (status, then events). */

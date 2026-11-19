@@ -1,0 +1,115 @@
+/* qs-power.css - "Power use" in quick settings (ui/bar/qs-power.js; lane mantle-ps-qs, 2026-11-18).
+ * One Theme: --lg-* only (glass-light.css carries light and dark). The view reuses qs-more.css's
+ * qsx-view / qsx-head / qsx-scroll / qsx-state / qsx-btn; this file adds the row, the tabs, the
+ * numbers, the share bars and the hourly chart. NOTHING MOVES: no transition on a bar or a column
+ * (the panel sits under backdrop-filter); only hover colours step, as everywhere in the panel. */
+
+.qspw-view [hidden], .qspw-open[hidden] { display: none !important; }
+
+/* ---- the row in the main view */
+.qspw-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  margin: 2px 0 9px;
+  padding: 6px 6px 6px 10px;
+  border: 0;
+  border-radius: var(--lg-r-ctl);
+  background: var(--lg-tile);
+  color: var(--lg-ink);
+  font: inherit;
+  text-align: left;
+  cursor: default;
+  line-height: 1.3;
+  transition: background-color 150ms steps(2);
+}
+.qspw-open:hover { background: var(--lg-hover); }
+.qspw-open:active { background: var(--lg-press); }
+.qspw-open:focus-visible { outline: 1px solid var(--lg-acc); outline-offset: -1px; }
+.qspw-oico, .qspw-ochev { flex: 0 0 auto; display: grid; place-items: center; color: var(--lg-ink-2); }
+.qspw-oico svg, .qspw-ochev svg { display: block; }
+.qspw-otext { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; }
+.qspw-olbl { font-size: 12.5px; color: var(--lg-ink); }
+.qspw-osub { font-size: 12px; color: var(--lg-ink-3); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.qspw-open.bad .qspw-osub { color: var(--lg-warn); white-space: normal; overflow-wrap: anywhere; }
+
+/* ---- the tabs: a segmented control */
+.qspw-tabs {
+  flex: 0 0 auto;
+  display: flex;
+  gap: 2px;
+  margin: 0 0 8px;
+  padding: 2px;
+  border-radius: var(--lg-r-ctl);
+  background: var(--lg-sunk);
+}
+.qspw-tab {
+  flex: 1 1 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 0;
+  border-radius: var(--lg-r-ctl);
+  background: transparent;
+  color: var(--lg-ink-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: default;
+  white-space: nowrap;
+  transition: background-color 150ms steps(2), color 150ms steps(2);
+}
+.qspw-tab:hover { background: var(--lg-hover); color: var(--lg-ink); }
+.qspw-tab.on, .qspw-tab.on:hover { background: var(--lg-card); color: var(--lg-ink); box-shadow: inset 0 0 0 1px var(--lg-edge-out); }
+.qspw-tab:focus-visible { outline: 1px solid var(--lg-acc); outline-offset: -1px; }
+
+/* ---- Now: the numbers */
+.qspw-sum { margin: 2px 2px 8px; }
+.qspw-big { font-size: 24px; font-weight: 600; line-height: 1.15; color: var(--lg-ink); font-variant-numeric: tabular-nums; }
+.qspw-line { font-size: 13px; color: var(--lg-ink); font-variant-numeric: tabular-nums; }
+.qspw-subline { font-size: 12px; color: var(--lg-ink-3); line-height: 1.4; overflow-wrap: anywhere; }
+.qspw-chip { margin-top: 2px; font-size: 12px; color: var(--lg-ink-2); font-variant-numeric: tabular-nums; }
+.qspw-chip.why { color: var(--lg-ink-3); overflow-wrap: anywhere; }
+.qspw-of { margin: 4px 2px 4px; font-size: 12px; color: var(--lg-ink-3); }
+
+/* ---- the list: icon, name, share, ~watts, a static share bar */
+.qspw-row { display: flex; align-items: flex-start; gap: 8px; padding: 5px 2px 4px; }
+.qspw-row.fixed1 { margin-top: 4px; padding-top: 8px; border-top: 1px solid var(--lg-divider); }
+.qspw-ico { flex: 0 0 18px; height: 18px; display: grid; place-items: center; color: var(--lg-ink-2); }
+.qspw-ico img { width: 18px; height: 18px; object-fit: contain; display: block; }
+.qspw-ico svg { display: block; }
+.qspw-main { flex: 1 1 auto; min-width: 0; }
+.qspw-top { display: flex; align-items: baseline; gap: 6px; font-size: 12.5px; line-height: 1.3; }
+.qspw-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; color: var(--lg-ink); }
+.qspw-pct { flex: 0 0 auto; color: var(--lg-ink); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qspw-amt { flex: 0 0 auto; min-width: 46px; text-align: right; color: var(--lg-ink-3); white-space: nowrap; font-variant-numeric: tabular-nums; }
+.qspw-bar { height: 3px; margin-top: 4px; border-radius: 2px; background: var(--lg-sunk); overflow: hidden; }
+.qspw-fill { height: 100%; border-radius: 2px; background: var(--lg-acc); }
+.qspw-why { margin-top: 1px; font-size: 12px; line-height: 1.35; color: var(--lg-ink-3); overflow-wrap: anywhere; }
+
+/* ---- Today / Last 24 h: the hourly chart (columns of the processor's Wh; the whole PC's behind them) */
+.qspw-chart { margin: 2px 2px 4px; }
+.qspw-cols { display: flex; align-items: flex-end; gap: 2px; height: 72px; border-bottom: 1px solid var(--lg-divider); }
+.qspw-col { position: relative; flex: 1 1 0; height: 100%; min-width: 0; }
+.qspw-tot, .qspw-chipbar { position: absolute; left: 0; right: 0; bottom: 0; border-radius: 2px 2px 0 0; }
+.qspw-tot { background: var(--lg-acc-soft); box-shadow: inset 0 1px 0 var(--lg-acc-line); }
+.qspw-chipbar { background: var(--lg-acc); }
+.qspw-col.part .qspw-chipbar, .qspw-col.part .qspw-tot { opacity: .45; }
+.qspw-axis { display: flex; gap: 2px; margin-top: 3px; font-size: 11px; color: var(--lg-ink-3); font-variant-numeric: tabular-nums; }
+.qspw-tick { flex: 1 1 0; min-width: 0; overflow: visible; white-space: nowrap; }
+.qspw-key { display: flex; flex-wrap: wrap; align-items: center; gap: 4px 6px; margin: 4px 2px 6px; font-size: 11.5px; color: var(--lg-ink-3); }
+.qspw-sw { width: 9px; height: 9px; border-radius: 2px; }
+.qspw-sw.chip { background: var(--lg-acc); }
+.qspw-sw.tot { background: var(--lg-acc-soft); box-shadow: inset 0 0 0 1px var(--lg-acc-line); margin-left: 4px; }
+.qspw-keypart { margin-left: 4px; }
+.qspw-totals { margin: 0 2px; font-size: 13px; color: var(--lg-ink); font-variant-numeric: tabular-nums; }
+
+/* ---- the permanent "these are estimates" caption */
+.qspw-cap {
+  flex: 0 0 auto;
+  margin-top: 6px;
+  padding-top: 6px;
+  border-top: 1px solid var(--lg-edge-out);
+  font-size: 11.5px;
+  line-height: 1.4;
+  color: var(--lg-ink-3);
+}
