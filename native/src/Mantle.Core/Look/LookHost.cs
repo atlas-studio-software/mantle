@@ -24,8 +24,9 @@ public sealed record LookChange(string Why, bool VarsChanged, JsonObject View);
 /// <summary>
 /// lib/look-host.js: Mantle's side of LOOK SYNC with Helm and Quartz. The local copy (<c>look-sync.json</c>:
 /// <c>{lookSync, accent, glass}</c>) is what Mantle shows while sync is off and before the shared file is read;
-/// <see cref="Vars"/> turns it into the <c>--lg-*</c> overrides for one theme (EMPTY at the seed values, so the default look is
-/// the stylesheet's own); the sync instance shares theme, accent and glass through look.json.
+/// <see cref="Vars"/> turns it into the <c>--lg-*</c> overrides for one theme (EMPTY at the stylesheet's values,
+/// <see cref="Dark"/> and <see cref="Light"/>; native's seed, look-sync's 2026-11-11 blur 0 / Dim .30, is not those values,
+/// so a seeded look has overrides, parity SEE-018); the sync instance shares theme, accent and glass through look.json.
 /// Every file it changes goes through the store and the sync instance, so the read-only gate decides.
 /// </summary>
 public sealed class LookHost : IDisposable

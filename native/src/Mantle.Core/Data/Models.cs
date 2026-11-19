@@ -23,8 +23,9 @@ public sealed record GlassLook(double BlurPx, double Dim, double Panel)
 /// The glass for both themes plus how it renders ("picture" or "seeThrough").
 public sealed record GlassSettings(GlassLook Dark, GlassLook Light, string Render)
 {
-    /// lib/look-sync.js SEED.glass: dark blur 5 / dim .50, light blur 12 / dim .45, panel 0, picture.
-    public static readonly GlassSettings Seed = new(new GlassLook(5, 0.50, 0), new GlassLook(12, 0.45, 0), "picture");
+    /// LookSyncCore.Seed()'s glass (look-sync's 2026-11-11 SEED): blur 0 / dim .30 / panel 0 in both themes, picture.
+    /// Electron Mantle's vendored look-sync still seeds dark 5 / .50, light 12 / .45 (parity SEE-018).
+    public static readonly GlassSettings Seed = new(new GlassLook(0, 0.30, 0), new GlassLook(0, 0.30, 0), "picture");
     public GlassLook For(bool dark) => dark ? Dark : Light;
     public override string ToString() => $"light {Light}, dark {Dark}, render {Render}";
 }

@@ -25,8 +25,9 @@ public class LookHostTests
         public readonly Stores Stores;
         public string Mode = "dark";
         public readonly LookHost Host;
-        public Rig(int grace = 0)
+        public Rig(int grace = 0, string? local = null)
         {
+            if (local != null) System.IO.File.WriteAllText(Dir.File("look-sync.json"), local);
             Stores = new Stores(Dir.Path, new SafeFile(WriteGate.Scratch(Dir.Path)), Log);
             var opts = new LookSyncOptions { App = "mantle", Dir = Dir.File("look-sync"), Files = new SafeFile(WriteGate.Scratch(Dir.Path)) };
             Host = new LookHost(Stores.Open("look-sync.json"), opts, new LookTheme(() => Mode, () => Mode == "dark" ? "dark" : "light", m => { Mode = m; return null; }), Log, grace);
@@ -61,14 +62,18 @@ public class LookHostTests
         Assert.Equal($"blur({LookHost.Dark.BlurPx}px)", Tok(dark, "--lg-blur"));
         var bar = GlassAdapt.ParseColor(Tok(dark, "--lg-fill-bar"));
         Assert.True(bar == new Rgba(LookHost.DarkBar[0], LookHost.DarkBar[1], LookHost.DarkBar[2], LookHost.Dark.Dim), "--lg-fill-bar: " + Tok(dark, "--lg-fill-bar"));
+        // native's seed is look-sync's 2026-11-11 glass, NOT the stylesheet's values (parity SEE-018)
         var seed = LookSyncCore.Seed();
-        Assert.Equal("{\"blurPx\":12,\"dim\":0.45,\"panel\":0}", JsJson.Stringify(seed["glass"]!["light"], 0));
+        Assert.Equal("{\"blurPx\":0,\"dim\":0.3,\"panel\":0}", JsJson.Stringify(seed["glass"]!["dark"], 0));
+        Assert.Equal("{\"blurPx\":0,\"dim\":0.3,\"panel\":0}", JsJson.Stringify(seed["glass"]!["light"], 0));
     }
 
     [Fact]
-    public void At_the_seed_values_there_are_no_overrides_and_a_listener_that_throws_is_logged()
+    public void At_the_stylesheets_values_there_are_no_overrides_and_a_listener_that_throws_is_logged()
     {
-        using var rig = new Rig();
+        // the stylesheet's own glass (LookHost.Dark / Light) gives no overrides; native's seed (blur 0 / Dim .30, SEE-018) does
+        using (var seeded = new Rig()) Assert.Contains(seeded.Host.Vars("dark"), v => v.Key == "--lg-blur" && v.Value == "blur(0px)");
+        using var rig = new Rig(local: "{\"glass\":{\"dark\":{\"blurPx\":5,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}");
         Assert.Empty(rig.Host.Vars("dark"));
         Assert.Empty(rig.Host.Vars("light"));
         int second = 0;

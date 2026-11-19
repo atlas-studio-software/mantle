@@ -289,7 +289,7 @@ Storage root: `<userData>` = `%APPDATA%\mantle` (live) or `%TEMP%\mantle-test-<p
 | `altTab`, `winKeys` | bool | true, true | lib/switcher.js | settings.switcher / tray | switcher.json |
 | `keepReady.settings/taskmgr/files` | bool | false | lib/keep-ready.js | settings.keepReady | keep-ready.json |
 | `mode` | system/light/dark | system | lib/theme.js | theme.set | theme.json |
-| `lookSync`, `accent`, `glass` | bool, {hue}, {dark,light,render} | true, hue null, dark 5 px/0.50/0, light 12 px/0.45/0 | lib/look-host.js | look.sync / look.accent / look.glass | look-sync.json (local copy); shared %APPDATA%\look-sync\look.json (also Helm and Quartz) |
+| `lookSync`, `accent`, `glass` | bool, {hue}, {dark,light,render} | true, hue null, dark 5 px/0.50/0, light 12 px/0.45/0 (native: dark and light 0 px/0.30/0, SEE-018) | lib/look-host.js | look.sync / look.accent / look.glass | look-sync.json (local copy); shared %APPDATA%\look-sync\look.json (also Helm and Quartz) |
 | `selected` (`builtin:<name>` or library id) | string | none | lib/wallpaper.js | wallpaper.set / shuffle | wallpapers/library.json |
 | `settings.cache` | json | none | ui/settings/settings.js | same | page localStorage (Electron profile; native: own cache) |
 | Google token / client | encrypted blobs | none | lib/features/_gcal-store.js | gcal.signIn / pickClient | gcal/token.bin, gcal/client.bin (Electron safeStorage = DPAPI), gcal/cache.json |
