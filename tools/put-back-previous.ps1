@@ -23,7 +23,8 @@
 # WHAT IT NEVER DOES. It touches only <InstallDir> (through Mantle's own installer) and a new folder in %TEMP%.
 # It never touches a git clone or worktree of Mantle, and with -Run it refuses while a Mantle that is NOT the
 # installed copy runs (a Mantle.Sidecar.exe outside <InstallDir>, or an electron.exe --live): the installer's
-# restore step would stop that one's crash recovery and put the taskbar back under it.
+# restore step would put the taskbar back under it, and the restore script of an installed copy from before
+# 2026-11-19 (v0.1.1 and older) also stops every Mantle's crash-recovery supervisor, not only its own.
 #
 # The last line is "PUT BACK: would|verified|done|refused|failed ...". Exit 0 for would/verified/done.
 param(

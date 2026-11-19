@@ -284,11 +284,28 @@ if ($NoKill) {
 } else {
   $needle = $repoRoot.ToLowerInvariant()
   $stopped = 0
+  $spared = @{}
+  # An installed copy (see $installRoot; the installer and the uninstaller run this file from there) stops
+  # only the Mantle.Sidecar.exe processes whose own exe is in ITS folder. A supervisor or sidecar of any
+  # other Mantle (a git checkout running live, a second install) belongs to that one: stopping it would take
+  # its crash recovery away while it keeps running. A clone keeps the old rule and stops every one.
+  $ownPrefix = $null
+  if ($installRoot) { $ownPrefix = $installRoot.TrimEnd('\').ToLowerInvariant() + '\' }
+  function Test-Own([string]$exePath, [string]$cmdLine) {
+    if (-not $ownPrefix) { return $true }
+    if ($exePath) { return $exePath.ToLowerInvariant().StartsWith($ownPrefix) }
+    # no exe path readable: the command line's own first word, quoted or not
+    $c = "$cmdLine".Trim().TrimStart('"').ToLowerInvariant()
+    return ($c.Length -gt 0 -and $c.StartsWith($ownPrefix))
+  }
   # The crash-recovery supervisors FIRST (Mantle.Sidecar.exe --supervise=<pid>, lib/supervisor.js): one
   # still running when Mantle is stopped below reads that as a crash and starts Mantle again.
   try {
     $supervisors = @(Get-CimInstance Win32_Process -Filter "Name='Mantle.Sidecar.exe'" -ErrorAction Stop |
       Where-Object { $_.CommandLine -and $_.CommandLine.Contains('--supervise=') })
+    $mine = @($supervisors | Where-Object { Test-Own $_.ExecutablePath $_.CommandLine })
+    $supervisors | Where-Object { $mine -notcontains $_ } | ForEach-Object { $spared[[int]$_.ProcessId] = $true }
+    $supervisors = $mine
   } catch {
     $supervisors = @()
     Problem "could not list Mantle's crash-recovery supervisors: $($_.Exception.Message)"
@@ -337,6 +354,9 @@ if ($NoKill) {
   }
   try {
     $sidecars = @(Get-Process -Name 'Mantle.Sidecar' -ErrorAction SilentlyContinue)
+    $mine = @($sidecars | Where-Object { Test-Own $_.Path '' })
+    $sidecars | Where-Object { $mine -notcontains $_ } | ForEach-Object { $spared[[int]$_.Id] = $true }
+    $sidecars = $mine
   } catch {
     $sidecars = @()
   }
@@ -349,6 +369,7 @@ if ($NoKill) {
     }
   }
   Say "  stopped $stopped Mantle process(es); no other electron.exe was touched"
+  if ($spared.Count -gt 0) { Say "  spared $($spared.Count) Mantle.Sidecar.exe process(es) of another Mantle (not from $installRoot)" }
 }
 
 # -----------------------------------------------------------------------------
