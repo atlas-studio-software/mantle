@@ -17,7 +17,13 @@ New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 $script:passed = 0
 $script:failed = New-Object System.Collections.ArrayList
-function Check([string]$name, [bool]$ok, [string]$detail = '') {
+# $ok must be true/false (or a number, as a [bool] parameter takes); anything else is a harness bug, counted as a
+# FAIL with its type named, never a crash that loses the summary line.
+function Check([string]$name, $ok, [string]$detail = '') {
+  if (-not ($ok -is [bool] -or $ok -is [int] -or $ok -is [long])) {
+    $what = if ($null -eq $ok) { 'null' } else { $ok.GetType().Name }
+    $detail = "harness bug: the check got a $what, not true/false$(if ($detail) { "; $detail" })"; $ok = $false
+  }
   if ($ok) { $script:passed++; Write-Output "ok   $name" }
   else { [void]$script:failed.Add($name); Write-Output "FAIL $name$(if ($detail) { " -- $detail" })" }
 }
@@ -83,7 +89,8 @@ function Wait-LiveUp([long]$from, [int]$seconds = 150) {
     }
     Start-Sleep -Seconds 1
   } while ((Get-Date) -lt $end)
-  if (Test-Path -LiteralPath $log) { Write-Output '---- mantle.log (tail)'; Get-Content -LiteralPath $log -Tail 40 }
+  # Write-Host, not output: these lines must not become part of what the function returns
+  if (Test-Path -LiteralPath $log) { Write-Host '---- mantle.log (tail)'; Get-Content -LiteralPath $log -Tail 40 | ForEach-Object { Write-Host $_ } }
   return $false
 }
 function Find-Window([int]$procId, [int]$seconds) {

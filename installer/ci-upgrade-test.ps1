@@ -40,12 +40,29 @@ function Summary {
 }
 $script:passed = 0
 $script:failed = New-Object System.Collections.ArrayList
-function Check([string]$name, [bool]$ok, [string]$detail = '') {
+# $ok must be true/false (or a number, as a [bool] parameter takes); anything else is a harness bug, counted as a
+# FAIL with its type named, never a crash that loses the summary line.
+function Check([string]$name, $ok, [string]$detail = '') {
+  if (-not ($ok -is [bool] -or $ok -is [int] -or $ok -is [long])) {
+    $what = if ($null -eq $ok) { 'null' } else { $ok.GetType().Name }
+    $detail = "harness bug: the check got a $what, not true/false$(if ($detail) { "; $detail" })"; $ok = $false
+  }
   if ($ok) { $script:passed++; Write-Output "ok   $name" }
   else { [void]$script:failed.Add($name); Write-Output "FAIL $name$(if ($detail) { " -- $detail" })" }
 }
 function Step([string]$text) { Write-Output ''; Write-Output "== $text" }
 function Give-Up([string]$why) { Check $why $false; if ((From-Install).Count) { Kill-All }; Summary; exit 1 }
+# Anything that stops the script (a terminating error anywhere) still ends on the summary line, with a failure counted.
+trap {
+  if ($null -eq $script:failed) { $script:failed = New-Object System.Collections.ArrayList }
+  if ($null -eq $script:passed) { $script:passed = 0 }
+  $at = "line $($_.InvocationInfo.ScriptLineNumber): $($_.Exception.Message)"
+  Write-Output "HARNESS ERROR at $at"
+  [void]$script:failed.Add("the script ran to its end (it stopped at $at)")
+  try { if ((From-Install).Count) { Kill-All } } catch { }
+  Summary
+  exit 1
+}
 
 if ($env:CLOUDTEST -ne '1' -and $env:GITHUB_ACTIONS -ne 'true') {
   Write-Output 'refused: this runs Mantle live and installs over it; it runs only on a throwaway runner (CLOUDTEST=1 or GITHUB_ACTIONS=true)'
@@ -115,7 +132,8 @@ function Wait-LiveUp([long]$from, [int]$seconds = 150) {
     }
     Start-Sleep -Seconds 1
   } while ((Get-Date) -lt $end)
-  if (Test-Path -LiteralPath $log) { Write-Output '---- mantle.log (tail)'; Get-Content -LiteralPath $log -Tail 40 }
+  # Write-Host, not output: these lines must not become part of what the function returns
+  if (Test-Path -LiteralPath $log) { Write-Host '---- mantle.log (tail)'; Get-Content -LiteralPath $log -Tail 40 | ForEach-Object { Write-Host $_ } }
   return $null
 }
 function Started([string]$line) {
@@ -145,15 +163,19 @@ function Installed-Version { try { (Get-Content -LiteralPath (Join-Path $app 'pa
 function Live-Mains { @(From-Install | Where-Object { $_.Name -ieq 'Mantle.exe' -and $_.CommandLine -match '--live' -and -not ($_.CommandLine -match '--type=') }) }
 function Sidecars { @(From-Install | Where-Object { $_.Name -ieq 'Mantle.Sidecar.exe' }) }
 function Shell-State { try { Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json } catch { $null } }
-# a native command with its output in $Out\<name>.txt; -> its exit code
+# a native command with its output in $Out\<name>.txt; -> its exit code, and only that (the last lines are shown
+# with Write-Host: Write-Output here would join the exit code in what the function returns)
 function Native([string]$name, [scriptblock]$run) {
   $old = $ErrorActionPreference; $ErrorActionPreference = 'Continue'
-  $o = & $run 2>&1; $code = $LASTEXITCODE
+  $o = @(& $run 2>&1); $code = $LASTEXITCODE
   $ErrorActionPreference = $old
   $o | ForEach-Object { "$_" } | Set-Content -LiteralPath (Join-Path $Out "$name.txt")
-  $o | Select-Object -Last 3 | ForEach-Object { Write-Output "  $name> $_" }
-  return $code
+  $o | Select-Object -Last 3 | ForEach-Object { Write-Host "  $name> $_" }
+  if ($null -eq $code) { $code = -1 }
+  return [int]$code
 }
+# "1.2.3..." -> [version] 1.2.3 (the numbers only; a pre-release tail like -ci.4 is dropped), or $null
+function Core([string]$v) { if ($v -match '^v?(\d+)\.(\d+)\.(\d+)') { [version]"$($Matches[1]).$($Matches[2]).$($Matches[3])" } else { $null } }
 
 $script:baseline = [MantleUp]::State()
 Write-Output "taskbar before anything: $script:baseline"
@@ -187,6 +209,21 @@ Step "the candidate: Mantle $script:toVer"
 if ($Setup) {
   $candSetup = (Resolve-Path $Setup).Path
 } else {
+  # A build at the same version as the previous release would be a reinstall, not an upgrade. On this runner only,
+  # such a candidate builds as the next patch with a -ci pre-release tail (package.json is put back right after the
+  # build; the committed version is untouched). The summary then names that version, and tools/release-gate.js
+  # refuses it (its gate wants "-> <committed x.y.z>"), so only a bumped release commit can pass the gate.
+  $pkgPath = (Resolve-Path 'package.json').Path
+  $pkgText = [System.IO.File]::ReadAllText($pkgPath)
+  $pc = Core $prevVer; $cc = Core $script:toVer
+  if ($pc -and -not ($cc -and $cc -gt $pc)) {
+    $n = if ($env:GITHUB_RUN_NUMBER) { $env:GITHUB_RUN_NUMBER } else { '0' }
+    $ciVer = "$($pc.Major).$($pc.Minor).$($pc.Build + 1)-ci.$n"
+    $bumped = ([regex]'"version"\s*:\s*"[^"]*"').Replace($pkgText, "`"version`": `"$ciVer`"", 1)
+    [System.IO.File]::WriteAllText($pkgPath, $bumped, (New-Object System.Text.UTF8Encoding($false)))
+    Write-Output "CANDIDATE VERSION: package.json says $script:toVer, not newer than $($rel.tag_name); on this runner it builds as $ciVer (not committed; the release gate refuses this run)"
+    $script:toVer = $ciVer
+  }
   $c = Native 'build-sidecar' { powershell -NoProfile -ExecutionPolicy Bypass -File sidecar/build.ps1 -NoUnion }
   $so = Get-Content -LiteralPath (Join-Path $Out 'build-sidecar.txt') -Raw
   Check 'build: the sidecar (in-box csc.exe, the split-winmd route)' ($c -eq 0 -and (Test-Path 'sidecar/bin/Mantle.Sidecar.exe') -and $so -match 'bluetooth and media use in-process WinRT through the split winmds') "exit $c"
@@ -196,12 +233,13 @@ if ($Setup) {
   $c = Native 'build-installer' { npx --yes electron-builder@26.18.0 --win nsis --x64 --config installer/electron-builder.yml --publish never }
   $candSetup = Join-Path (Get-Location).Path 'dist-installer\Mantle-Setup.exe'
   Check 'build: Mantle-Setup.exe (electron-builder 26.18.0, as installer.yml)' ($c -eq 0 -and (Test-Path -LiteralPath $candSetup)) "exit $c"
+  [System.IO.File]::WriteAllText($pkgPath, $pkgText, (New-Object System.Text.UTF8Encoding($false)))
   if ($script:failed.Count) { Give-Up 'the candidate built' }
 }
 $f = Get-Item -LiteralPath $candSetup
 Write-Output "CANDIDATE: Mantle-Setup.exe $([math]::Round($f.Length / 1MB, 1)) MB, sha256 $((Get-FileHash -LiteralPath $f.FullName -Algorithm SHA256).Hash)"
-$pv = [version]$prevVer; $cv = $null; try { $cv = [version]$script:toVer } catch { }
-Check "an upgrade: $script:toVer is newer than $prevVer" ($cv -and $cv -gt $pv)
+$pv = Core $prevVer; $cv = Core $script:toVer
+Check "an upgrade: $script:toVer is newer than $prevVer" ([bool]($pv -and $cv -and $cv -gt $pv)) "previous $pv, candidate $cv"
 
 # ---------------------------------------------------------------- 3. the previous release, installed and live
 Step "install $($rel.tag_name) and take it live"
