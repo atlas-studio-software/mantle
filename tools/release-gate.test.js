@@ -200,7 +200,7 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
     const w = world();
     const { r } = await go(w, { blockers: undefined });
     const open = G.BLOCKERS.filter((b) => !b.done).map((b) => b.id).join();
-    check('gate: the real BLOCKERS: updater-e2e done (run 44475938920), upgrade-check and oob-restore open, so NO-GO on "blockers"', !r.go && failed(r).includes('blockers') && G.BLOCKERS.length === 3 && open === 'upgrade-check,oob-restore' && /44475938920/.test(G.BLOCKERS.find((b) => b.id === 'updater-e2e').what), { failed: failed(r), open });
+    check('gate: the real BLOCKERS: updater-e2e done (run 44475938920), upgrade-check done (working-tree run 44489706024), oob-restore open, so NO-GO on "blockers"', !r.go && failed(r).includes('blockers') && G.BLOCKERS.length === 3 && open === 'oob-restore' && /44475938920/.test(G.BLOCKERS.find((b) => b.id === 'updater-e2e').what) && /c6fcca85: working-tree run 44489706024, 37\/0/.test(G.BLOCKERS.find((b) => b.id === 'upgrade-check').what), { failed: failed(r), open });
   }
   {
     const w = world();

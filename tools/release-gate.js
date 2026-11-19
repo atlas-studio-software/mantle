@@ -54,7 +54,10 @@ const L = require('./release-lib');
 
 /** The rollback runbook's three preconditions. Flip one only in a reviewed commit, with the proof named. */
 const BLOCKERS = Object.freeze([
-  { id: 'upgrade-check', done: false, what: 'an upgrade-from-previous live check in cloudtest' },
+  // done: cloudtest run 44489706024 of installer/ci-upgrade-test.ps1 at c6fcca85 (a WORKING-TREE run, recipe
+  // mantle-core-wt-public): "UPGRADE TEST: v0.1.1 -> 0.1.2-ci.543: 37 passed, 0 failed". That proves the check
+  // works; each release still needs its own committed run on the bumped commit (the "upgrade" gate, UPGRADE_RE).
+  { id: 'upgrade-check', done: true, what: 'an upgrade-from-previous live check in cloudtest (c6fcca85: working-tree run 44489706024, 37/0)' },
   // done: cloudtest run 44475938920 of 1ae43a7b alone (updater.e2e + toasts): 252 passed, 0 failed; updater.e2e 148/148
   { id: 'updater-e2e', done: true, what: 'lib/updater.e2e.test.js green in cloudtest (1ae43a7b: run 44475938920, 252/0, updater.e2e 148/148)' },
   { id: 'oob-restore', done: false, what: 'an out-of-band restore that works with Mantle not running' },
