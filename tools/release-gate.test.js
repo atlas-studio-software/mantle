@@ -25,7 +25,7 @@ const GREEN = 'TOTAL: 156 files: 154 pass, 0 FAIL, 0 known-env, 0 could-not-star
 
 function world(over) {
   const w = Object.assign({
-    version: '0.1.2', onMaster: true, prevAncestor: true, localTag: false, remoteTag: '',
+    version: '0.1.2', tags: 'v0.1.0\nv0.1.1\n', onMaster: true, prevAncestor: true, localTag: false, remoteTag: '',
     releases: [
       { tag_name: 'v0.1.1', draft: false, prerelease: false, published_at: '2026-11-10T00:00:00Z', target_commitish: PREV },
       { tag_name: 'v0.1.0', draft: false, prerelease: false, published_at: '2026-10-22T00:00:00Z' },
@@ -56,6 +56,7 @@ function world(over) {
       if (a[0] === 'log') return { code: 0, out: '- Top bar: steps aside for full screen (cc81d79)\n- Task View on demand (512ec27)\n' };
       if (a[0] === 'cat-file') return { code: w.snaps[a[2].replace('^{commit}', '')] ? 0 : 1, out: '' };
       if (a[0] === 'diff') { const s = w.snaps[a[3]]; return s ? { code: 0, out: s.diff } : { code: 128, out: '' }; }
+      if (a[0] === 'tag' && a[1] === '--list') return { code: 0, out: w.tags };
       if (a[0] === 'tag') return { code: 0, out: '' };
       if (a[0] === 'push') return { code: w.pushOk ? 0 : 1, out: '', err: w.pushOk ? '' : 'rejected' };
     }
@@ -87,7 +88,7 @@ async function go(w, extra) {
   const r = await G.gate(o);
   return { r, lines: lines2, auto: lines2.filter((l) => l.startsWith('AUTONOMY: ')).map((l) => JSON.parse(l.slice(10))) };
 }
-const outward = (w) => w.calls.filter((c) => /^git (push|tag) |^gh release /.test(c));
+const outward = (w) => w.calls.filter((c) => /^git push |^git tag -a |^gh release /.test(c));
 const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
 
 (async () => {
@@ -210,6 +211,21 @@ const failed = (r) => r.gates.filter((g) => !g.ok).map((g) => g.id);
     check('gate: the changelog is printed between CHANGELOG and END CHANGELOG with its hash', i >= 0 && ls[i + 1].startsWith('- Top bar') && ls.includes('END CHANGELOG') && /hash [0-9a-f]{12}/.test(ls[i]), ls.slice(i, i + 4));
     check('gate: the exact cloudtest commands are printed (both public recipes, from a worktree at the commit)', ls.some((l) => /cloudtest --recipe mantle-core-public$/.test(l)) && ls.some((l) => /cloudtest --recipe mantle-ui-public$/.test(l)) && ls.some((l) => /worktree add --detach .* c{40}$/.test(l)));
     check('gate: the last line is the summary', /^RELEASE GATE: GO \(\d+ of \d+ gates passed\)$/.test(ls[ls.length - 1]), ls[ls.length - 1]);
+  }
+  {
+    // a rollback's patch: v0.1.2 was drafted back (its tag stays), so the candidate is v0.1.3 after v0.1.2
+    const w = world({ version: '0.1.3', tags: 'v0.1.0\nv0.1.1\nv0.1.2\n' });
+    w.releases = [
+      { tag_name: 'v0.1.1', draft: false, prerelease: false, published_at: '2026-11-10T00:00:00Z' },
+      { tag_name: 'v0.1.2', draft: true, prerelease: false, published_at: '2026-11-19T00:00:00Z', target_commitish: PREV },
+      { tag_name: 'v0.1.3', draft: true, prerelease: false, target_commitish: C, assets: [{ name: 'Mantle-Setup.exe', state: 'uploaded' }] },
+    ];
+    const { r } = await go(w);
+    const p = r.gates.find((g) => g.id === 'patch');
+    check('gate: a rollback patch (v0.1.3 after a drafted v0.1.2) passes "patch", counted from the highest tag', r.go && /v0\.1\.3 after v0\.1\.2 \(the highest tag; the latest published is v0\.1\.1\)/.test(p.why || ''), { failed: failed(r), p });
+    const w2 = world({ version: '0.1.2', tags: 'v0.1.0\nv0.1.1\nv0.1.2\n', localTag: true });
+    const { r: r2 } = await go(w2);
+    check('gate: reusing a drafted-back number (v0.1.2 again) = NO-GO on "patch" and "new tag"', !r2.go && failed(r2).includes('patch') && failed(r2).includes('new tag'), failed(r2));
   }
   {
     let threw = null; try { G.argsOf([]); } catch (err) { threw = err.message; }

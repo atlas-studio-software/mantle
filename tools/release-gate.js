@@ -14,9 +14,10 @@
  * GATES
  *   commit      resolves to a commit, and origin/master contains it (merged under the merge rules)
  *   version     package.json at the commit is a plain x.y.z
- *   patch       it is exactly the patch after the latest PUBLISHED release (GitHub's list, drafts and
- *               pre-releases ignored), and that release's tag is an ancestor of the commit (clones only
- *               fast-forward, lib/updater.js)
+ *   patch       it is exactly the patch after the highest version that exists (published releases and every
+ *               v* tag: a release a rollback drafted keeps its tag and its number), with the same major.minor;
+ *               and the latest PUBLISHED release's tag (drafts and pre-releases ignored) is an ancestor of the
+ *               commit (clones only fast-forward, lib/updater.js)
  *   new tag     v<version> exists neither here nor on origin (a tag is never moved or reused)
  *   48 h        the latest published release is at least 48 h old
  *   build       a DRAFT release v<version> exists whose target is this exact commit and which holds
@@ -87,12 +88,18 @@ async function gate(o) {
   const rl = gh(['api', `repos/${L.REPO}/releases?per_page=100`]);
   try { list = rl.code === 0 ? JSON.parse(rl.out) : null; } catch (_) { list = null; }
   const latest = list ? L.latestPublished(list) : null;
+  // the version to count from: the highest that exists anywhere (a published release, or a tag: a release drafted
+  // back by a rollback keeps its tag, so its number is used up and the rollback's patch comes after it)
+  let highest = latest ? latest.v : null;
+  const tl = git(['tag', '--list', 'v*']);
+  for (const t of (tl.code === 0 ? tl.out : '').split(/\r?\n/)) { const v = L.parseVersion(t.trim()); if (v && (!highest || L.cmpVersion(v, highest) > 0)) highest = v; }
   if (!list) fail('patch', `GitHub's release list could not be read (${(rl.err || rl.out || '').trim().slice(0, 160) || `gh exit ${rl.code}`})`);
+  else if (!latest) fail('patch', 'there is no published release to patch');
   else {
-    const why = L.patchWhy(latest && latest.v, ver);
+    const why = L.patchWhy(highest, ver);
     if (why) fail('patch', why);
     else if (git(['merge-base', '--is-ancestor', latest.r.tag_name, sha]).code !== 0) fail('patch', `${latest.r.tag_name} is not an ancestor of the commit: clones could not fast-forward to it`);
-    else pass('patch', `${tag} after ${latest.r.tag_name}`);
+    else pass('patch', `${tag} after v${L.vstr(highest)}${L.cmpVersion(highest, latest.v) ? ` (the highest tag; the latest published is ${latest.r.tag_name})` : ''}`);
   }
   if (latest) {
     const ageH = (now() - Date.parse(latest.r.published_at)) / 3600000;
