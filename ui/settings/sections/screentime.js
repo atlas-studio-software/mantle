@@ -1,11 +1,13 @@
 /* screentime.js — Mantle Settings > Screen time (lane mantle-ps-st, 2026-11-18).
  *
  * How long each app was in front: today (total, by hour, by app) and the last 7 days (a column per day;
- * pick a day for its apps). Only app names, icons and times are shown, never window titles: this file
- * never reads a `title` field from a reply. Local only, kept 30 days, a switch and "Clear history".
- * Main: lib/features/usage.js (usage.screentime.get / .set {on} / .clear, usage.icons {paths}); no main
- * half of its own. Never silent: loading, the feature off, recording off, empty and a failed read are
- * each worded on the page.
+ * pick a day for its apps). Only each app's name, icon and time are shown, never window titles or where a
+ * program is installed: this file never reads a `title` field from a reply, and an app row is only
+ * {key (the exe file name), name, icon (a data:image URL or null), seconds}. Local only, kept 30 days, a
+ * switch and "Clear history". Off by default: until it is turned on the page invites it, plainly.
+ * Main: lib/features/usage.js (usage.screentime.get / .set {on} / .clear); no main half of its own.
+ * Never silent: loading, the feature off, screen time off (never on yet, or off with history kept),
+ * empty and a failed read are each worded on the page.
  *
  * The pure half (durations, day names, the chart and list models) is `M` below: node requires this file
  * for it (ui/settings/sections/screentime.test.js). With no MantleSettings (node) nothing is registered.
@@ -57,12 +59,12 @@ const M = {
     const x = ((h | 0) % 24 + 24) % 24;
     return `${x % 12 || 12} ${x < 12 ? 'am' : 'pm'}`;
   },
-  /** An app list: [{key, name, path, seconds, text, share, pct}], most time first, nothing at 0 s.
-      Reads only key, name, path and seconds of each app. */
+  /** An app list: [{key, name, icon, seconds, text, share, pct}], most time first, nothing at 0 s.
+      Reads only key, name, icon and seconds of each app; icon is kept only as a data:image URL, else null. */
   appRows(apps, totalSec) {
     const list = (Array.isArray(apps) ? apps : []).filter((a) => a && typeof a === 'object')
       .map((a) => ({ key: String(a.key == null ? '' : a.key), name: typeof a.name === 'string' && a.name.trim() ? a.name.trim() : 'An app',
-        path: typeof a.path === 'string' && a.path ? a.path : null, seconds: num(a.seconds) }))
+        icon: typeof a.icon === 'string' && /^data:image\//.test(a.icon) ? a.icon : null, seconds: num(a.seconds) }))
       .filter((a) => a.seconds > 0)
       .sort((a, b) => b.seconds - a.seconds || a.name.localeCompare(b.name));
     const sum = list.reduce((s, a) => s + a.seconds, 0);
@@ -94,10 +96,12 @@ const M = {
       aria: top < 0 ? 'Today by hour: nothing yet' : `Today by hour: most time ${M.hourName(top)} to ${M.hourName(top + 1)} (${M.dur(max)})`,
     };
   },
-  /** The quiet line under the switch: paused (and why) or the app being recorded now. */
+  /** The quiet line under the switch: off (never on yet, or history kept), paused (and why) or the app being recorded now. */
   nowLine(r) {
     if (!r || r.ok !== true) return null;
-    if (r.on === false || r.paused === 'off') return 'Nothing is being recorded. The history below stays until you clear it.';
+    if (r.on === false || r.paused === 'off') {
+      return M.view(r).kind === 'invite' ? 'Nothing is recorded until you turn it on.' : 'Nothing is being recorded. The history below stays until you clear it.';
+    }
     const idle = num(r.idleMin) || 5;
     switch (r.paused) {
       case 'locked': return 'Paused: the PC is locked';
@@ -119,10 +123,10 @@ const M = {
   },
   privacy(idleMin, keptDays) {
     const idle = num(idleMin) || 5, kept = num(keptDays) || 30;
-    return 'Recorded only on this PC and never sent anywhere. Only app names and times are kept, never window titles. '
-      + `Kept for ${kept} days. Time while the PC is locked, asleep, or idle (no input for ${idle} min) doesn’t count.`;
+    return 'Recorded only on this PC and never sent anywhere or shared with other apps. Only each app’s name, icon and time are kept, never window titles or where a program is installed. '
+      + `Kept for ${kept} days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for ${idle} min) doesn’t count.`;
   },
-  /** What the page shows for a get answer: 'loading' | 'feature-off' | 'error' | 'empty' | 'ok'. */
+  /** What the page shows for a get answer: 'loading' | 'feature-off' | 'error' | 'invite' (off, nothing kept) | 'empty' | 'ok'. */
   view(r) {
     if (r === undefined) return { kind: 'loading' };
     if (!r || typeof r !== 'object' || r.ok !== true) {
@@ -131,7 +135,8 @@ const M = {
     }
     const t = r.today && typeof r.today === 'object' ? r.today : {};
     const any = num(t.totalSec) > 0 || (Array.isArray(r.days) && r.days.some((d) => d && num(d.totalSec) > 0));
-    return { kind: any ? 'ok' : 'empty', recording: r.on !== false && r.paused !== 'off' };
+    const recording = r.on !== false && r.paused !== 'off';
+    return { kind: any ? 'ok' : recording ? 'empty' : 'invite', recording };
   },
 };
 
@@ -144,10 +149,6 @@ const SEARCH = [
   { row: 'screentime.week', label: 'Screen time, last 7 days', keywords: 'app time usage week days history chart' },
   { row: 'screentime.clear', label: 'Clear screen time history', keywords: 'app time usage screen time foreground history delete erase clear' },
 ];
-
-// app icons, cached for as long as this page is open: path -> { url|null, why|null }
-const ICONS = new Map();
-const ASKING = new Map();   // path -> the pending usage.icons promise
 
 MantleSettings.section({
   id: 'screentime',
@@ -163,7 +164,7 @@ MantleSettings.section({
     const h = kit.h;
     const css = (n, s) => { Object.assign(n.style, s); return n; };   // CSSOM: the page's CSP refuses style attributes
     const show = (n, on) => { n.style.display = on ? '' : 'none'; };
-    const S = { r: undefined, sel: null, cleared: null, confirming: false, tiles: new Map() };
+    const S = { r: undefined, sel: null, cleared: null, confirming: false };
 
     /* ---- the switch, the quiet "now" line and the privacy line (always shown) */
     const sw = kit.toggle({
@@ -195,6 +196,21 @@ MantleSettings.section({
     const dayApps = h('div', { class: 'klist st-apps', 'data-list': 'day' });
     const weekCard = kit.card(weekChart, dayHead, dayApps);
 
+    /* ---- off with nothing kept (its default): invite turning it on, plainly */
+    const turnOn = kit.button({
+      row: 'screentime.turnon', label: 'Screen time is off', tone: 'acc', text: 'Turn on screen time',
+      help: 'Turn it on to see how long you spend in each app. It is kept only on this PC, for 30 days, and you can clear it at any time.',
+      onClick: async () => {
+        const x = await kit.call('usage.screentime.set', { on: true });
+        if (kit.disposed) return x;
+        await Promise.resolve(reading).then(() => update());   // a read already on its way may predate the switch: read after it
+        // a refusal (ok:false) or a dry run: the kit writes its reason on this row, as the switch does
+        return x;
+      },
+    });
+    const inviteCard = kit.card(turnOn);
+    inviteCard.setAttribute('data-row', 'screentime.invite');
+
     const emptyCard = kit.card(h('div', { class: 'row k-empty', 'data-row': 'screentime.empty' },
       h('div', { class: 'row-l' }, h('div', { class: 'row-h' }, 'No screen time yet: it builds up as you use apps'))));
 
@@ -224,8 +240,8 @@ MantleSettings.section({
 
     const content = h('div', { class: 'st-content' },
       kit.group('Today'), todayCard, kit.group('Last 7 days'), weekCard);
-    el.append(kit.card(sw, privacyBox), stateBox, retryCard, emptyCard, content, kit.group('History'), clearCard);
-    show(retryCard, false); show(emptyCard, false); show(content, false);
+    el.append(kit.card(sw, privacyBox), stateBox, retryCard, inviteCard, emptyCard, content, kit.group('History'), clearCard);
+    show(retryCard, false); show(inviteCard, false); show(emptyCard, false); show(content, false);
 
     function paintConfirm() {
       if (S.confirming) clearCard.append(confirm); else confirm.remove();
@@ -233,52 +249,28 @@ MantleSettings.section({
       else paint();
     }
 
-    /* ---- icons: usage.icons {paths}, once per path for as long as the page is open */
-    function glyph(tile, path) {
-      const c = path && ICONS.get(path);
-      if (c && c.url) {
+    /* ---- an app's tile: its icon from the reply (a data:image URL), else the neutral glyph */
+    function glyph(tile, icon) {
+      if (typeof icon === 'string' && /^data:image\//.test(icon)) {
         const img = h('img', { alt: '', draggable: 'false' });
-        img.addEventListener('error', () => { ICONS.set(path, { url: null, why: 'the icon could not be shown' }); glyph(tile, path); });
-        img.src = c.url;
+        img.addEventListener('error', () => glyph(tile, null));
+        img.src = icon;
         tile.replaceChildren(img);
-        tile.removeAttribute('title');
-      } else {
-        tile.replaceChildren(kit.icon('apps'));
-        if (c && c.why) tile.setAttribute('title', 'No icon: ' + c.why); else tile.removeAttribute('title');
-      }
-    }
-    function askIcons(paths) {
-      // a failed call (the helper starting, say) is asked again the next time a list is drawn; an answer is kept
-      const want = [...new Set(paths)].filter((p) => p && !(ICONS.has(p) && !ICONS.get(p).again) && !ASKING.has(p));
-      if (want.length) {
-        const ask = kit.call('usage.icons', { paths: want }).then((x) => {
-          for (const p of want) {
-            const url = x && x.ok === true && x.icons && typeof x.icons[p] === 'string' && /^data:image\//.test(x.icons[p]) ? x.icons[p] : null;
-            const why = url ? null : (x && x.ok !== true ? x.reason : x && x.why && x.why[p]) || 'Windows gave no icon for this app';
-            ICONS.set(p, { url, why, again: !(x && x.ok === true) });
-            ASKING.delete(p);
-          }
-        });
-        want.forEach((p) => ASKING.set(p, ask));
-      }
-      const waits = [...new Set(paths.map((p) => ASKING.get(p)).filter(Boolean))];
-      if (waits.length) Promise.all(waits).then(() => { if (!kit.disposed) for (const [tile, p] of S.tiles) if (tile.isConnected) glyph(tile, p); });
+      } else tile.replaceChildren(kit.icon('apps'));
     }
 
     /* ---- an app list: icon, name, a static share bar, the time */
     function drawApps(box, rows, empty, of) {
-      const sig = JSON.stringify([rows.map((a) => [a.key, a.name, a.path, a.seconds]), empty, of]);
+      const sig = JSON.stringify([rows.map((a) => [a.key, a.name, a.icon ? a.icon.length : 0, a.seconds]), empty, of]);
       if (box.dataset.sig === sig) return;
       box.dataset.sig = sig;
-      for (const t of [...S.tiles.keys()]) if (box.contains(t)) S.tiles.delete(t);
       if (!rows.length) {
         box.replaceChildren(h('div', { class: 'row k-empty' }, h('div', { class: 'row-l' }, h('div', { class: 'row-h' }, empty))));
         return;
       }
       box.replaceChildren(...rows.map((a) => {
         const tile = h('div', { class: 'tile' });
-        S.tiles.set(tile, a.path);
-        glyph(tile, a.path);
+        glyph(tile, a.icon);
         const fill = css(h('div'), { height: '100%', width: Math.max(1, a.share * 100).toFixed(1) + '%', background: 'var(--lg-acc-line)', borderRadius: '2px' });
         const bar = css(h('div', { class: 'st-share', role: 'img', 'aria-label': `${a.pct}% of ${of}` }, fill),
           { height: '4px', marginTop: '6px', borderRadius: '2px', background: 'var(--lg-sunk)', overflow: 'hidden', maxWidth: '360px' });
@@ -286,7 +278,6 @@ MantleSettings.section({
           h('div', { class: 'row-l' }, h('div', { class: 'row-t' }, a.name), bar),
           h('div', { class: 'row-c' }, h('span', { class: 'val' }, a.text)));
       }));
-      askIcons(rows.map((a) => a.path).filter(Boolean));
     }
 
     /* ---- the charts (text and heights only; nothing moves) */
@@ -368,11 +359,12 @@ MantleSettings.section({
       stateBox.replaceChildren(...(lines.length ? [kit.card(...lines)] : []));
       show(retryCard, v.kind === 'error');
       if (v.kind === 'error') retry.set({ reason: v.reason });
+      show(inviteCard, v.kind === 'invite');
       show(emptyCard, v.kind === 'empty');
       show(content, v.kind === 'ok');
-      const live = v.kind === 'ok' || v.kind === 'empty';
+      const live = v.kind === 'ok' || v.kind === 'empty' || v.kind === 'invite';
       sw.set(live ? { value: !!(r.on !== false), disabled: false, info: M.nowLine(r) } : { disabled: true, info: null });
-      if (!S.confirming) clear.set({ disabled: v.kind !== 'ok', info: S.cleared || (v.kind === 'empty' ? 'Nothing is kept yet' : null) });
+      if (!S.confirming) clear.set({ disabled: v.kind !== 'ok', info: S.cleared || (v.kind === 'empty' || v.kind === 'invite' ? 'Nothing is kept yet' : null) });
       if (v.kind !== 'ok') return;
       const t = r.today && typeof r.today === 'object' ? r.today : {};
       todayTotal.set({ value: M.dur(t.totalSec) });
@@ -395,7 +387,7 @@ MantleSettings.section({
     paint();
     update();
     kit.every(60000, update);   // the kit skips it while the window is hidden and stops it when the page is left
-    return { update, dispose() { S.tiles.clear(); } };
+    return { update };
   },
 });
 })();

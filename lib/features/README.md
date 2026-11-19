@@ -124,7 +124,7 @@ through `ctx.onOption`. A card or menu that already writes the key keeps working
 the same store. Richer settings (the hot corners' four-corner map) keep their own commands, and
 Mantle Settings calls those. Declared now: gamemode (auto, liftSaver), topbar (hidden, overGames),
 screenshot (mode, saveDir), spotify (closeForGames, reviveAfterGames, trimAboveMB),
-unfold (when), lookaway (delay, turn).
+unfold (when), lookaway (delay, turn), usage (power, screentime, idleMin).
 
 ## Keys: what the hook does with your chords
 

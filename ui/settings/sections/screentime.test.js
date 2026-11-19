@@ -11,8 +11,10 @@ require('../../../tools/dev-env.js').lowcpu();
  * app carry a hidden `title` trap: the page must never read it. Checks: loading, the feature off, recording
  * off, empty, a failed read with Try again, notes, the switch's read-back and a refusal springing back,
  * Clear history's confirm step (Keep it sends nothing; Clear sends clear, re-reads and says how many days),
- * picking a day by click and by keyboard, icons asked once per path with a neutral glyph while missing, and
- * the 60 s re-read never running while the window is hidden. Both themes. Shots: MANTLE_SHOOT_OUT, default
+ * picking a day by click and by keyboard, each app's icon drawn from the reply (a neutral glyph where there is
+ * none; usage.icons is never called), screen time off with nothing kept (its default) inviting a turn-on that
+ * sends set {on:true} once, and the 60 s re-read never running while the window is hidden. Both themes.
+ * Shots: MANTLE_SHOOT_OUT, default
  * screentime-shots in the tools/dev-env.js scratch folder (else the temp folder).
  *
  *   node ui/settings/sections/screentime.test.js            Prints "SCREEN TIME TEST: n passed, m failed".
@@ -67,16 +69,22 @@ function nodeTests() {
   check('date: a bad date is null', M.date('2026-02-31') === null && M.date('nope') === null && M.date(undefined) === null);
   check('hourName: 12 am, 1 pm, 12 pm, 11 pm', M.hourName(0) === '12 am' && M.hourName(13) === '1 pm' && M.hourName(12) === '12 pm' && M.hourName(23) === '11 pm' && M.hourName(24) === '12 am');
   // app list
-  const apps = [{ key: 'b', name: 'Browser', path: 'C:\\b.exe', seconds: 4320 }, { key: 'e', name: 'Editor', path: 'C:\\e.exe', seconds: 5400 },
-    { key: 'z', name: 'Zero', path: null, seconds: 0 }, { key: 's', name: '', path: null, seconds: 40 }];
+  const PNG = 'data:image/png;base64,iVBORw0KGgo=';
+  const apps = [{ key: 'browser.exe', name: 'Browser', icon: PNG, seconds: 4320 }, { key: 'editor.exe', name: 'Editor', icon: 'data:image/svg+xml,%3Csvg%3E', seconds: 5400 },
+    { key: 'zero.exe', name: 'Zero', icon: null, seconds: 0 }, { key: 'file:unknown', name: '', icon: null, seconds: 40 },
+    { key: 'odd.exe', name: 'Odd', icon: 'https://example.invalid/x.png', path: 'C:\\Made-up\\odd.exe', seconds: 30 }, { key: 'num.exe', name: 'Num', icon: 42, seconds: 20 }];
   const rows = M.appRows(apps, 11520);
-  check('appRows: most time first, nothing at 0 s', rows.map((r) => r.key).join(',') === 'e,b,s', rows.map((r) => r.key).join(','));
+  check('appRows: most time first, nothing at 0 s', rows.map((r) => r.key).join(',') === 'editor.exe,browser.exe,file:unknown,odd.exe,num.exe', rows.map((r) => r.key).join(','));
   check('appRows: share of the day total, text, a nameless app', rows[0].pct === 47 && rows[0].text === '1 h 30 min' && rows[2].name === 'An app' && rows[2].text === 'under a minute', JSON.stringify(rows[0]));
+  check('appRows: keeps a data:image icon as it came', rows[0].icon === 'data:image/svg+xml,%3Csvg%3E' && rows[1].icon === PNG, JSON.stringify(rows.map((r) => r.icon)));
+  check('appRows: anything else for an icon is null', rows[2].icon === null && rows[3].icon === null && rows[4].icon === null, JSON.stringify(rows.map((r) => r.icon)));
+  check('appRows: no path comes out, even when one comes in', rows.every((r) => !('path' in r)) && !JSON.stringify(rows).includes('Made-up'), Object.keys(rows[3]).join(','));
+  check('appRows: only key, name, icon, seconds and its own words', Object.keys(rows[0]).sort().join(',') === 'icon,key,name,pct,seconds,share,text', Object.keys(rows[0]).sort().join(','));
   check('appRows: a total smaller than the apps uses their sum', M.appRows([{ key: 'a', name: 'A', seconds: 60 }, { key: 'b', name: 'B', seconds: 60 }], 30)[0].pct === 50);
   check('appRows: junk in, empty out', M.appRows(null, 0).length === 0 && M.appRows([null, 5, 'x'], 0).length === 0);
   // a title in the data never comes out
   let reads = 0;
-  const trap = { key: 'k', name: 'N', path: null, seconds: 120 };
+  const trap = { key: 'k.exe', name: 'N', icon: null, seconds: 120 };
   Object.defineProperty(trap, 'title', { enumerable: false, get() { reads++; return 'SECRET WINDOW TITLE'; } });
   const out = M.appRows([trap], 120);
   check('appRows: never reads or passes on a title', reads === 0 && !JSON.stringify(out).includes('SECRET') && !('title' in out[0]));
@@ -100,21 +108,34 @@ function nodeTests() {
   check('nowLine: recording the current app', M.nowLine({ ok: true, on: true, paused: null, current: { key: 'k', name: 'Code Editor' } }) === 'Recording now: Code Editor');
   check('nowLine: paused locked / asleep / idle (with its minutes)', M.nowLine({ ok: true, on: true, paused: 'locked' }) === 'Paused: the PC is locked' && M.nowLine({ ok: true, on: true, paused: 'asleep' }) === 'Paused: the PC is asleep'
     && M.nowLine({ ok: true, on: true, paused: 'idle', idleMin: 7 }) === 'Paused: no input for 7 min');
-  check('nowLine: off says nothing is being recorded', /^Nothing is being recorded/.test(M.nowLine({ ok: true, on: false, paused: 'off' })) && /^Nothing is being recorded/.test(M.nowLine({ ok: true, on: true, paused: 'off' })));
+  const HIST = { totalSec: 600 }, NONE = { totalSec: 0 };
+  check('nowLine: off with history says nothing is being recorded and the history stays', M.nowLine({ ok: true, on: false, paused: 'off', today: HIST, days: [] }) === 'Nothing is being recorded. The history below stays until you clear it.'
+    && M.nowLine({ ok: true, on: true, paused: 'off', today: NONE, days: [{ date: 'x', totalSec: 60 }] }) === 'Nothing is being recorded. The history below stays until you clear it.');
+  check('nowLine: off with nothing kept says nothing is recorded until it is turned on', M.nowLine({ ok: true, on: false, paused: 'off', today: NONE, days: [{ date: 'x', totalSec: 0 }] }) === 'Nothing is recorded until you turn it on.'
+    && M.nowLine({ ok: true, on: false }) === 'Nothing is recorded until you turn it on.', M.nowLine({ ok: true, on: false }));
   check('nowLine: no answer, no line', M.nowLine({ ok: false, reason: 'x' }) === null && M.nowLine(null) === null);
   // clear words
   check('cleared: days in words', M.cleared({ ok: true, cleared: 12 }) === 'Cleared 12 days of screen time' && M.cleared({ ok: true, cleared: 1 }) === 'Cleared 1 day of screen time'
     && M.cleared({ ok: true, cleared: 0 }) === 'There was no screen time to clear' && M.cleared({ ok: true }) === 'Cleared your screen time history');
   check('cleared: a dry run says so, a failure is not a result', M.cleared({ ok: true, dryRun: true, reason: 'Test run: nothing was cleared' }) === 'Test run: nothing was cleared' && M.cleared({ ok: false, reason: 'x' }) === null);
   // privacy
-  check('privacy: the promise, with the idle minutes and kept days', M.privacy(5, 30) === 'Recorded only on this PC and never sent anywhere. Only app names and times are kept, never window titles. Kept for 30 days. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.'
-    && /no input for 9 min/.test(M.privacy(9)) && /Kept for 30 days/.test(M.privacy(undefined, undefined)));
+  check('privacy: the promise, word for word, with the idle minutes and kept days', M.privacy(5, 30) === 'Recorded only on this PC and never sent anywhere or shared with other apps. Only each app’s name, icon and time are kept, never window titles or where a program is installed. Kept for 30 days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.',
+    M.privacy(5, 30));
+  check('privacy: its numbers follow the reply, else 5 min and 30 days', /no input for 9 min/.test(M.privacy(9)) && /Kept for 30 days, then deleted automatically\./.test(M.privacy(undefined, undefined)) && /Kept for 14 days,/.test(M.privacy(5, 14)));
   // states
   check('view: loading / feature off / error / empty / ok', M.view(undefined).kind === 'loading' && M.view({ ok: false, off: true, reason: 'off' }).kind === 'feature-off'
     && M.view({ ok: false, reason: 'boom' }).kind === 'error' && M.view({ ok: false, reason: 'boom' }).reason === 'boom' && M.view({ ok: false }).reason === 'no answer came back'
     && M.view({ ok: true, on: true, today: { totalSec: 0 }, days: [{ date: 'x', totalSec: 0 }] }).kind === 'empty'
     && M.view({ ok: true, on: true, today: { totalSec: 0 }, days: [{ date: 'x', totalSec: 60 }] }).kind === 'ok');
   check('view: recording off keeps the history', M.view({ ok: true, on: false, paused: 'off', today: { totalSec: 600 }, days: [] }).kind === 'ok' && M.view({ ok: true, on: false, paused: 'off', today: { totalSec: 600 }, days: [] }).recording === false);
+  const offEmpty = M.view({ ok: true, on: false, paused: 'off', today: { totalSec: 0 }, days: [{ date: 'x', totalSec: 0 }, { date: 'y', totalSec: 0 }] });
+  check('view: off with nothing kept invites turning it on (not recording)', offEmpty.kind === 'invite' && offEmpty.recording === false, JSON.stringify(offEmpty));
+  check('view: off by paused alone, nothing kept, also invites', M.view({ ok: true, on: true, paused: 'off', today: { totalSec: 0 }, days: [] }).kind === 'invite' && M.view({ ok: true, on: false }).kind === 'invite');
+  check('view: off with history in an earlier day is ok, not the invite', M.view({ ok: true, on: false, paused: 'off', today: { totalSec: 0 }, days: [{ date: 'x', totalSec: 60 }] }).kind === 'ok');
+  const onEmpty = M.view({ ok: true, on: true, paused: null, today: { totalSec: 0 }, days: [{ date: 'x', totalSec: 0 }] });
+  check('view: on with nothing yet is empty (recording)', onEmpty.kind === 'empty' && onEmpty.recording === true, JSON.stringify(onEmpty));
+  check('source: never asks for usage.icons', !/usage\.icons/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
+  check('source: never reads a path field', !/\.path\b/.test(src.replace(/\/\*[\s\S]*?\*\//g, '').replace(/\/\/.*$/gm, '')));
 }
 
 /* Runs IN THE PAGE (addInitScript): lists only the screentime file, and plants a hidden `title` trap in every
@@ -176,7 +197,7 @@ async function browserTests() {
       const shown = (p, sel) => p.evaluate((s) => { const e = document.querySelector(s); return !!e && !!(e.offsetWidth || e.offsetHeight || e.getClientRects().length); }, sel);
       const appNames = (p, list) => p.locator(`[data-list="${list}"] .st-app .row-t`).allTextContents();
       const appVals = (p, list) => p.locator(`[data-list="${list}"] .st-app .val`).allTextContents();
-      const PRIV = 'Recorded only on this PC and never sent anywhere. Only app names and times are kept, never window titles. Kept for 30 days. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.';
+      const PRIV = 'Recorded only on this PC and never sent anywhere or shared with other apps. Only each app’s name, icon and time are kept, never window titles or where a program is installed. Kept for 30 days, then deleted automatically. Time while the PC is locked, asleep, or idle (no input for 5 min) doesn’t count.';
 
       // ---- normal: today, the week, icons, picking a day, the switch, clear
       let { page, problems } = await open('normal');
@@ -188,12 +209,10 @@ async function browserTests() {
       check(`${T}: today's times in words`, vals.join('|') === '1 h 30 min|1 h 12 min|20 min|8 min|1 min|under a minute', vals.join('|'));
       check(`${T}: a static share bar per app, its share said`, (await page.locator('[data-list="today"] .st-share').count()) === 6 && (await page.locator('[data-list="today"] .st-share').first().getAttribute('aria-label')) === '47% of today');
       check(`${T}: today by hour, its busiest hour said`, (await page.locator('.st-hours').getAttribute('aria-label')) === 'Today by hour: most time 10 am to 11 am (50 min)');
-      const ic = await calls(page, 'usage.icons');
-      const asked = ic.flatMap((c) => c.paths);
-      check(`${T}: icons asked once per path, never for an app with no path`, asked.length === new Set(asked).size && asked.length === 5 && !asked.includes(null), JSON.stringify(ic));
+      check(`${T}: the page never calls usage.icons`, (await calls(page, 'usage.icons')).length === 0);
       const tiles = page.locator('[data-list="today"] .st-app .tile');
-      check(`${T}: an icon where there is one, the neutral glyph (with why) where there is none`, (await tiles.nth(0).locator('img').count()) === 1 && (await tiles.nth(2).locator('svg').count()) === 1
-        && /No icon: made up/.test((await tiles.nth(2).getAttribute('title')) || '') && (await tiles.nth(5).locator('svg').count()) === 1);
+      check(`${T}: an icon where the reply has one, the neutral glyph where it has none`, (await tiles.nth(0).locator('img').count()) === 1 && (await tiles.nth(2).locator('svg').count()) === 1
+        && (await tiles.nth(2).locator('img').count()) === 0 && (await tiles.nth(5).locator('svg').count()) === 1 && (await tiles.nth(5).locator('img').count()) === 0);
       const cols = page.locator('.st-week [data-date]');
       const hourText = await page.locator('.st-hours').textContent();
       check(`${T}: the by-hour chart has its hour labels and bars`, /12 am/.test(hourText) && /6 pm/.test(hourText) && (await page.locator('.st-hours [data-h]').count()) === 24, hourText);
@@ -241,7 +260,9 @@ async function browserTests() {
       await page.waitForTimeout(500);
       check(`${T}: Clear sends clear once, re-reads, and says how many days`, (await calls(page, 'usage.screentime.clear')).length === 1 && (await calls(page, 'usage.screentime.get')).length > getsBefore
         && /Cleared 12 days of screen time/.test(await txt(page, 'clear')), await txt(page, 'clear'));
-      check(`${T}: after clearing, the empty state`, await shown(page, '[data-row="screentime.empty"]') && !(await shown(page, '.st-content')));
+      // the switch was turned off above, so with nothing kept the page invites turning it back on
+      check(`${T}: after clearing (screen time off), the invite, not the empty card`, await shown(page, '[data-row="screentime.invite"]') && !(await shown(page, '[data-row="screentime.empty"]')) && !(await shown(page, '.st-content'))
+        && /Nothing is recorded until you turn it on\./.test(await txt(page, 'record')), await txt(page, 'record'));
       check(`${T}: no window title was read or shown`, (await page.evaluate(() => window.__titleReads)) === 0 && !(await all(page)).includes('SECRET'));
       check(`${T}: normal: no page errors`, problems.length === 0, problems.join(' | '));
       await page.close();
@@ -255,7 +276,29 @@ async function browserTests() {
       ({ page, problems } = await open('recoff'));
       check(`${T}: recording off: the switch is off and says nothing is recorded, the history stays`, (await sw(page).getAttribute('aria-checked')) === 'false' && !(await sw(page).isDisabled())
         && /Nothing is being recorded/.test(await txt(page, 'record')) && /3 h 12 min/.test(await txt(page, 'today')));
+      check(`${T}: recording off with history: no invite`, !(await shown(page, '[data-row="screentime.invite"]')) && await shown(page, '.st-content'));
       await page.screenshot({ path: path.join(OUT, `st-recoff-${T}.png`), fullPage: true });
+      await page.close();
+
+      // ---- off with nothing kept (screen time's default): the invite
+      ({ page, problems } = await open('offempty'));
+      const inv = (await txt(page, 'invite')) || '';
+      check(`${T}: off and nothing kept: the invite, in its words`, await shown(page, '[data-row="screentime.invite"]') && inv.includes('Screen time is off')
+        && inv.includes('Turn it on to see how long you spend in each app. It is kept only on this PC, for 30 days, and you can clear it at any time.')
+        && (await row(page, 'turnon').locator('button.btn').textContent()) === 'Turn on screen time', inv);
+      check(`${T}: off and nothing kept: the switch is off and live, and says nothing is recorded until it is on`, (await sw(page).getAttribute('aria-checked')) === 'false' && !(await sw(page).isDisabled())
+        && /Nothing is recorded until you turn it on\./.test(await txt(page, 'record')), await txt(page, 'record'));
+      check(`${T}: off and nothing kept: no charts, no empty card, Clear locked with nothing kept`, !(await shown(page, '.st-content')) && !(await shown(page, '[data-row="screentime.empty"]'))
+        && (await row(page, 'clear').locator('button.btn').isDisabled()) && /Nothing is kept yet/.test(await txt(page, 'clear')));
+      check(`${T}: off and nothing kept: the privacy line still shows`, (await txt(page, 'privacy')).includes(PRIV));
+      await page.screenshot({ path: path.join(OUT, `st-invite-${T}.png`), fullPage: true });
+      await row(page, 'turnon').locator('button.btn').click();
+      await page.waitForTimeout(500);
+      const ons = await calls(page, 'usage.screentime.set');
+      check(`${T}: Turn on screen time sends set {on:true} once`, ons.length === 1 && ons[0] && ons[0].on === true, JSON.stringify(ons));
+      check(`${T}: turned on: the switch reads on, the empty card shows, the invite is gone`, (await sw(page).getAttribute('aria-checked')) === 'true' && await shown(page, '[data-row="screentime.empty"]')
+        && !(await shown(page, '[data-row="screentime.invite"]')) && !(await shown(page, '.st-content')));
+      check(`${T}: offempty: no window title read, no page errors`, (await page.evaluate(() => window.__titleReads)) === 0 && problems.length === 0, problems.join(' | '));
       await page.close();
 
       // ---- empty

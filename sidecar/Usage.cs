@@ -33,7 +33,7 @@
 //   usage.fg {}  the current foreground in the event's fg/shell shape, plus idleMs (and displayHeld).
 //
 // EVENTS {ev:'usage', kind, t (UTC ms of the change)}:
-//   fg {hwnd (root owner, decimal string), pid, created, file, path, desc}  only when the root window or
+//   fg {hwnd (root owner, decimal string), pid, created, file, path, desc, cls (the root's window class)}  only when the root window or
 //      the process changes; ApplicationFrameHost's frame -> the Store app inside it (TaskMgr.FramedPid).
 //      A burst of foreground events within 50 ms collapses to the last (t = the last one's time).
 //      The watch's first act is one fg/shell event for the window in front at that moment.
@@ -453,8 +453,10 @@ namespace Mantle {
       if (string.Equals(file, "LockApp.exe", StringComparison.OrdinalIgnoreCase)) return Json.Obj("kind", "shell");
       string hs = root.ToInt64().ToString(CultureInfo.InvariantCulture);
       sig = hs + "|" + pid.ToString(CultureInfo.InvariantCulture) + "|" + created.ToString(CultureInfo.InvariantCulture);
+      // cls = the root window's class name (not private): Node counts explorer.exe as an app only for
+      // File Explorer's own windows (CabinetWClass), never its other surfaces (General Counsel, 2026-11-18)
       return Json.Obj("kind", "fg", "hwnd", hs, "pid", (long)pid, "created", created != 0 ? TaskMgr.Str(created) : null,
-                      "file", file, "path", path.Length > 0 ? path : null, "desc", TaskMgr.DescOf(path));
+                      "file", file, "path", path.Length > 0 ? path : null, "desc", TaskMgr.DescOf(path), "cls", cls);
     }
 
     /// Milliseconds since the last input in this session, or -1 when Windows would not say.

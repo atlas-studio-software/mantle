@@ -42,7 +42,7 @@ function holdDisplay(sec) {
 const MEASURE = process.argv.includes('--measure');
 const WATCH_S = Number((process.argv.find((a) => a.startsWith('--watch-s=')) || '--watch-s=180').split('=')[1]) || 180;
 const PROC_FIELDS = ['pid', 'ppid', 'file', 'created', 'cpu', 'session', 'path', 'desc', 'windows'];
-const FG_FIELDS = ['hwnd', 'pid', 'created', 'file', 'path', 'desc'];
+const FG_FIELDS = ['hwnd', 'pid', 'created', 'file', 'path', 'desc', 'cls'];
 
 /** Every key anywhere in `o` named `title` (or holding a window title by another common name). */
 function titleKeys(o, at, out) {
@@ -69,6 +69,8 @@ function checkFgShape(t, name, r) {
     t.check(`${name}: created is a decimal string or null`, r.created === null || /^\d+$/.test(r.created), String(r.created));
     t.check(`${name}: file is a string`, typeof r.file === 'string' && r.file.length > 0, String(r.file));
     t.check(`${name}: path and desc are string or null`, isStrOrNull(r.path) && isStrOrNull(r.desc));
+    t.check(`${name}: cls (the root window's class) is a string`, typeof r.cls === 'string', String(r.cls));
+    t.check(`${name}: no window title in it`, !('title' in r) && !('text' in r) && !('caption' in r), Object.keys(r).join(','));
   }
 }
 

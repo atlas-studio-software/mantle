@@ -1128,9 +1128,9 @@
   var PW_QUARTZ = 'C:\\Program Files\\Quartz\\Quartz.exe', PW_HELM = 'C:\\Program Files\\Helm\\Helm.exe';
   function pwApps(watts) {
     var a = [
-      { key: PW_QUARTZ.toLowerCase(), kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.34, mw: 2600, why: null },
-      { key: PW_HELM.toLowerCase(), kind: 'app', name: 'Helm', path: PW_HELM, share: 0.12, mw: 900, why: null },
-      { key: 'c:\\windows\\explorer.exe', kind: 'app', name: 'File Explorer', path: 'C:\\Windows\\explorer.exe', share: 0.05, mw: 400, why: null }
+      { key: 'quartz.exe', kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.34, mw: 2600, why: null },
+      { key: 'helm.exe', kind: 'app', name: 'Helm', path: PW_HELM, share: 0.12, mw: 900, why: null },
+      { key: 'explorer.exe', kind: 'app', name: 'File Explorer', path: 'C:\\Windows\\explorer.exe', share: 0.05, mw: 400, why: null }
     ];
     return a.map(function (r) { return watts ? r : Object.assign({}, r, { mw: null }); });
   }
@@ -1177,8 +1177,8 @@
     }
     return { ok: true, range: range, from: hours[0].t, to: top.getTime() + 3600e3, shareOf: 'chip', hours: hours,
       rows: [
-        { key: PW_QUARTZ.toLowerCase(), kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.41, wh: 5.2 },
-        { key: PW_HELM.toLowerCase(), kind: 'app', name: 'Helm', path: PW_HELM, share: 0.18, wh: 0.8 },
+        { key: 'quartz.exe', kind: 'app', name: 'Quartz', path: PW_QUARTZ, share: 0.41, wh: 5.2 },
+        { key: 'helm.exe', kind: 'app', name: 'Helm', path: PW_HELM, share: 0.18, wh: 0.8 },
         { key: 'windows', kind: 'windows', name: 'Windows', path: null, share: 0.1, wh: 0.4 },
         { key: 'chip-rest', kind: 'chip-rest', name: 'Rest of the processor', path: null, share: 0.07, wh: 0.3 }
       ],
