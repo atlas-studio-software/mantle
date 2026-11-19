@@ -14,7 +14,7 @@
 #   5. the upgraded copy is started and must come up live ON THE OLD PROFILE. What proves it started:
 #        - mantle.log, after the upgrade, has the "features: started ..." line (lib/features.js), the same proof
 #          ci-install-test.ps1 uses for "comes up live";
-#        - exactly one Mantle.exe --live, and its installed sidecar runs;
+#        - exactly one Mantle.exe main process (no --type=), and its installed sidecar runs;
 #        - shell-state.json was written again with restored:false (the sidecar recorded the shell and went live);
 #        - every feature that started on the previous release starts again (no feature lost by the upgrade);
 #        - no first-start warning (the old consent was kept), then Mantle.exe --quit exits 0, shell-state.json
@@ -160,7 +160,11 @@ function Run-Setup([string]$file, [string]$why) {
 }
 function Uninstall-Key { Get-ChildItem 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Uninstall' | Get-ItemProperty | Where-Object { $_.DisplayName -eq 'Mantle' } | Select-Object -First 1 }
 function Installed-Version { try { (Get-Content -LiteralPath (Join-Path $app 'package.json') -Raw | ConvertFrom-Json).version } catch { $null } }
-function Live-Mains { @(From-Install | Where-Object { $_.Name -ieq 'Mantle.exe' -and $_.CommandLine -match '--live' -and -not ($_.CommandLine -match '--type=') }) }
+# Electron's main process: the installed Mantle.exe without --type= (renderers, GPU, crashpad all carry one). Not
+# matched on "--live": a consented plain start adds --live to its own argv (lib/packaged.js plan()), never to the
+# OS command line; being live is proven by mantle.log's features line and shell-state.json instead.
+function Mains { @(From-Install | Where-Object { $_.Name -ieq 'Mantle.exe' -and -not ("$($_.CommandLine)" -match '--type=') }) }
+function Procs-Said { $m = @(Mains); "$($m.Count) main(s) [$(($m | ForEach-Object { "$($_.CommandLine)" }) -join ' | ')], $(@(Sidecars).Count) sidecar(s)" }
 function Sidecars { @(From-Install | Where-Object { $_.Name -ieq 'Mantle.Sidecar.exe' }) }
 function Shell-State { try { Get-Content -LiteralPath $stateFile -Raw | ConvertFrom-Json } catch { $null } }
 # a native command with its output in $Out\<name>.txt; -> its exit code, and only that (the last lines are shown
@@ -255,7 +259,8 @@ Check "$($rel.tag_name): the warning hands over and exits" ($g.WaitForExit(90000
 $before = Wait-LiveUp $from
 Check "$($rel.tag_name): comes up live" ($null -ne $before) ''
 Write-Output "  $($rel.tag_name) $before"
-Check "$($rel.tag_name): one Mantle.exe --live, its sidecar runs" ((Live-Mains).Count -eq 1 -and (Sidecars).Count -ge 1) "$((Live-Mains).Count) main(s), $((Sidecars).Count) sidecar(s)"
+Write-Output "  $($rel.tag_name) processes: $(Procs-Said)"
+Check "$($rel.tag_name): one Mantle.exe main process, its sidecar runs" (@(Mains).Count -eq 1 -and @(Sidecars).Count -ge 1) (Procs-Said)
 $st = Shell-State
 Check "$($rel.tag_name): shell-state.json restored:false (it went live)" ($st -and $st.restored -eq $false)
 Check "$($rel.tag_name): the consent is recorded" (Test-Path -LiteralPath $consent)
@@ -284,8 +289,9 @@ Check "upgraded: Mantle comes up live on the old profile (mantle.log: features l
 Write-Output "  $script:toVer $after"
 $warn = if ($g.HasExited) { $null } else { Find-Window $g.Id 1 }
 Check 'upgraded: no first-start warning (the old consent was kept)' ($null -ne $after -or $null -eq $warn)
-Check 'upgraded: one Mantle.exe --live, its sidecar runs' ((Live-Mains).Count -eq 1 -and (Sidecars).Count -ge 1) "$((Live-Mains).Count) main(s), $((Sidecars).Count) sidecar(s)"
-$mainExe = @(Live-Mains | ForEach-Object { $_.ExecutablePath }) | Select-Object -First 1
+Write-Output "  $script:toVer processes: $(Procs-Said)"
+Check 'upgraded: one Mantle.exe main process, its sidecar runs' (@(Mains).Count -eq 1 -and @(Sidecars).Count -ge 1) (Procs-Said)
+$mainExe = @(Mains | ForEach-Object { $_.ExecutablePath }) | Select-Object -First 1
 Check 'upgraded: the live Mantle.exe is the installed one' ($mainExe -and $mainExe -ieq $exe) "$mainExe"
 $st = Shell-State
 Check 'upgraded: shell-state.json restored:false again (the sidecar recorded the shell and went live)' ($st -and $st.restored -eq $false)
