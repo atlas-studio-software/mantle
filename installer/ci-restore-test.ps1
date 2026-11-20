@@ -203,6 +203,11 @@ function Start-StandIn([string]$path, [string]$argText) {
 # A 403 from GitHub's anonymous release list is retried once after a minute.
 function Put-Back([string]$name, [string[]]$more) {
   $pb = Join-Path $app 'tools\put-back-previous.ps1'
+  if (-not (Test-Path -LiteralPath $pb)) {
+    "PUT BACK: (harness) no $pb in the installed copy ($(Installed-Version))" | Set-Content -LiteralPath (Join-Path $Out "$name.txt")
+    Write-Host "  $name> no installed put-back-previous.ps1 ($(Installed-Version) is installed)"
+    return -1
+  }
   $code = Native $name { powershell -NoProfile -ExecutionPolicy Bypass -File $pb -Tag $script:fromTag @more }
   if ((Last-Line $name) -match 'release list could not be read') {
     Write-Host "  $name`: GitHub's release list could not be read; once more in 60 s"
@@ -352,6 +357,11 @@ Check 'reinstalled: the outside supervisor still runs' (Alive $out1.Id)
 
 # ---------------------------------------------------------------- 5. the checkout guard of put-back-previous.ps1 -Run
 Step 'put-back-previous.ps1 -Run while a Mantle from outside the install folder runs'
+# its own outside supervisor, so a failure in step 4 can never turn this into a real put back
+Stop-StandIns
+$out2 = Start-StandIn $standSidecar "--supervise=$PID --supervise-dir=`"$outside`""
+Check 'the outside stand-in Mantle.Sidecar.exe runs' (Alive $out2.Id)
+if (-not (Alive $out2.Id)) { Give-Up 'an outside Mantle runs for the guard check' }
 $c = Put-Back 'putback-guard-sidecar' @('-Run')
 $ll = Last-Line 'putback-guard-sidecar'
 Check 'guard (outside Mantle.Sidecar.exe): -Run refuses with exit 2' ($c -eq 2 -and $ll -match '^PUT BACK: refused \(a Mantle that is not the installed copy is running') "exit $c, $ll"
