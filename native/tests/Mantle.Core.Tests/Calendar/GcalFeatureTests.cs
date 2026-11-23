@@ -19,7 +19,7 @@ namespace Mantle.Core.Tests.Calendar;
 /// never shared between two tests at once. The data folder is a scratch one; nothing reaches Google.
 public class GcalFeatureTests
 {
-    static readonly string[] Commands = { "gcal.status", "gcal.signIn", "gcal.signOut", "gcal.pickClient", "gcal.setCalendar", "gcal.opened", "gcal.want", "gcal.open" };
+    static readonly string[] Commands = { "gcal.status", "gcal.signIn", "gcal.signOut", "gcal.pickClient", "gcal.setCalendar", "gcal.opened", "gcal.want", "gcal.open", "gcal.resume" };
 
     const string Fixture = """
         {"status":{"enabled":true,"client":true,"connected":true,"signedIn":true,"account":"me@example.com","calendars":[{"id":"me@example.com","name":"me@example.com","color":"#4285f4","primary":true,"on":true}],"syncedAt":1,"syncing":false,"error":null},
@@ -85,6 +85,10 @@ public class GcalFeatureTests
         Assert.False(B(want, "covered"));
         Assert.Equal(GcalFeature.TestWhy, S(want, "reason"));
         Assert.False(B(await Call(r, "gcal.opened"), "synced"));
+        var wake = await Call(r, "gcal.resume");   // BAR-463: a test run never syncs on a wake either
+        Assert.False(B(wake, "planned"));
+        Assert.Equal(GcalFeature.TestWhy, S(wake, "reason"));
+        Assert.True(r.Logged("the PC woke from sleep: no sync (" + GcalFeature.TestWhy + ")"));
         var st = await Call(r, "gcal.status");
         Assert.True(B(st, "test"));
         Assert.False(B(st, "signedIn"));

@@ -135,6 +135,42 @@ public class GcalEngineTests
     }
 
     [Fact]
+    public async Task Waking_from_sleep_syncs_8_s_later_when_signed_in_and_never_when_signed_out_or_a_sign_in_is_needed()
+    {
+        // BAR-463 (gcal.js onResume, _gcal-sync.js#resume RESUME_MS): the 10-minute timer is replaced by one 8 s out
+        using var k = new GcalKit();
+        await k.SignedIn();
+        var period = k.Live!;
+        Assert.Equal(GcalEngine.PeriodMs, period.Ms);
+        k.Engine.Resume();
+        Assert.Equal(GcalEngine.ResumeMs, k.Live!.Ms);
+        Assert.Equal(8000, GcalEngine.ResumeMs);
+        Assert.True(period.Off);   // one plan, not a second timer beside the old one
+        k.G.Calls.Clear();
+        var wake = k.Live!;
+        wake.Action();
+        wake.Dispose();   // a one-shot timer that has fired is done
+        await Task.Delay(50);
+        Assert.Contains(k.G.Calls, c => c.StartsWith("events", StringComparison.Ordinal));   // the wake sync ran
+
+        // a sign-in is needed: waking plans nothing
+        k.Now += 2 * 3_600_000;
+        k.G.RefreshThrows = new GcalError(400, JsonNode.Parse("{\"error\":\"invalid_grant\"}"), null);
+        await k.Engine.SyncNow("test", force: true);
+        Assert.Null(k.Live);
+        k.Engine.Resume();
+        Assert.Null(k.Live);
+
+        // never signed in: waking plans nothing
+        using var k2 = new GcalKit();
+        k2.Engine.Start();
+        int before = k2.Timers.Count(t => !t.Off);
+        k2.Engine.Resume();
+        Assert.Equal(before, k2.Timers.Count(t => !t.Off));
+        Assert.DoesNotContain(k2.Timers, t => !t.Off && t.Ms == GcalEngine.ResumeMs);
+    }
+
+    [Fact]
     public async Task An_expired_access_token_is_refreshed_once_and_saved_and_a_dead_refresh_token_asks_for_sign_in()
     {
         using var k = new GcalKit();

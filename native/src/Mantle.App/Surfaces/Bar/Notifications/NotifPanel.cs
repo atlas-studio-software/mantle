@@ -52,6 +52,17 @@ internal sealed class NotifPanel
 
     /// Set by the bar while the pop-up is open.
     public bool Open { get; private set; }
+
+    readonly ContentControl _sink;
+
+    /// The centre holds the keyboard (BarWindow.NotifsKeyboard): a repaint keeps the focus inside it.
+    public bool HasKeys { get; set; }
+
+    /// A --test run logs where the keyboard went and what Enter opened (the ids only, never a title).
+    public bool TestLog { get; set; }
+
+    /// The keyboard was just taken: it rests on the stop before Clear all, not on a button Enter would press.
+    public void FocusStart() => _sink.Focus(FocusState.Programmatic);
     /// Called with every list the panel takes (the bell repaints from it).
     public event Action<JsonObject?>? Changed;
     public JsonObject? Data => _data;
@@ -61,6 +72,11 @@ internal sealed class NotifPanel
         _log = log; _room = room;
         Root = new Grid { Width = WidthDip - 2 };
         Uia(Root, "notifs.panel", "Notifications");
+        // BAR-844: where the keyboard lands when the centre takes it, a 0x0 stop that does nothing on Enter (so an Enter
+        // before any Tab never clears or opens anything); Tab goes on to Clear all and the cards
+        _sink = new ContentControl { IsTabStop = true, UseSystemFocusVisuals = false, Width = 0, Height = 0, Tag = "sink" };
+        AutomationProperties.SetAccessibilityView(_sink, Microsoft.UI.Xaml.Automation.Peers.AccessibilityView.Raw);
+        Root.Children.Add(_sink);
         _stack = new StackPanel { Padding = new Thickness(10, 11, 10, 9) };
         Root.Children.Add(_stack);
 
@@ -211,7 +227,13 @@ internal sealed class NotifPanel
         _clear.IsEnabled = !_busy.ContainsKey("all");
         _clear.Foreground = _busy.ContainsKey("all") ? (_dark ? Alpha(T("LgInk2"), 0.4) : T("LgInk3")) : T("LgInk2");
         _clear.FontSize = Fs; _win.FontSize = Fs; _win.Foreground = T("LgInk2");
-        _list.Children.Clear();
+        // a repaint rebuilds the cards: the focused card keeps the focus (and how it got it); one that went away, or a
+        // button inside the list, hands it to the stop so the keys still reach the centre
+        var fe = HasKeys && Root.XamlRoot != null ? Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(Root.XamlRoot) as Control : null;
+        string? keep = fe?.Tag as string; var keepHow = fe?.FocusState ?? FocusState.Unfocused;
+        bool inList = false;
+        for (DependencyObject? d = fe; d != null && !inList; d = VisualTreeHelper.GetParent(d)) inList = d == _list;
+        _list.Children.Clear(); _cards.Clear();
 
         if (_data == null) _list.Children.Add(Empty(null, "Reading your notifications…", null, false));
         else if (bad && ts.Count == 0) _list.Children.Add(Empty(null, "Notifications unavailable", NotificationCentre.Str(_data["reason"]) ?? "the list could not be read and no reason was given", true));
@@ -219,6 +241,10 @@ internal sealed class NotifPanel
         else {
             int gi = 0;
             foreach (var g in NotificationWords.Groups(ts)) _list.Children.Add(Group(g, gi++));
+        }
+        if (inList) {
+            if (keep != null && _cards.TryGetValue(keep, out var back)) back.Focus(keepHow == FocusState.Unfocused ? FocusState.Programmatic : keepHow);
+            else _sink.Focus(FocusState.Programmatic);
         }
 
         string say = NotificationWords.Note(_note, _data);
@@ -369,8 +395,31 @@ internal sealed class NotifPanel
             // .ntf-card.unread::before: a 4 px accent dot at left 3, top 14
             card.Children.Add(new Ellipse { Width = 4, Height = 4, Fill = T("LgAcc"), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, Margin = new Thickness(3 - 9, 14 - 8, 0, 0), IsHitTestVisible = false });
         }
-        return card;
+        if (!NotificationWords.TakesKeys(t)) return card;
+        // BAR-844 (.ntf-card tabIndex 0, Enter opens, :focus-visible): a stop around the card; the ring only for the keyboard
+        var stop = new ContentControl { Content = card, IsTabStop = true, UseSystemFocusVisuals = false, Tag = "card:" + id,
+            HorizontalContentAlignment = HorizontalAlignment.Stretch, VerticalContentAlignment = VerticalAlignment.Stretch };
+        _cards["card:" + id] = stop;
+        // over the whole card (its padding undone, as the unread dot is), drawn only while the keyboard is on it: no shift
+        var ring = new Border { CornerRadius = new CornerRadius(6), Margin = new Thickness(-9, -8, -4, -8), IsHitTestVisible = false, Visibility = Visibility.Collapsed,
+            BorderThickness = new Thickness(_dark ? 1.5 : 1), BorderBrush = T("LgAcc") };   // dark's accent is --lg-focus's pale 159,180,204
+        card.Children.Add(ring);
+        stop.GotFocus += (_, _) => {
+            bool kb = stop.FocusState == FocusState.Keyboard;
+            ring.Visibility = kb ? Visibility.Visible : Visibility.Collapsed;
+            if (kb && TestLog) _log($"notifs: key focus: card {id}");
+        };
+        stop.LostFocus += (_, _) => ring.Visibility = Visibility.Collapsed;
+        stop.KeyDown += (_, e) => {
+            if (e.Key != global::Windows.System.VirtualKey.Enter) return;
+            e.Handled = true;
+            if (TestLog) _log($"notifs: key Enter: opens notification {id}");
+            OpenToast(t);
+        };
+        return stop;
     }
+
+    readonly Dictionary<string, ContentControl> _cards = new();
 
     /// .pop .x: "×" in ink-3, the warn-soft ground and warn ink on hover; the click never reaches the card.
     Button XButton(string id, string tip, Action click)

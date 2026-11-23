@@ -273,4 +273,49 @@ public class GameModeFeatureTests
         Assert.Equal("manual", st.GetProperty("how").GetString());
         Assert.StartsWith("skipped: left as they are: the boost is off", Act(st, "background"));
     });
+    const string App2 = "{\"pid\":601,\"ppid\":4,\"file\":\"LateApp.exe\",\"session\":1,\"path\":\"C:\\\\Program Files\\\\LateApp\\\\LateApp.exe\",\"created\":\"112\",\"cpuMs\":10,\"ws\":104857600,\"prio\":\"normal\"}";
+
+    static bool Eased(G g, int pid) => g.R.Platform.Calls.Any(c => c.Verb == "gamemode.apply" && c.ArgsJson.Contains("\"pid\":" + pid + ","));
+
+    /// BAR-781: while on, the plan is redone every 30 s (REPLAN_MS), so an app started after game mode came on is eased too.
+    [Fact]
+    public void While_on_the_plan_is_redone_every_30_s_so_a_later_app_is_eased_too() => T(false, async g =>
+    {
+        g.Fg = FgGame; g.Procs = new() { Valorant, App };
+        g.R.Time.AdvanceMs(10);
+        Assert.True((await g.State()).GetProperty("on").GetBoolean());
+        Assert.True(Eased(g, 600));
+        g.Procs.Add(App2);
+        for (int i = 0; i < 5; i++) g.R.Time.AdvanceMs(5000);   // 25 s: ticks, but no replan yet
+        Assert.False(Eased(g, 601), "a replan ran before 30 s");
+        g.R.Time.AdvanceMs(5000); g.R.Time.AdvanceMs(5000);
+        Assert.True(Eased(g, 601), "the 30 s replan did not ease the app started after game mode came on");
+        Assert.Equal(1, g.R.Platform.Calls.Count(c => c.Verb == "gamemode.apply" && c.ArgsJson.Contains("\"pid\":600,")));   // never twice
+    });
+
+    /// BAR-781 in a test run: the interval is injectable (Host.ReplanMs here; MANTLE_TEST_GAMEMODE_REPLAN_MS in the app), and each replan is logged.
+    [Fact]
+    public void The_replan_interval_is_injectable_and_a_test_run_logs_each_replan() => HostLoop.Run(async (_, time) =>
+    {
+        var r = new Rig(time, true);
+        string dir = Path.Combine(Path.GetTempPath(), "mantle-gm-test-" + Guid.NewGuid().ToString("N")[..8]);
+        Directory.CreateDirectory(dir);
+        try
+        {
+            string scan = $"{{\"fg\":{FgGame},\"procs\":[{Valorant},{App}],\"ownPid\":42,\"ownSession\":1}}";
+            r.Platform.Start();
+            r.Platform.Answer("gamemode.scan", scan);
+            r.Platform.Answer("powermode.get", PowerState);
+            r.Platform.Answer("audio", "{\"ok\":true,\"sessions\":[]}");
+            var h = new GameModeFeature.Host(dir, OwnPids: () => Array.Empty<int>(), Clock: new HostClock(time), FreeMem: () => 4L << 30, MainPid: 1, ReplanMs: 2000);
+            r.Host.Load(new[] { FeatureDescriptor.Of(typeof(GameModeFeature).GetCustomAttribute<FeatureAttribute>()!, () => new GameModeFeature(h), GameModeFeature.Options) });
+            await r.Host.Installed;
+            time.AdvanceMs(10);
+            for (int i = 0; i < 3; i++) time.AdvanceMs(5000);
+            Assert.True(r.Logged("gamemode: replan 1: the plan was redone while on (every 2000 ms)"));
+            Assert.True(r.Logged("gamemode: replan 3: "));
+            Assert.Equal(30000, GameModeFeature.ReplanEveryMs);
+        }
+        finally { try { Directory.Delete(dir, true); } catch (IOException) { } }
+    });
 }

@@ -51,6 +51,10 @@ public static class NotificationWords
         return n == 0 ? "Notifications — none" : "Notifications — " + n + (u > 0 ? " (" + u + " new)" : "");
     }
 
+    /// BAR-844 (card(): tabIndex 0 only when it opens): a card the keyboard can reach and Enter opens; a dead one
+    /// (opens "none") is skipped by Tab, as a click on it does nothing.
+    public static bool TakesKeys(JsonObject t) => (NotificationCentre.Str(t["opens"]) ?? "app") != "none";
+
     /// What a click on a card does, or why it does nothing; a picture that could not be shown is named.
     public static string CardTip(JsonObject t)
     {

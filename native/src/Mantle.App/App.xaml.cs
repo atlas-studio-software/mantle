@@ -619,6 +619,7 @@ public partial class MantleApp : Application
     {
         if (_look != null) _look.Refresh(why);
         else Host.Log.Line($"mantle: {why}; the look is not up yet, so there is nothing to re-read");
+        if (why == "the PC woke from sleep" && _bus != null) _ = _bus.CallAsync("gcal.resume", null, "host");   // BAR-463 (powerMonitor 'resume' only)
     }
 
     /// Log-only (look.md, the look.json timing): a UI-thread job of the look path long enough to be felt is named.

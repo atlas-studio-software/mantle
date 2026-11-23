@@ -44,6 +44,9 @@ public sealed partial class BarWindow
             if (p == null) return;
             _trayNow = JsonNode.Parse(p.Body.GetRawText()) as JsonObject;
             PaintTray();
+        }, why => {   // the tray says it in its own words (its unavailable strip), never a second chip (bar.js trayThrew)
+            _trayNow = new JsonObject { ["status"] = "unavailable", ["reason"] = "the tray could not connect to Mantle (" + why + "), so it will not update until Mantle restarts", ["items"] = new JsonArray() };
+            PaintTray(force: true);
         });
     }
 

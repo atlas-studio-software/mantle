@@ -40,7 +40,32 @@ public class QuickSettingsViewsTests
         ClickEl(app.Find("bar.volume"));
         IntPtr h = IntPtr.Zero;
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings")), 3000), "quick settings did not open");
+        // its first frame is on screen (PopupHost.Shown) before anything in it is pressed
+        Has(dir, "pop-up Quick settings: shown at", "quick settings never said it was on screen");
         return (app, dir, Host.Uia.FromHandle(h));
+    }
+
+    /// A press on <paramref name="id"/> once the element under its centre is that element itself (UI Automation's own
+    /// hit test), so a press that would land elsewhere fails saying where, instead of pressing nothing.
+    static void Press(AutomationElement w, string id)
+    {
+        var e = El(w, id);
+        System.Drawing.Point at = default;
+        string there = "";
+        bool on = Host.Until(() => {
+            var r = e.BoundingRectangle;
+            if (r.Width <= 0 || r.Height <= 0) { there = "(no size yet)"; return false; }
+            at = new System.Drawing.Point(r.Left + r.Width / 2, r.Top + r.Height / 2);
+            var hit = Host.Uia.FromPoint(at);
+            there = hit == null ? "(nothing)" : hit.Properties.AutomationId.ValueOrDefault is { Length: > 0 } a ? a : $"'{hit.Name}' ({hit.ControlType})";
+            // the element itself or a part inside it (its own drawing)
+            var walk = Host.Uia.TreeWalkerFactory.GetControlViewWalker();
+            for (var x = hit; x != null && !x.Equals(w); x = walk.GetParent(x))
+                if (x.Properties.AutomationId.ValueOrDefault == id) return true;
+            return false;
+        }, 3000);
+        Assert.IsTrue(on, $"a press on {id} at {at} would land on {there}");
+        ClickEl(e);
     }
 
     static AutomationElement El(AutomationElement w, string id)
@@ -59,7 +84,7 @@ public class QuickSettingsViewsTests
         using var _ = app;
 
         // ---- Wi-Fi
-        ClickEl(El(w, "qs.more.wifi"));
+        Press(w, "qs.more.wifi");
         Has(dir, "qs: the Wi-Fi view opened", "the Wi-Fi view did not open");
         Has(dir, "pop-up Quick settings: resized to 384 DIP high", "the pop-up was not re-sized for the view");
         Assert.AreEqual("Wi-Fi", El(w, "qs.view.title").Name);
@@ -132,7 +157,7 @@ public class QuickSettingsViewsTests
         var (app, dir, w) = Open("qs-pw", keys: true);
         using var _ = app;
         Has(dir, "qs: MANTLE_TEST_QS_KEYS=1", "the keys opt-in was not taken");
-        ClickEl(El(w, "qs.more.wifi"));
+        Press(w, "qs.more.wifi");
         ClickEl(El(w, "qs.wifi.net.1"));
         ClickEl(El(w, "qs.wifi.connect"));
         Has(dir, "qs: the password field has the keyboard", "the password field did not take the keyboard");

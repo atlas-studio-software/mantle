@@ -30,6 +30,10 @@ public sealed partial class BarWindow
     Border? _badge;
     TextBlock? _badgeText;
     string _bellSig = "";
+    bool _notifsKbd;
+
+    /// MANTLE_TEST_NOTIFS_KEYS=1 lets a test centre take the keyboard (a CI runner only; a quiet window never does).
+    const string NotifsKeysEnv = "MANTLE_TEST_NOTIFS_KEYS";
 
     /// Called once from the bar's start, after the pop-up framework exists (BarWindow.xaml.cs, after StartQuickSettings).
     void StartNotifications()
@@ -42,6 +46,7 @@ public sealed partial class BarWindow
             Close: why => { if (popups.OpenKey == "notifs") popups.Close(why); },
             Keys: (combo, what) => _ = PressKeys(combo, what)));
         _notifs.Changed += p => { PaintBell(p); NotifsHealth(p); };
+        _notifs.TestLog = Host.Args.Test;
         // .notifs.new: the glyph and the count side by side (gap 5), the button as wide as they need (padding 0 8 0 9)
         _bell.Content = null;
         var row = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 5, VerticalAlignment = VerticalAlignment.Center };
@@ -54,7 +59,13 @@ public sealed partial class BarWindow
         _bell.Click += (_, _) => OpenNotifications(toggle: true);
         _bell.RightTapped += (_, e) => { e.Handled = true; OpenNotifications(toggle: false); };
         popups.Anchor(_bell);
-        popups.Closed += (key, why) => { if (key == "notifs" && _notifs is { Open: true }) _notifs.Closed(why); };
+        popups.Closed += (key, why) => { if (key == "notifs") NotifsKeyboard(false); if (key == "notifs" && _notifs is { Open: true }) _notifs.Closed(why); };
+        // BAR-844: once the centre is on screen it takes the keyboard (Tab reaches the cards, Enter opens, Esc closes)
+        popups.OnScreen += key => { if (key == "notifs") NotifsKeyboard(true); };
+        _notifs.Root.KeyDown += (_, e) => {
+            if (e.Key != global::Windows.System.VirtualKey.Escape || popups.OpenKey != "notifs") return;
+            e.Handled = true; popups.Close("Esc");
+        };
         Root.ActualThemeChanged += (_, _) => { _bellSig = ""; PaintBell(_notifs?.Data); PaintTray(force: true); };
         PaintBell(null);
         StartTray();
@@ -74,9 +85,29 @@ public sealed partial class BarWindow
         if (Popups.OpenKey == "notifs" && !panel.Open) panel.Opened();
     }
 
+    /// bar.js on() -> fail('chan:'): a bar link whose event could not be subscribed says so on the "more" pip (BAR-191),
+    /// unless the caller words its own failure (the tray). Every bar lane's link calls this before its first On.
+    internal void WatchChannels(SurfaceLink link) => link.SubscribeFailed ??= (ev, why) => {
+        Host.Log.Line($"bar: chip: Part of the bar not updating ({ev}: {why})");
+        if (_chips.Fail("chan:" + ev, "Part of the bar not updating", "this part of the bar could not connect to Mantle, so it will not update until Mantle restarts", "warn")) RenderPip(force: true);
+    };
+
+    /// The centre holds the keyboard while it is open and hands it back on the close; refused, the mouse still works.
+    void NotifsKeyboard(bool on)
+    {
+        if (_notifs == null || Popups == null) return;
+        if (!on) { if (_notifsKbd) { _notifsKbd = false; _notifs.HasKeys = false; Popups.GiveBackKeyboard("the notification centre closed"); } return; }
+        bool allowed = !Host.Args.Test || (Host.Env(NotifsKeysEnv) == "1" && !Host.Quiet);
+        var (ok, words) = allowed ? Popups.TakeKeyboard("notifs") : (false, "a test instance never takes the keyboard from whoever is at the machine");
+        _notifsKbd = ok; _notifs.HasKeys = ok;
+        Host.Log.Line(ok ? "notifs: the centre has the keyboard (Tab reaches the cards, Enter opens, Esc closes)" : $"notifs: the keyboard was not taken ({words})");
+        if (ok) _notifs.FocusStart();
+    }
+
     /// From the host thread's wiring, posted here: the lane's road to notifs.*, tray.*, sys.keys and the shell state.
     internal void AttachNotifications(SurfaceLink link)
     {
+        WatchChannels(link);
         _r7Link = link;
         if (_notifs == null) { Host.Log.Line("notifs: the host is up but the bar made no panel, so nothing is attached"); return; }
         _notifs.Attach(link);

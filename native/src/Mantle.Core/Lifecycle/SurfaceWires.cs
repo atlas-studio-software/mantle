@@ -152,9 +152,14 @@ public sealed class SurfaceLink : IDisposable
     /// An event handler that runs this long on the UI thread is said in the log (log-only; never changes what runs).
     public const double SlowUiMs = 30;
 
+    /// bar.js on(): a subscription that could not be made, (event, reason), on the UI thread, when the caller gave no
+    /// <c>onFail</c> of its own (the bar shows it as the "Part of the bar not updating" chip, BAR-191).
+    public Action<string, string>? SubscribeFailed { get; set; }
+
     /// Subscribed on the host thread; every payload (the replayed current value first, when the event has a replay
-    /// source) is re-posted to the UI thread. Disposing it (UI thread) stops deliveries at once.
-    public IDisposable On<T>(string ev, Action<T> handler)
+    /// source) is re-posted to the UI thread. Disposing it (UI thread) stops deliveries at once. A subscription that
+    /// cannot be made is logged and said: <paramref name="onFail"/> (the caller's own words), else <see cref="SubscribeFailed"/>.
+    public IDisposable On<T>(string ev, Action<T> handler, Action<string>? onFail = null)
     {
         var sub = new EventSub();
         _subs.Add(sub);
@@ -172,7 +177,11 @@ public sealed class SurfaceLink : IDisposable
                         if (ms >= SlowUiMs) Log.Line(FormattableString.Invariant($"its \"{ev}\" handler held the UI thread {ms:0} ms"));
                     });
                 });
-            } catch (Exception e) { Log.Line($"could not subscribe \"{ev}\": {e.Message}"); }
+            } catch (Exception e) {
+                Log.Line($"could not subscribe \"{ev}\": {e.Message}");
+                string why = e.Message;
+                _w.PostUi(() => { if (sub.Off || _gone) return; if (onFail != null) onFail(why); else SubscribeFailed?.Invoke(ev, why); });
+            }
         });
         sub.Unsubscribe = () => _w.PostHost(() => sub.Host?.Dispose());
         return sub;

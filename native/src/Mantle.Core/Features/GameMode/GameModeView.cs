@@ -38,6 +38,13 @@ public static class GameModeView
     };
 
     public static string ExeName(string? f) => System.Text.RegularExpressions.Regex.Replace(System.Text.RegularExpressions.Regex.Replace(f ?? "", @"\.exe$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase), "-Win64-Shipping$", "", System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+    /// <summary>BAR-808: a second click on the switch this soon after the last one is the same decision (a double click).</summary>
+    public const long SwitchGapMs = 500;
+
+    /// <summary>gamemode.js switch click: not while dead, turning on/off or a call is on its way, nor within <see cref="SwitchGapMs"/> of the last click.</summary>
+    public static bool SwitchTakes(bool dead, bool pending, bool inflight, long lastClickMs, long nowMs) =>
+        !dead && !pending && !inflight && nowMs - lastClickMs >= SwitchGapMs;
+
     public static string Mins(double? m) => !(m >= 1) ? "under a minute" : m == 1 ? "1 min" : $"{m} min";
     public static string Cap(string? s) { s ??= ""; return s.Length == 0 ? s : char.ToUpperInvariant(s[0]) + s[1..]; }
 

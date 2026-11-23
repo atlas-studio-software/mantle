@@ -90,6 +90,20 @@ public sealed class GcalFeature : IFeature
         ctx.Command("want", c => Ok(_running && !_test ? _engine.Want(Int(c.Args, "year"), Int(c.Args, "month"))
             : new JsonObject { ["ok"] = true, ["covered"] = false, ["reason"] = _test ? TestWhy : "Google Calendar is turned off" }));
         ctx.Command("open", c => Answer(OpenAsync(Str(c.Args, "event"))));
+        // BAR-463 (gcal.js onResume): the host heard the PC wake from sleep (App.OnWake, not an unlock); signed in and
+        // not needing a sign-in, a sync runs 8 s later (the network is often still coming back at the wake itself)
+        ctx.Command("resume", _ => {
+            if (!_running || _test) {
+                string why = _test ? TestWhy : "Google Calendar is turned off";
+                ctx.Log($"the PC woke from sleep: no sync ({why})");
+                return Ok(new JsonObject { ["ok"] = true, ["planned"] = false, ["reason"] = why });
+            }
+            var st = _engine.Status();
+            bool planned = st["signedIn"] is JsonValue si && si.TryGetValue<bool>(out var s1) && s1 && !(st["needsSignIn"] is JsonValue ns && ns.TryGetValue<bool>(out var n1) && n1);
+            _engine.Resume();
+            ctx.Log(planned ? $"the PC woke from sleep: a sync in {GcalEngine.ResumeMs / 1000} s" : "the PC woke from sleep: no sync (not signed in)");
+            return Ok(new JsonObject { ["ok"] = true, ["planned"] = planned });
+        });
 
         ctx.OnEnabled(on => { if (on) Begin(); else Pause(); });
         Begin();
