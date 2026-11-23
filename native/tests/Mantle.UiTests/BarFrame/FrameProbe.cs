@@ -81,6 +81,17 @@ internal static class FrameProbe
         double a1 = p.TotalProcessorTime.TotalMilliseconds, d1 = dwm.Sum(SafeCpu);
         return (Math.Round(100 * (a1 - a0) / wall, 3), Math.Round(100 * (d1 - d0) / wall, 3));
     }
+
+    /// The same two numbers as <see cref="Cpu"/> (App is the CPU time Windows charged the process, in whole clock
+    /// ticks), plus the process thread by thread over the same window (<see cref="ThreadCpu"/>).
+    public static (double App, double Dwm, ThreadCpu.Result Threads) CpuThreads(Process p, int ms)
+    {
+        var dwm = Process.GetProcessesByName("dwm");
+        double d0 = dwm.Sum(SafeCpu);
+        var t = ThreadCpu.Measure(p.Id, ms);
+        double d1 = dwm.Sum(SafeCpu);
+        return (t.TickPct, Math.Round(100 * (d1 - d0) / t.WallMs, 3), t);
+    }
     // ---- the runner's display scale (DisplayConfigGet/SetDeviceInfo, undocumented types -3 get / -4 set, as
     // tools/parity/ParityNative.cs SetScale does). Runner only: it changes the display of the machine it runs on.
     [StructLayout(LayoutKind.Sequential)] struct DcHdr { public int type; public int size; public uint lo; public int hi; public uint id; }

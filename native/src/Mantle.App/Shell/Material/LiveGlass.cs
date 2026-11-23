@@ -32,7 +32,7 @@ internal sealed class LiveGlass
         _timer = q.CreateTimer();
         _timer.Interval = TimeSpan.FromMilliseconds(1000 / LightFps);
         _timer.IsRepeating = true;
-        _timer.Tick += (_, _) => Refresh(null);
+        _timer.Tick += (_, _) => { Mantle.Core.Lifecycle.IdleTally.Hit("ui timer (live glass)"); Refresh(null); };
     }
 
     public bool Running => _running;

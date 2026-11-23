@@ -59,6 +59,7 @@ public sealed class HostClock
         {
             if (Interlocked.Exchange(ref _state, 1) != 0) return;
             Timer?.Dispose();
+            Mantle.Core.Lifecycle.IdleTally.Hit("clock later", _action);
             _clock.Post(_action);
         }
 

@@ -146,6 +146,7 @@ public sealed partial class BarWindow
         ClearPicture();
         Host.Log.Line("bar hidden: at rest until the cursor reaches the bottom edge");
         Tick();
+        IdleProbe.Arm(DispatcherQueue);   // test runs only (MANTLE_TEST_IDLE_PROBE): what wakes the app at rest
     }
 
     void StopFrame()
@@ -172,6 +173,7 @@ public sealed partial class BarWindow
                 bool inBand = BarIntent.InBand(g, pt.X, pt.Y);
                 if (!_revealed && !inBand) continue;
                 if (Interlocked.Exchange(ref _tickPending, 1) == 1) continue;   // one tick queued at a time
+                Mantle.Core.Lifecycle.IdleTally.Hit("ui post (hover poll)");
                 DispatcherQueue.TryEnqueue(() => { Volatile.Write(ref _tickPending, 0); HoverTick(pt, inBand); });
             }
         }) { IsBackground = true, Name = "bar hover poll" }.Start();

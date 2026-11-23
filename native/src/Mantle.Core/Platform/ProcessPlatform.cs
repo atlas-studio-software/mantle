@@ -380,6 +380,7 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
 
     void OnEvent(string ev, JsonElement m)
     {
+        if (IdleTally.On) IdleTally.Hit("sidecar event " + ev);   // test runs only (the idle probe)
         if (ev == "ready") {
             _readyAt = _host.NowMs;
             _hadReady = true;
@@ -424,6 +425,7 @@ public sealed class ProcessPlatform : IPlatformControl, ISidecarSink
 
     public ValueTask<PlatformReply> CallAsync(string verb, JsonObject? args = null, TimeSpan? timeout = null, CancellationToken cancel = default)
     {
+        if (IdleTally.On) IdleTally.Hit("sidecar call " + verb);   // test runs only (the idle probe)
         double ms = timeout?.TotalMilliseconds ?? PlatformDefaults.CallTimeout.TotalMilliseconds;
         if (!(ms > 0) || double.IsNaN(ms) || double.IsInfinity(ms) && ms < 0) ms = PlatformDefaults.CallTimeout.TotalMilliseconds;
         if (ms > MaxTimeoutMs) ms = MaxTimeoutMs;

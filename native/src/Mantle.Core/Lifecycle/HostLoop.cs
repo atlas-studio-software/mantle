@@ -62,6 +62,7 @@ public sealed class HostLoop : SynchronizationContext, IHostScheduler, IDisposab
     public override void Post(SendOrPostCallback d, object? state)
     {
         if (_stopped) return;
+        IdleTally.Hit("host post", state ?? d);   // test runs only (the idle probe); off it is one read
         try { _queue.Add((d, state)); } catch (InvalidOperationException) { /* completed: the loop has stopped */ }
     }
 
@@ -77,7 +78,7 @@ public sealed class HostLoop : SynchronizationContext, IHostScheduler, IDisposab
 
     public override SynchronizationContext CreateCopy() => this;
 
-    public void Post(Action work) => Post(_ => work(), null);
+    public void Post(Action work) => Post(static s => ((Action)s!)(), work);   // the work rides as the state, so the idle tally can name it
 
     public IDisposable Delay(TimeSpan after, Action work)
     {
@@ -125,6 +126,7 @@ public sealed class HostLoop : SynchronizationContext, IHostScheduler, IDisposab
         {
             if (Interlocked.Exchange(ref _state, 1) != 0) return;
             Timer?.Dispose();
+            IdleTally.Hit("host delay", _work);
             _loop.Post(_work);
         }
         public void Dispose()
