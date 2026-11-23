@@ -37,6 +37,69 @@ How to read it:
 | [sidecar](docs/parity/sidecar.md) | 119 | SC 119 (protocol, lanes, deadlines, hang handling, exit restore, hooks, guard and supervisor processes, elevation, build) |
 | **Total** | **6948** | |
 
+### Native status by prefix, stage 9 (native/stage9 0858bb9f, run 45274695800: `NATIVE-CI: ok (17 ok, 0 skipped: )`)
+
+Counted from the Native column of every row in docs/parity/*.md on stage 9. `tested` counts every `tested:`
+status, including the half-row ones such as "tested (host half)". `better` rows are tested too, and carry the
+`better:` mark. The rows' own statuses come from the lanes that tested them; this run is the first green run of
+all of them together (ui 102 of 102, unit 1047 of 1047).
+
+Totals: 6,971 rows: tested 1,082, better 30, ported 236, n/a 51, wip 3, todo 5,569. That is 23 more rows than
+the table above (6,948): SEE and SAFE grew in their lanes, and the table's per-file counts were not updated. Not
+reconciled here.
+
+| Prefix | Rows | tested | better | ported | n/a | wip | todo |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| APW | 80 | 0 | 0 | 0 | 0 | 0 | 80 |
+| AUTO | 132 | 0 | 0 | 0 | 0 | 0 | 132 |
+| BAR | 1045 | 454 | 10 | 154 | 6 | 0 | 421 |
+| BOOT | 14 | 0 | 0 | 0 | 0 | 0 | 14 |
+| CLIP | 75 | 0 | 0 | 0 | 0 | 0 | 75 |
+| CLIPS | 114 | 0 | 0 | 0 | 0 | 0 | 114 |
+| CORE | 40 | 13 | 0 | 0 | 0 | 0 | 27 |
+| CORN | 108 | 85 | 1 | 10 | 2 | 0 | 10 |
+| DATA | 49 | 4 | 0 | 0 | 0 | 0 | 45 |
+| DESK | 127 | 47 | 4 | 6 | 0 | 0 | 70 |
+| EMO | 50 | 0 | 0 | 0 | 0 | 0 | 50 |
+| FEAT | 23 | 17 | 0 | 0 | 0 | 2 | 4 |
+| FILES | 272 | 0 | 0 | 0 | 0 | 0 | 272 |
+| INST | 32 | 0 | 0 | 0 | 0 | 0 | 32 |
+| KEY | 30 | 8 | 0 | 0 | 0 | 0 | 22 |
+| LAU | 277 | 58 | 0 | 36 | 0 | 0 | 183 |
+| LKA | 59 | 0 | 0 | 0 | 0 | 0 | 59 |
+| LOG | 21 | 11 | 0 | 0 | 0 | 0 | 10 |
+| LOOK | 131 | 62 | 0 | 0 | 0 | 0 | 69 |
+| MAXF | 59 | 0 | 0 | 0 | 0 | 0 | 59 |
+| NOTE | 114 | 0 | 0 | 0 | 0 | 0 | 114 |
+| OCR | 23 | 0 | 0 | 0 | 0 | 0 | 23 |
+| ONTOP | 50 | 0 | 0 | 0 | 0 | 0 | 50 |
+| OSD | 115 | 35 | 0 | 0 | 0 | 0 | 80 |
+| PKG | 36 | 2 | 0 | 0 | 0 | 0 | 34 |
+| PLAY | 161 | 0 | 0 | 0 | 0 | 0 | 161 |
+| PROJ | 62 | 0 | 0 | 0 | 0 | 0 | 62 |
+| RAM | 41 | 0 | 0 | 0 | 0 | 0 | 41 |
+| REC | 102 | 0 | 0 | 0 | 0 | 0 | 102 |
+| SAFE | 38 | 17 | 0 | 0 | 0 | 0 | 21 |
+| SC | 119 | 11 | 0 | 0 | 0 | 0 | 108 |
+| SEE | 22 | 18 | 0 | 0 | 0 | 0 | 4 |
+| SETM | 208 | 0 | 0 | 0 | 0 | 0 | 208 |
+| SETW | 707 | 0 | 0 | 0 | 0 | 0 | 707 |
+| SHOT | 254 | 0 | 0 | 0 | 0 | 0 | 254 |
+| SNAP | 170 | 0 | 0 | 0 | 0 | 0 | 170 |
+| SPOT | 113 | 0 | 0 | 0 | 0 | 0 | 113 |
+| SWI | 145 | 0 | 0 | 0 | 0 | 0 | 145 |
+| TIMER | 81 | 0 | 0 | 0 | 0 | 0 | 81 |
+| TM | 424 | 0 | 0 | 0 | 0 | 0 | 424 |
+| TOP | 382 | 191 | 15 | 25 | 43 | 0 | 108 |
+| TRAY | 22 | 20 | 0 | 0 | 0 | 1 | 1 |
+| TST | 134 | 27 | 0 | 0 | 0 | 0 | 107 |
+| TV | 134 | 0 | 0 | 0 | 0 | 0 | 134 |
+| UNF | 111 | 0 | 0 | 0 | 0 | 0 | 111 |
+| UPD | 58 | 0 | 0 | 0 | 0 | 0 | 58 |
+| WALL | 320 | 0 | 0 | 0 | 0 | 0 | 320 |
+| WEL | 53 | 0 | 0 | 0 | 0 | 0 | 53 |
+| WIN | 34 | 2 | 0 | 5 | 0 | 0 | 27 |
+
 Test coverage today:
 
 - 1,532 rows (22%) have **no Electron test**: bar 321, shell 282, apps 263, files-taskmgr 210, launch 182,

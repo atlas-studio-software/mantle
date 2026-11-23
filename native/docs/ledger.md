@@ -61,6 +61,14 @@ Path map, Electron path to parity file:
 |---|---|---|---|---|---|---|
 | LED-000 | 6ca499f | 2026-11-06 | Baseline (Welcome: card 1 says what Mantle sends over the network on its own) | baseline | all 6,948 | inventory |
 
+## Stages
+
+A stage merges lane branches for one combined run before native/main. It changes no parity row by itself.
+
+| Stage | Commit | Date | Branches merged | Run | Result |
+|---|---|---|---|---|---|
+| stage 9 | 0858bb9f (native/stage9) | 2026-11-23 | r7-idle, r7-media3, r7-topbar, r8-darkidle, r8-dl, r8-startup (not the probes r8-dl-probe, r8-dl-probe-old) | 45274695800 | `NATIVE-CI: ok (17 ok, 0 skipped: )`. The run before, 45267680314 at b74c5b7a, failed on DownloadsKeysTests; fixed in 0858bb9f (native/docs/lanes/stage9.md) |
+
 ## Deviations, WebView2 fallbacks, drops
 
 Every `deviation:`, `webview2:` and `dropped:` status in a parity row points to an entry here. If the user

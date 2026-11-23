@@ -30,3 +30,5 @@ which would hide the keyboard steal instead of fixing it.
 
 - 45267680314 at b74c5b7a: `NATIVE-CI: FAILED (ui failed; 16 ok, 0 skipped)`; ui 101 of 102 (DownloadsKeysTests,
   cause 2 above).
+- 45274695800 at 0858bb9f (the DlSeatFocus fix): `NATIVE-CI: ok (17 ok, 0 skipped: )`; unit 1047 of 1047, ui 102
+  of 102. The counts are in PARITY.md "Native status by prefix, stage 9", and the stage is in ledger.md "Stages".
