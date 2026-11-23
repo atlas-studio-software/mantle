@@ -40,6 +40,7 @@ internal sealed class DownloadsShelf
     readonly Button _folder = new() { HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(8, 4, 8, 4) };
     readonly Border _foot = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 6, 0, 0), Margin = new Thickness(2, 6, 2, 0) };
     readonly List<Button> _rows = new();
+    readonly List<RowParts> _parts = new();
     readonly Action<string> _log;
     bool _dark;
 
@@ -123,7 +124,11 @@ internal sealed class DownloadsShelf
         // a repaint keeps the focus as it was: one Windows gave on its own stays unasked (no ring, not a walked row)
         if (fe is Control fc && fc.FocusState == FocusState.Programmatic) focusHow = FocusState.Programmatic;
         double scrollTop = _scroll.VerticalOffset;
-        _list.Children.Clear(); _rows.Clear();
+        // the same items in the same order are filled in place: the row with the keyboard stays that very element, so a
+        // press's own repaint (busy) and its answer's (the note) never move the focus; other items are new rows
+        bool same = has && !Loading && !bad && items.Count > 0 && _parts.Count == items.Count
+            && _parts.Select(rp => rp.Item).SequenceEqual(items.Select(i => Str(i, "item") ?? ""), StringComparer.Ordinal);
+        if (!same) { _list.Children.Clear(); _rows.Clear(); _parts.Clear(); }
 
         _scroll.MaxHeight = Note.Length > 0 || (Str(v, "detail") ?? "").Length > 0 ? 300 : 366;
         if (!has || Loading) _list.Children.Add(Empty("Reading your Downloads folder…", null, "reading"));
@@ -140,12 +145,13 @@ internal sealed class DownloadsShelf
                 u.Children.Add(Line($"Mantle looks again every {Math.Round(ms / 60000.0)} minutes and each time you open this panel.", "dl.next"));
             _list.Children.Add(u);
         } else if (items.Count == 0) _list.Children.Add(Empty("Nothing downloaded yet", "Files you download show up here, newest first.", "empty"));
+        else if (same) { for (int n = 0; n < items.Count; n++) Fill(_parts[n], items[n], n, nowMs); }
         else {
             int n = 0;
-            foreach (var i in items) _list.Children.Add(Row(i, n++, nowMs));
+            foreach (var i in items) { var rp = MakeRow(); Fill(rp, i, n++, nowMs); _parts.Add(rp); _rows.Add(rp.Row); _list.Children.Add(rp.Cell); }
             if (focusItem != null && _rows.FirstOrDefault(r => (r.Tag as string) == focusItem) is { } back) {
-                if (focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back) rv.Focus(focusHow);
-                else back.Focus(focusHow);
+                bool got = focusReveal && back.Parent is Grid g && g.Children.OfType<Button>().LastOrDefault() is { } rv && rv != back ? rv.Focus(focusHow) : back.Focus(focusHow);
+                if (!got) _log($"downloads: a repaint could not put the keyboard back on row {_rows.IndexOf(back) + 1} ({focusHow})");
             }
         }
         _scroll.UpdateLayout();
@@ -192,7 +198,67 @@ internal sealed class DownloadsShelf
         return t;
     }
 
-    Grid Row(JsonElement i, int n, long nowMs)
+    /// One row's parts, made once per item and filled on every paint (Fill), so a repaint whose items did not change
+    /// (a press makes its row busy, an answer clears it and sets the note, the 30 s ages) keeps the very Button that has
+    /// the keyboard: rebuilt rows dropped it, and a quick second Enter reached no row (runs 43854350493, 43857488257).
+    sealed class RowParts
+    {
+        public string Item = "", Shown = "";
+        public bool Hover;
+        public readonly Grid Cell = new() { MinHeight = 42 };
+        public Button Row = null!, Show = null!;
+        public Border Tile = null!;
+        public FontIcon Glyph = null!;
+        public TextBlock NameT = null!, MetaT = null!;
+        public Microsoft.UI.Xaml.Shapes.Ellipse Dot = null!;
+    }
+
+    RowParts MakeRow()
+    {
+        var p = new RowParts();
+        var row = new Button {
+            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(10, 5, 36, 5),
+            Background = new SolidColorBrush(), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8), CanDrag = true,
+        };
+        var g = new Grid { ColumnSpacing = 10 };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
+        p.Glyph = new FontIcon { FontSize = 15 };
+        p.Tile = new Border { Width = 28, Height = 28, Child = p.Glyph };
+        g.Children.Add(p.Tile);
+        var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
+        Grid.SetColumn(txt, 1);
+        p.NameT = T(12.5); p.NameT.FontWeight = FontWeights.Medium; p.NameT.TextTrimming = TextTrimming.CharacterEllipsis;
+        p.MetaT = T(11); p.MetaT.Margin = new Thickness(0, 1, 0, 0);
+        txt.Children.Add(p.NameT); txt.Children.Add(p.MetaT);
+        g.Children.Add(txt);
+        p.Dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 4, Height = 4, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-7, 0, 0, 0) };
+        g.Children.Add(p.Dot);
+        row.Content = g;
+        row.Click += (_, _) => Act?.Invoke("open", p.Item, "Could not open " + p.Shown);
+        if (Drag != null) row.DragStarting += (s, e) => { e.AllowedOperations = global::Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy; DragData(e, p.Item, p.Shown); };
+        p.Cell.Children.Add(row);
+        p.Row = row;
+
+        var show = new Button {
+            Width = 28, Height = 28, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, 4, 0), Background = new SolidColorBrush(), BorderThickness = new Thickness(0),
+            Content = new FontIcon { Glyph = "", FontSize = 13 }, Opacity = .55,
+        };
+        ToolTipService.SetToolTip(show, "Show in folder");
+        show.Click += (_, _) => Act?.Invoke("reveal", p.Item, $"Could not show {p.Shown} in its folder");
+        // shown on hover or focus (.dl-row:hover .dl-reveal, :focus-visible); always reachable by Tab and by UI Automation
+        p.Cell.PointerEntered += (_, _) => { p.Hover = true; show.Opacity = 1; };
+        p.Cell.PointerExited += (_, _) => { p.Hover = false; show.Opacity = show.FocusState != FocusState.Unfocused ? 1 : .55; };
+        show.GotFocus += (_, _) => show.Opacity = 1;
+        show.LostFocus += (_, _) => show.Opacity = p.Hover ? 1 : .55;
+        p.Cell.Children.Add(show);
+        p.Show = show;
+        return p;
+    }
+
+    /// Everything a row shows from its item, the theme and the busy / new sets; in place, never a new element.
+    void Fill(RowParts p, JsonElement i, int n, long nowMs)
     {
         string item = Str(i, "item") ?? "";
         string name = Str(i, "name") ?? "";
@@ -200,55 +266,26 @@ internal sealed class DownloadsShelf
         var si = new ShelfItem(name, dir, Long(i, "size"), Long(i, "at"), false);
         string nm = DownloadsList.Shown(name), meta = DownloadsList.Meta(si, nowMs), kind = DownloadsList.KindOf(name, dir);
         bool fresh = WasFresh.Contains(item), busy = Busy.Contains(item);
+        p.Item = item; p.Shown = nm;
 
-        var cell = new Grid { MinHeight = 42 };
-        var row = new Button {
-            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(10, 5, 36, 5),
-            Background = new SolidColorBrush(), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8),
-            Tag = item, CanDrag = true, Opacity = busy ? .5 : 1, IsHitTestVisible = !busy,
-        };
-        var g = new Grid { ColumnSpacing = 10 };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        var tile = new Border { Width = 28, Height = 28, CornerRadius = new CornerRadius(_dark ? 8 : 7), Background = B("LgTile"),
-            Child = new FontIcon { Glyph = KindGlyph[kind], FontSize = 15, Foreground = B("LgInk2") } };
-        g.Children.Add(tile);
-        var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
-        Grid.SetColumn(txt, 1);
-        var nameT = T(12.5); nameT.Text = nm; nameT.FontWeight = FontWeights.Medium; nameT.TextTrimming = TextTrimming.CharacterEllipsis; nameT.Foreground = B("LgInk");
-        var metaT = T(11); metaT.Text = meta; metaT.Foreground = B("LgInk3"); metaT.Margin = new Thickness(0, 1, 0, 0);
-        txt.Children.Add(nameT); txt.Children.Add(metaT);
-        g.Children.Add(txt);
-        if (fresh) {
-            var dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 4, Height = 4, Fill = B("LgAcc"), HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-7, 0, 0, 0) };
-            g.Children.Add(dot);
-        }
-        row.Content = g;
+        var row = p.Row;
+        row.Tag = item; row.Opacity = busy ? .5 : 1; row.IsHitTestVisible = !busy;
+        p.Tile.CornerRadius = new CornerRadius(_dark ? 8 : 7); p.Tile.Background = B("LgTile");
+        p.Glyph.Glyph = KindGlyph[kind]; p.Glyph.Foreground = B("LgInk2");
+        p.NameT.Text = nm; p.NameT.Foreground = B("LgInk");
+        p.MetaT.Text = meta; p.MetaT.Foreground = B("LgInk3");
+        p.Dot.Fill = B("LgAcc"); p.Dot.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
         string label = $"{nm}, {(fresh ? "new, " : "")}{KindWord[kind]}, {meta}";
         string tip = nm + "\n" + (dir ? "Click to open the folder" : "Click to open") + ", or drag it into an app or onto the desktop";
         Uia(row, $"dl.row.{n}", label);
         AutomationProperties.SetHelpText(row, tip);
         AutomationProperties.SetItemStatus(row, (fresh ? "fresh" : "") + (busy ? (fresh ? "; " : "") + "busy" : ""));
         ToolTipService.SetToolTip(row, tip);
-        row.Click += (_, _) => Act?.Invoke("open", item, "Could not open " + nm);
-        if (Drag != null) row.DragStarting += (s, e) => { e.AllowedOperations = global::Windows.ApplicationModel.DataTransfer.DataPackageOperation.Copy; DragData(e, item, nm); };
-        cell.Children.Add(row);
-        _rows.Add(row);
 
-        var show = new Button {
-            Width = 28, Height = 28, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 4, 0), Background = new SolidColorBrush(), BorderThickness = new Thickness(0),
-            Content = new FontIcon { Glyph = "", FontSize = 13, Foreground = B("LgInk2") }, Tag = "r:" + item, Opacity = .55, IsHitTestVisible = !busy,
-        };
+        var show = p.Show;
+        show.Tag = "r:" + item; show.IsHitTestVisible = !busy;
+        ((FontIcon)show.Content).Foreground = B("LgInk2");
         Uia(show, $"dl.reveal.{n}", "Show in folder");
-        ToolTipService.SetToolTip(show, "Show in folder");
-        show.Click += (_, _) => Act?.Invoke("reveal", item, $"Could not show {nm} in its folder");
-        // shown on hover or focus (.dl-row:hover .dl-reveal); always reachable by Tab and by UI Automation
-        cell.PointerEntered += (_, _) => show.Opacity = 1;
-        cell.PointerExited += (_, _) => show.Opacity = .55;
-        show.GotFocus += (_, _) => show.Opacity = 1;
-        cell.Children.Add(show);
-        return cell;
     }
 
     /// The real Windows file drag: the bar is asked for the row's file (downloads.drag), then the data package carries

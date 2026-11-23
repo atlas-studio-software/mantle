@@ -348,3 +348,32 @@ Helm badge: a cell's ItemStatus ends "; badge N[ warn]"; log `helmbadge: source 
   before the two Enters, and the failure prints the log's end. Not proven which element had the focus in that run.
 - Not touched (other lanes' files), same pattern: PopupWindow.Show and BarWindow.xaml.cs hand the foreground straight
   back to the window that had it, which on a runner can be Windows' taskbar; BackTarget could serve them too.
+
+## Round 8 (lane native-r8-dl, branch native/r8-dl off native/r8-startup)
+
+- The failure: DownloadsKeysTests on the combined stage bae0c2bd (runs 43854350493, 43857488257), "the second Enter
+  was not held back". The log's end: Home reached row 1, the first Enter opened (a dry run), then 5 s of nothing: no
+  second open and no "ignored" line, so the second Enter reached no row's Click.
+- Changed in the product: DownloadsShelf.Paint used to clear the list and make new row Buttons on every paint, then put
+  the focus back on the row with the same key. A press repaints twice (its row goes busy; the answer clears it and sets
+  the note), so the row with the keyboard was taken out of the window under it. Each row's parts are now made once per
+  item (RowParts, MakeRow) and filled on every paint (Fill); while the items and their order are unchanged (a press, its
+  answer, the 30 s ages, a cached refresh) the Button with the keyboard stays the same element. Other items still make
+  new rows and put the focus back by key, and a repaint that cannot do that now says so in the log. The keys test also
+  asserts row 1 still has the keyboard after the two Enters. The 500 ms guard (DownloadsKeys.GapMs) and every check stay.
+- A --test run now traces each focus move inside the shelf ("downloads: the keyboard focus is on ...") and each Enter
+  that reaches it ("downloads: key Enter reached ..."), so a lost key names where it went.
+- What the runs show (all on the cloud runner, filter FullyQualifiedName~Mantle.UiTests.Downloads):
+  - On native/r8-dl as it stands, no pass of the keys test got as far as the two Enters. Runs 43863816806 and
+    43864713223 (before the fix) and 43865533087 (the fix): of the 9 passes whose message was kept, 7 stopped at the
+    first Down with the top bar's start-up show taking the keyboard from the shelf ("topbar: window activated", then
+    "closed (another window took focus)"), and 2, each the first pass on a fresh runner, stopped right after the first
+    Enter with "no dl.row.1 in the Downloads shelf" (no log in that message; likely the same steal arriving later on
+    a cold start, not proven). The other 2 passes' messages were overwritten. The steal is the start-up lane's bug
+    (Surfaces/TopBar), not touched here.
+  - With that steal waited out (a throwaway branch, native/r8-dl-probe, whose test waits for "topbar: window activated"
+    before it opens the shelf; never to be merged): the fix passed 4 of 4 (run 43866603224, all three downloads tests
+    each pass), and the code before the fix also passed 2 of 2 (native/r8-dl-probe-old, run 43867501144).
+  - So the lost second Enter was not reproduced once the start-up steal was waited out, and it is NOT proven that the
+    rebuild is what lost it on the stage; the start-up timing is the likelier trigger, also not proven. The in-place
+    fill removes the one way a repaint could drop the keyboard; the start-up fix is the other half.
