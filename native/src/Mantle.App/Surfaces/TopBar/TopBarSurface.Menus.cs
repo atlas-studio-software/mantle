@@ -51,6 +51,7 @@ internal sealed partial class TopBarSurface
     {
         _win.Activated += (_, e) =>
         {
+            if (_priming) return;   // TopBarSurface.cs Prime: the making's one Activate is not the user's
             if (e.WindowActivationState == WindowActivationState.Deactivated) CloseAll(false, "the window lost focus");
             else KeysHomeSoon();   // TopBarSurface.Motion.cs: the menu keys need the focus inside the bar
         };

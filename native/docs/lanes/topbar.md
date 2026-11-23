@@ -414,7 +414,68 @@ this area.
 - **n/a rows:** TOP-376..379 (no renderer page), TOP-006/007 (the window is always the display's width; no zoom guess).
 - **Shared lines:** App.xaml.cs 1 line (session end). TopBarSurface.cs, non-backdrop lines only: `_want = ...` in
   Place, two cases in Proc (WM_WINDOWPOSCHANGED, TaskbarCreated), `DriftStop()` in Destroy.
+- **Runs:** fast 43854706570 (build: the `Run` name clash), 43855244202 (test build errors; ui 90 of 91, the idle
+  test light hidden 1.25 %), 43857502511 (unit 1017 of 1018: a JSON-escaped apostrophe in the UIA test; ui 90 of 91:
+  the corners row test "This bar has no road to Mantle's commands", the corners lane's; idle passed, light hidden
+  0.104 %, dark 0.937 %). The idle readings at the same code ranged 0.104..1.25 % (15 s window, 0.104 % a tick), so
+  the 1.25 % was tick noise. No part 9 timer runs at rest. Full **43859548470 at 9d9a6873: `NATIVE-CI: ok (17 ok,
+  0 skipped: )`**, unit 1018 of 1018, ui 91 of 91.
+- **Ledger:** `mark-topbar-rows.py native ui 9d9a6873` marked 36 rows. TOP rows: 191 tested, 25 ported, 2 better,
+  6 n/a, 158 todo (of 382). Part 8 ended with 157 / 19 / 2 / 0 / 204; the 10 hints rows were part of the 34 more tested.
+- **Merged** origin/native/main 8d8845e2 (the flake branch) at 49793bc8, clean.
+- **The first show never activates (TOP-221), coordinator's bug from lane native-r8-startup run 43859364384** (the
+  start-up show's Activate took the keyboard from a pop-up opened in Mantle's first second; the downloads shelf and
+  the notification centre then closed). 3fe8a087: the first show is `AppWindow.Show(false)` (logged in --test as
+  "first show: shown inactive, the foreground stays where it was"); UI test `TopBarFirstShowTests` (81de52ca fixes
+  its Mouse name clash): a hidden-by-hand start, the launcher clicked to take the keyboard, Win+Alt+T makes the bar's
+  first show, the launcher must keep the foreground and stay open.
+  - **NOT GREEN, HANDOFF.** A WinUI window that is never `Activate()`d at its show does not take keys into its XAML
+    after a click. Runs: 43864177428 (3fe8a087+81de52ca: ui 88 of 92: the stat test, the menus test, the menu
+    bottom-rows test and the password-field test; no trx came back), 43866395320 (79b53393: Activate inside the first
+    PointerPressed; ui 90 of 92: the stat and the menus tests), 43868709747 (c0b94b60: that Activate deferred to low
+    priority; top bar ui only, 8 of 10: same 2; the log says "first press: the bar activated for its keys (in front:
+    yes)" but no "window activated" came), 43869659697 (4dc160e2: KeysHomeSoon after it; 8 of 10, same 2: the log
+    says "window activated; keys go to topbar.stat.cpu (it held the focus)", the bar is in front, and still no key
+    arrives). The first-show test itself PASSED in 43869659697 (with the game, put-back and
+    the other 6 top bar UI tests). So the window is foreground, XAML focus is on the button, and the keys do not reach XAML: the island's
+    own HWND likely never gets the Win32 keyboard focus. Next tries, in order: (1) after the first-press Activate,
+    `SetFocus` on the XAML island's child HWND (FindWindowEx for the DesktopChildSiteBridge /
+    InputSite class) and log what has the Win32 focus (GetFocus on the bar's thread); (2) Activate once at creation
+    while the window is still parked (before any pop-up can exist), handing the foreground straight back, then the
+    inactive first show; (3) if neither works, revert 3fe8a087..4dc160e2 (TopBarSurface.cs first show,
+    TopBarSurface.Motion.cs first press) and keep the bug open.
 - **Not done (budget):** TOP-003 menubar role (needs custom automation peers), Tools (TOP-211), TOP-091's UI test.
+
+## Part 10 (lane native-r8-tbkeys, same branch): the inactive first show AND the bar's keys (TOP-221)
+
+- **Cause.** WinUI takes keys into a window's XAML only once `Window.Activate()` has run on that window. Part 9's
+  first show (`AppWindow.Show(false)`) never ran it. Later activations (a click, UIA's focus) still raised Activated, and the
+  XAML focus sat on the pressed button, but no key arrived. An Activate at the first press, on a window
+  already in front, did not do it either (part 9's runs).
+- **Try (a), 2c9d5f0a, FAILED:** `SetFocus` on the island's child HWND when the bar is in front and the Win32 focus is
+  outside it. Run 43871395685: top bar ui 8 of 10, the same stat and menus tests. The ping test's full log showed
+  the Win32 focus already on the island's `InputSiteWindowClass` at activation, so the Win32 focus was not the cause.
+- **Try (b), 5ef44d8e, GREEN:** `TopBarSurface.Prime()` runs the one Activate at the making: the window is
+  parked off-screen at -32000, activated, the foreground handed straight back if it took it, and hidden again. This happens before
+  the first show, which waits for the sidecar ("shown (sidecar ready)"). `_priming` (cleared on a Low dispatcher turn) keeps that
+  Activate's Activated / Deactivated out of the menus' handler, so it is never logged as "window activated". The first
+  show stays `AppWindow.Show(false)` ("first show: shown inactive, the foreground stays where it was"); later shows
+  `SW_SHOWNOACTIVATE`. Run 43872627227 (top bar ui only): `NATIVE-CI: ok (2 ok, 0 skipped: )`, ui 10 of 10, with the
+  first-show test, `Stat_dropdowns...` and `Menus_open...` together. In CI the prime logged "it never took the
+  foreground": the Activate call is what WinUI needs, not the foreground.
+- **Cleanup, ddccb085:** try (a)'s island focus and part 9's first-press Activate (79b53393, c0b94b60, 4dc160e2) are
+  removed: `TopBarSurface.Motion.cs` is back to 49793bc8. Net change vs native/main: TopBarSurface.cs (Prime, the
+  inactive first show), 1 line in .Menus.cs (`_priming`), `TopBarFirstShowTests`. The chain cherry-picks cleanly onto
+  native/main 951b179b (dry run).
+- **Full run at ddccb085: 43873407427, `NATIVE-CI: ok (17 ok, 0 skipped: )`**, unit 1018 of 1018, ui 92 of 92 (so
+  also part 9's other casualties at 3fe8a087: the strip menu's bottom-rows test and the quick settings password-field
+  test). Its artifacts did not come back (the laptop's disk was full); the judgement is the log's NATIVE-CI line.
+  TOP-221 (showInactive) is done on this branch.
+- **Open:** a rest / wake (game mode) makes the AtStart surfaces again, so the bar's Prime runs then too. Outside CI
+  it can take the foreground for a moment and hand it back, as the old first show did at that point. A pop-up open at
+  that very moment would lose the keyboard. Live start: the bar is made when the surfaces start (before the
+  sidecar is ready), so a pop-up opened in Mantle's first second meets only the inactive first show. The startup lane's
+  `DownloadsKeysTests` / `NotificationsTests` timing should be re-checked on top of native/r8-startup.
 
 ## Left (exact list, in order)
 
@@ -440,5 +501,5 @@ this area.
 2. **Parts of started sections not ported:**
    - Page and strip: TOP-003 menubar role (custom automation peers for the bar and its titles).
    - Feature + settings: TOP-211 tools hub.
-   - Window + displays: TOP-220 zoom (n/a natively), TOP-221, TOP-223, TOP-226.
+   - Window + displays: TOP-220 zoom (n/a natively), TOP-223, TOP-226 (TOP-221: part 10).
    - Step aside: TOP-273..280 full-screen video (media sessions, `Features/Media`), the motion (leave / arrive).
