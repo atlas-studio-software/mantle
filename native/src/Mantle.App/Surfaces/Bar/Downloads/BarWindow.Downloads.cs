@@ -157,6 +157,7 @@ public sealed partial class BarWindow
         if (measureOnly || Popups?.OpenKey != DlKey) return;
         double h = Math.Min(560, _dl.Need());
         if (!Popups.Resize(DlKey, h)) { _dl.Note = "This panel may be cut off at the screen edge: Mantle could not make it taller"; _dl.Paint(Dark, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds()); }
+        DlSeatFocus();
     }
 
     /// refresh(): cached = the feature's last read (a push said it changed); otherwise the folder is read again first.
@@ -242,8 +243,22 @@ public sealed partial class BarWindow
         _dlKbd = ok; _dlUser = false;
         _dl.KbdNote = ok ? "" : "Arrow keys do not reach this panel: " + words.Split(", so ")[0];
         Host.Log.Line(ok ? "downloads: the shelf has the keyboard (asked once it was on screen)" : $"downloads: the keyboard was not taken ({words})");
-        if (ok && _dl.Rows.Count > 0) _dl.Root.Focus(FocusState.Programmatic);
-        PaintDl();
+        PaintDl();   // seats the focus (DlSeatFocus) once there are rows
+    }
+
+    /// The keys reach the shelf only through a focused element inside it (KeyDown routes up from the focus to Root;
+    /// Root is a Grid, which cannot take focus itself). When the shelf holds the keyboard and nothing in it has the
+    /// focus, the first row gets it programmatically. That is not the user's choice (_dlUser stays false), so the
+    /// first Down is still the newest row (DownloadsKeys.From). Seated on every paint, because the rows can arrive
+    /// AFTER the keyboard was taken: stage 9 run 45267680314 took the keyboard, then painted 3 rows, and no key
+    /// ever reached the shelf ("the first Down did not reach the newest row").
+    void DlSeatFocus()
+    {
+        if (_dl == null || !_dlKbd || _dlUser || Popups?.OpenKey != DlKey || _dl.Rows.Count == 0) return;
+        if (_dl.Root.XamlRoot is not { } xr) return;
+        if (Microsoft.UI.Xaml.Input.FocusManager.GetFocusedElement(xr) is UIElement) return;
+        bool ok = _dl.Rows[0].Focus(FocusState.Programmatic);
+        if (Host.Args.Test) Host.Log.Line(ok ? "downloads: nothing in the shelf had the focus; the first row has it now (not the user's: the first Down is still the newest)" : "downloads: nothing in the shelf has the focus, and the first row did not take it");
     }
 
     /// onKey(): Up/Down walk the rows (the first Down is the newest, the first Up the oldest), Home/End, clamped; Esc closes.
