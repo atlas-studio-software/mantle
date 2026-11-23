@@ -93,7 +93,7 @@ public partial class MantleApp : Application
         _window.ShowBar();
 
         Host.Data.Changed += c => {
-            _queue.TryEnqueue(() => UiTimed("data changed: the bar's handler", () => _window?.OnDataChanged(c)));
+            _queue.TryEnqueue(() => Mantle.Core.Logging.UiSlice.Run("a data file changed", c.File.ToString(), () => UiTimed("data changed: the bar's handler", () => _window?.OnDataChanged(c))));
             // the host's theme follows theme.json too (Electron's Settings writes it), so every surface hears "theme"
             if (c.File == DataFile.Theme) _hostLoop?.Post(() => _look?.ThemeFileChanged());
         };
@@ -103,6 +103,17 @@ public partial class MantleApp : Application
         Host.Instance.Listen(
             argv => _hostLoop?.Post(() => OnSecondLaunch(argv)),
             err => Host.Log.Line("single instance: " + err));
+        // the start-up stall meter (test only, MANTLE_TEST_STALL=1): the UI thread timed for 10 s from the bar's first frame,
+        // the moment a user can first use the bar (Shell/Diagnostics/StallMeter.cs)
+        if (Mantle.App.Shell.Diagnostics.StallMeter.Asked) {
+            var q = _queue!;
+            EventHandler<object>? first = null;
+            first = (_, _) => {
+                Microsoft.UI.Xaml.Media.CompositionTarget.Rendering -= first!;
+                Mantle.App.Shell.Diagnostics.StallMeter.Start(q, Host.Log.Line, Host.Marks.MainTicks);
+            };
+            Microsoft.UI.Xaml.Media.CompositionTarget.Rendering += first;
+        }
     }
 
     // ------------------------------------------------------------------ the host thread
@@ -133,6 +144,9 @@ public partial class MantleApp : Application
     int _readies;
     object? _session;
 
+    /// Test only: the host thread's start is held this many ms (StartHost).
+    const string HostLateEnv = "MANTLE_TEST_HOST_LATE";
+
     void StartHost()
     {
         try {
@@ -145,7 +159,11 @@ public partial class MantleApp : Application
                 StateFile = Host.StateFile,
                 Log = (level, message) => Host.Log.Line($"[sidecar {level}] {message}"),
             };
-            _hostLoop.Post(() => HostStart(opts, choice.Path));
+            // MANTLE_TEST_HOST_LATE=<ms> (--test only, up to 5000): the host thread starts that late, so a UI test can use the
+            // bar before the host has handed it its roads (the start-up ordering a quick first click meets)
+            int late = Host.Args.Test && int.TryParse(Host.Env(HostLateEnv), out int l) ? Math.Clamp(l, 0, 5000) : 0;
+            if (late > 0) Host.Log.Line($"mantle: test: the host thread starts {late} ms late ({HostLateEnv})");
+            _hostLoop.Post(() => { if (late > 0) System.Threading.Thread.Sleep(late); HostStart(opts, choice.Path); });
         } catch (Exception e) {
             Host.Log.Line("the platform could not be set up: " + e.Message);
         }
@@ -258,7 +276,7 @@ public partial class MantleApp : Application
             Post = loop.Post, Events = _events, Log = Host.Log, PinnedTheme = Host.Args.Theme,
         });
         _offs.Add(Catalogs.Register(_bus, _look));
-        _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => UiTimed("theme: the bar taking the host's theme", () => ThemeShown?.Invoke(p))); };
+        _look.Shown += p => { ThemeNow = p; _queue?.TryEnqueue(() => Mantle.Core.Logging.UiSlice.Run("the host's theme", null, () => UiTimed("theme: the bar taking the host's theme", () => ThemeShown?.Invoke(p)))); };
         ThemeNow = _look.Payload();
         _look.Start();
         if (_queue != null) Mantle.App.Shell.Glass.DesktopGlass.Feed(_look.Look, _queue);   // the see-through look's still and tint (look.md)

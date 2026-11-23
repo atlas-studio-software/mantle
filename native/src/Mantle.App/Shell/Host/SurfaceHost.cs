@@ -36,7 +36,7 @@ internal sealed class SurfaceHost
     /// list of the surfaces made now (<see cref="Made"/>) is taken again, so the host thread reads it without a hop.
     public bool PostUi(Action work)
     {
-        try { return _q.TryEnqueue(() => { try { work(); } finally { Snap(); } }); } catch (Exception) { return false; }
+        try { return _q.TryEnqueue(() => { try { UiSlice.Run("a surface host job", null, work); } finally { Snap(); } }); } catch (Exception) { return false; }
     }
 
     volatile string[] _made = Array.Empty<string>();

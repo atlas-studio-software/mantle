@@ -672,11 +672,27 @@ internal sealed class OsdSurface : ISurface
         string key = FormattableString.Invariant($"{w}x{h}@{scale}:{box}");
         if (key == _shadowKey) return;
         _shadowKey = key;
-        var img = new Image { Source = CssShadow.Bitmap(w, h, scale, new[] { box }, CssShadow.LightLg), Width = w / scale, Height = h / scale,
-            Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
-        _shadowHost.Children.Clear();
-        _shadowHost.Children.Add(img);
+        // lane native-r8-startup: the blur runs on a pool thread (it held the UI thread ~0.8 s at start on a CI runner, the
+        // first layout of this hidden, parked window); one at a time, into one reused buffer, and when it lands the newest
+        // size wins (a size that came while it ran is drawn next). Only the bitmap's one copy is on the UI thread.
+        if (_shadowBusy) return;
+        _shadowBusy = true;
+        int bytes = Math.Max(1, w) * Math.Max(1, h) * 4;
+        if (_shadowPx.Length < bytes) _shadowPx = new byte[bytes];
+        var px = _shadowPx; var q = _ctx!.Dispatcher;
+        System.Threading.Tasks.Task.Run(() => CssShadow.Into(px, w, h, scale, new[] { box }, CssShadow.LightLg)).ContinueWith(t => q.TryEnqueue(() => {
+            _shadowBusy = false;
+            if (_shadowGone) return;
+            if (t.IsFaulted) { _ctx?.Log.Line("the light shadow could not be drawn: " + t.Exception?.GetBaseException().Message); _shadowKey = ""; return; }
+            if (key != _shadowKey) { _shadowKey = ""; Shadow(); return; }
+            var img = new Image { Source = CssShadow.FromPixels(px, w, h), Width = w / scale, Height = h / scale,
+                Stretch = Stretch.Fill, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Top, IsHitTestVisible = false };
+            _shadowHost.Children.Clear();
+            _shadowHost.Children.Add(img);
+        }), System.Threading.Tasks.TaskScheduler.Default);
     }
+    bool _shadowBusy, _shadowGone;
+    byte[] _shadowPx = Array.Empty<byte>();
 
     // ------------------------------------------------------------------ ISurface
 
@@ -707,6 +723,7 @@ internal sealed class OsdSurface : ISurface
 
     public void Destroy(string why)
     {
+        _shadowGone = true;
         StopFade();
         foreach (var s in _subs) s.Dispose();
         _subs.Clear();
