@@ -24,6 +24,10 @@ public static class AutoPauseCoexist
 {
     public const string TaskName = "SpotifyAutoPause";
     public const int PingTimeoutMs = 700, SchtasksTimeoutMs = 4000;
+    /// The ONLY schtasks.exe call (a read-only query, hidden window, 4 s): never /change, /run, /end, /create or /delete.
+    public static readonly IReadOnlyList<string> SchtasksArgs = new[] { "/query", "/tn", TaskName, "/fo", "csv", "/nh" };
+    /// The coexistence ping's own header (the Electron check sends it too).
+    public const string PingHeader = "X-Mantle: coexist";
     public const string InChargeWords = "The separate Spotify auto-pause helper on this PC is in charge, so Mantle\u2019s stays off. Turn the helper off to use this one";
     public const string ThrewWords = "Mantle could not tell whether the separate auto-pause helper runs, so it stays off to be safe";
 
