@@ -337,9 +337,22 @@ namespace Mantle.Sidecar.Tests {
         K(DOWN, true, "alt"), K(DOWN, false, "alt"), K(ESC, true, "alt"), K(ESC, false, "alt"), AltUp,
       }, Enumerable.Repeat("P", 12).ToArray());
 
-    // SWI-018, SWI-028: every scenario above, run again in one go, must have exercised at least the 33
-    // modifier keyups Electron's suite counts (fewer means scenarios stopped running) and the
-    // machine's chord names must be exactly the surface's chords.
+    // SWI-025: the keys the switcher does NOT handle (no Delete, digits, Enter, Space, Home/End, Alt+F4,
+    // type-to-search) pass straight through while it is open, raise no event and leave the session up.
+    // Not an Electron scenario (the row cites none).
+    [TestMethod]
+    public void KeysTheSwitcherDoesNotHandle_PassWhileItIsOpen() {
+      var keys = new[] { 0x2E, 0x31, 0x0D, 0x20, 0x24, 0x23, 0x73, 0x51 };   // Delete, 1, Enter, Space, Home, End, F4, Q
+      var events = new List<Dictionary<string, object>> { AltDown, Tab(), TabUp() };
+      var want = new List<string> { "P", "S open:1", "S" };
+      foreach (int vk in keys) { events.Add(K(vk, true, "alt")); events.Add(K(vk, false, "alt")); want.Add("P"); want.Add("P"); }
+      events.Add(AltUp); want.Add("D commit:1");
+      var r = Sim("keys the switcher does not handle pass", null, events.ToArray(), want.ToArray());
+      Assert.AreEqual(1L, Num(r["committed"]), "the session stayed up to the Alt-up");
+    }
+
+    // SWI-018: every scenario above, run again in one go, must have exercised at least the 33
+    // modifier keyups Electron's suite counts (fewer means scenarios stopped running).
     [TestMethod]
     public void EveryModifierKeyUp_InEveryScenario_PassedThrough() {
       _modUps = 0;

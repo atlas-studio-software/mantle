@@ -16,7 +16,7 @@ ui/taskview/layout.js, lib/features/taskview.js guards) to `Mantle.Core` as pure
 - `tests/Mantle.Sidecar.Tests/AltTabKeys.cs` (kept from the stopped lane, fixed): `hotkey {op:'simulate'}` and
   `{op:'order'}` through the real dispatcher (passive), scenario for scenario as lib/switcher.test.js machine(),
   order() and refusals(). Fix: the two Win-tap scenarios were missing, so the modifier-keyup count was 32 and the
-  ">= 33" check would have failed. Added: the kill switch Ctrl+Alt+Shift+Backspace passes (switcher open and closed,
+  ">= 33" check would have failed. Added: SWI-025 (keys it does not handle pass while open), the kill switch Ctrl+Alt+Shift+Backspace passes (switcher open and closed,
   every switch and every chord on) and the hand-back (altTab false: Tab, Shift+Tab, arrows, Esc all pass).
 - `Mantle.Core/Features/Switcher/SwitcherLayout.cs` (kept from the stopped lane; its doc pointed at a golden file
   that does not exist, now points at the tests): layout.js layout, reflow, notice, firstRow.
@@ -74,7 +74,7 @@ None touched. No App/service registration, no chord table change (Win+Tab is alr
 
 ## Left (ID ranges)
 
-- SWI: 024, 025, 029, 033..042, 044..054, 056, 057, 066, 070..087, 089..113, 121..127, 136..138, 140, 141, 143, 144;
+- SWI: 024, 029, 033..042, 044..054, 056, 057, 066, 070..087, 089..113, 121..127, 136..138, 140, 141, 143, 144;
   and the "not yet" halves noted in the status cells.
 - TV: 002..006, 008..046, 049, 050, 052, 054..070, 072..079, 082..100, 102..118, 122..126, 129..134.
 - Next in value: the Switcher feature itself (an IFeature that applies `Want` through the sidecar client, publishes
