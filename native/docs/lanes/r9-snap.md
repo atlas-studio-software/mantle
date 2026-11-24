@@ -100,3 +100,68 @@ None edited. The chords were already in `Mantle.Core/Keys/ChordTable.cs`; the fe
   (window layouts and their pop-up).
 - UNF-001..111: all left (the lock/wake unfold overlay: `lib/features/_unfold-core.js`, `_unfold-windows.js`,
   `sidecar/Unfold.cs`). Not restore/maximize behaviour, despite the lane brief's gloss.
+
+## Second window (lane r9-snap-2, 2026-11-24)
+
+Still nothing built or run (no .NET SDK). Two new files in `Mantle.Core/Features/Snap/`, model only, no surface:
+
+- `SnapPanel.cs`: lib/features/snap.js#picker, #pickZone, #openAssist, #candidates, #pickWindow, #giveFocus, #end,
+  the pick and dismiss commands and #reveal's keyboard check. A panel is a `SnapShow` {seq, mode, rect (DIP), payload
+  = snap.show's} plus a hide by seq; the surface converts physical to DIP (`toDip`) and finds the display's work area
+  (`workOf`), both injected. Its own `ArrowAsync` wraps `SnapCore.ArrowAsync` and opens Snap Assist after a snap.
+- `SnapPages.cs`: ui/snap/snap.js's keys (the picker's incl. the digits 1-5, Enter/Space, Esc; Snap Assist's), the
+  tile grid (`Layout`, `Tile`), the row paging (`SelectTile`, `MoreHint`) and every face's words, as pure functions.
+  No colour, font, film, sheen, hairline or box anywhere, so the surface can sit on the shared style layer
+  (Look/Levitate) with the panel background in one place there.
+- `SnapCore.cs`: `R1`, `Js`, `Truthy`, `Int`, `Notice` made `internal`; new `internal LandedAsync(label, answer)`, the
+  same never-strand check and put-back as Win+arrow, plus the "Could not put <app> back on the screen" notice.
+- Tests: `Mantle.Core.Tests/Features/Snap/SnapPanelTests.cs`, `SnapPagesTests.cs` (xUnit, fake sidecar, nothing touched).
+
+**Not wired.** SnapFeature still claims only the four arrows and calls `SnapCore` directly; the surface lane swaps
+in `SnapPanel` (its `ArrowAsync`, `PickerAsync` for "Win+Z", `PickAsync`/`DismissAsync` for the page,
+`Off` from the enabled change, `Stop`) and adds "Win+Z" to the chords. Until then every row below stays `todo` with
+its model marked written-not-run.
+
+### Safety (r9-snap-2)
+
+Every window a pick moves (snap.zone from the picker and from Snap Assist) goes through `SnapCore.LandedAsync`:
+on its own monitor = no extra call; else every live monitor is read and `SnapSafety.Clamp` decides; a stranded window
+gets one `layouts.place`; a put-back that fails is a notice. NEW: a window that had to be put back (after Win+arrow,
+Win+Z or Assist) gets NO Snap Assist (its empty zones were measured for where it was meant to land) and the keyboard
+goes back to it. Tests, all `SnapPanelTests`:
+`Safety_a_Win_Z_zone_landing_off_every_live_monitor_is_put_back_once_and_gets_no_Snap_Assist` (monitor gone),
+`Safety_a_Win_Z_put_back_that_fails_is_a_notice_never_silent`,
+`Safety_multi_monitor_a_Snap_Assist_pick_on_the_first_windows_other_monitor_is_judged_there_and_left_alone`,
+`Safety_multi_monitor_a_Snap_Assist_pick_hanging_off_the_other_monitor_is_fitted_back_onto_it`,
+`Safety_DPI_too_little_title_bar_at_150_percent_is_put_back_but_the_same_landing_at_100_percent_is_left`,
+`Safety_a_Win_arrow_snap_that_had_to_be_put_back_opens_no_Snap_Assist`,
+`Safety_a_pick_that_moved_nothing_by_rect_is_not_checked_or_moved`. Restore: no new restore path was added; the
+restore rule's tests stay the first window's (`SnapSafetyTests#A_restore_*`).
+
+### Deviations (r9-snap-2)
+
+- New notice text "Windows did not say where the window is." (title "Snap layouts are not available") when snap.info
+  has no frame; snap.js would throw there. New error "Snap Assist has no empty zone left" (cannot happen in snap.js).
+- No Snap Assist after a put-back (above).
+- A Win+Z pick whose zone answer had no target hwnd opens Assist for the answer's hwnd (snap.js would use undefined).
+- In a test run Snap Assist offers nothing (native has no test windows of its own yet) and says so in the log.
+- The end-of-panel log is `#N mode: ended: why`; the drawn/shown timings and the picture count belong to the surface.
+- `MoreHint` keeps snap.js's trailing " · " when only "more above" applies (ported as is, not fixed).
+
+### PEND-012 (r9-snap-2)
+
+- SNAP-071: the digit keys ARE in ui/snap/snap.js (keydown, `/^[1-9]$/` and at most the layout count); the first
+  window's note missed them. Still no Electron test: ui/snap/shoot.js is a screenshot script. Added here.
+- SNAP-062 (Win+Z again closes and gives focus back), SNAP-068, SNAP-075 (a refused Win+Z pick, "no zone N in layout
+  X"), SNAP-076's click-away half, SNAP-077, SNAP-092, SNAP-093's switch-off half: lib/features/snap.test.js has no
+  case (its Esc case, line 240, and the Assist pick cases, lines 168-176, are real). Added here.
+- SNAP-074: snap.test.js checks the focus after an Assist pick only, not after a plain Win+Z pick; added.
+- SNAP-079: the "already filled" exclusion is still only the sidecar's live `Occupied`; no pure test possible here.
+- SNAP-082..085, 088, 089: cite ui/snap/shoot.js, a screenshot script, not a test; the model is tested here.
+
+### Rows (r9-snap-2)
+
+Model written-not-run, still `todo` (not wired / no surface), 31 rows: SNAP-060..069, 071..078, 080..085, 088..093,
+110 (067 and 071 extended). Left: SNAP-001..004, 026, 036..046, 048, 050, 052, 054..056, 058, 059, 070 (as before),
+079 (live path), 086, 087 (mouse and pictures: surface), 094..099 (the snap window), 102..109, 111..170;
+UNF-001..111.
