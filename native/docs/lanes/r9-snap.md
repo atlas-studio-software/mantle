@@ -18,6 +18,8 @@ no .NET SDK, so every row below is `written-not-run`, never `tested`. The held c
     the start-up probe verdict. Then the safety check on every landed frame.
   - `SnapFeature.cs`: `[Feature("snap")]`, default on, rest, the four arrow chords, notices as the `snap.notice`
     event {title, text, work} for a surface that does not exist yet.
+  - `SnapFaces.cs`: the snap window's faces as numbers for that surface (notice spot, grow and time; picker spot;
+    the five Win+Z layouts and `rest`; the picker's zone and row walk). DIP, JavaScript rounding.
 - Tests: `native/tests/Mantle.Core.Tests/Features/Snap/{SnapSafetyTests,SnapCoreTests,SnapFeatureTests}.cs` (xUnit).
 
 ## The never-strand rule (safety)
@@ -73,6 +75,9 @@ test instance was started.
   case); added here as a pure verdict (`SnapCore.Probe`). The feature's timer itself is not tested.
 - SNAP-055: snap.test.js has no "Could not snap this window" case; added here.
 - SNAP-079: the "already filled by another window" exclusion is the live path (Execute), not in the plan test.
+- SNAP-058/059/070: lib/features/snap.test.js checks none of the notice spot, the grow, the time or the layouts table
+  (only SNAP-067's picker spot, line 219); added here. SNAP-071 cites ui/snap/shoot.js, a screenshot script, not a
+  test; the walk is added here, the digit keys are not (the digit handling was not found in ui/snap/snap.js).
 
 ## The untracked folder
 
@@ -89,7 +94,8 @@ None edited. The chords were already in `Mantle.Core/Keys/ChordTable.cs`; the fe
 ## Left (ID ranges)
 
 - SNAP: 001 (Win+Z), 002..004 (host/hook rows, not re-tested here), 026, 036..046 (live move path and refusals in
-  `Snap.cs`, unchanged), 048, 050, 052, 054..056 (surface), 058..099 (notice, picker, Snap Assist, the snap window),
+  `Snap.cs`, unchanged), 048, 050, 052, 054..056, 058, 059, 067, 070, 071 (rules written, no surface), 060..066,
+  068, 069, 072..099 (notice, picker, Snap Assist, the snap window),
   102..117 (rest, settings, tray, theme, DPI of the window, test mode, stop, Windows' own snap settings), 118..170
   (window layouts and their pop-up).
 - UNF-001..111: all left (the lock/wake unfold overlay: `lib/features/_unfold-core.js`, `_unfold-windows.js`,
