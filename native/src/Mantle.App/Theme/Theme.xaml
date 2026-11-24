@@ -13,5 +13,7 @@
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
   <ResourceDictionary.MergedDictionaries>
     <ResourceDictionary Source="ms-appx:///Theme/Tokens.xaml"/>
+    <!-- lane r10-newlook: the levitated look's tokens (islands, gaps, control fills, motion) -->
+    <ResourceDictionary Source="ms-appx:///Theme/Levitate.xaml"/>
   </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>
