@@ -6,7 +6,7 @@
    "id": "SEE-018",
    "what": "SEED.glass (lib/look-sync.js)",
    "electron": "dark 5 / .50 / 0, light 12 / .45 / 0",
-   "native": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}"
+   "native": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}"
   }
  ],
  "parse": [
@@ -301,7 +301,7 @@
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}",
    "reason": null
   },
   {
@@ -316,42 +316,42 @@
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0}}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0}}",
    "reason": "glass.light missing"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":64.5,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":64.5,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}",
    "reason": "glass.dark.blurPx must be 0..64"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":5,\"dim\":0.19,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":5,\"dim\":0.19,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}",
    "reason": "glass.dark.dim must be 0.2..0.9"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":5,\"dim\":0.5,\"panel\":0.16},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":5,\"dim\":0.5,\"panel\":0.16},\"render\":\"picture\"}",
    "reason": "glass.light.panel must be -0.3..0.15"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":5,\"dim\":0.5,\"panel\":-0.31},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":5,\"dim\":0.5,\"panel\":-0.31},\"render\":\"picture\"}",
    "reason": "glass.light.panel must be -0.3..0.15"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"blur\"}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"blur\"}",
    "reason": "glass.render must be picture or seeThrough"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0}}",
+   "value": "{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0}}",
    "reason": "glass.render must be picture or seeThrough"
   },
   {
    "field": "glass",
-   "value": "{\"dark\":{\"blurPx\":\"5\",\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}",
+   "value": "{\"dark\":{\"blurPx\":\"5\",\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}",
    "reason": "glass.dark.blurPx must be 0..64"
   },
   {
@@ -413,9 +413,9 @@
  "vars": [
   {
    "local": "{}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"glass\":{\"dark\":{\"blurPx\":8,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}",
@@ -455,21 +455,21 @@
   },
   {
    "local": "{\"accent\":{\"hue\":212}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\",\"--lg-acc\":\"#9fb4cc\",\"--lg-acc-strong\":\"#b7c8db\",\"--lg-acc-on\":\"#11161c\",\"--lg-acc-soft\":\"rgba(159, 180, 204, 0.14)\",\"--lg-acc-line\":\"rgba(159, 180, 204, 0.42)\",\"--lg-acc-select\":\"rgba(159, 180, 204, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(159,180,204,.55)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":212},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\",\"--lg-acc\":\"#9fb4cc\",\"--lg-acc-strong\":\"#b7c8db\",\"--lg-acc-on\":\"#11161c\",\"--lg-acc-soft\":\"rgba(159, 180, 204, 0.14)\",\"--lg-acc-line\":\"rgba(159, 180, 204, 0.42)\",\"--lg-acc-select\":\"rgba(159, 180, 204, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(159,180,204,.55)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":212},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"accent\":{\"hue\":0}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\",\"--lg-acc\":\"#cc9f9f\",\"--lg-acc-strong\":\"#dbb7b7\",\"--lg-acc-on\":\"#1c1111\",\"--lg-acc-soft\":\"rgba(204, 159, 159, 0.14)\",\"--lg-acc-line\":\"rgba(204, 159, 159, 0.42)\",\"--lg-acc-select\":\"rgba(204, 159, 159, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(204,159,159,.55)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":0},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\",\"--lg-acc\":\"#cc9f9f\",\"--lg-acc-strong\":\"#dbb7b7\",\"--lg-acc-on\":\"#1c1111\",\"--lg-acc-soft\":\"rgba(204, 159, 159, 0.14)\",\"--lg-acc-line\":\"rgba(204, 159, 159, 0.42)\",\"--lg-acc-select\":\"rgba(204, 159, 159, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(204,159,159,.55)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":0},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"accent\":{\"hue\":360}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\",\"--lg-acc\":\"#cc9f9f\",\"--lg-acc-strong\":\"#dbb7b7\",\"--lg-acc-on\":\"#1c1111\",\"--lg-acc-soft\":\"rgba(204, 159, 159, 0.14)\",\"--lg-acc-line\":\"rgba(204, 159, 159, 0.42)\",\"--lg-acc-select\":\"rgba(204, 159, 159, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(204,159,159,.55)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":360},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\",\"--lg-acc\":\"#cc9f9f\",\"--lg-acc-strong\":\"#dbb7b7\",\"--lg-acc-on\":\"#1c1111\",\"--lg-acc-soft\":\"rgba(204, 159, 159, 0.14)\",\"--lg-acc-line\":\"rgba(204, 159, 159, 0.42)\",\"--lg-acc-select\":\"rgba(204, 159, 159, 0.32)\",\"--lg-focus\":\"0 0 0 1px rgba(20,21,22,.9), 0 0 0 3px rgba(204,159,159,.55)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":360},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"accent\":{\"hue\":137},\"glass\":{\"dark\":{\"blurPx\":9,\"dim\":0.7,\"panel\":0.1},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}",
@@ -479,21 +479,21 @@
   },
   {
    "local": "{\"accent\":{\"hue\":400}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"accent\":{\"hue\":1.5}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   },
   {
    "local": "{\"lookSync\":\"no\",\"glass\":{\"dark\":{}}}",
-   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.3)\"}",
-   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.3)\"}",
-   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}"
+   "dark": "{\"--lg-blur\":\"blur(0px)\",\"--lg-fill-bar\":\"rgba(9,10,11,0.2)\"}",
+   "light": "{\"--lg-blur\":\"blur(0px) saturate(150%)\",\"--lg-fill\":\"rgba(255,255,255,0.2)\"}",
+   "saved": "{\"lookSync\":true,\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}"
   }
  ],
  "hostConstants": {
@@ -18926,7 +18926,7 @@
      "events": [
       {
        "kind": "apply",
-       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}",
+       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}",
        "by": "mantle",
        "rev": 1,
        "cause": "seed"
@@ -18942,7 +18942,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -18968,7 +18968,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -18994,7 +18994,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 3,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": 200\n      },\n      \"rev\": 3,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 3,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": 200\n      },\n      \"rev\": 3,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -19680,7 +19680,7 @@
      "readOnly": null
     },
     {
-     "op": "[\"publish\",\"glass\",{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}]",
+     "op": "[\"publish\",\"glass\",{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}]",
      "res": {
       "ok": true,
       "rev": 2,
@@ -19698,7 +19698,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -19719,7 +19719,7 @@
      "events": [
       {
        "kind": "apply",
-       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}",
+       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}",
        "by": "mantle",
        "rev": 1,
        "cause": "seed"
@@ -19735,7 +19735,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -19761,7 +19761,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 2,\n  \"writer\": {\n    \"app\": \"mantle\",\n    \"instance\": \"golden-mantle\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"dark\",\n      \"rev\": 2,\n      \"by\": \"mantle\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"mantle\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -20070,7 +20070,7 @@
      "events": [
       {
        "kind": "apply",
-       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}}",
+       "changes": "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}",
        "by": "helm",
        "rev": 1,
        "cause": "seed"
@@ -20086,7 +20086,7 @@
        "skipped": 0
       }
      ],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"helm\",\n    \"instance\": \"golden-helm\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"helm\",\n    \"instance\": \"golden-helm\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -20101,7 +20101,7 @@
       "reason": "only Mantle publishes the desktop record"
      },
      "events": [],
-     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"helm\",\n    \"instance\": \"golden-helm\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.3,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    }\n  }\n}\n",
+     "file": "{\n  \"schema\": 1,\n  \"rev\": 1,\n  \"writer\": {\n    \"app\": \"helm\",\n    \"instance\": \"golden-helm\",\n    \"pid\": 4242,\n    \"at\": \"2026-11-07T12:00:00.000Z\"\n  },\n  \"look\": {\n    \"theme\": {\n      \"v\": \"system\",\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"accent\": {\n      \"v\": {\n        \"hue\": null\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    },\n    \"glass\": {\n      \"v\": {\n        \"dark\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"light\": {\n          \"blurPx\": 0,\n          \"dim\": 0.2,\n          \"panel\": 0\n        },\n        \"render\": \"picture\"\n      },\n      \"rev\": 1,\n      \"by\": \"helm\"\n    }\n  }\n}\n",
      "list": [
       "look.json"
      ],
@@ -20119,7 +20119,7 @@
     "local": null,
     "text": "On · not shared yet: not started",
     "state": "missing",
-    "glass": "{\"blurPx\":0,\"dim\":0.3,\"panel\":0}",
+    "glass": "{\"blurPx\":0,\"dim\":0.2,\"panel\":0}",
     "glassLook": "dark",
     "accent": "{\"hue\":null}",
     "shared": null
@@ -20130,7 +20130,7 @@
     "local": null,
     "text": "On · in sync (last change from Mantle at HH:MM, rev 1). Look sync started from the shared defaults (Match Windows), seeded by Mantle",
     "state": "ok",
-    "glass": "{\"blurPx\":0,\"dim\":0.3,\"panel\":0}",
+    "glass": "{\"blurPx\":0,\"dim\":0.2,\"panel\":0}",
     "glassLook": "light",
     "accent": "{\"hue\":null}",
     "shared": {
@@ -20150,12 +20150,12 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "render": "picture"
@@ -20167,8 +20167,8 @@
    },
    {
     "what": "glass dim .6",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":0,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 0,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":0,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 0,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 2)",
     "state": "ok",
     "glass": "{\"blurPx\":0,\"dim\":0.6,\"panel\":0}",
@@ -20191,7 +20191,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20208,8 +20208,8 @@
    },
    {
     "what": "glass light blur 20",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 3)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20232,7 +20232,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20250,7 +20250,7 @@
    {
     "what": "glass bad look",
     "answer": "{\"ok\":false,\"reason\":\"the glass change named no look (light or dark)\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 3)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20273,7 +20273,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20291,7 +20291,7 @@
    {
     "what": "glass out of range",
     "answer": "{\"ok\":false,\"reason\":\"panel must be -0.3..0.15\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 3)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20314,7 +20314,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20332,7 +20332,7 @@
    {
     "what": "glass text",
     "answer": "{\"ok\":false,\"reason\":\"dim must be 0.2..0.9\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 3)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20355,7 +20355,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20373,7 +20373,7 @@
    {
     "what": "glass nothing",
     "answer": "{\"ok\":false,\"reason\":\"the glass change came without values\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 3)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20396,7 +20396,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20413,8 +20413,8 @@
    },
    {
     "what": "accent 200",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":200}}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": 200\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":200}}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": 200\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 4)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20437,7 +20437,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20455,7 +20455,7 @@
    {
     "what": "accent bad",
     "answer": "{\"ok\":false,\"reason\":\"accent hue must be null or an integer 0..360\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": 200\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": 200\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 4)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20478,7 +20478,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20495,8 +20495,8 @@
    },
    {
     "what": "accent own",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 5)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20519,7 +20519,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20537,7 +20537,7 @@
    {
     "what": "sync bad",
     "answer": "{\"ok\":false,\"reason\":\"the switch needs on or off\"}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 5)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20560,7 +20560,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20577,8 +20577,8 @@
    },
    {
     "what": "sync off",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
-    "local": "{\n  \"lookSync\": false,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
+    "local": "{\n  \"lookSync\": false,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "Off: Mantle keeps its own look",
     "state": "off",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20601,7 +20601,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20618,8 +20618,8 @@
    },
    {
     "what": "accent while off",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":90}}",
-    "local": "{\n  \"lookSync\": false,\n  \"accent\": {\n    \"hue\": 90\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":90}}",
+    "local": "{\n  \"lookSync\": false,\n  \"accent\": {\n    \"hue\": 90\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "Off: Mantle keeps its own look",
     "state": "off",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20642,7 +20642,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {
@@ -20659,8 +20659,8 @@
    },
    {
     "what": "sync on",
-    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
-    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.3,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
+    "answer": "{\"ok\":true,\"theme\":\"light\",\"glass\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"glassLook\":\"light\",\"glassBoth\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":20,\"dim\":0.6,\"panel\":0},\"render\":\"picture\"},\"ranges\":{\"blurPx\":[0,64],\"dim\":[0.2,0.9],\"panel\":[-0.3,0.15]},\"accent\":{\"hue\":null}}",
+    "local": "{\n  \"lookSync\": true,\n  \"accent\": {\n    \"hue\": null\n  },\n  \"glass\": {\n    \"dark\": {\n      \"blurPx\": 0,\n      \"dim\": 0.2,\n      \"panel\": 0\n    },\n    \"light\": {\n      \"blurPx\": 20,\n      \"dim\": 0.6,\n      \"panel\": 0\n    },\n    \"render\": \"picture\"\n  }\n}",
     "text": "On · in sync (last change from Mantle at HH:MM, rev 5). Now matching the others (accent back to default)",
     "state": "ok",
     "glass": "{\"blurPx\":20,\"dim\":0.6,\"panel\":0}",
@@ -20683,7 +20683,7 @@
       "v": {
        "dark": {
         "blurPx": 0,
-        "dim": 0.3,
+        "dim": 0.2,
         "panel": 0
        },
        "light": {

@@ -146,7 +146,7 @@ public class WashTests
         foreach (var look in new[] { null, "null", "{}", "{\"glass\":7}", "{\"glass\":{\"dark\":{\"dim\":\"x\"}}}" }) {
             var r = Wash.Alpha(look == null ? null : JsonNode.Parse(look), null, "dark");
             Assert.Equal(0.30, r.Alpha);
-            Assert.Matches(@"glass\.dark\.dim is missing or outside 0\.20-0\.90, so the default 0\.30", r.Reason);
+            Assert.Matches(@"glass\.dark\.dim is missing or outside 0\.20-0\.90, so the default 0\.20", r.Reason);
         }
         var odd = Wash.Alpha(Look(Glass()), JsonNode.Parse("{\"guard\":\"x\",\"still\":\"a\"}"), "nonsense");
         Assert.Equal("auto", odd.Mode);

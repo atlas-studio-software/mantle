@@ -7,7 +7,7 @@ wallpaper (CONTRACT.md section 2 "Shared store", section 4, the user's 2026-10-1
 
 ## Part 1: the seed (SEE-018)
 - 11703dda had it all: LookSyncCore.Seed() and GlassSettings.Seed (LookHost's first glass, the local copy's default via
-  LocalLook.Default) are dark and light {blurPx 0, dim .30, panel 0}, theme system, accent null, render picture,
+  LocalLook.Default) are dark and light {blurPx 0, dim .20, panel 0} (look-sync seed 0.20, the user, 2026-11-24, t_18ac79; applied on top by the coordinator), theme system, accent null, render picture,
   matching look-sync.js SEED. gen-look-golden.js swaps the vendored module's SEED glass in memory and names it in
   golden.json `nativeDifferences`; re-running it (0.4 s) gives the committed golden.json byte for byte.
 - The roundtrip fixture `look-sync.json` (dark 5 / .50, light 12 / .45) and the profile fixture's look.json are stored

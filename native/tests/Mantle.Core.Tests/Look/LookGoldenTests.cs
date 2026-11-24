@@ -15,7 +15,7 @@ namespace Mantle.Core.Tests.Look;
 /// Byte-exact against the JavaScript: Fixtures/look/golden.json was written by the Electron modules themselves
 /// (Look/gen-look-golden.js runs lib/look-sync.js, lib/look-host.js, lib/look-guard.js and ui/shared/glass-adapt.js).
 /// Mantle publishes look.json for Helm and Quartz, so every byte it writes must be the module's.
-/// One documented difference: the seed (parity SEE-018). Native seeds look-sync's 2026-11-11 glass (blur 0 / Dim .30),
+/// One documented difference: the seed (parity SEE-018). Native seeds look-sync's 2026-11-11 glass (blur 0 / Dim .20, look-sync seed 0.20, the user, 2026-11-24),
 /// Electron Mantle's vendored module still seeds 5 / .50 and 12 / .45, so the generator swaps the module's SEED glass in
 /// memory and names the swap in the table's <c>nativeDifferences</c>.
 /// </summary>

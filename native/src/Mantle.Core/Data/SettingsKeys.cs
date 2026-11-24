@@ -36,7 +36,7 @@ public static class SettingsKeys
         new("mode", "system | light | dark", "system", "theme.json", "lib/theme.js#save (theme.set)"),
         new("lookSync", "bool", "true", "look-sync.json", "lib/look-host.js#save (look.sync)"),
         new("accent", "{hue: null | 0..360}", "{hue: null}", "look-sync.json", "lib/look-host.js#save (look.accent)"),
-        new("glass", "{dark, light: {blurPx, dim, panel}, render}", "dark 0 / .30 / 0, light 0 / .30 / 0, picture", "look-sync.json", "lib/look-host.js#save (look.glass)"),
+        new("glass", "{dark, light: {blurPx, dim, panel}, render}", "dark 0 / .20 / 0, light 0 / .20 / 0, picture", "look-sync.json", "lib/look-host.js#save (look.glass)"),
         new("selected", "builtin:<name> | library id", "none", @"wallpapers\library.json", "lib/wallpaper-lively.js#Library.save (wallpaper.set)"),
     };
 

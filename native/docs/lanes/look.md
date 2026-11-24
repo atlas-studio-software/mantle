@@ -128,8 +128,8 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
 - **The bottom bar.** The 2026-11-11 section and the brief name "the top bar and every native Mantle window (Settings,
   Files, Task Manager, launcher, popups that sit over the desktop)"; neither says the bottom bar. It keeps its live
   glass (BAR-034/037) until the user says. SEE-014.
-- **Seeds (SEE-018): done.** Decided 0 / .30 (the user, 11-16, confirmed 11-18). Native seeds a MISSING look.json with
-  look-sync's 2026-11-11 glass, dark and light {blurPx 0, dim .30, panel 0} (LookSyncCore.Seed, and GlassSettings.Seed,
+- **Seeds (SEE-018): done.** Decided 0 / .30 (the user, 11-16, confirmed 11-18), then 0 / .20 (look-sync seed 0.20, the user, 2026-11-24, t_18ac79). Native seeds a MISSING look.json with
+  look-sync's 2026-11-11 glass, dark and light {blurPx 0, dim .20, panel 0} (LookSyncCore.Seed, and GlassSettings.Seed,
   LookHost's first glass and the local copy's default); a stored look keeps its values, nothing is migrated. Electron
   Mantle's vendored look-sync still seeds 5 / .50, 12 / .45, so this is a deliberate difference from Electron: the byte
   goldens stay generated from Electron's code (Fixtures/look/golden.json via gen-look-golden.js), with that module's

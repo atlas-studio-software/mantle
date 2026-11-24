@@ -17,12 +17,12 @@ const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-look-golden-'));
 process.env.LOOK_SYNC_DIR = path.join(TMP, 'never-used');
 // ONE DOCUMENTED DIFFERENCE (parity SEE-018): native seeds look-sync's 2026-11-11 glass (CONTRACT "2026-11-11",
-// Seeds: blur 0 / Dim .30 in both themes), while Electron Mantle's vendored lib/look-sync.js still seeds dark 5 / .50
+// Seeds: blur 0, with Dim .20 in both themes since look-sync seed 0.20, the user, 2026-11-24, t_18ac79), while Electron Mantle's vendored lib/look-sync.js still seeds dark 5 / .50
 // and light 12 / .45. So the table is written by that module with only its SEED glass swapped, in memory (the file
 // on disk is never changed); every other byte is Electron's. The swap must hit each line exactly once, or this stops.
 const SEED_SWAP = [
-  ['dark: Object.freeze({ blurPx: 5, dim: 0.50, panel: 0 })', 'dark: Object.freeze({ blurPx: 0, dim: 0.30, panel: 0 })'],
-  ['light: Object.freeze({ blurPx: 12, dim: 0.45, panel: 0 })', 'light: Object.freeze({ blurPx: 0, dim: 0.30, panel: 0 })'],
+  ['dark: Object.freeze({ blurPx: 5, dim: 0.50, panel: 0 })', 'dark: Object.freeze({ blurPx: 0, dim: 0.20, panel: 0 })'],
+  ['light: Object.freeze({ blurPx: 12, dim: 0.45, panel: 0 })', 'light: Object.freeze({ blurPx: 0, dim: 0.20, panel: 0 })'],
 ];
 function lookSyncWithNativeSeed(file) {
   const Module = require('module');
