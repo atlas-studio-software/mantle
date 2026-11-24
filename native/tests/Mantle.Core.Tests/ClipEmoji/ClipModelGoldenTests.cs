@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Text.Json;
 using Mantle.Core.Features.Clipboard;
@@ -80,11 +81,19 @@ public sealed class ClipModelGoldenTests
     public void Ago_and_meta_lines_match_electron()
     {
         double now = Now;
-        foreach (var c in G.GetProperty("ago").EnumerateArray())
+        // the golden's past-a-week date ("Nov 6") is Electron's en-US toLocaleDateString; Ago formats with the
+        // current culture, so pin it here and the answer does not depend on the runner's locale
+        var culture = CultureInfo.CurrentCulture;
+        CultureInfo.CurrentCulture = CultureInfo.GetCultureInfo("en-US");
+        try
         {
-            double s = c.GetProperty("s").GetDouble();
-            Assert.Equal(c.GetProperty("r").GetString(), ClipModel.Ago(now - s * 1000, now));
+            foreach (var c in G.GetProperty("ago").EnumerateArray())
+            {
+                double s = c.GetProperty("s").GetDouble();
+                Assert.Equal(c.GetProperty("r").GetString(), ClipModel.Ago(now - s * 1000, now));
+            }
         }
+        finally { CultureInfo.CurrentCulture = culture; }
         var byId = Items().ToDictionary(i => i.Id);
         foreach (var c in G.GetProperty("meta").EnumerateArray())
         {
