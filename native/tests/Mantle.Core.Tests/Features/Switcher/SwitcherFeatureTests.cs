@@ -103,6 +103,23 @@ public class SwitcherFeatureTests
     });
 
     [Fact]
+    public void A_page_that_went_down_ends_the_session_and_hands_Alt_Tab_back() => T(async r =>
+    {
+        var o = new Overlay();
+        await Up(r, H(r, o));
+        await Call(r, "ready");
+        await Settle(r, () => Asks(r).Last() == "{\"altTab\":true,\"winKeys\":true}");
+        r.Platform.Raise("switcher", "{\"op\":\"open\",\"seq\":5,\"sel\":0,\"list\":[{\"hwnd\":11,\"title\":\"a\"}]}");
+        await Settle(r, () => o.Calls.Contains("switcher.session"));
+        await Call(r, "down", "{\"reason\":\"the switcher page stopped responding\"}");
+        await Settle(r, () => Asks(r).Last() == "{\"altTab\":false,\"winKeys\":true}");
+        Assert.Equal("{\"altTab\":false,\"winKeys\":true}", Asks(r).Last());
+        Assert.Contains("clear", o.Calls);
+        var st = await Call(r, "status");
+        Assert.True(st.Result.GetProperty("page").GetProperty("failed").GetBoolean());
+    });
+
+    [Fact]
     public void Settings_refuse_an_empty_patch_and_a_change_is_stored_and_asked_for() => T(async r =>
     {
         var o = new Overlay();
