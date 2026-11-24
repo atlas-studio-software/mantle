@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Text.Json.Nodes;
 using Mantle.Core.Look.Levitate;
 using Xunit;
@@ -258,15 +259,27 @@ public class LevitateTests
     {
         Assert.Equal(160, LevitateTokens.DurMs);
         Assert.Equal(340, LevitateTokens.DurSlowMs);
-        Assert.Equal(new Track("opacity", 0, 1, 280, 60, LevitateTokens.Ease), Motion.LiftIn[0]);
-        Assert.Equal(new Track("translateY", 10, 0, 420, 40, LevitateTokens.EaseLift), Motion.LiftIn[1]);
         Assert.Equal(new Track("opacity", 1, 0, 200, 0, LevitateTokens.Ease), Motion.SinkOut[0]);
         Assert.Equal(new Track("translateY", 0, 12, 300, 0, LevitateTokens.Ease), Motion.SinkOut[1]);
         Assert.Equal(new Track("scale", 1, 0.955, 300, 0, LevitateTokens.Ease), Motion.SinkOut[2]);
+        Assert.Equal(new Track("opacity", 0, 1, 240, 40, LevitateTokens.EaseLift), Motion.LiftIn[0]);
+        Assert.Equal(new Track("translateY", 28, 0, 460, 20, LevitateTokens.EaseLift), Motion.LiftIn[1]);
+        Assert.Equal(new Track("scale", 0.965, 1, 460, 20, LevitateTokens.EaseLift), Motion.LiftIn[2]);
+        Assert.Equal(3, Motion.LiftIn.Length);
         Assert.Equal((0.5, 0.35), (Motion.SinkOriginX, Motion.SinkOriginY));
-        Assert.Equal(460, Motion.TotalMs(Motion.LiftIn, reduceMotion: false));   // 40 + 420
+        Assert.Equal(480, Motion.TotalMs(Motion.LiftIn, reduceMotion: false));   // 20 + 460
         Assert.Equal(300, Motion.TotalMs(Motion.SinkOut, reduceMotion: false));
-        Assert.Equal(0, Motion.TotalMs(Motion.LiftIn, reduceMotion: true));
+    }
+
+    [Fact]
+    public void Motion_is_transform_and_opacity_only_never_width_or_blur()
+    {
+        var all = Motion.SinkOut.Concat(Motion.LiftIn).Concat(Motion.PopIn).Concat(Motion.PopOut).Concat(Motion.MorphFallback)
+            .Concat(Motion.Slide(0, 10, 50, 20, 10)).Concat(Motion.FirstLoad(3)).Concat(Motion.Morph(0, 0, 10, 10, 5, 5, 100, 100))
+            .Append(Motion.SlideUnderline(0, 10, 50, 20)).Append(Motion.Press(0.94)).Append(Motion.Release(0.94))
+            .Append(Motion.MorphOld).Append(Motion.MorphNew).Append(Motion.MorphScrim);
+        var allowed = new[] { "opacity", "translateX", "translateY", "scale", "scaleX", "scaleY" };
+        foreach (var t in all) Assert.Contains(t.Property, allowed);
     }
 
     [Fact]
@@ -275,30 +288,81 @@ public class LevitateTests
         var fade = Motion.LiftIn[0];
         var rise = Motion.LiftIn[1];
         Assert.Equal(0, Motion.At(fade, 0, false));
-        Assert.Equal(0, Motion.At(fade, 60, false));
-        Assert.Equal(1, Motion.At(fade, 340, false));
-        Assert.Equal(10, Motion.At(rise, 40, false));
-        Near(10 - 10 * 0.988610, Motion.At(rise, 40 + 210, false), CurveTolerance);
-        Assert.True(Motion.At(rise, 40 + 315, false) < 0);   // ease-lift passes the rest point a hair, then settles
+        Assert.Equal(0, Motion.At(fade, 40, false));
+        Assert.Equal(1, Motion.At(fade, 280, false));
+        Assert.Equal(28, Motion.At(rise, 20, false));
+        Near(28 - 28 * 0.988610, Motion.At(rise, 20 + 230, false), CurveTolerance);   // halfway on ease-lift
+        Assert.True(Motion.At(rise, 20 + 345, false) < 0);   // x = 0.75: ease-lift passes the rest point a hair, then settles
         Assert.Equal(0, Motion.At(rise, 1000, false));
     }
 
     [Fact]
-    public void Reduce_motion_is_the_end_state_at_once()
+    public void Reduced_motion_is_no_travel_and_quick_fades_only()
     {
-        Assert.Equal(1, Motion.At(Motion.LiftIn[0], 0, reduceMotion: true));
+        // transforms are at their end at once
         Assert.Equal(0, Motion.At(Motion.LiftIn[1], 0, reduceMotion: true));
+        Assert.Equal(1, Motion.At(Motion.LiftIn[2], 0, reduceMotion: true));
         Assert.Equal(0.955, Motion.At(Motion.SinkOut[2], 0, reduceMotion: true));
+        // fades stay fades, at most 160 ms and without a delay
+        Assert.Equal(0, Motion.At(Motion.LiftIn[0], 0, reduceMotion: true));
+        Assert.Equal(1, Motion.At(Motion.LiftIn[0], 160, reduceMotion: true));
+        Assert.Equal(new Track("opacity", 0, 1, 160, 0, LevitateTokens.EaseLift), Motion.Reduce(Motion.LiftIn[0]));
+        Assert.Equal(new Track("opacity", 1, 0, 120, 0, LevitateTokens.Ease), Motion.Reduce(Motion.PopOut[0]));   // already quick
+        Assert.Equal(new Track("translateY", 28, 0, 0, 0, LevitateTokens.EaseLift), Motion.Reduce(Motion.LiftIn[1]));
+        Assert.Equal(3, Motion.Reduce(Motion.LiftIn).Length);
+        Assert.Equal(160, Motion.TotalMs(Motion.LiftIn, reduceMotion: true));
+        Assert.Equal(160, Motion.TotalMs(Motion.SinkOut, reduceMotion: true));
+        Assert.Equal(0, Motion.TotalMs(Motion.Slide(0, 10, 50, 20, 10), reduceMotion: true));
         Assert.Equal(0, Motion.SlideDuration(instant: false, reduceMotion: true));
     }
 
     [Fact]
-    public void The_sliding_highlight_moves_x_and_width_over_320ms_on_ease_lift_or_instantly_at_first()
+    public void The_sliding_highlight_is_translate_and_scaleX_over_320ms_on_ease_lift_carrying_a_16x2_underline()
     {
-        var s = Motion.Slide(10, 40, 110, 60);
+        var s = Motion.Slide(10, 40, 110, 60, 20);
+        Assert.Equal(2, s.Length);
         Assert.Equal(new Track("translateX", 10, 110, 320, 0, LevitateTokens.EaseLift), s[0]);
-        Assert.Equal(new Track("width", 40, 60, 320, 0, LevitateTokens.EaseLift), s[1]);
+        Assert.Equal(new Track("scaleX", 2, 3, 320, 0, LevitateTokens.EaseLift), s[1]);
+        Assert.Equal(new Track("scaleX", 40, 60, 320, 0, LevitateTokens.EaseLift), Motion.Slide(10, 40, 110, 60, 0)[1]);   // no base width: 1
+        Assert.Equal((16.0, 2.0), (Motion.UnderlineW, Motion.UnderlineH));
+        Assert.Equal(22, Motion.UnderlineX(10, 40));
+        Assert.Equal(new Track("translateX", 22, 132, 320, 0, LevitateTokens.EaseLift), Motion.SlideUnderline(10, 40, 110, 60));
         Assert.Equal(320, Motion.SlideDuration(instant: false, reduceMotion: false));
         Assert.Equal(0, Motion.SlideDuration(instant: true, reduceMotion: false));
+    }
+
+    [Fact]
+    public void Pop_overs_press_and_the_first_load()
+    {
+        Assert.Equal(new Track("opacity", 0, 1, 160, 0, LevitateTokens.EaseLift), Motion.PopIn[0]);
+        Assert.Equal(new Track("translateY", -6, 0, 260, 0, LevitateTokens.EaseLift), Motion.PopIn[1]);
+        Assert.Equal(new Track("scale", 0.97, 1, 260, 0, LevitateTokens.EaseLift), Motion.PopIn[2]);
+        Assert.Equal(new Track("opacity", 1, 0, 120, 0, LevitateTokens.Ease), Motion.PopOut[0]);
+        Assert.Equal(new Track("translateY", 0, -6, 160, 0, LevitateTokens.Ease), Motion.PopOut[1]);
+        Assert.Equal(new Track("scale", 1, 0.97, 160, 0, LevitateTokens.Ease), Motion.PopOut[2]);
+        Assert.Equal(new Track("scale", 1, 0.94, 160, 0, LevitateTokens.Ease), Motion.Press(LevitateTokens.PressScaleSmall));
+        Assert.Equal(new Track("scale", 0.985, 1, 160, 0, LevitateTokens.Ease), Motion.Release(LevitateTokens.PressScaleTile));
+        var third = Motion.FirstLoad(2);
+        Assert.Equal(new Track("opacity", 0, 1, 520, 90, LevitateTokens.Ease), third[0]);
+        Assert.Equal(new Track("translateY", 10, 0, 520, 90, LevitateTokens.EaseLift), third[1]);
+        Assert.Equal(0, Motion.FirstLoad(-1)[0].DelayMs);
+    }
+
+    [Fact]
+    public void The_morph_grows_the_panel_out_of_the_box_in_480ms()
+    {
+        var m = Motion.Morph(100, 50, 40, 20, 20, 10, 400, 200);
+        Assert.Equal(new Track("translateX", 80, 0, 480, 0, LevitateTokens.EaseMorph), m[0]);
+        Assert.Equal(new Track("translateY", 40, 0, 480, 0, LevitateTokens.EaseMorph), m[1]);
+        Assert.Equal(new Track("scaleX", 0.1, 1, 480, 0, LevitateTokens.EaseMorph), m[2]);
+        Assert.Equal(new Track("scaleY", 0.1, 1, 480, 0, LevitateTokens.EaseMorph), m[3]);
+        Assert.Equal(1, Motion.Morph(0, 0, 10, 10, 0, 0, 0, 0)[2].From);   // no final size: from 1
+        Assert.Equal(new Track("opacity", 1, 0, 200, 0, LevitateTokens.EaseMorph), Motion.MorphOld);
+        Assert.Equal(new Track("opacity", 0, 1, 300, 90, LevitateTokens.EaseMorph), Motion.MorphNew);
+        Assert.Equal(new Track("opacity", 0, 1, 360, 0, LevitateTokens.EaseMorph), Motion.MorphScrim);
+        Assert.Equal(new Track("opacity", 0, 1, 320, 0, LevitateTokens.Ease), Motion.MorphFallback[0]);
+        Assert.Equal(new Track("translateY", 12, 0, 320, 0, LevitateTokens.Ease), Motion.MorphFallback[1]);
+        Assert.Equal(new Track("scale", 0.97, 1, 320, 0, LevitateTokens.Ease), Motion.MorphFallback[2]);
+        Assert.Equal(new Bezier(0.22, 1, 0.36, 1), LevitateTokens.EaseMorph);
     }
 }

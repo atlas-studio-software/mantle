@@ -1,6 +1,10 @@
 // LevitatePanel.cs - one levitated panel's layers (lane r10-newlook): its part of the frosted still, lined up with the
-// screen, the uniform dim over it and the legibility film over that. Three Borders the surface puts under its own UI, all
-// rounded with the panel's shape. No tint film, no white sheen, no hairline edge: the shadow is LevitateShadow's.
+// screen, the uniform dim over it, the legibility film over that and the hover sheen on top. Four Borders the surface puts
+// under its own UI, all rounded with the panel's shape. No tint film, no frost colour, no white sheen AT REST (the sheen
+// shows on hover only), no hairline, ring or top highlight: the shadow is LevitateShadow's.
+//
+// Never at rest: a Place that moved or resized the panel queues ONE recompute for the next frame (CompositionTarget.
+// Rendering, hooked only while one is pending), so a panel being dragged or animated is checked at most once per frame.
 //
 // Geometry (Mantle.Core Island): the blurred copy is laid out "cover" over the monitor (DIP) and the panel draws it at
 // (ox - panel.left, oy - panel.top), size (cw, ch); a BIG panel (Island.IsBig on its layout size) shows the soft copy, a
@@ -26,7 +30,9 @@ internal sealed class LevitatePanel
     readonly SolidColorBrush _fallback = new(Rgba(LevitateTokens.FallbackR, LevitateTokens.FallbackG, LevitateTokens.FallbackB, 1));
     readonly SolidColorBrush _dim = new();
     readonly SolidColorBrush _film = new();
-    bool _up, _dark, _released;
+    readonly SolidColorBrush _sheen = new();
+    bool _up, _dark, _released, _queued;
+    string _why = "placed";
     int _seq;
     string? _said;
     double _vw, _vh, _x, _y, _w, _h;
@@ -38,9 +44,11 @@ internal sealed class LevitatePanel
     public Border Dim { get; }
     /// The neutral film rgba(10, 12, 14, a) over the dim (a = the v2 brightness check; 0 in manual).
     public Border Film { get; }
+    /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size); over the film, under the UI.
+    public Border Sheen { get; }
     /// "frost light" | "frost soft" while the copy is up, else "fallback: why" (tests and logs).
     public string State { get; private set; } = "not shown yet";
-    /// The film alpha now (unrounded; Legibility.Show rounds it for display).
+    /// The film alpha now (an exact 2-decimal v2 step: 0, 0.04 .. 0.56).
     public double FilmAlpha { get; private set; }
 
     public LevitatePanel(string name, CornerRadius radius)
@@ -50,6 +58,7 @@ internal sealed class LevitatePanel
         Picture = new Border { Background = _fallback, CornerRadius = radius, IsHitTestVisible = false };
         Dim = new Border { Background = _dim, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         Film = new Border { Background = _film, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+        Sheen = new Border { Background = _sheen, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         LevitateStill.Changed += OnChanged;
     }
 
@@ -57,7 +66,7 @@ internal sealed class LevitatePanel
         new() { A = (byte)Math.Round(Math.Clamp(a, 0, 1) * 255), R = r, G = g, B = b };
 
     /// The panel's shape changed.
-    public void Radius(CornerRadius r) { Picture.CornerRadius = r; Dim.CornerRadius = r; Film.CornerRadius = r; }
+    public void Radius(CornerRadius r) { Picture.CornerRadius = r; Dim.CornerRadius = r; Film.CornerRadius = r; Sheen.CornerRadius = r; }
 
     /// Override the dim and the mode (default: the look's, LevitateDim over DesktopGlass.Look; see the lane note).
     public void Look(double dim, bool auto) { _look = (LevitateDim.Resolve(dim), auto); if (_up) Paint("the look was set"); }
@@ -69,7 +78,30 @@ internal sealed class LevitatePanel
         bool moved = !_up || vw != _vw || vh != _vh || x != _x || y != _y || w != _w || h != _h || dark != _dark;
         (_vw, _vh, _x, _y, _w, _h, _dark) = (vw, vh, x, y, w, h, dark);
         _up = true;
-        if (moved) Paint("placed");
+        if (moved) Queue("placed");
+    }
+
+    /// One recompute on the next frame, however many Place calls come before it.
+    void Queue(string why)
+    {
+        _why = why;
+        if (_queued) return;
+        _queued = true;
+        CompositionTarget.Rendering += OnFrame;
+    }
+
+    void OnFrame(object? sender, object e)
+    {
+        CompositionTarget.Rendering -= OnFrame;
+        _queued = false;
+        if (_up && !_released) Paint(_why);
+    }
+
+    /// The pointer came over the island (or left it): the hover sheen on or off. No pixel work.
+    public void Hover(bool on)
+    {
+        _sheen.Color = Rgba(255, 255, 255, Island.IsBig(_w, _h) ? LevitateTokens.SheenHoverBig : LevitateTokens.SheenHover);
+        Sheen.Visibility = on && _up && !_released ? Visibility.Visible : Visibility.Collapsed;
     }
 
     /// <see cref="Place(double, double, double, double, double, double, bool)"/> for an element of a window: the monitor the
@@ -91,10 +123,18 @@ internal sealed class LevitatePanel
     public void Theme(bool dark) { if (dark == _dark) return; _dark = dark; if (_up) Paint("the theme changed"); }
 
     /// The panel went down: nothing more is done until the next Place.
-    public void Down() => _up = false;
+    public void Down() { _up = false; Sheen.Visibility = Visibility.Collapsed; }
 
     /// The panel is closed for good.
-    public void Release() { _released = true; _up = false; LevitateStill.Changed -= OnChanged; _brush.ImageSource = null; }
+    public void Release()
+    {
+        _released = true;
+        _up = false;
+        LevitateStill.Changed -= OnChanged;
+        if (_queued) { CompositionTarget.Rendering -= OnFrame; _queued = false; }
+        _brush.ImageSource = null;
+        Sheen.Visibility = Visibility.Collapsed;
+    }
 
     void OnChanged(string why) { if (_up) Paint(why); }   // a hidden panel takes the change at its next Place
 

@@ -12,6 +12,9 @@ namespace Mantle.Core.Look.Levitate;
 /// Deviation noted in docs/lanes/r10-newlook.md: the prototype's own slider runs 0..0.60 in 5 % steps; this follows the
 /// contract range. And unlike <see cref="Wash.Alpha"/> (the 2026-11-11 look), an out-of-range saved value is CLAMPED here,
 /// not replaced by the seed. No new look.json key: dim and dimAuto are the existing ones.
+/// The only look settings of the new look are Dim and the brightness check (no Blur control). This class only reads; when
+/// a writer comes (Settings), a Dim change must never write <c>dimAuto: false</c>: only the brightness-check switch writes
+/// dimAuto (look-sync v2 CONTRACT). Nothing new is built on <c>glass.&lt;theme&gt;.blurPx</c> (retired on v2).
 /// </remarks>
 public static class LevitateDim
 {
