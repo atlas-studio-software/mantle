@@ -16,6 +16,9 @@ public class LevitateTests
     const double CurveTolerance = 1e-4;
     const double Exact = 1e-12;
 
+    static void Near(double want, double got, double tolerance) =>
+        Assert.True(Math.Abs(want - got) <= tolerance, $"want {want:R}, got {got:R} (tolerance {tolerance:R})");
+
     // ------------------------------------------------------------------ BIG
 
     [Fact]
@@ -36,16 +39,16 @@ public class LevitateTests
     public void Cover_scales_to_fill_and_centres_the_overflow()
     {
         var a = Island.Cover(512, 288, 1536, 864);   // 16:9 on 16:9: s 3, no overflow
-        Assert.Equal(3, a.S, Exact); Assert.Equal(1536, a.Cw, Exact); Assert.Equal(864, a.Ch, Exact);
-        Assert.Equal(0, a.Ox, Exact); Assert.Equal(0, a.Oy, Exact);
+        Near(3, a.S, Exact); Near(1536, a.Cw, Exact); Near(864, a.Ch, Exact);
+        Near(0, a.Ox, Exact); Near(0, a.Oy, Exact);
 
         var b = Island.Cover(512, 512, 1920, 1080);  // square on 16:9: width wins, the height overflows
-        Assert.Equal(3.75, b.S, Exact); Assert.Equal(1920, b.Cw, Exact); Assert.Equal(1920, b.Ch, Exact);
-        Assert.Equal(0, b.Ox, Exact); Assert.Equal(-420, b.Oy, Exact);
+        Near(3.75, b.S, Exact); Near(1920, b.Cw, Exact); Near(1920, b.Ch, Exact);
+        Near(0, b.Ox, Exact); Near(-420, b.Oy, Exact);
 
         var c = Island.Cover(1000, 500, 1600, 1200); // 2:1 on 4:3: height wins, the width overflows
-        Assert.Equal(2.4, c.S, Exact); Assert.Equal(2400, c.Cw, Exact); Assert.Equal(1200, c.Ch, Exact);
-        Assert.Equal(-400, c.Ox, Exact); Assert.Equal(0, c.Oy, Exact);
+        Near(2.4, c.S, Exact); Near(2400, c.Cw, Exact); Near(1200, c.Ch, Exact);
+        Near(-400, c.Ox, Exact); Near(0, c.Oy, Exact);
 
         Assert.Equal(new CoverFit(0, 0, 0, 0, 0), Island.Cover(0, 288, 1536, 864));
         Assert.Equal(new CoverFit(0, 0, 0, 0, 0), Island.Cover(512, 288, 0, 864));
@@ -56,8 +59,8 @@ public class LevitateTests
     {
         var fit = Island.Cover(512, 512, 1920, 1080);
         var (x, y, w, h) = Island.Draw(fit, 100, 50);
-        Assert.Equal(-100, x, Exact); Assert.Equal(-470, y, Exact);
-        Assert.Equal(1920, w, Exact); Assert.Equal(1920, h, Exact);
+        Near(-100, x, Exact); Near(-470, y, Exact);
+        Near(1920, w, Exact); Near(1920, h, Exact);
         var top = Island.Draw(Island.Cover(512, 288, 1536, 864), 8, 8);   // an island one gap in from the corner
         Assert.Equal((-8.0, -8.0, 1536.0, 864.0), top);
     }
@@ -229,10 +232,10 @@ public class LevitateTests
         var e = LevitateTokens.Ease;
         Assert.Equal(new Bezier(0.2, 0.8, 0.2, 1), e);
         Assert.Equal(0, e.Y(0)); Assert.Equal(1, e.Y(1));
-        Assert.Equal(0.396694, e.Y(0.1), CurveTolerance);
-        Assert.Equal(0.767284, e.Y(0.25), CurveTolerance);
-        Assert.Equal(0.946079, e.Y(0.5), CurveTolerance);
-        Assert.Equal(0.991108, e.Y(0.75), CurveTolerance);
+        Near(0.396694, e.Y(0.1), CurveTolerance);
+        Near(0.767284, e.Y(0.25), CurveTolerance);
+        Near(0.946079, e.Y(0.5), CurveTolerance);
+        Near(0.991108, e.Y(0.75), CurveTolerance);
         for (int k = 0; k <= 100; k++) Assert.True(e.Y(k / 100.0) <= 1 + 1e-9);
     }
 
@@ -242,11 +245,11 @@ public class LevitateTests
         var e = LevitateTokens.EaseLift;
         Assert.Equal(new Bezier(0.22, 1.12, 0.36, 1), e);
         Assert.Equal(0, e.Y(0)); Assert.Equal(1, e.Y(1));
-        Assert.Equal(0.441276, e.Y(0.1), CurveTolerance);
-        Assert.Equal(0.817361, e.Y(0.25), CurveTolerance);
-        Assert.Equal(0.988610, e.Y(0.5), CurveTolerance);
-        Assert.Equal(1.003439, e.Y(0.75), CurveTolerance);   // above 1: the lift
-        Assert.Equal(1.003737, e.Y(0.7047), CurveTolerance); // its peak
+        Near(0.441276, e.Y(0.1), CurveTolerance);
+        Near(0.817361, e.Y(0.25), CurveTolerance);
+        Near(0.988610, e.Y(0.5), CurveTolerance);
+        Near(1.003439, e.Y(0.75), CurveTolerance);   // above 1: the lift
+        Near(1.003737, e.Y(0.7047), CurveTolerance); // its peak
         Assert.Equal("0.22,1.12,0.36,1", e.ToString());
     }
 
@@ -275,7 +278,7 @@ public class LevitateTests
         Assert.Equal(0, Motion.At(fade, 60, false));
         Assert.Equal(1, Motion.At(fade, 340, false));
         Assert.Equal(10, Motion.At(rise, 40, false));
-        Assert.Equal(10 - 10 * 0.988610, Motion.At(rise, 40 + 210, false), CurveTolerance);
+        Near(10 - 10 * 0.988610, Motion.At(rise, 40 + 210, false), CurveTolerance);
         Assert.True(Motion.At(rise, 40 + 315, false) < 0);   // ease-lift passes the rest point a hair, then settles
         Assert.Equal(0, Motion.At(rise, 1000, false));
     }

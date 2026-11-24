@@ -20,6 +20,9 @@ public class LevitateFilmTests
     /// bit; this is the room left for a vector file written with fewer digits.
     const double FilmTolerance = 1e-9;
 
+    static void Near(double want, double got, double tolerance) =>
+        Assert.True(Math.Abs(want - got) <= tolerance, $"want {want:R}, got {got:R} (tolerance {tolerance:R})");
+
     static Rgb[] Fill(int n, double r, double g, double b) => Enumerable.Repeat(new Rgb(r, g, b), n).ToArray();
     static readonly Rgb[] White = Fill(40, 255, 255, 255);
     static readonly Rgb[] Dark = Fill(40, 30, 40, 45);
@@ -49,7 +52,7 @@ public class LevitateFilmTests
     {
         double a = Legibility.Film(White, 0.20);
         Assert.Equal(Steps(12), a);                         // 0.4799999999999999, bit for bit the JS accumulation
-        Assert.Equal(0.48, a, FilmTolerance);
+        Near(0.48, a, FilmTolerance);
         Assert.Equal(0.48, Legibility.Show(a));
         var bright = new Rgb(204, 204, 204);
         Assert.True(Legibility.LumOf(bright, a) <= LevitateTokens.FilmTarget);
@@ -59,7 +62,7 @@ public class LevitateFilmTests
     [Fact]
     public void The_film_stops_at_056()
     {
-        Assert.Equal(0.56, Legibility.Film(White, 0), FilmTolerance);   // undimmed white never reads under the cap
+        Near(0.56, Legibility.Film(White, 0), FilmTolerance);   // undimmed white never reads under the cap
         Assert.True(Legibility.Film(White, 0) <= LevitateTokens.FilmCap);
         Assert.Equal(LevitateTokens.FilmCap, Legibility.Film(White, -5));   // out-of-range dims do not break the cap
     }
@@ -68,9 +71,9 @@ public class LevitateFilmTests
     public void More_dim_means_less_film()
     {
         double at20 = Legibility.Film(White, 0.20), at50 = Legibility.Film(White, 0.50);
-        Assert.Equal(0.16, at50, FilmTolerance);
+        Near(0.16, at50, FilmTolerance);
         Assert.True(at50 < at20);
-        Assert.Equal(0.2, Legibility.Film(Fill(40, 170, 200, 225), 0.30), FilmTolerance);   // pale sky
+        Near(0.2, Legibility.Film(Fill(40, 170, 200, 225), 0.30), FilmTolerance);   // pale sky
     }
 
     [Fact]
