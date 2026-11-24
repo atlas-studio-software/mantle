@@ -408,6 +408,10 @@ public partial class MantleApp : Application
             Fixture = test ? Host.Env("MANTLE_TEST_MEDIA") : null,
         });
         _offs.Add(Mantle.Core.Features.Media.MediaCommands.Register(_bus, new Mantle.Core.Features.Media.MediaCommands(media)));
+        // lane r10-autopause: [Feature("autopause")] reads NOW PLAYING through this MediaService (its newest payload and its
+        // watch; looked up again at every coexistence check, so it may arrive after the feature installed).
+        Mantle.Core.Features.AutoPause.AutoPauseFeature.ConfigureMedia(new(() => media.Last, fn => media.OnMedia(fn)));
+        // end lane r10-autopause
         {
             Func<Action, bool> postUi = a => { Mantle.Core.Lifecycle.IdleTally.Hit("ui post (bar link)", a); return _queue?.TryEnqueue(() => a()) ?? false; };
             var mediaLink = new SurfaceLink("bar", new SurfaceWires { PostUi = postUi, PostHost = loop.Post, Bus = _bus, Events = _events, Feed = _feed ?? new StateFeed(_hub!.Current, postUi, log), Log = Host.Log });

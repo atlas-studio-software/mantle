@@ -89,3 +89,47 @@ Native covers 071, 075, 079, 091, 092, 101, 106, 108, 119, 132 that cite `none` 
 ## Shared files
 
 None. This lane touched only its own folders, this note and the Native column of AUTO rows.
+
+## Lane r10-autopause-2 (continued, 2026-11-24): the feature wiring
+
+Still nothing built or run (no SDK; owner's order). New, all in Features/AutoPause:
+
+- `AutoPauseFeature.cs`: `[Feature("autopause", "Spotify auto-pause", true, Rest = true)]`, no chords, static `Options`
+  (`apps`: media/any, Electron's label, choices and help). Wires engine + AutoPauseSpotify (host only) + AutoPauseHost +
+  AutoPauseLink as autopause.js install() does: commands `status` (+detail, test) and `switch {on}`, the replayed
+  `autopause.status` push (sent when state/words/card/mode/role change), `StatusOf`/`HoldWords` (pure), the tick loop
+  (250 ms while wanted, never overlapping, start-up quiet 5 s / 0 in --test, meter `autopause.peaks {everyMs}` 1500 ms
+  only when another media session exists or in any mode, warming up to 8 asks), the NOW PLAYING wake-up, the 15 s
+  coexistence timer (CheckSafe: a throw stands by), standby enter (leave link, hand back) / leave (adopt, re-read),
+  off (leave link, hand back), StopAsync (leave link first, ReleaseAll, wait for the queue; also on a rest).
+  `PortsFor(test, env)`: live 8787-8790; --test only MANTLE_AUTOPAUSE_PORT (whole number 1025..65535), else none.
+- `AutoPauseAttrib.cs`: _autopause-attrib.js ported (sources, matcherFor, the browser/exe tables, NEVER_BY_NAME, appLabel,
+  Spotify/Mantle/sys exclusions; Mantle's AUMID is MediaService.MantleAumid).
+- `AutoPauseNet.cs`: the REAL reads, not unit-tested: loopback GET (HttpClient, no proxy, Connection: close, 1 MB cap,
+  never throws), the task file, `schtasks.exe /query` (no window, 4 s, killed on timeout), /ping with X-Mantle: coexist.
+
+Tests: `AutoPauseFeatureTests` (16 facts; rig with NO ports, injected check/GET/bind, fake NOW PLAYING) and LinkApp got an
+optional `may` (AUTO-098). Safety: SAFETY_stopping_the_feature_resumes_what_Mantle_paused_and_hands_back_every_hold,
+SAFETY_a_coexistence_check_that_throws_stands_by_with_words_and_never_touches_Spotify,
+SAFETY_Spotify_system_sounds_and_Mantle_itself_never_count; dry runs asserted in the hold and stop tests.
+
+Rows now `written, not run`: AUTO-001..032, 040..052, 080..083, 088..090, 098, 109 (54). Some cite no test (004, 008..010,
+025, 027, 028, 031, 083): said in the cell.
+
+AUTO-033..039 (the sidecar meter): native/src/Mantle.Sidecar/Mantle.Sidecar.csproj compiles `..\..\..\sidecar\*.cs` with an
+empty exclude list, so sidecar/AutoPause.cs IS linked unchanged. Left `todo`: no native test exercises it and this lane did
+not write it.
+
+Deviations (new): 8. The coexistence check does not overlap itself (Electron's setInterval can). 9. Exceptions are logged
+as type + message, not a stack. 10. MANTLE_AUTOPAUSE_PORT above 65535 is refused (Electron takes any integer > 1024).
+11. The stop log line does not repeat the stop reason (a game's name stays out of the log).
+
+Shared file: `native/src/Mantle.App/App.xaml.cs`, one block after the media wiring, marked `// lane r10-autopause`:
+`AutoPauseFeature.ConfigureMedia(new(() => media.Last, fn => media.OnMedia(fn)))`. The feature looks the source up again at
+every coexistence check, so the order against FeatureSeam.Start does not matter (worst case: first 15 s without NOW PLAYING).
+
+Not verified (no SDK): that `media.Last` carries `sessions[].aumid/status/app.name/timeline` as Electron's ctx.host.media()
+does; that FeatureHost's TrySetEnabled calls OnEnabled synchronously (AUTO-006 relies on it); ManualTime firing 0 ms timers.
+
+Left: AUTO-033..039 native test; a loopback test of AutoPauseServer and AutoPauseNet (port 0); a live interop run against
+Quartz; the cloud build/test run above.

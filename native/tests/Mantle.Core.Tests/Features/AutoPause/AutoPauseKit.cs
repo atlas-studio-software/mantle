@@ -95,7 +95,7 @@ public sealed class LinkApp
     public readonly AutoPauseHost Host;
     public readonly AutoPauseLink Link;
 
-    public LinkApp(string name, IReadOnlyList<int> ports, FakeSpotify sp, FakeNet net, HostClock clock, bool canHost = true)
+    public LinkApp(string name, IReadOnlyList<int> ports, FakeSpotify sp, FakeNet net, HostClock clock, bool canHost = true, Func<bool>? may = null)
     {
         Name = name;
         AutoPauseLink? link = null;
@@ -103,7 +103,7 @@ public sealed class LinkApp
         Host = new AutoPauseHost(new AutoPauseHost.Deps(Engine, () => (true, sp.State, "Spotify.exe"), () => null, _ => Task.FromResult(SpotifyResult.Done),
             Logs.Add, () => clock.NowMs, clock, net.BindFor(name), ports, name));
         var host = Host; var engine = Engine;
-        link = new AutoPauseLink(new AutoPauseLink.Options(name, ports, () => !net.Dead.Contains(name) && canHost,
+        link = new AutoPauseLink(new AutoPauseLink.Options(name, ports, () => !net.Dead.Contains(name) && canHost && (may?.Invoke() ?? true),
             () => Task.FromResult(host.Start()), why => host.Stop(why),
             // The owner tells its watchers after its own hold moves (Mantle's publish() calls compat.notify()).
             async h => { if (h) await engine.AddHold("local:" + name, true, clock.NowMs, kind: "browser"); else await engine.RemoveHold("local:" + name, "done"); host.Notify(); },
