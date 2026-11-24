@@ -194,7 +194,7 @@ public sealed class NotesFeature : IFeature
         else if (!Pad.Dirty && _store.ChangedOnDisk()) LoadFile();   // an outside change with nothing unsaved is read again (NOTE-060)
         _open = true;
         _ctx.Broadcast(OpenEvent, El(new JsonObject { ["focus"] = true }));   // opening again just re-pushes focus (NOTE-010)
-        _ctx.Log($"opened ({via}): {Pad.Notes.Count} notes");
+        _ctx.Log($"opened ({via}): {NotesPad.Plural(Pad.Notes.Count, "note")}");
         Push();
         return Answer(true);
     }

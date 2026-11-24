@@ -129,7 +129,7 @@ public sealed class NotesPad
     public sealed record Deleted(string Id, int Index, string Text, long At, string? StandIn);
 
     Deleted? _undo;
-    long _lastDeleteAt = long.MinValue;
+    long _lastDeleteAt = long.MinValue / 2;   // far past, without overflowing nowMs - _lastDeleteAt
     public Deleted? Undo => _undo;
 
     /// <summary>
