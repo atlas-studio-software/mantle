@@ -69,10 +69,10 @@ public sealed class SnapCore
         return new SnapProbe(false, Silent, null);
     }
 
-    static string R1(double ms) => Math.Round(ms, 1).ToString(CultureInfo.InvariantCulture);
+    internal static string R1(double ms) => Math.Round(ms, 1).ToString(CultureInfo.InvariantCulture);
 
     /// A JSON value as JavaScript's template literal prints it (a missing one is "undefined").
-    static string Js(JsonElement x, string key)
+    internal static string Js(JsonElement x, string key)
     {
         if (x.ValueKind != JsonValueKind.Object || !x.TryGetProperty(key, out var v)) return "undefined";
         return v.ValueKind switch {
@@ -84,7 +84,7 @@ public sealed class SnapCore
         };
     }
 
-    static bool Truthy(JsonElement x, string key)
+    internal static bool Truthy(JsonElement x, string key)
     {
         if (x.ValueKind != JsonValueKind.Object || !x.TryGetProperty(key, out var v)) return false;
         return v.ValueKind switch {
@@ -96,7 +96,7 @@ public sealed class SnapCore
         };
     }
 
-    static int Int(JsonElement x, string key, int fallback = 0) =>
+    internal static int Int(JsonElement x, string key, int fallback = 0) =>
         x.ValueKind == JsonValueKind.Object && x.TryGetProperty(key, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out int i) ? i : fallback;
 
     /// <summary>An {x,y,w,h} answer rect (SnapRect.ToJson) as a box; null when missing.</summary>
@@ -127,7 +127,7 @@ public sealed class SnapCore
         return list;
     }
 
-    SnapNotice Notice(string title, string text, SnapBox? work, IEnumerable<string?>? names)
+    internal SnapNotice Notice(string title, string text, SnapBox? work, IEnumerable<string?>? names)
     {
         _log($"notice: {SnapWords.Unname(title, names)}: {SnapWords.Unname(text, names)}");
         var n = new SnapNotice(title, text, work);
@@ -174,6 +174,20 @@ public sealed class SnapCore
         if (err != null)
             fail = Notice("Could not put " + SnapWords.AppOf(x) + " back on the screen", SnapWords.Cap(err), landing?.Screen?.Work ?? work, names);
         return new SnapArrowResult(chord, dir, r, fail, landing, err);
+    }
+
+    /// <summary>
+    /// The same never-strand check for any other move that lands a window (a Win+Z zone, a Snap Assist pick): the
+    /// sidecar answer <paramref name="x"/> is checked, a stranded window is put back, and a put-back that fails is a
+    /// notice. <paramref name="label"/> starts each log line ("Win+Z", "Snap Assist").
+    /// </summary>
+    internal async ValueTask<(SnapLanding? Landing, string? Error, SnapNotice? Notice)> LandedAsync(string label, JsonElement x)
+    {
+        string[] names = SnapWords.NamesOf(x);
+        SnapScreen? mon = x.ValueKind == JsonValueKind.Object && x.TryGetProperty("monitor", out var mj) ? Screen(mj) : null;
+        var (landing, err) = await GuardAsync(label, x, mon, names).ConfigureAwait(true);
+        if (err == null) return (landing, null, null);
+        return (landing, err, Notice("Could not put " + SnapWords.AppOf(x) + " back on the screen", SnapWords.Cap(err), landing?.Screen?.Work ?? mon?.Work, names));
     }
 
     /// <summary>
