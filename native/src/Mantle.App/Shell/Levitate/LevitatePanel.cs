@@ -40,7 +40,7 @@ internal sealed class LevitatePanel
     public Border Film { get; }
     /// "frost light" | "frost soft" while the copy is up, else "fallback: why" (tests and logs).
     public string State { get; private set; } = "not shown yet";
-    /// The film alpha now (unrounded; Legibility.Show rounds it for display).
+    /// The film alpha now (an exact 2-decimal v2 step: 0, 0.04 .. 0.56).
     public double FilmAlpha { get; private set; }
 
     public LevitatePanel(string name, CornerRadius radius)
