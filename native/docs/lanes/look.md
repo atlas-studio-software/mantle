@@ -122,6 +122,9 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
 - **Publishing.** Native Mantle does not write the desktop record yet (Electron Mantle does, live). When native takes
   over, its publisher (Features/Desktop) should call NativeGuard.Entry for each theme; the band becomes 140 DIP
   (`region.heightDip` 140), so Electron's own 100 DIP key reads it as another band. The stored blur can then go to 0.
+  Round 10 (docs/lanes/r10-look.md): native now writes the record (Core/Look/DesktopPublisher.cs, written, not run), with
+  NativeGuard's rule over the CONTRACT's 100 DIP band, not 140: moving the published band is a contract change for the
+  Engineering Manager, with matching Helm and Quartz jobs.
 - **The bottom bar.** The 2026-11-11 section and the brief name "the top bar and every native Mantle window (Settings,
   Files, Task Manager, launcher, popups that sit over the desktop)"; neither says the bottom bar. It keeps its live
   glass (BAR-034/037) until the user says. SEE-014.
