@@ -201,8 +201,11 @@ namespace Mantle.Sidecar.Tests.ClipEmoji {
       int before = Skipped("tooLarge");
       Assert.AreEqual("skipped:tooLarge", Copy(Req("name", "CF_UNICODETEXT", "text", "0123456789", "repeat", 100.0)));
       Assert.AreEqual("skipped:tooLarge", Copy(Pic("CF_DIB", "#445566", 200, 200)));
+      // a picture whose source fits but whose PNG is over twice the item limit (random pixels make a large PNG)
+      Ok("clip.limits", Req("maxItemBytes", 1024.0));
+      Assert.AreEqual("skipped:tooLarge", Copy(Req("name", "CF_DIB", "image", Req("w", 64.0, "h", 64.0, "color", "#101010", "noise", true))));
       Assert.AreEqual(0, Items().Count);
-      Assert.AreEqual(before + 2, Skipped("tooLarge"));
+      Assert.AreEqual(before + 3, Skipped("tooLarge"));
     }
 
     // CLIP-034: the memory budget drops the oldest unpinned items first
