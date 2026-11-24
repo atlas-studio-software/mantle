@@ -48,7 +48,8 @@ All new code is in `native/src/Mantle.Core/Features/Notes/`; no shared file was 
 
 written-not-run (44): NOTE-001, 003, 004, 007, 012, 013, 014, 024, 025, 026, 035, 037, 039, 041, 042, 043, 044, 050,
 052, 053, 054, 055, 057, 058, 061, 063, 064, 065, 067, 069, 070, 072, 073, 076, 077, 078, 080, 082, 084, 091, 092,
-093, 094, 095. partial (15): NOTE-011, 028, 029, 031, 036, 040, 047, 056, 066, 074, 079, 083, 097, 098, 101.
+093, 094, 095. Written-not-run (partial) (15; the cell says which half is done): NOTE-011, 028, 029, 031, 036, 040,
+047, 056, 066, 074, 079, 083, 097, 098, 101.
 
 SAFETY rows, each its own test: storage NOTE-052, 053, 056, 058, 063, 064, 072 and the gate
 (`NotesStoreTests.Safety_*`); loss NOTE-041, 042, 044, 091, 092, 093 (`NotesFeatureTests.Loss_*`).
