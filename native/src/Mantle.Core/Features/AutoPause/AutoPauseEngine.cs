@@ -113,12 +113,14 @@ public sealed class AutoPauseEngine
     public AutoPauseConfig Config => _cfg;
 
     /// Resolves when every Spotify action queued so far has finished (the switch waits on it before answering).
-    public Task Idle() => _busy;
+    public Task Idle() => Settled(_busy);
+
+    static async Task Settled(Task t) { try { await t.ConfigureAwait(true); } catch { /* a failed action is in lastError and the log */ } }
 
     Task<T> Serial<T>(Func<Task<T>> fn)
     {
         var p = RunAfter(_busy, fn);
-        _busy = p.ContinueWith(static _ => { }, CancellationToken.None, TaskContinuationOptions.ExecuteSynchronously, TaskScheduler.Default);
+        _busy = p;   // RunAfter swallows the previous one's failure, so one failure never stops the queue
         return p;
     }
 
