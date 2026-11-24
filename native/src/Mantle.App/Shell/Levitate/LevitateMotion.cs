@@ -75,7 +75,7 @@ internal static class LevitateMotion
         var batch = c.CreateScopedBatch(CompositionBatchTypes.Animation);
         foreach (var t in tracks) foreach (var ch in Channels(t.Property)) v.StartAnimation(ch, Scalar(c, t));
         batch.End();
-        if (done != null) batch.Completed += (_, _) => { if (q == null || !q.TryEnqueue(() => done())) done(); };
+        if (done is { } d) batch.Completed += (_, _) => { if (q == null || !q.TryEnqueue(() => d())) d(); };
     }
 
     /// The tracks' end state, no movement.
