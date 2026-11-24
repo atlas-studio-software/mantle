@@ -54,7 +54,7 @@ public static class TimerCore
     static readonly Regex HMm = new(@"^([0-9]{1,3}):([0-9]{1,2})\z", RegexOptions.CultureInvariant);
     static readonly Regex Bare = new(@"^([0-9]+(\.[0-9]*)?|\.[0-9]+)\z", RegexOptions.CultureInvariant);
     static readonly Regex Part = new(@"\G([0-9]+(?:\.[0-9]*)?|\.[0-9]+)\s*([a-z]*)\s*,?\s*", RegexOptions.CultureInvariant);
-    static readonly Regex Bad = new("[\u0000-\u001f\u007f-\u009f  ‎‏‪-‮⁦-⁩﻿]", RegexOptions.CultureInvariant);
+    static readonly Regex Bad = new(@"[\x00-\x1f\x7f-\x9f  ‎‏‪-‮⁦-⁩﻿]", RegexOptions.CultureInvariant);
     static readonly Regex Spaces = new(@"\s+", RegexOptions.CultureInvariant);
 
     static long Unit(string u) => u switch {
