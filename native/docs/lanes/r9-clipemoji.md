@@ -152,8 +152,9 @@ and the e2e case asserts first-run.json is the only file ever written. Tests use
 
 PEND-012 (cited Electron tests, checked by grep on ~/mantle master): WEL-010 cites `none` but lib/args.test.js covers
 --first-run; WEL-016's focusHelp has no Electron case; WEL-017 `none` (renderer-gone / did-fail-load untested);
-WEL-026 `packaged`, WEL-030 (network foot) and WEL-041 (installed copy) are not on master at all (only on other
-branches), so their cited tests do not cover them there.
+WEL-026 `packaged`, WEL-030 (network foot) and WEL-041 (installed copy) were reported "not on master", but that grep
+ran on ~/mantle's LOCAL master, which is stale (736efecd). Coordinator check, 2026-11-24: 6ca499fc and 67cfece5 ARE in
+origin/master, so these three are not known gaps; re-check their cited tests against origin/master before stage 11.
 
 Not yet (App's): calling CheckArgs from the native args parser, the did-finish-load hook and 1.2 s timer, the window
 itself, wiring `welcome.*` commands and Settings' "Show again" row.
