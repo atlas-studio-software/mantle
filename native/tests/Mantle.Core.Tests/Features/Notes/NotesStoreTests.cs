@@ -132,6 +132,21 @@ public sealed class NotesStoreTests : IDisposable
     }
 
     [Fact]
+    public void Safety_a_notes_md_over_8_MB_is_not_opened_names_its_size_and_is_kept_as_a_copy_before_a_save()
+    {
+        Directory.CreateDirectory(_dir);
+        var big = Encoding.UTF8.GetBytes("<!-- mantle:note -->\n" + new string('b', (int)NotesFormat.MaxBytes) + "\n");
+        File.WriteAllBytes(NotesMd, big);
+        var s = Store();
+        var l = s.Load();
+        Assert.False(l.Ok);
+        Assert.Contains("is 8.0 MB, over the 8.0 MB the pad opens", l.Reason, StringComparison.Ordinal);
+        var r = s.Save(new[] { "small" });
+        Assert.True(r.Ok);
+        Assert.Equal(big.Length, new FileInfo(r.Outside!).Length);
+    }
+
+    [Fact]
     public void Saving_more_than_8_MB_of_text_is_refused_and_the_old_file_stays()
     {
         Plant("<!-- mantle:note -->\nold\n");

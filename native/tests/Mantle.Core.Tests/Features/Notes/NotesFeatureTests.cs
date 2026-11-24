@@ -77,6 +77,8 @@ public sealed class NotesFeatureTests : IDisposable
     public void Win_Alt_N_opens_the_closed_pad_with_the_caret_in_the_text_and_closes_the_open_one() => T(async k =>
     {
         Assert.True(k.R.Hub.Piece("notes").Ok);
+        Assert.Equal(NotesFeature.Healthy, k.R.Hub.Piece("notes").Reason);
+        Assert.Equal("Win+Alt+N or the notes icon on the top bar opens the pad", NotesFeature.Healthy);
         Assert.Contains("Win+Alt+N", k.R.Host.Wanted().Chords);
         Assert.True(k.R.Host.FireChord("Win+Alt+N").Delivered);
         Assert.True(k.F.IsOpen);
