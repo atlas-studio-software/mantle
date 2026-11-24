@@ -105,7 +105,8 @@ public sealed class LinkApp
         var host = Host; var engine = Engine;
         link = new AutoPauseLink(new AutoPauseLink.Options(name, ports, () => !net.Dead.Contains(name) && canHost,
             () => Task.FromResult(host.Start()), why => host.Stop(why),
-            async h => { if (h) await engine.AddHold("local:" + name, true, clock.NowMs, kind: "browser"); else await engine.RemoveHold("local:" + name, "done"); },
+            // The owner tells its watchers after its own hold moves (Mantle's publish() calls compat.notify()).
+            async h => { if (h) await engine.AddHold("local:" + name, true, clock.NowMs, kind: "browser"); else await engine.RemoveHold("local:" + name, "done"); host.Notify(); },
             async (from, last) =>
             {
                 if (last != null)
