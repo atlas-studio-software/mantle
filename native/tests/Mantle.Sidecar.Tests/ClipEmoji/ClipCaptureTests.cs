@@ -297,6 +297,14 @@ namespace Mantle.Sidecar.Tests.ClipEmoji {
       CollectionAssert.Contains(names(files), "CF_HDROP");
       Assert.AreEqual(true, files["roundTrip"]);
 
+      // the sidecar's plain mode (no panel path sets it): formatted text as bare text, files as their paths
+      IDictionary plainText = Ok("clip.paste", Req("item", items[0]["id"], "hwnd", "0", "dryRun", true, "plain", true));
+      Assert.AreEqual(true, plainText["plain"]);
+      CollectionAssert.AreEqual(new[] { "CF_UNICODETEXT" }, names(plainText));
+      IDictionary plainFiles = Ok("clip.paste", Req("item", items[2]["id"], "hwnd", "0", "dryRun", true, "plain", true));
+      Assert.AreEqual(true, plainFiles["plain"]);
+      CollectionAssert.AreEqual(new[] { "CF_UNICODETEXT" }, names(plainFiles));
+
       string real = Err("clip.paste", Req("item", items[0]["id"], "hwnd", "0"));
       Assert.IsNotNull(real, "a passive sidecar must refuse a real paste");
       StringAssert.Contains(real, "would have written the clipboard and pressed Ctrl+V");

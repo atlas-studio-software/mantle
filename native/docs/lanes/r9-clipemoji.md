@@ -109,5 +109,5 @@ PEND-012 (this lane): the cited sidecar/test-clipboard.js cases for CLIP-021..03
 CLIP-054 and CLIP-056 cite no Electron test (`none`); the selftest does run the warm-up (CLIP-007).
 
 Left todo on purpose (partly covered): CLIP-004 (the sidecar's arm itself is live-only; the feature's arm-first order is
-tested), CLIP-050 (dry-run formats per kind are tested, the `plain` mode is not), CLIP-052 (the second click in flight
+tested), CLIP-052 (the second click in flight
 is the page's), CLIP-039 (the pin button and tooltip are the page's), CLIP-020/027/028 (live-only).
