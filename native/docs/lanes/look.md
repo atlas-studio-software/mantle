@@ -122,16 +122,19 @@ Ledger: docs/parity/look.md (SEE-001 .. SEE-021).
 - **Publishing.** Native Mantle does not write the desktop record yet (Electron Mantle does, live). When native takes
   over, its publisher (Features/Desktop) should call NativeGuard.Entry for each theme; the band becomes 140 DIP
   (`region.heightDip` 140), so Electron's own 100 DIP key reads it as another band. The stored blur can then go to 0.
+  Round 10 (docs/lanes/r10-look.md): native now writes the record (Core/Look/DesktopPublisher.cs, written, not run), with
+  NativeGuard's rule over the CONTRACT's 100 DIP band, not 140: moving the published band is a contract change for the
+  Engineering Manager, with matching Helm and Quartz jobs.
 - **The bottom bar.** The 2026-11-11 section and the brief name "the top bar and every native Mantle window (Settings,
   Files, Task Manager, launcher, popups that sit over the desktop)"; neither says the bottom bar. It keeps its live
   glass (BAR-034/037) until the user says. SEE-014.
-- **Seeds (SEE-018).** The contract's seed (blur 0 / Dim .30) is for a MISSING look.json, and Wash.cs already falls back to
-  .30. Native's own seed (LookSyncCore.Seed, LookHost's first glass) still equals Electron Mantle's vendored look-sync
-  (5 / .50, 12 / .45), and that value is in the byte goldens generated from Electron's code (Fixtures/look/golden.json
-  via gen-look-golden.js, the roundtrip and profile fixtures, LookHostTests, LookSyncContractTests). Switching is a
-  deliberate difference from Electron in every one of those cases; it was not made tonight because the contract also
-  says Electron Mantle keeps writing its old values and native's goldens are that code's output. Should native seed
-  0 / .30 now (and mark those golden cases as documented differences), or at the switch from Electron?
+- **Seeds (SEE-018): done.** Decided 0 / .30 (the user, 11-16, confirmed 11-18), then 0 / .20 (look-sync seed 0.20, the user, 2026-11-24, t_18ac79). Native seeds a MISSING look.json with
+  look-sync's 2026-11-11 glass, dark and light {blurPx 0, dim .20, panel 0} (LookSyncCore.Seed, and GlassSettings.Seed,
+  LookHost's first glass and the local copy's default); a stored look keeps its values, nothing is migrated. Electron
+  Mantle's vendored look-sync still seeds 5 / .50, 12 / .45, so this is a deliberate difference from Electron: the byte
+  goldens stay generated from Electron's code (Fixtures/look/golden.json via gen-look-golden.js), with that module's
+  SEED glass swapped in memory and the swap named in golden.json `nativeDifferences` (checked by LookGoldenTests).
+  At the seed LookHost's vars are no longer empty (blur(0px), the .30 fills): the stylesheet's values are not the seed.
 
 ## Left (todo)
 - SEE-015 Settings rows. TOP-181's menu row and strip note; TOP-187's --lg-shadow under the light dropdowns.

@@ -6,7 +6,8 @@
 //
 //   node native/tests/Mantle.Core.Tests/Look/gen-look-golden.js     (writes ../Fixtures/look/golden.json)
 //
-// Run it again after any change to those modules and commit the new table. Nothing here touches the
+// Run it again after any change to those modules and commit the new table. One deliberate difference from those
+// modules (the seed, SEE-018) is applied below and named in the table's `nativeDifferences`. Nothing here touches the
 // user's real folders: every directory is a fresh one under the OS temp folder, removed at the end.
 const fs = require('fs');
 const os = require('os');
@@ -15,7 +16,29 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..', '..', '..', '..');
 const TMP = fs.mkdtempSync(path.join(os.tmpdir(), 'mantle-look-golden-'));
 process.env.LOOK_SYNC_DIR = path.join(TMP, 'never-used');
-const LS = require(path.join(ROOT, 'lib', 'look-sync.js'));
+// ONE DOCUMENTED DIFFERENCE (parity SEE-018): native seeds look-sync's 2026-11-11 glass (CONTRACT "2026-11-11",
+// Seeds: blur 0, with Dim .20 in both themes since look-sync seed 0.20, the user, 2026-11-24, t_18ac79), while Electron Mantle's vendored lib/look-sync.js still seeds dark 5 / .50
+// and light 12 / .45. So the table is written by that module with only its SEED glass swapped, in memory (the file
+// on disk is never changed); every other byte is Electron's. The swap must hit each line exactly once, or this stops.
+const SEED_SWAP = [
+  ['dark: Object.freeze({ blurPx: 5, dim: 0.50, panel: 0 })', 'dark: Object.freeze({ blurPx: 0, dim: 0.20, panel: 0 })'],
+  ['light: Object.freeze({ blurPx: 12, dim: 0.45, panel: 0 })', 'light: Object.freeze({ blurPx: 0, dim: 0.20, panel: 0 })'],
+];
+function lookSyncWithNativeSeed(file) {
+  const Module = require('module');
+  let src = fs.readFileSync(file, 'utf8');
+  for (const [from, to] of SEED_SWAP) {
+    const hits = src.split(from).length - 1;
+    if (hits !== 1) throw new Error(`${path.relative(ROOT, file)}: the SEED line "${from}" is there ${hits} times, not once; update SEED_SWAP`);
+    src = src.replace(from, to);
+  }
+  const m = new Module(file, module);
+  m.filename = file;
+  m.paths = Module._nodeModulePaths(path.dirname(file));
+  m._compile(src, file);
+  return m.exports;
+}
+const LS = lookSyncWithNativeSeed(path.join(ROOT, 'lib', 'look-sync.js'));
 const LH = require(path.join(ROOT, 'lib', 'look-host.js'));
 const LG = require(path.join(ROOT, 'lib', 'look-guard.js'));
 const GA = require(path.join(ROOT, 'ui', 'shared', 'glass-adapt.js'));
@@ -32,7 +55,8 @@ const norm = (s, d) => (s == null ? s : String(s).split(d).join('<dir>').replace
 const fileOf = (d) => { try { return fs.readFileSync(path.join(d, 'look.json'), 'utf8').replace(`"pid": ${process.pid}`, `"pid": ${PID}`); } catch (_) { return null; } };
 const listOf = (d) => { try { return fs.readdirSync(d).sort(); } catch (_) { return null; } };
 
-const out = { generatedBy: 'native/tests/Mantle.Core.Tests/Look/gen-look-golden.js', node: process.version };
+const out = { generatedBy: 'native/tests/Mantle.Core.Tests/Look/gen-look-golden.js', node: process.version,
+  nativeDifferences: [{ id: 'SEE-018', what: 'SEED.glass (lib/look-sync.js)', electron: 'dark 5 / .50 / 0, light 12 / .45 / 0', native: JSON.stringify(LS.SEED.glass) }] };
 
 /* ---- parse / checkValue / checkDesktop ---------------------------------------------------------- */
 const texts = [

@@ -62,7 +62,7 @@ public class LookSyncContractTests
         Assert.Equal("system", a.Changes["theme"]!.GetValue<string>());
         var doc = ReadJson(d);
         Assert.Equal(1, doc["schema"]!.GetValue<double>());
-        Assert.Equal("{\"dark\":{\"blurPx\":5,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}", JsJson.Stringify(doc["look"]!["glass"]!["v"], 0));
+        Assert.Equal("{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}", JsJson.Stringify(doc["look"]!["glass"]!["v"], 0));   // look-sync's 2026-11-11 seed (SEE-018)
         Assert.Equal("{\"hue\":null}", JsJson.Stringify(doc["look"]!["accent"]!["v"], 0));
         Assert.Equal("helm", doc["writer"]!["app"]!.GetValue<string>());
         Assert.NotNull(doc["writer"]!["instance"]); Assert.NotNull(doc["writer"]!["pid"]); Assert.NotNull(doc["writer"]!["at"]);

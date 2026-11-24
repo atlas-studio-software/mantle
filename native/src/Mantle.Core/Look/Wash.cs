@@ -20,12 +20,12 @@ public sealed record WashResult(double Alpha, string Mode, bool Raised, bool Gua
 /// <item>Automatic (dimAuto absent or true): max(Dim, <c>desktop.guard.&lt;theme&gt;.alpha</c>) when that guard is valid (an
 /// alpha 0..1, worked out for this Dim and blur to 2 decimals, at most max(.88, Dim)), else Dim, with the reason.</item>
 /// </list>
-/// Never throws. The seed Dim (a missing or out-of-range Dim) is look-sync's 2026-11-11 seed, .30 in both themes.
+/// Never throws. The seed Dim (a missing or out-of-range Dim) is look-sync's seed, .20 in both themes (look-sync seed 0.20, the user, 2026-11-24).
 /// </summary>
 public static class Wash
 {
     /// look-sync.js SEED.glass.&lt;theme&gt; (2026-11-11): the same in both themes.
-    public const double SeedDim = 0.30, SeedBlurPx = 0;
+    public const double SeedDim = 0.20, SeedBlurPx = 0;
     /// The guard's ceiling (WASH_CEIL: Mantle's dark --lg-fill-pop alpha).
     public const double Ceil = 0.88;
     static readonly (double Lo, double Hi) DimRange = (0.20, 0.90), BlurRange = (0, 64);

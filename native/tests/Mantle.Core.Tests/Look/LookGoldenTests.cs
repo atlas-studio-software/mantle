@@ -15,6 +15,9 @@ namespace Mantle.Core.Tests.Look;
 /// Byte-exact against the JavaScript: Fixtures/look/golden.json was written by the Electron modules themselves
 /// (Look/gen-look-golden.js runs lib/look-sync.js, lib/look-host.js, lib/look-guard.js and ui/shared/glass-adapt.js).
 /// Mantle publishes look.json for Helm and Quartz, so every byte it writes must be the module's.
+/// One documented difference: the seed (parity SEE-018). Native seeds look-sync's 2026-11-11 glass (blur 0 / Dim .20, look-sync seed 0.20, the user, 2026-11-24),
+/// Electron Mantle's vendored module still seeds 5 / .50 and 12 / .45, so the generator swaps the module's SEED glass in
+/// memory and names the swap in the table's <c>nativeDifferences</c>.
 /// </summary>
 public class LookGoldenTests
 {
@@ -45,6 +48,18 @@ public class LookGoldenTests
             Assert.True(J(c["skipped"]) == J(sk), at + ": skipped " + J(sk));
             Assert.True(NormG(c["doc"]) == (p.Doc == null ? "\u0000null" : JsJson.Stringify(p.Doc, 2)), at + ": doc\n" + (p.Doc == null ? "null" : JsJson.Stringify(p.Doc, 2)));
         }
+    }
+
+    [Fact]
+    public void The_table_names_its_one_difference_from_Electron_and_it_is_natives_seed()
+    {
+        var diffs = G("nativeDifferences");
+        Assert.Single(diffs);
+        Assert.Equal("SEE-018", S(diffs[0]!["id"]));
+        Assert.Equal(S(diffs[0]!["native"]), J(LookSyncCore.Seed()["glass"]));
+        var g = GlassSettings.Seed;
+        Assert.Equal(S(diffs[0]!["native"]), J(JsJson.Parse(System.FormattableString.Invariant(
+            $"{{\"dark\":{{\"blurPx\":{g.Dark.BlurPx},\"dim\":{g.Dark.Dim},\"panel\":{g.Dark.Panel}}},\"light\":{{\"blurPx\":{g.Light.BlurPx},\"dim\":{g.Light.Dim},\"panel\":{g.Light.Panel}}},\"render\":\"{g.Render}\"}}"))));
     }
 
     [Fact]

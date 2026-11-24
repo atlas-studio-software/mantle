@@ -34,9 +34,14 @@ public static class LookSyncCore
     /// The ranges of the glass numbers (RANGES), in the module's key order.
     public static readonly (string Key, double Lo, double Hi)[] Ranges = { ("blurPx", 0, 64), ("dim", 0.20, 0.90), ("panel", -0.30, 0.15) };
 
-    /// <summary>The first seed (SEED): Match Windows, Mantle's own accent, the matched glass. A fresh copy each call.</summary>
+    /// <summary>
+    /// The first seed (SEED): Match Windows, Mantle's own accent, and look-sync's 2026-11-11 glass (CONTRACT "2026-11-11",
+    /// Seeds): blur 0 and Dim .20 in both themes (look-sync seed 0.20, the user, 2026-11-24), dimAuto absent (= automatic). Used only when look.json is MISSING (or
+    /// for the fields a damaged file lost); a stored look keeps its own values. Electron Mantle's vendored look-sync still
+    /// seeds dark 5 / .50 and light 12 / .45: a deliberate difference (parity SEE-018). A fresh copy each call.
+    /// </summary>
     public static JsonObject Seed() => (JsonObject)JsJson.Parse(
-        "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":5,\"dim\":0.5,\"panel\":0},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}")!;
+        "{\"theme\":\"system\",\"accent\":{\"hue\":null},\"glass\":{\"dark\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.2,\"panel\":0},\"render\":\"picture\"}}")!;
 
     /// RANGES as the view answers it: <c>{blurPx: [0, 64], dim: [.2, .9], panel: [-.3, .15]}</c>.
     public static JsonObject RangesJson()

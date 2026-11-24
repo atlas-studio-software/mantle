@@ -581,6 +581,8 @@ Shared file `%APPDATA%\look-sync\look.json` (or `LOOK_SYNC_DIR`); Mantle's local
 dim: 0.45, panel: 0 }, render: 'picture' }`. Validation `RANGES = { blurPx: [0, 64], dim: [0.20, 0.90], panel:
 [-0.30, 0.15] }`; hue null or integer 0..360; `render` 'picture' | 'seeThrough' (validated, NOT read by Mantle).
 `vars()` is EMPTY at the seed values, so the default look is the stylesheet's own value for value.
+(That is Electron's vendored seed. Native seeds look-sync's 2026-11-11 glass, blur 0 / dim .20 in both themes (look-sync seed 0.20, the user, 2026-11-24), SEE-018,
+so native's vars are empty at the stylesheet's values above, not at its seed.)
 
 ```
 a2(n)        = String(Math.round(n * 100) / 100)          // 2-decimal formatting
