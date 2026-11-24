@@ -315,7 +315,7 @@ public sealed class ClipboardFeature : IFeature
             _ctx.Log($"copied, not pasted: {reason}");
             Notice("Copied, not pasted", reason);
         } else {
-            string formats = r.Result.TryGetProperty("formats", out var f) && f.ValueKind == JsonValueKind.Array
+            string formats = r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("formats", out var f) && f.ValueKind == JsonValueKind.Array
                 ? string.Join("+", f.EnumerateArray().Select(x => Str(x, "name")).Where(n => n != null)) : "";
             _ctx.Log($"{(dry ? "dry-run " : "")}paste: {formats}");
         }

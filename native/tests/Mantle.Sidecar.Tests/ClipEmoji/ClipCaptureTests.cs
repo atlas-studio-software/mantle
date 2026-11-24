@@ -1,8 +1,9 @@
 // ClipCaptureTests.cs - clipboard history's capture, privacy flags, limits and paste dry run, run on the LINKED sidecar
 // source (sidecar/ClipHistory.cs) in process (lane r9-clipemoji-2). Every copy is a clip.capture FIXTURE that goes
 // through the same Capture a real copy takes; nothing opens, reads or writes the real clipboard (the sidecar is
-// passive, so clip.capture, clip.seed and clip.limits are allowed and a real paste is refused). There is no pins file:
-// clip.start points at a file under %TEMP%\mantle-native-tests that does not exist. No test prints an item's text.
+// passive, so clip.capture, clip.seed and clip.limits are allowed and a real paste is refused). Each test's clip.start
+// points at a fresh pins file under %TEMP%\mantle-native-tests that does not exist (only the 25-pins test makes it,
+// encrypted, there); no profile is read or written. No test prints an item's text.
 // Numbers in a request are doubles: the sidecar's Json.GetInt reads a double or a string, never a boxed int.
 using System;
 using System.Collections;
