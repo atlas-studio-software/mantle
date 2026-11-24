@@ -3,7 +3,7 @@
 // touched). The native app reuses Snap.cs as source (PLAN A4), so this IS the native snap geometry; the cases
 // and every expected rect are sidecar/test-snap.js's pure half ("the geometry, by hand" and "odd work areas,
 // apps Windows scales"), worked out here by the same hand-written arithmetic, never by asking the sidecar twice.
-// Parity rows: SNAP-005/006/009/010/012..035, 046 (zone refusals), 079 (assist complements).
+// Parity rows: SNAP-005..035 (the plan half of 007/008/011/025/026/034), 046 (zone refusals), 079 (assist complements).
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -186,6 +186,19 @@ namespace Mantle.Sidecar.Tests.Snap {
       Assert.IsTrue(r.Ok && r.S("from") == "grid:3x1:1,0,1,1" && r.S("action") == "unsnap" && Same(r.P("frame"), Frame), r.ToString());
     }
 
+    [TestMethod] // SNAP-021 (lane r9-snap): Left/Right from a Win+Z third snap it to that half, Up maximizes
+    public void A_WinZ_third_snaps_to_a_half_on_Left_or_Right_and_maximizes_on_Up() {
+      int[] g3 = Cell(OneWork, 3, 1, 1, 0, 1, 1);
+      R From(string dir) => Plan(new JsonObject { ["monitors"] = One(), ["frame"] = A(g3), ["dir"] = dir,
+        ["remembered"] = new JsonObject { ["zone"] = "grid:3x1:1,0,1,1", ["frame"] = A(g3), ["pre"] = A(Frame), ["preMonitor"] = "A" } });
+      var l = From("left");
+      Assert.IsTrue(l.Ok && l.S("action") == "snap" && l.S("to") == "left" && Same(l.P("frame"), Zone(OneWork, "left")), l.ToString());
+      var rt = From("right");
+      Assert.IsTrue(rt.Ok && rt.S("to") == "right" && Same(rt.P("frame"), Zone(OneWork, "right")), rt.ToString());
+      var up = From("up");
+      Assert.IsTrue(up.Ok && up.S("action") == "maximize" && up.S("to") == "max", up.ToString());
+    }
+
     // ------------------------------------------------------------ exact tiling on awkward sizes (SNAP-030)
     static readonly int[] OddWork = { 0, 0, 1919, 1031 };
     static JsonArray Odd() => Mons(Mon("O", new[] { 0, 0, 1919, 1079 }, OddWork, 96, true));
@@ -261,6 +274,21 @@ namespace Mantle.Sidecar.Tests.Snap {
     public void A_top_left_quarter_walks_to_the_top_right_quarter_of_the_monitor_to_the_left() {
       var r = Plan(new JsonObject { ["monitors"] = Three(), ["frame"] = A(Zone(BW, "tl")), ["dir"] = "left" });
       Assert.IsTrue(r.Ok && r.S("monitor") == "A" && r.S("to") == "tr", r.ToString());
+    }
+
+    [TestMethod] // SNAP-018, SNAP-019, SNAP-020 (lane r9-snap): the other quarters' cross-monitor steps, which test-snap.js does not walk
+    public void The_other_quarters_walk_to_the_mirrored_quarter_of_the_neighbour_monitor_and_wrap() {
+      var bad = new List<string>();
+      void Step(int[] from, string dir, string mon, string to, int[] want) {
+        var r = Plan(new JsonObject { ["monitors"] = Three(), ["frame"] = A(from), ["dir"] = dir });
+        if (!(r.Ok && r.S("monitor") == mon && r.S("to") == to && Same(r.P("frame"), want))) bad.Add($"Win+{dir} -> {mon}/{to}: got {r}");
+      }
+      Step(Zone(BW, "tr"), "right", "C", "tl", Zone(CW, "tl"));   // SNAP-018: tr + Win+Right -> tl of the monitor to the right
+      Step(Zone(BW, "bl"), "left", "A", "br", Zone(AW, "br"));    // SNAP-019: bl + Win+Left -> br of the monitor to the left
+      Step(Zone(BW, "br"), "right", "C", "bl", Zone(CW, "bl"));   // SNAP-020: br + Win+Right -> bl of the monitor to the right
+      Step(Zone(CW, "tr"), "right", "A", "tl", Zone(AW, "tl"));   // from the rightmost it wraps to the leftmost
+      Step(Zone(AW, "bl"), "left", "C", "br", Zone(CW, "br"));    // from the leftmost it wraps to the rightmost
+      Assert.AreEqual(0, bad.Count, string.Join("\n", bad));
     }
 
     [TestMethod] // SNAP-028: the pre-snap frame is carried to the monitor the window is on now (same offset, DPI-scaled size, kept there)
