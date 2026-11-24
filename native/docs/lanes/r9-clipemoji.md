@@ -64,3 +64,50 @@ linked source by `Mantle.Sidecar.Tests/ClipEmoji/ClipPinsTests.cs` (in process, 
 UI surfaces (the clipboard panel, the emoji window and its key watch, the welcome window and its three cards), the
 App wiring (feature registration, the Win+V / Win+. / Win+; chords, `welcome.*` commands, the start-up call to
 `FirstRun.Judge`), and every row that needs them. See the report for the ID ranges.
+
+## Lane r9-clipemoji-2 (stage 10, branch `native/r10-clipemoji-2` from bc0277b7)
+
+Still **written, not run** (no .NET SDK in this window either; nothing was built or run).
+
+| Native file | Electron source | What it is |
+|---|---|---|
+| `Mantle.Core/Features/Clipboard/ClipboardFeature.cs` | `lib/features/clipboard.js` | `[Feature("clipboard", "Clipboard history (Win+V)", true, Chords = { "Win+V" }, Rest = true)]`: clip.start with `ClipHost.PinsFor`'s choice, health (`ClipHost.Health` of the panel's and the sidecar's trouble), the Win+V toggle (arm first, list behind it or the cache; a press while opening or Esc cancels, nothing shows), warm-up, relist after copies, paste (dry run in --test) with its notices, pin / delete / clear, switch-off sends clip.stop, a game rest only hides |
+| `Mantle.Core.Tests/ClipEmoji/ClipboardFeatureTests.cs` | | the feature on the host rig (fake sidecar, manual clock); no file, no clipboard |
+| `Mantle.Sidecar.Tests/ClipEmoji/ClipCaptureTests.cs` | `sidecar/test-clipboard.js` | capture, privacy flags, limits, dedupe, delete / paste of a gone item, the paste dry run, the passive refusal, on the LINKED `sidecar/ClipHistory.cs` through its test-only `clip.capture` / `clip.seed` / `clip.limits` (passive; nothing reads or writes the real clipboard) |
+
+The panel surface talks to the feature by events `clipboard.show {list, arm, from, error?}`, `clipboard.hide {why}`,
+`clipboard.changed {list}`, `clipboard.warm {list}`, `clipboard.notice {title, text, ms}`, `clipboard.state {panel, ok,
+on, test, why?}` (replayed), and commands `clipboard.ready {ok?, why?}`, `.paste {item}`, `.pin {item, pinned}`,
+`.delete {item}`, `.clear`, `.close`, `.list`. The App must call `ClipboardFeature.Configure(new(() =>
+ClipHost.PinsFor(profile, gate)))` before the host loads features; without it pins are kept for the run only.
+
+Deviations:
+- **Win+V stays Windows' own until the panel is up.** The feature is not healthy (`ClipboardFeature.NoPanel`) until the
+  panel calls `clipboard.ready`, so the host hands Win+V back to Windows while no panel exists, and `clip.start` waits
+  for the panel too: with no panel nothing the user copies is held. Electron starts the history on sidecar ready
+  (its feature makes its own window). A panel that sees `clipboard.state` with `panel:false` (a new install after a rest
+  or a restart) calls `clipboard.ready` again.
+- No `clip.stop` from `StopAsync`: the host marks a feature stopped before its stop runs, so the scoped platform refuses
+  the call. Switching off (OnEnabled false) does send it; quitting ends the sidecar and the memory-only history with it.
+- No surface gate port: the toggle is a sequence number in the feature (a press or Esc while opening bumps it and the
+  open is dropped). The "drawn" wait (CLIP-006), the keyboard check (CLIP-013..015) and placement on screen are the
+  surface's.
+
+Safety (each its own test):
+- Storage: unchanged from the first lane (`ClipPinsTests`: CLIP-031, CLIP-040, CLIP-042); `ClipCaptureTests` points
+  clip.start at a pins file under `%TEMP%\mantle-native-tests` that does not exist, and `ClipboardFeatureTests` hands
+  the feature a made-up pins choice: no test reads or writes a profile.
+- Clearing (CLIP-047): `ClipPinsTests.Clear_all_and_switching_off_leave_only_the_pins_in_memory_and_on_disk` (sidecar,
+  memory and disk) and `ClipboardFeatureTests.Clear_all_delete_and_pin_reach_the_sidecar_and_answer_with_a_fresh_list`
+  (the command reaches clip.clear and answers with the list read again).
+- Privacy: `A_private_skip_records_no_format_names_and_no_text_anywhere` (sidecar) and
+  `A_busy_skip_is_logged_and_no_log_line_carries_copied_text` (feature logs).
+- The kill switch: the feature claims only Win+V and observes nothing (asserted).
+
+PEND-012 (this lane): the cited sidecar/test-clipboard.js cases for CLIP-021..037, 041, 044, 047, 053, 057 exist
+(checked by name). CLIP-037's "unreadableImage" half has no Electron case (native's is the first). CLIP-007, CLIP-019,
+CLIP-054 and CLIP-056 cite no Electron test (`none`); the selftest does run the warm-up (CLIP-007).
+
+Left todo on purpose (partly covered): CLIP-004 (the sidecar's arm itself is live-only; the feature's arm-first order is
+tested), CLIP-050 (dry-run formats per kind are tested, the `plain` mode is not), CLIP-052 (the second click in flight
+is the page's), CLIP-039 (the pin button and tooltip are the page's), CLIP-020/027/028 (live-only).
