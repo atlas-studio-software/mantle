@@ -42,6 +42,8 @@ public class LevitateTokensTests
         Assert.Equal((12.0, 6.0, 12.0), (LevitateTokens.Gap, LevitateTokens.GapRow, LevitateTokens.ContentInset));
         Num("LvGap", LevitateTokens.Gap, "LvGapThickness");
         Num("LvGapRow", LevitateTokens.GapRow);
+        Assert.Equal(12, LevitateTokens.GapAboveBar);   // a panel opens 12 above the bar
+        Num("LvGapAboveBar", LevitateTokens.GapAboveBar);
         Num("LvContentInset", LevitateTokens.ContentInset, "LvContentInsetThickness");
     }
 

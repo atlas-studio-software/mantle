@@ -19,6 +19,8 @@ public static class LevitateTokens
     // ---- gaps (DIP)
     /// The air between an island and the window / screen edge, and between big panels.
     public const double Gap = 12;
+    /// A panel opens this far above the bar (LOOK.md section 2: 12 px of air everywhere).
+    public const double GapAboveBar = 12;
     /// The air between islands in a row.
     public const double GapRow = 6;
     /// The content edge lines up with the chrome edge: the same 12.
