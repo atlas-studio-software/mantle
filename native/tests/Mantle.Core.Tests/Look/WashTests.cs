@@ -145,7 +145,7 @@ public class WashTests
         Assert.Equal(0.35, Wash.Alpha(shared, Desk(G("dark", Band(0.35, 0.35, 0))), "dark").Alpha);
         foreach (var look in new[] { null, "null", "{}", "{\"glass\":7}", "{\"glass\":{\"dark\":{\"dim\":\"x\"}}}" }) {
             var r = Wash.Alpha(look == null ? null : JsonNode.Parse(look), null, "dark");
-            Assert.Equal(0.30, r.Alpha);
+            Assert.Equal(0.20, r.Alpha);
             Assert.Matches(@"glass\.dark\.dim is missing or outside 0\.20-0\.90, so the default 0\.20", r.Reason);
         }
         var odd = Wash.Alpha(Look(Glass()), JsonNode.Parse("{\"guard\":\"x\",\"still\":\"a\"}"), "nonsense");
@@ -194,13 +194,13 @@ public class WashTests
         await rig.Host.Sync.WhenIdle();
         var w = rig.Host.Wash("dark");
         Assert.Equal("auto", w.Mode);   // absent = automatic
-        Assert.Equal("Automatic: 0.50, not raised: no desktop picture from Mantle", w.Text);   // Mantle's own seed Dim (.50) until native seeds the new look
+        Assert.Equal("Automatic: 0.20, not raised: no desktop picture from Mantle", w.Text);   // native's seed Dim (.20, look-sync seed 0.20, SEE-018)
 
         var a = await rig.Host.SetDimByHandAsync(0.20, "dark");
         Assert.True(a["ok"]!.GetValue<bool>(), a.ToJsonString());
         Assert.Equal("Manual: 0.20", rig.Host.Wash("dark").Text);
         Assert.Equal("auto", rig.Host.Wash("light").Mode);   // per theme
-        Assert.Contains("look: dark glass set in Mantle: blur 5 dim 0.2 panel 0 dimAuto false (Manual: 0.20)", string.Join("\n", rig.Log.Lines));
+        Assert.Contains("look: dark glass set in Mantle: blur 0 dim 0.2 panel 0 dimAuto false (Manual: 0.20)", string.Join("\n", rig.Log.Lines));
 
         // another write (the panel) keeps dimAuto: the clone of the theme entry carries it
         await rig.Host.SetGlassAsync(new JsonObject { ["panel"] = 0.1, ["look"] = "dark" });
