@@ -71,7 +71,10 @@ public sealed class NotesPad
     /// The text up to <paramref name="rev"/> is on disk.
     public void MarkSaved(long rev) { if (rev > SavedRev) SavedRev = Math.Min(rev, Rev); }
 
-    /// A save that came back with nothing new keeps the pad dirty past it (the newest text wins).
+    /// Text that came back from a rest unsaved: marked unsaved so the next tick or keystroke saves it (NOTE-091).
+    public void ForceDirty() { if (Rev <= SavedRev) Rev = SavedRev + 1; }
+
+    /// Open another tab (NOTE-027).
     public bool Activate(string id)
     {
         if (!_notes.Any(n => n.Id == id)) return false;
