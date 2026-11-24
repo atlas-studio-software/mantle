@@ -50,6 +50,9 @@ public static class WelcomeCards
         new WelcomeItem("launcher", "The launcher", "Mantle’s Start. Tap Win and type to find apps, settings and files."),
     };
 
+    /// Card 1's fine print: what Mantle sends over the network on its own (content.js at 6ca499fc, cards[0].foot).
+    public const string NetworkFoot = "On its own, Mantle checks GitHub for updates 2 minutes after it starts and every 6 hours, and the top bar’s PING pings AWS and Akamai/Linode servers every 2 seconds while it shows. Untick either under Features in the tray: Check for Mantle updates, Top menu bar.";
+
     // ---- card 2 ----
     public static readonly IReadOnlyList<WelcomeKey> Keys = new[]
     {
