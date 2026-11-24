@@ -168,7 +168,7 @@ public sealed class SwitcherFeature : IFeature
             return Ok(r.Ok ? new JsonObject { ["ok"] = true, ["granted"] = granted }
                 : new JsonObject { ["ok"] = false, ["reason"] = $"the click could not reach the sidecar: {r.Error}" });
         }));
-        ctx.Command("status", _ => Guard(() => Ok(JsonSerializer.SerializeToNode(Status()) as JsonObject ?? new JsonObject())));
+        ctx.Command("status", _ => Guard(() => Ok(Status())));
         ctx.Command("settings", _ => Guard(() => Ok(View())));
         ctx.Command("set", c => Guard(async () =>
         {
@@ -264,16 +264,22 @@ public sealed class SwitcherFeature : IFeature
     }
 
     /// switcher.status (SWI-144): settings, page, hook, the session, the thumbnails' count; no title, no handle.
-    object Status() => new
+    /// Built as a JsonObject (the same keys an anonymous object serialized to): Native AOT has no reflection JSON.
+    JsonObject Status() => new()
     {
-        ok = true,
-        settings = new { altTab = _settings.AltTab, winKeys = _settings.WinKeys },
-        page = new { ready = _page.Ready, reason = _page.Reason, failed = _page.Failed },
-        hook = _client.Hook, hookErr = _client.HookErr, pendingApply = _client.PendingApply,
-        session = _sess.Current is { } s ? new { seq = s.Seq, windows = s.List.Count, shown = s.Shown is not null, painted = s.Painted is not null, undrawn = s.Undrawn } : null,
-        thumbs = _sess.Current?.Thumbs?.Count ?? 0,
-        overlay = _h.Overlay is null ? NoOverlay : null,
-        resting = _resting,
+        ["ok"] = true,
+        ["settings"] = new JsonObject { ["altTab"] = _settings.AltTab, ["winKeys"] = _settings.WinKeys },
+        ["page"] = new JsonObject { ["ready"] = _page.Ready, ["reason"] = _page.Reason, ["failed"] = _page.Failed },
+        ["hook"] = _client.Hook is { } hk
+            ? new JsonObject { ["Installed"] = hk.Installed, ["AltTab"] = hk.AltTab, ["WinKeys"] = hk.WinKeys, ["Tracking"] = hk.Tracking, ["Reason"] = hk.Reason }
+            : null,
+        ["hookErr"] = _client.HookErr, ["pendingApply"] = _client.PendingApply,
+        ["session"] = _sess.Current is { } s
+            ? new JsonObject { ["seq"] = s.Seq, ["windows"] = s.List.Count, ["shown"] = s.Shown is not null, ["painted"] = s.Painted is not null, ["undrawn"] = s.Undrawn }
+            : null,
+        ["thumbs"] = _sess.Current?.Thumbs?.Count ?? 0,
+        ["overlay"] = _h.Overlay is null ? NoOverlay : null,
+        ["resting"] = _resting,
     };
 
     /* ---- events ------------------------------------------------------------------------------- */
@@ -388,7 +394,8 @@ public sealed class SwitcherFeature : IFeature
 
     static string? Str(JsonElement o, string k) => o.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
 
-    static CommandResult Ok(JsonObject o) => CommandResult.Success(JsonSerializer.SerializeToElement(o));
+    // JsonDocument, not JsonSerializer: Core is IsAotCompatible and the app ships Native AOT (no reflection JSON)
+    static CommandResult Ok(JsonObject o) => CommandResult.Success(JsonDocument.Parse(o.ToJsonString()).RootElement.Clone());
 
     ValueTask<CommandResult> Guard(Func<CommandResult> body)
     {

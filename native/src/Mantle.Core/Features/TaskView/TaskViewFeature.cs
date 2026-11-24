@@ -280,7 +280,8 @@ public sealed class TaskViewFeature : IFeature
         return "";
     }
 
-    static CommandResult Ok(JsonObject o) => CommandResult.Success(JsonSerializer.SerializeToElement(o));
+    // JsonDocument, not JsonSerializer: Core is IsAotCompatible and the app ships Native AOT (no reflection JSON)
+    static CommandResult Ok(JsonObject o) => CommandResult.Success(JsonDocument.Parse(o.ToJsonString()).RootElement.Clone());
     static CommandResult Fail(string words) => CommandResult.Fail(words);
 
     static async ValueTask<CommandResult> Guard(Func<Task<CommandResult>> body)
