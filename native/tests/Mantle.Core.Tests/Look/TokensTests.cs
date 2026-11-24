@@ -118,6 +118,7 @@ public class TokensTests
             string rel = Path.GetRelativePath(AppDir, f);
             if (rel.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) || rel.StartsWith("obj", StringComparison.Ordinal) || rel.StartsWith("bin", StringComparison.Ordinal)) continue;
             if (rel == Path.Combine("Theme", "Tokens.xaml")) continue;
+            if (rel == Path.Combine("Theme", "Levitate.xaml")) continue;   // lane r10-newlook: the levitated look's token file (LevitateTokensTests mirrors it)
             var lines = File.ReadAllLines(f);
             for (int i = 0; i < lines.Length; i++) {
                 string code = lines[i];
