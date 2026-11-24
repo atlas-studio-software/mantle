@@ -214,7 +214,8 @@ public sealed class SwitcherFeature : IFeature
         _sess.EndAll(why, Now());
         _h.Overlay?.ClearThumbs(why);
         _sess.Forget();
-        // The hand-back: Alt+Tab goes to Windows while stopped or resting (Win+N / Win+A stay as they are on a rest).
+        // The hand-back: Alt+Tab goes to Windows while stopped or resting. Only Host.HandBack can still reach the
+        // sidecar here (the feature's own platform refuses calls once the stop began); without it this is logged.
         try
         {
             // Both go back: a stopped or resting feature hears no winkey event, so a swallowed Win+N would open nothing.
