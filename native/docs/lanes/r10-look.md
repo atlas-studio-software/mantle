@@ -38,6 +38,9 @@ wallpaper (CONTRACT.md section 2 "Shared store", section 4, "Owen's answers", "L
   TranscodedWallpaper in place, so the id follows the picture), title the file name (or "Windows wallpaper"), file the
   path. The still is a WinRT decode scaled to the cover size of the primary screen at most (DesktopPublisher.CoverSize,
   never upscaled) and a JPEG at quality .9; the guard's picture is DesktopGlass.Decode, the decode the glass layers use.
+- A `--test` run never reads Windows' wallpaper and by default leaves look.json's desktop record alone (the UI tests,
+  GlassTests among them, write their own record and still and must keep them); `MANTLE_TEST_WALLPAPER=<picture>` makes a
+  test run publish that picture instead (said in the log either way).
 - Shared-file blocks (each marked `lane r10-look`):
   - `Mantle.App/App.xaml.cs`: two lines after `DesktopGlass.Feed`: `DesktopPublish.Start(_look.Look, Host.Files)`.
   - `Mantle.App/Surfaces/Bar/Frame/BarWindow.Frame.cs`: one line in `case 0x001A` (WM_SETTINGCHANGE

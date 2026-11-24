@@ -19,6 +19,10 @@ namespace Mantle.App.Shell.Glass;
 /// The desktop record's publisher for this run (one), fed by the look host.
 internal static class DesktopPublish
 {
+    /// A --test run never reads Windows' wallpaper: it publishes only when this names a picture file (the UI tests write
+    /// their own look.json desktop record and must keep it, so by default a test run leaves the record alone).
+    public const string TestEnv = "MANTLE_TEST_WALLPAPER";
+
     static DesktopPublisher? _pub;
     static IDisposable? _off;
 
@@ -27,8 +31,17 @@ internal static class DesktopPublish
     {
         if (_pub != null) return;
         try {
+            string? testPicture = null;
+            if (Host.Args.Test) {
+                testPicture = Host.Env(TestEnv);
+                if (string.IsNullOrEmpty(testPicture)) {
+                    Host.Log.Line("desktop: this test run leaves look.json's desktop record as it is and never reads Windows' wallpaper (" + TestEnv + " names no picture)");
+                    return;
+                }
+                Host.Log.Line("desktop: this test run publishes " + TestEnv + " as the desktop picture, never Windows' wallpaper");
+            }
             var pub = new DesktopPublisher(new DesktopPublisherOptions {
-                Sync = look.Sync, Files = files, Source = new WindowsWallpaper(),
+                Sync = look.Sync, Files = files, Source = new WindowsWallpaper(testPicture),
                 Glass = () => look.Local()["glass"], Log = line => Host.Log.Line(line),
             });
             _pub = pub;
@@ -55,10 +68,14 @@ internal static class DesktopPublish
 internal sealed class WindowsWallpaper : IDesktopSource
 {
     const float JpegQuality = 0.9f;
+    readonly string? _testPicture;
+
+    /// <param name="testPicture">a --test run's picture (MANTLE_TEST_WALLPAPER) in place of Windows' wallpaper, else null</param>
+    public WindowsWallpaper(string? testPicture) => _testPicture = testPicture;
 
     public DesktopNow Current()
     {
-        string path = WallpaperPath();
+        string path = _testPicture ?? WallpaperPath();
         if (path.Length == 0) return DesktopNow.None("Windows shows a plain colour, not a picture, so there is no wallpaper picture to share");
         FileInfo fi;
         try { fi = new FileInfo(path); } catch (Exception e) { return DesktopNow.None("Windows' wallpaper could not be read (" + e.Message + "): " + path); }
