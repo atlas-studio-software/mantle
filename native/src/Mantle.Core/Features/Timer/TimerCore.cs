@@ -312,7 +312,7 @@ public static class TimerCore
             if (now - st > SwMax) return BadR("it started more than a year ago; the clock may have changed");
             return new(new TimerState(TimerKind.Stopwatch, StartAt: (long)Math.Min(st, now)), null, null);
         }
-        string shown = JsonSerializer.Serialize(kind ?? (s.TryGetProperty("kind", out var k2) ? k2.ToString() : "undefined"));
+        string shown = JsonSerializer.Serialize(kind ?? (s.TryGetProperty("kind", out var k2) ? k2.ToString() : "undefined"), OptionJson.Default.String);
         return BadR("unknown kind " + (shown.Length > 40 ? shown.Substring(0, 40) : shown));
     }
 }
