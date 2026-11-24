@@ -325,7 +325,9 @@ public sealed class AutoPauseFeature : IFeature
     void Schedule(long ms)
     {
         if (_timer != null || _stopped) return;
-        _timer = _clock.Later(TimeSpan.FromMilliseconds(Math.Max(0, ms)), () => { _timer = null; _ = Fire(); });
+        bool fired = false;   // a clock may fire a 0 ms timer inside Later: then there is no timer left to keep
+        var t = _clock.Later(TimeSpan.FromMilliseconds(Math.Max(0, ms)), () => { fired = true; _timer = null; _ = Fire(); });
+        if (!fired) _timer = t;
     }
 
     async Task Fire()
