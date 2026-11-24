@@ -66,7 +66,7 @@ public sealed record DesktopPublisherOptions
 
 /// <summary>
 /// lib/look-desktop.js's publisher, the part native needs (lane r10-look; CONTRACT.md section 2 "Shared store", section 4,
-/// "Owen's answers", "desktop.guard", "Light look" and "2026-11-11"): only Mantle writes look.json <c>desktop</c>, and it writes
+/// the user's 2026-10-10 answers, "desktop.guard", "Light look" and "2026-11-11"): only Mantle writes look.json <c>desktop</c>, and it writes
 /// it even while look sync is OFF. On each wallpaper change it writes the still <c>stills\wall-&lt;rev&gt;.jpg</c> FIRST (tmp +
 /// rename), then the record through the shared module's writer, then keeps the last 3 stills. The record is the contract's
 /// shape: <c>{id, type, title, file, ok, reason, still, stillSize, guard{dark, light} | guardReason, guardLightReason?, rev, by}</c>,

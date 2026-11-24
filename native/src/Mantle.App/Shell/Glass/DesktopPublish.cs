@@ -1,5 +1,5 @@
 // lane r10-look: native Mantle publishes the look-sync `desktop` record, so Helm and Quartz paint the same wallpaper
-// (CONTRACT.md section 4, "Owen's answers" 2: the desktop wallpaper is the one place a picture is chosen). Native has no
+// (CONTRACT.md section 4 and the user's 2026-10-10 answer 2: the desktop wallpaper is the one place a picture is chosen). Native has no
 // wallpaper library yet, so the desktop's picture is Windows' own wallpaper (SPI_GETDESKWALLPAPER). The publishing itself
 // (still first, then the record, keep 3, the guard, the rev and retries) is Mantle.Core's DesktopPublisher; this file is
 // only where the wallpaper comes from and when to look again: at start, on WM_SETTINGCHANGE SPI_SETDESKWALLPAPER (the

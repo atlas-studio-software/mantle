@@ -2,7 +2,7 @@
 
 Brief: stage-10 round, two parts. 1: check that native seeds a missing look.json with look-sync's 2026-11-11 glass
 (SEE-018). 2: native Mantle publishes the look-sync `desktop` record, so Helm and Quartz stop falling back to Windows'
-wallpaper (CONTRACT.md section 2 "Shared store", section 4, "Owen's answers", "Lane 0 freeze", "desktop.guard",
+wallpaper (CONTRACT.md section 2 "Shared store", section 4, the user's 2026-10-10 answers, "Lane 0 freeze", "desktop.guard",
 "2026-11-11"). No .NET SDK on the build laptop this round: every C# change and test here is **written, not run**.
 
 ## Part 1: the seed (SEE-018)
