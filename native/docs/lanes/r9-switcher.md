@@ -147,14 +147,14 @@ HostTestKit.cs with FakePlatform).
 
 ### Shared files (second lane)
 
-None touched (no App wiring, no csproj, no chord table). The launch.md Native status cells: 35 new, and the 76 cells
+None touched (no App wiring, no csproj, no chord table). The launch.md Native status cells: 36 new, and the 76 cells
 of the first lane whose `/` had been turned into `| todo |` were repaired (column count now 8 on every SWI/TV row).
 
 ### Left (ID ranges, after the second lane)
 
 - SWI: 024, 029, 033..042, 048, 049, 053..054, 056, 070..076, 078..085, 087, 090, 091, 093..105, 107, 108, 110, 112,
   113, 121, 124..126, 143; and the "not yet" halves in the status cells.
-- TV: 003, 006, 008..014, 016..023, 026..028, 030..046, 049, 050, 052, 054, 055, 057..060, 062..070, 072..079,
+- TV: 003, 006, 008..014, 016..023, 026..028, 030, 031, 033..046, 049, 050, 052, 054, 055, 057..060, 062..070, 072..079,
   082..095, 097..100, 102..118, 122..126, 129..134.
 - Next: the composition root (Configure both Hosts: overlay/surface, AltDown via GetAsyncKeyState, HandBack, OnWinKey,
   WindowCount from the bar's list), then Surfaces/Switcher on the r10-newlook style layer, then Surfaces/TaskView.
