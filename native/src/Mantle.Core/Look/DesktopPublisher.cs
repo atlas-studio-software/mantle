@@ -141,6 +141,15 @@ public sealed class DesktopPublisher
         try { now = _o.Source.Current() ?? DesktopNow.None("the wallpaper could not be read (no answer came back)"); }
         catch (Exception e) { now = DesktopNow.None("the wallpaper could not be read (" + e.Message + ")"); }
         string key = KeyOf(now);
+        // a folder this run may not write (the user's own look-sync folder outside --live as the only shell): no still is made
+        string? refused;
+        try { refused = _o.Files.Gate.Refusal(_o.Sync.File); } catch (Exception e) { refused = "the folder could not be checked (" + e.Message + ")"; }
+        if (refused != null) {
+            _lastKey = null;
+            string r = "the desktop record is not written: " + refused;
+            Say(r);
+            return new DesktopOutcome("failed", null, r, null);
+        }
         if (!_started) {
             _started = true;
             if (Adopt(now, key) is { } kept) {
@@ -279,6 +288,16 @@ public sealed class DesktopPublisher
         }
         foreach (var n in names)
             if (n.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase)) _o.Files.Remove(Path.Combine(StillsDir, n));   // in use: left
+    }
+
+    /// look-desktop.js coverSize: the size that still covers a <paramref name="sw"/> x <paramref name="sh"/> screen, never bigger
+    /// than the picture (cover fit, at most the screen); no screen size keeps the picture's own.
+    public static (int W, int H) CoverSize(int iw, int ih, int sw, int sh)
+    {
+        if (!(iw > 0 && ih > 0)) return (0, 0);
+        if (!(sw > 0 && sh > 0)) return (iw, ih);
+        double s = Math.Min(1, Math.Max(sw / (double)iw, sh / (double)ih));
+        return (Math.Max(1, (int)Math.Round(iw * s, MidpointRounding.AwayFromZero)), Math.Max(1, (int)Math.Round(ih * s, MidpointRounding.AwayFromZero)));
     }
 
     /// The rev in a still's name (<c>wall-12.jpg</c> -> 12), else -1.

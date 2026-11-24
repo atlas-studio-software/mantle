@@ -358,6 +358,31 @@ public class DesktopPublisherTests
     }
 
     [Fact]
+    public async Task A_folder_the_gate_refuses_gets_no_still_and_no_record_and_is_said_once()
+    {
+        using var rig = new Rig(files: new SafeFile(WriteGate.Never("this run is not --live")));
+        var a = await rig.Pub.CheckAsync("start");
+        var b = await rig.Pub.CheckAsync("Windows' wallpaper changed");
+        Assert.Equal("failed", a.What);
+        Assert.Equal("the desktop record is not written: this run is not --live", a.Reason);
+        Assert.Equal(a.Reason, b.Reason);
+        Assert.DoesNotContain(rig.Source.Calls, c => c.StartsWith("still ", StringComparison.Ordinal));
+        Assert.False(File.Exists(Path.Combine(rig.Dir, "look.json")));
+        Assert.Empty(rig.Stills());
+        Assert.Single(rig.Log.Lines, l => l.Contains("not --live", StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(3840, 2160, 1920, 1080, 1920, 1080)]   // twice the screen: scaled down to cover it
+    [InlineData(1000, 500, 1920, 1080, 1000, 500)]     // smaller than the screen: never upscaled
+    [InlineData(8000, 2000, 1920, 1080, 4320, 1080)]   // a wide picture covers the height
+    [InlineData(4000, 1000, 1920, 1080, 4000, 1000)]   // covering would need an upscale: its own size
+    [InlineData(5, 10, 1, 5, 3, 5)]                    // 2.5 rounds up, as Math.round
+    [InlineData(800, 600, 0, 0, 800, 600)]             // no screen size: the picture's own
+    public void The_still_is_the_cover_size_of_the_screen_at_most(int iw, int ih, int sw, int sh, int w, int h)
+        => Assert.Equal((w, h), DesktopPublisher.CoverSize(iw, ih, sw, sh));
+
+    [Fact]
     public async Task A_source_that_throws_is_a_reason_not_a_crash()
     {
         using var rig = new Rig();

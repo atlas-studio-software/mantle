@@ -401,6 +401,7 @@ public sealed partial class BarWindow
             }
             case 0x001A:     // WM_SETTINGCHANGE SPI_SETDESKWALLPAPER: the dark still is cut again
                 if (wp.ToInt64() == 0x0014) DispatcherQueue.TryEnqueue(() => _live?.WallpaperChanged());
+                if (wp.ToInt64() == 0x0014) Mantle.App.Shell.Glass.DesktopPublish.WallpaperChanged();   // lane r10-look: the desktop record follows
                 break;
         }
         return FrameNative.DefSubclassProc(h, msg, wp, lp);

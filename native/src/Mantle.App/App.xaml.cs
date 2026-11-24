@@ -280,6 +280,8 @@ public partial class MantleApp : Application
         ThemeNow = _look.Payload();
         _look.Start();
         if (_queue != null) Mantle.App.Shell.Glass.DesktopGlass.Feed(_look.Look, _queue);   // the see-through look's still and tint (look.md)
+        // lane r10-look: Mantle publishes look.json `desktop` (Windows' wallpaper, its still and the top band), even with sync off
+        Mantle.App.Shell.Glass.DesktopPublish.Start(_look.Look, Host.Files);
         _look.FollowWindows(themeKey);   // Match Windows follows a change at once (RegNotifyChangeKeyValue), not by polling
         log($"theme: Mantle is {_look.Now}; the host's theme reaches {ThemeShown?.GetInvocationList().Length ?? 0} surface(s) directly" +
             (ThemeShown == null ? " (the bar still follows theme.json itself)" : ""));
