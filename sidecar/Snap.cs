@@ -355,10 +355,18 @@ namespace Mantle {
       return "normal";
     }
 
-    /// The pre-snap frame put back on `to`: exactly where it was on its own monitor; on another
-    /// monitor, the same offset into the work area and the same size (scaled for DPI), kept on it.
+    /// The pre-snap frame put back on `to`, never stranded:
+    ///   its own monitor, title bar still on the work area: EXACTLY where it was (a window the user
+    ///     left partly off the screen on purpose, title bar still grabbable, comes back as it was);
+    ///   its own monitor, title bar off the work area (the work area shrank since: a resolution
+    ///     change, the taskbar moved): the same size, fitted onto the work area;
+    ///   its monitor gone (`from` null: unplugged, undocked): the same size, fitted onto `to`;
+    ///   another monitor: the same offset into the work area and the same size (scaled for DPI),
+    ///     kept on it.
     public static SnapRect Translate(SnapRect f, SnapMonitor from, SnapMonitor to) {
-      if (from == null || to == null || from.Id == to.Id) return f;
+      if (to == null) return f;
+      if (from == null) return Fit(f, to.Work);
+      if (from.Id == to.Id) return TitleBarOn(f, to) ? f : Fit(f, to.Work);
       int w = Sc(f.Width, from.Dpi, to.Dpi), h = Sc(f.Height, from.Dpi, to.Dpi);
       int dx = Sc(f.Left - from.Work.Left, from.Dpi, to.Dpi), dy = Sc(f.Top - from.Work.Top, from.Dpi, to.Dpi);
       return Fit(new SnapRect(to.Work.Left + dx, to.Work.Top + dy, to.Work.Left + dx + w, to.Work.Top + dy + h), to.Work);
@@ -370,6 +378,29 @@ namespace Mantle {
       int l = Math.Max(work.Left, Math.Min(f.Left, work.Right - w));
       int t = Math.Max(work.Top, Math.Min(f.Top, work.Bottom - h));
       return new SnapRect(l, t, l + w, t + h);
+    }
+
+    /// The strip at the top of a visible frame the user drags it by, and how much of it, across,
+    /// must be on the work area (all of it when the window is narrower). DIP.
+    public const int TitleBarDip = 32;
+    public const int GrabDip = 64;
+
+    /// DIP to physical pixels at `dpi` (0 or less = 96), half up.
+    public static int Px(int dip, int dpi) {
+      if (dpi <= 0) dpi = 96;
+      return (int)(((long)dip * dpi + 48) / 96);
+    }
+
+    /// True when `f`'s title bar is on `mon`'s work area: the top TitleBarDip strip's whole height
+    /// inside it (within Tolerance) and at least GrabDip of its width (all of it when narrower).
+    /// TWIN of native's SnapSafety.TitleBarOn (native/src/Mantle.Core/Features/Snap/SnapSafety.cs):
+    /// the same rule, so native's after-move guard finds nothing to fix in what this returns.
+    public static bool TitleBarOn(SnapRect f, SnapMonitor mon) {
+      if (f.Empty || mon == null || mon.Work.Empty) return false;
+      int barBottom = f.Top + Math.Min(f.Height, Px(TitleBarDip, mon.Dpi));
+      if (f.Top < mon.Work.Top - Tolerance || barBottom > mon.Work.Bottom + Tolerance) return false;
+      int across = Math.Min(f.Right, mon.Work.Right) - Math.Max(f.Left, mon.Work.Left);
+      return across >= Math.Min(f.Width, Px(GrabDip, mon.Dpi));
     }
 
     /// The zones Snap Assist offers to fill after a snap into `zone`.
@@ -1271,9 +1302,12 @@ namespace Mantle {
         memZone = Json.GetString(rd, "zone");
         hasMem = memZone != null && RectArg(rd, "frame", out memFrame);
         hasPre = RectArg(rd, "pre", out pre);
+        // A preMonitor that names no monitor passed in is a monitor that has gone since the snap:
+        // preMon stays null, exactly as snap.move's lookup by id among the live monitors leaves it.
+        // Only a remembered frame with no preMonitor at all is judged by where it lies.
         string pm = Json.GetString(rd, "preMonitor");
         foreach (SnapMonitor m in mons) if (m.Id == pm) preMon = m;
-        if (hasPre && preMon == null) preMon = SnapGeom.MonitorFor(pre, mons);
+        if (hasPre && preMon == null && pm == null) preMon = SnapGeom.MonitorFor(pre, mons);
       }
       SnapRect placement;
       bool hasPlacement = RectArg(req, "placement", out placement);

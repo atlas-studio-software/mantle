@@ -144,6 +144,48 @@ async function pure(s) {
   r = await s.send('snap.plan', { monitors: one, frame: g3, dir: 'down', remembered: { zone: 'grid:3x1:1,0,1,1', frame: g3, pre: frame, preMonitor: 'A' } });
   check('plan: Win+Down on a Win+Z third goes back to the pre-snap frame', r.ok && r.result.from === 'grid:3x1:1,0,1,1' && r.result.action === 'unsnap' && same(r.result.frame, xywh(frame)));
 
+  // un-snap never strands a window (lane snap-strand). The rule is native's SnapSafety.TitleBarOn:
+  // the top 32 DIP of the frame inside the work area (2 px slack), and min(width, 64 DIP) of it across.
+  const unsnapL = (mons, work, pre, preMonitor) => s.send('snap.plan', { monitors: mons, frame: zone(work, 'left'), dir: 'right',
+    remembered: { zone: 'left', frame: zone(work, 'left'), pre, preMonitor } });
+  // (a) the remembered monitor is gone (unplugged, undocked): same size, slid fully onto the work area
+  r = await unsnapL(one, one[0].work, [2200, 150, 3000, 750], 'GONE');
+  check('plan: un-snap whose remembered monitor is gone fits the frame onto the current work area, same size', r.ok &&
+    r.result.action === 'unsnap' && r.result.restoredFrom === 'remembered' && r.result.monitor === 'A' &&
+    same(r.result.frame, xywh([1120, 150, 1920, 750])), JSON.stringify(r.result && r.result.frame));
+  r = await unsnapL(one, one[0].work, [1920, -100, 4480, 1500], 'GONE');
+  check('plan: ... and a frame bigger than the work area is shrunk to it', r.ok && same(r.result.frame, xywh([0, 0, 1920, 1040])),
+    JSON.stringify(r.result && r.result.frame));
+  // (b) the same monitor, its work area shrank since the snap, so the title bar would be off it
+  r = await unsnapL(one, one[0].work, [2000, 200, 2600, 800], 'A');
+  check('plan: un-snap on the same monitor after its resolution shrank brings the title bar back (fitted, same size)', r.ok &&
+    r.result.restoredFrom === 'remembered' && same(r.result.frame, xywh([1320, 200, 1920, 800])), JSON.stringify(r.result && r.result.frame));
+  const topBar = [{ id: 'A', bounds: [0, 0, 1920, 1080], work: [0, 48, 1920, 1080], dpi: 96, primary: true }];
+  r = await unsnapL(topBar, topBar[0].work, [100, 10, 900, 610], 'A');
+  check('plan: ... and after the taskbar moved to the top, the title bar comes out from under it', r.ok &&
+    same(r.result.frame, xywh([100, 48, 900, 648])), JSON.stringify(r.result && r.result.frame));
+  // (c) the same monitor, partly off the screen on purpose, title bar still grabbable: EXACTLY where it was
+  r = await unsnapL(one, one[0].work, [1500, 600, 2300, 1300], 'A');
+  check('plan: un-snap puts a frame the user left partly off the screen back exactly (its title bar is grabbable)', r.ok &&
+    r.result.restoredFrom === 'remembered' && same(r.result.frame, xywh([1500, 600, 2300, 1300])), JSON.stringify(r.result && r.result.frame));
+  r = await unsnapL(one, one[0].work, [-736, 300, 64, 900], 'A');
+  check('plan: ... 64 px of title bar left on the screen is enough (exactly where it was)', r.ok && same(r.result.frame, xywh([-736, 300, 64, 900])),
+    JSON.stringify(r.result && r.result.frame));
+  r = await unsnapL(one, one[0].work, [-737, 300, 63, 900], 'A');
+  check('plan: ... 63 px is not: fitted back onto the work area', r.ok && same(r.result.frame, xywh([0, 300, 800, 900])),
+    JSON.stringify(r.result && r.result.frame));
+  const hi125 = [{ id: 'H', bounds: [0, 0, 2560, 1600], work: [0, 40, 2560, 1552], dpi: 120, primary: true }];
+  r = await unsnapL(hi125, hi125[0].work, [-720, 300, 80, 900], 'H');
+  check('plan: ... at 125 % the 64 DIP are 80 px: 80 px showing stays exactly where it was', r.ok &&
+    same(r.result.frame, xywh([-720, 300, 80, 900])), JSON.stringify(r.result && r.result.frame));
+  r = await unsnapL(hi125, hi125[0].work, [-721, 300, 79, 900], 'H');
+  check('plan: ... and 79 px is fitted (the rule is in DIP, at the monitor\'s DPI)', r.ok &&
+    same(r.result.frame, xywh([0, 300, 800, 900])), JSON.stringify(r.result && r.result.frame));
+  // (d) Windows' own restore rect (the "windows" path), stranded on the same monitor: fitted too
+  r = await s.send('snap.plan', { monitors: one, frame: zone(one[0].work, 'right'), dir: 'left', placement: [1880, 300, 2680, 900] });
+  check('plan: Windows\' restore rect with its title bar off the same monitor is fitted onto it', r.ok && r.result.restoredFrom === 'windows' &&
+    same(r.result.frame, xywh([1120, 300, 1920, 900])), JSON.stringify(r.result && r.result.frame));
+
   // exact tiling on awkward sizes: shared edges are one pixel line, never a gap or an overlap
   const odd = [{ id: 'O', bounds: [0, 0, 1919, 1079], work: [0, 0, 1919, 1031], dpi: 96, primary: true }];
   const oddPlan = (grid, c) => s.send('snap.plan', { monitors: odd, frame: [10, 10, 500, 500], grid, cell: c }).then((x) => x.result && x.result.frame);
