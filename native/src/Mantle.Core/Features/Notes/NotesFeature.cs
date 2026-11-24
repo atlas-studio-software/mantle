@@ -59,6 +59,12 @@ public sealed class NotesFeature : IFeature
     /// The live instance, for the pad surface.
     public static NotesFeature? Current { get; private set; }
 
+    /// Tests: forget the module scope (the rest carry and the live instance) between runs.
+    internal static void ResetModule() { _carry = null; Current = null; _configured = null; }
+
+    /// Tests: is a rest carry waiting?
+    internal static bool Carrying => _carry != null;
+
     readonly Host? _given;
     public NotesFeature() { }
     public NotesFeature(Host h) { _given = h; }
