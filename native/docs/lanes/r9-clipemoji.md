@@ -128,3 +128,32 @@ Deviation: Core has no clipboard, so when there is no window to type into (or ty
 `copy: true` and the PANEL puts the pick on the clipboard (never in a test). Electron's feature wrote it itself.
 Not yet: the 2-minute idle destroy (EMO-003, the surface's window), the UIA caret ask (`emoji.caret`, EMO-008), a
 `testkey` command (tests raise the fake platform's `emoji` events instead).
+
+## Welcome (r10)
+
+Lane r10-welcome (native/r10-welcome off 5722ba83). Written WITHOUT a build or test run (no .NET SDK on the laptop this
+window): every row below is `written-not-run:Mantle.Core.Tests/Welcome/WelcomeFlowTests.cs`.
+
+| File | Port of | What |
+|------|---------|------|
+| `Features/Welcome/WelcomeCards.cs` | `ui/welcome/content.js`, `welcome.js#cornersBlock` | every word on the three cards (plus card 1's network foot from 6ca499fc and the installed-copy "For good" from 67cfece5, neither on master), `WaysFor(packaged)`, `Corners(live)` (only corners not Off, one colon, the off line) |
+| `Features/Welcome/WelcomeFlow.cs` | `ui/welcome/welcome.js` (S, go, leave, fail, restore, keydown, draw) | the page model: card index, leaving latch (skip / finish ask exactly once), save error, restore state, primary / Back / counter / step markers / Tab order, exit delay |
+| `Features/Welcome/WelcomeHost.cs` | `lib/welcome.js#host`, `lib/args.js` (--first-run) | `CheckArgs`, `Record(holdsLock)`, `Start` (delay), `Place` (centred, clamped), `Open` / already, ready-to-show and focus help (never in a test), renderer gone / load failed (stays pending), `Closed`, `State` / `Done` / `Show` (via cleaned) |
+
+Rows: WEL-010, 011, 014..019, 024, 026..046, 048, 053 (32). Left todo: WEL-047 (focus ring), 049 (theme / contrast),
+050 (layout), 052 (no-bridge page, textContent only): surface only; WEL-051 (truth checks against Mantle's code: the
+native keys/corners/menu names live in other lanes' code and must be checked there once wired).
+
+Safety: the flow never changes the shell by itself: `Restore_is_asked_only_by_its_click...` (no key asks shell.restore;
+once per click). Every flag write goes through `WelcomeRecorder` / `FirstRun.WriteFlag` and the SafeFile gate:
+`A_failed_record_keeps_the_window...` (WriteGate.Never: nothing written, the card shows the reason, retry works),
+`A_plain_test_run_records_nothing_through_the_whole_flow`, `Record_writes_only_once_this_process_holds_the_single_instance_lock`,
+and the e2e case asserts first-run.json is the only file ever written. Tests use TestDir only.
+
+PEND-012 (cited Electron tests, checked by grep on ~/mantle master): WEL-010 cites `none` but lib/args.test.js covers
+--first-run; WEL-016's focusHelp has no Electron case; WEL-017 `none` (renderer-gone / did-fail-load untested);
+WEL-026 `packaged`, WEL-030 (network foot) and WEL-041 (installed copy) are not on master at all (only on other
+branches), so their cited tests do not cover them there.
+
+Not yet (App's): calling CheckArgs from the native args parser, the did-finish-load hook and 1.2 s timer, the window
+itself, wiring `welcome.*` commands and Settings' "Show again" row.
