@@ -206,6 +206,18 @@ public class TaskViewFeatureTests
     });
 
     [Fact]
+    public void A_game_rest_closes_Task_View_and_drops_its_window() => T(async r =>
+    {
+        var s = new Surface();
+        await Up(r, s);
+        await WinTab(r, () => s.Calls.Count == 1);
+        await r.Host.RestAllAsync("VALORANT runs");
+        await Settle(r, () => s.Calls.Any(c => c.StartsWith("drop ", StringComparison.Ordinal)));
+        Assert.StartsWith("end #1 ", s.Calls[1], StringComparison.Ordinal);
+        Assert.StartsWith("drop ", s.Calls.Last(), StringComparison.Ordinal);
+    });
+
+    [Fact]
     public void Learn_takes_the_windows_and_desktops_a_session_may_name()
     {
         var t = new TaskViewSession(1, "Win+Tab");

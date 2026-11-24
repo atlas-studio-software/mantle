@@ -183,6 +183,18 @@ public class SwitcherFeatureTests
     });
 
     [Fact]
+    public void A_game_rest_asks_Alt_Tab_and_Win_N_A_back_through_the_hand_back() => T(async r =>
+    {
+        var o = new Overlay();
+        await Up(r, H(r, o) with { HandBack = a => r.Platform.CallAsync("hotkey", a) });
+        await Call(r, "ready");
+        await Settle(r, () => Asks(r).Last() == "{\"altTab\":true,\"winKeys\":true}");
+        await r.Host.RestAllAsync("VALORANT runs");
+        await Settle(r, () => Asks(r).Last() == "{\"altTab\":false,\"winKeys\":false}");
+        Assert.Equal("{\"altTab\":false,\"winKeys\":false}", Asks(r).Last());
+    });
+
+    [Fact]
     public void Quitting_ends_the_session_clears_previews_and_asks_Alt_Tab_back() => T(async r =>
     {
         var o = new Overlay();
