@@ -137,3 +137,124 @@ None needed: the layer uses look.json's existing `glass.<theme>.dim` and `glass.
 
 The cloud check, not run in this window:
 `cloudtest --recipe mantle-native-public -- "pwsh -NoProfile -File native/tools/ci.ps1 -Stages build,unit,ui"`
+
+## LOOK.md + v2 (lane r10-newlook-2)
+
+The first spec (the prototype, 14:27) is replaced by LOOK.md (look-sync design commit 97aa001; its numbers reached this
+lane through the brief, the file itself is not in a local checkout), look-sync v2's test vectors (look-sync 9a53e89, not
+merged yet: `test/lift-v2.json`, `test/fixtures/lift-v2.gen.js`, the CONTRACT v2 section, refreshed with 953d039's "No
+Blur control") and the coordinator's notice of 14:50 (read, applied, not committed).
+
+### Every number changed (old -> new)
+
+- Gap, island to window / screen edge and between big panels: 8 -> 12 (`Gap`, `LvGap`, `LvGapThickness`).
+- New: islands in a row 6 (`GapRow`); content edge = chrome edge 12 (`ContentInset`); a panel opens 12 above the bar
+  (`GapAboveBar`, `LvGapAboveBar`).
+- r-m 10 -> dropped (`RadiusM`, `LvRM`, `LvRMCorner`: LOOK.md has no 10).
+- New radii: controls 4 / 6 / 8, pop-overs 14, a floating page 14, the big chart panel 20, pills and round buttons 999;
+  toolbar / tab islands 12 and cards 16 unchanged; `Nested(outer, gap)` = outer - gap (never below 0).
+- New: spacing grid 4 / 8 / 12 / 16 / 24 / 32; rows 32 (lists) / 36 (menus) / 40 (tray); toolbar buttons 32 (28 small),
+  round controls 36 (28 small, 44 main), pill buttons 28. Card padding 16 unchanged.
+- New colours (Lv* only; Tokens.xaml untouched): text #EEF6F7; text-2 / -3 / -4 rgba(230,242,244,.76 / .54 / .34);
+  accent #A9E7ED, ink on it #052A2F; ok #8FE3B4; down #FF9D95; hair white .09 (dividers inside an island only). Fills
+  inside an island unchanged (.00 / .07 / .12 / .18, pressed .05).
+- New: white sheen on HOVER only .07 (.05 on big panels); none at rest (`SheenHover`, `LvSheenHover`, `LvSheenHoverBig`,
+  and `LevitatePanel.Sheen` + `Hover(bool)`).
+- New: focus ring 2 px accent, offset 2. Type families Segoe UI Variable Text / Display (with Tokens.xaml's fallbacks);
+  weights 400 / 500 / 600, 300 only on a hero clock.
+- Shadows: float and float-hi unchanged; new sheet `0 2px 4px .18, 0 24px 48px -12px .45, 0 60px 100px -40px .60`
+  (rgba(0,12,16,a)); new text on islands `0 1px 2px rgba(0,0,0,.22)` (`IslandText`); text-lift renamed `BareText`
+  (values unchanged).
+- Curves: ease and ease-lift unchanged; new morph curve cubic-bezier(0.22, 1, 0.36, 1) (`EaseMorph`). Press scales new:
+  0.94 / 0.97 / 0.985. Hover / press 160 unchanged.
+- Lift in: opacity 280 ms after 60 (ease) -> 240 after 40 (ease-lift); translateY from 10 -> 28, 420 after 40 -> 460
+  after 20; new scale 0.965 -> 1 (460 after 20). `TotalMs(LiftIn)` 460 -> 480. Sink out unchanged (200 / 300, 12, 0.955).
+- Sliding highlight: translateX + WIDTH -> translateX + scaleX (`Slide(fromX, fromW, toX, toW, baseW)`); new accent
+  underline 16 x 2, translateX only, centred (`SlideUnderline`, `UnderlineX`). 320 ms ease-lift unchanged.
+- New: pop-over in (opacity 160, translate + scale 260 from translateY -6 and 0.97, ease-lift) and out (120 / 160);
+  press / release (160); first load (rise 10 with opacity over 520, staggered 45, never replayed); morph (480; old fades
+  200, new 300 after 90, scrim 360; fallback fade + translateY 12 + scale 0.97 in 320).
+- Reduced motion: "the end state at once" -> no travel (a transform is at its end at once) and quick fades only (a fade
+  at most 160 ms, no delay). `TotalMs(LiftIn, reduced)` 0 -> 160.
+- Brightness check: the step was `a += 0.04` (0.4799999999999999) -> `round2(k * 0.04)` (0.48 exact); a dim outside
+  0..1 was used as given (-5 gave the .56 cap) -> checked as 0.20 (0.48); new: channels clamped to 0..255, malformed
+  samples (null, under 3 entries, a non-finite channel) skipped, none left = 0, the index floor(n x 0.1) counts valid
+  samples only. New pure entry `Legibility.LiftAlpha(double[][], dim)` (+ a dimAuto overload); `Film(Rgb[])` uses the
+  same core.
+- Unchanged: Dim (default .20, the slider clamp 0.20..0.90, nothing below .20 written), the frost (512 wide, light 6 / soft
+  15, pad 3 x the radius by stretching edge pixels), BIG (min side 48 and area 20000, layout size), the film rgb(10,12,14),
+  cap .56, target .163.
+
+### The v2 vectors
+
+`Fixtures/look/v2/lift-v2.json` is a byte copy of look-sync 9a53e89 `test/lift-v2.json` (in its tree
+`test/fixtures/lift-v2.json`; git stores it with LF; it is not
+hand-edited); the placeholder `film.json` is deleted and `gen-levitate-vectors.js` no longer writes it (it keeps the
+curve and kernel reference values). Shape: `{ about, lift: { cols 8, rows 5, quantile .1, rgb [10,12,14], target .163,
+step .04, max .56 }, vectors: [ { name, dim, samples: [[r, g, b] x 40] before Dim, alpha } x 27 ] }`.
+The Engineering Manager's port rules equal look-sync's own `liftAlpha` (9a53e89) to the letter. `lift-v2.gen.js`'s REF
+(the prototype's code) differs in what it does not do: no dim range check, no clamp, no skip of malformed samples (it
+would throw on no samples), and it accumulates `a += 0.04` and rounds only at the end (`toFixed(2)`). On the 27 vectors
+the two agree: the decisive luminance never comes closer than 4.7e-4 to 0.163, far beyond the ~1e-16 between an
+accumulated and a rounded step. A JS re-do of the C# formula, line for line, gives 27 of 27 exactly (run once, scratch
+script not kept).
+
+### Tests (all written, not run)
+
+- `LevitateFilmTests`: kept `Luminance_is_WCAG_relative_luminance`, `A_dark_picture_gets_no_film`,
+  `More_dim_means_less_film` (now exact), `The_brightest_10_percent_is_ignored_index_4_of_40_decides`; changed
+  `Bright_white_gets_the_first_step_that_reads` (0.48 exact), `The_film_stops_at_056`,
+  `A_panel_samples_the_copy_it_shows_soft_if_big_else_light` (+ the 19968 / 20016 edges); new
+  `The_steps_are_rounded_to_two_decimals_not_added_up`, `A_dim_outside_0_to_1_is_checked_as_020_and_0_to_1_is_taken_as_given`,
+  `The_index_counts_valid_samples_only`, `Channels_are_clamped_to_0_255`, `Malformed_samples_are_skipped_and_none_left_is_0`,
+  `Manual_is_no_film` (was `Manual_is_no_film_and_no_samples_is_no_film`), `Every_lift_v2_vector_matches_exactly` (was
+  `Every_v2_vector_file_matches`; exact, no tolerance), `The_lift_v2_constants_are_ours`, `Only_look_syncs_file_is_in_the_v2_folder`;
+  removed `The_placeholder_vectors_say_they_are_placeholders`.
+- `LevitateTokensTests`: new `Gaps_are_12_to_the_edge_and_between_big_panels_6_in_a_row`, `Radii_are_LOOK_mds_and_r_m_10_is_gone`,
+  `A_nested_shape_is_the_outer_radius_less_the_gap`, `Spacing_rows_and_control_sizes`, `Colours_are_one_neutral_family_and_one_accent`,
+  `The_white_sheen_is_007_on_hover_005_on_big_panels_and_none_at_rest`, `Focus_is_one_2px_accent_ring_offset_2`,
+  `Type_is_Segoe_UI_Variable_Text_and_Display`, `The_shadows_are_LOOK_mds_tinted_0_12_16`, `The_film_the_frost_and_the_dim`;
+  changed `Motion_tokens_match_the_mirror`; kept the control fills, the fallback and the Theme.xaml merge; removed
+  `Islands_and_gaps_match_the_mirror` and `The_shadows_and_the_film_are_the_prototypes` (split into the new ones).
+- `LevitateTests`: changed `Durations_and_the_sink_and_lift_tracks`, `A_track_holds_its_start_through_the_delay_then_follows_its_curve`;
+  new `Motion_is_transform_and_opacity_only_never_width_or_blur`, `Reduced_motion_is_no_travel_and_quick_fades_only` (was
+  `Reduce_motion_is_the_end_state_at_once`), `The_sliding_highlight_is_translate_and_scaleX_over_320ms_on_ease_lift_carrying_a_16x2_underline`
+  (was `..._moves_x_and_width_...`), `Pop_overs_press_and_the_first_load`, `The_morph_grows_the_panel_out_of_the_box_in_480ms`.
+
+### Choices and deviations
+
+- Curves LOOK.md (as the brief gives it) does not name: lift-in's opacity rides ease-lift with its transform (the list
+  ends ", ease-lift"; the first lane had ease); pop-over out ease; first load opacity ease, rise ease-lift; the morph's
+  fades on the morph curve; its fallback ease. Origins: sink 50 % 35 % (first spec), pop-overs top centre, press
+  centre, morph top-left.
+- Reduced motion's "quick" fade is 160 ms (`ReducedFadeMs` = the hover / press duration): LOOK.md names no number.
+- Page-to-page cross-fade: no duration given, no token added.
+- Re-blur: the copies are 512 wide whatever the monitor, so they are made again only when the picture changes; a window
+  or monitor size change re-lays them (the cover geometry) without new pixel work. That is inside LOOK.md's "only when".
+- The brightness check now runs at most once per frame while a panel moves (`Place` queues one recompute on
+  CompositionTarget.Rendering, hooked only while one is pending), never at rest. Composition plays the motion: no loop
+  of our own.
+- Tabular figures have no token (WinUI sets them per text element); the type SCALE is not set by LOOK.md, so the native
+  scale in Tokens.xaml stays.
+- No island edge anywhere (no hairline, ring or top highlight); `Hair` is for dividers inside an island only.
+- The first lane's open questions on the Dim range and default are settled (20 %-90 %, default 20 %, the owner).
+- `DurSlowMs` 340 is kept: the brief's LOOK.md list neither has nor drops it.
+
+### No Blur control; retiring blurPx later
+
+The new look's only look settings are Dim (slider 20-90 %, default 20) and the brightness check (on / off, on by
+default, `glass.<theme>.dimAuto`). `docs/parity/settings-mantle.md`: SETM-171's Blur slider is marked a documented
+difference ("no Blur control in the new look (the user, 2026-11-24)"), SETM-172 resets Dim and the check only. There is
+no See-through / render SETM row in that file (the `glass` key table near its end is not a parity row; left). This
+layer has no setter (`LevitateDim` only reads), so nothing here can write `dimAuto` on a Dim change; the first writer
+(Settings) must write dimAuto only from the check switch, with a test. What retiring blurPx will need later: the native
+glass writer spreads the stored entry and never writes or removes blurPx (v1 apps still read it); no native Settings row
+for it; once no native surface paints with blurPx (the levitated look never reads it), `Mantle.Core/Look`'s existing
+blurPx reading (another lane's, Electron-compat) can stop exposing it, in that lane; look-sync keeps its seed and range
+until every app is on v2.
+
+### Left
+
+Wiring the surfaces (a later stage); the raw `glass.<theme>` from the look host (`LevitatePanel.FromGlass` still sees
+Wash's .30 seed, see above); how text wears `IslandText` / `BareText` in WinUI; the focus ring and press / hover
+plumbing on real controls; the cloud check (Held, above).

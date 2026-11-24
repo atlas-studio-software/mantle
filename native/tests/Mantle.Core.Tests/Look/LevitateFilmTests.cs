@@ -156,7 +156,8 @@ public class LevitateFilmTests
     }
 
     // ------------------------------------------------------------------ the shared vectors
-    // Fixtures/look/v2/lift-v2.json: source look-sync 9a53e89 test/lift-v2.json (not merged yet), a byte-for-byte copy;
+    // Fixtures/look/v2/lift-v2.json: source look-sync 9a53e89 test/lift-v2.json (not merged yet; in look-sync's tree the file
+    // is test/fixtures/lift-v2.json), a byte-for-byte copy;
     // made by look-sync's lift-v2.gen.js from the prototype's own code (quartz-home app.js filmFor, 9383686). Do not edit
     // it here; when look-sync changes it, copy it again. Shape:
     // { about, lift: { cols, rows, quantile, rgb: [r, g, b], target, step, max },
