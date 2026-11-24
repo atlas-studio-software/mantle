@@ -111,3 +111,20 @@ CLIP-054 and CLIP-056 cite no Electron test (`none`); the selftest does run the 
 Left todo on purpose (partly covered): CLIP-004 (the sidecar's arm itself is live-only; the feature's arm-first order is
 tested), CLIP-052 (the second click in flight
 is the page's), CLIP-039 (the pin button and tooltip are the page's), CLIP-020/027/028 (live-only).
+
+### The emoji service (`Mantle.Core/Features/Emoji/EmojiFeature.cs`, tests `ClipEmoji/EmojiFeatureTests.cs`)
+
+`[Feature("emoji", "Emoji picker (Win+.)", true, Chords = { "Win+.", "Win+;" }, Rest = true)]` with the
+`closeAfterInsert` option. Health: the `emoji.verdict` probe (Electron's words) behind the same panel gate as the
+clipboard (`EmojiFeature.NoPanel` until `emoji.ready {panel}`), so with no picker window both chords stay Windows' own.
+A chord toggles: `emoji.arm` (150 ms; a --test run never reads the foreground, the panel's own hwnd stands in); over an
+administrator window `emoji.windows` and a notice, no open; else `emoji.show`, then the key watch `emoji.watch {on, hwnd,
+panel, leaseMs: 6000}` renewed every 2 s while open (it lapses by itself, so a refused call at stop is safe), and
+`emoji.key` events to the panel; a `lost` watch closes. `emoji.insert {ch, close?, via?}` types (`emoji.type`, dry run in
+--test; `emoji.typeback` when the panel took the keyboard) and remembers the pick through `EmojiPicks`; `emoji.tone`.
+The watch never takes a key with Ctrl, Alt or Win held (sidecar `Emoji.Captured`), so the kill switch passes.
+
+Deviation: Core has no clipboard, so when there is no window to type into (or typing failed) the answer says
+`copy: true` and the PANEL puts the pick on the clipboard (never in a test). Electron's feature wrote it itself.
+Not yet: the 2-minute idle destroy (EMO-003, the surface's window), the UIA caret ask (`emoji.caret`, EMO-008), a
+`testkey` command (tests raise the fake platform's `emoji` events instead).
