@@ -21,7 +21,9 @@ ui/taskview/layout.js, lib/features/taskview.js guards) to `Mantle.Core` as pure
 - `Mantle.Core/Features/Switcher/SwitcherLayout.cs` (kept from the stopped lane; its doc pointed at a golden file
   that does not exist, now points at the tests): layout.js layout, reflow, notice, firstRow.
 - `Mantle.Core/Features/Switcher/SwitcherHook.cs`: applyHook's request (`Want`) and order of checks (`Next`),
-  stateWords, restWords, the stale-exe words, the tray labels and line cut.
+  stateWords, restWords, the stale-exe words, the tray labels and line cut. `SwitcherHookClient.cs`: applyHook against
+  IPlatform (`hotkey {altTab, winKeys}`, 4 s; waits for an open Alt+Tab; a Down sidecar is not asked), Parse of the
+  sidecar's Status() reply, the facts and the log line; tested on FakePlatform (`SwitcherHookClientTests`).
 - `Mantle.Core/Features/Switcher/SwitcherWords.cs`: parkSpot, noticeWords, nameFor, the notice rule, cleanBoxes,
   activatedLine.
 - `Mantle.Core/Features/TaskView/TaskViewLayout.cs`: ui/taskview/layout.js (layout, place, rowLen, move, firstRowFor,
