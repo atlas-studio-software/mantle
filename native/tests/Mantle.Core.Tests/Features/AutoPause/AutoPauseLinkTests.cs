@@ -95,7 +95,10 @@ public class AutoPauseLinkTests
         await m.Hold(true);
         await m.Link.Stop("Mantle quits");
         Assert.Equal(("playing", "mantle:1"), (sp.State, Ap.J(sp.Plays)));
+        // lib's until(() => q.link.role() === 'host', 3000): the re-election's probes and bind are async, so let
+        // them run between clock steps instead of asserting right after one jump
         time.AdvanceMs(AutoPauseLink.ReelectMs + 50);
+        for (int waited = 0; waited < 3000 && q.Link.Role != "host"; waited += 20) { await Task.Yield(); time.AdvanceMs(20); }
         Assert.True(q.Link.Role == "host", $"quartz is {q.Link.Role} || quartz log: {string.Join(" / ", q.Logs.TakeLast(15))} || mantle log: {string.Join(" / ", m.Logs.TakeLast(10))}");
         Assert.Equal((1, 1), (sp.TotalPauses, sp.TotalPlays));
         await q.Link.Stop("done");
