@@ -41,6 +41,10 @@ public class ThemeTests
         foreach (var a in new[] { "--test", $"--profile-name={profile}", $"--user-data={ud}" }) psi.ArgumentList.Add(a);
         if (theme != null) psi.ArgumentList.Add("--theme=" + theme);
         psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
+        // lane r13-bar-islands: these tests time the THEME plumbing by the bar's tint. The islands' frost is the same
+        // picture in both themes (apps-r3/LIGHT.md section 1; the light lift is not built yet), so they read the
+        // electron face, whose pill tint follows the theme. A caller's own MANTLE_TEST_GLASS wins.
+        psi.Environment["MANTLE_TEST_GLASS"] = "electron";
         if (env != null) foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
         var app = new App { Proc = Host.Track(Process.Start(psi)!), Ud = ud };
         var h = Host.Until(() => app.Proc.HasExited ? (object)"exited" : Win32.WindowsOf(app.Proc.Id, BarApp.WindowTitle) is { Count: > 0 } w ? w[0] : null, 30000);
@@ -54,7 +58,11 @@ public class ThemeTests
     {
         var pill = Host.Until(() => app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.pill")), 8000) ?? throw new AssertFailedException("no bar.pill");
         var r = pill.BoundingRectangle;
-        var probe = new Rectangle(r.X + 64, r.Y + r.Height / 2 - 6, Math.Min(160, r.Width / 5), 12);
+        // inside the pill island, never a gap: from 8 px right of Start to 8 px left of the first app (or the dock row)
+        var start = app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.start"))?.BoundingRectangle ?? r;
+        var apps = app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.apps"))?.BoundingRectangle;
+        int x0 = start.Right + 8, x1 = apps is { Width: > 0 } a ? a.Left - 8 : x0 + Math.Min(160, r.Width / 5);
+        var probe = new Rectangle(x0, r.Y + r.Height / 2 - 6, Math.Max(8, Math.Min(160, x1 - x0)), 12);
         Uncover(app, probe);
         return probe;
     }

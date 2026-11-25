@@ -90,7 +90,7 @@ public partial class StripTests
     /// </summary>
     static int LinePixels(Cell c)
     {
-        double s = c.Rect.Width / 36.0;   // the cell is 36 DIP wide
+        double s = c.Rect.Width / 40.0;   // the cell is 40 DIP wide (lane r13-bar-islands: apps-r3/mantle-bar look.css .cell 40 x 36)
         int cx = c.Rect.X + c.Rect.Width / 2, cy = c.Rect.Y + c.Rect.Height / 2;
         int x = cx - (int)Math.Round(10 * s), y = cy + (int)Math.Round(10 * s), w = (int)Math.Round(20 * s), h = (int)Math.Round(8 * s);
         var px = Win32.Grab(x, y, w, h);
