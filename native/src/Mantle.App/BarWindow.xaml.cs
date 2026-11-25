@@ -190,7 +190,7 @@ public sealed partial class BarWindow : Window
         double blur = Host.Data.EffectiveGlass.For(_dark).BlurPx;
         WriteableBitmap? pic = null;
         if (_shot != null) {
-            try { pic = Backdrop.Render(_shot, _pillPx, blur * _scale, Saturation(_dark)); }
+            try { pic = Backdrop.Render(_shot, _pillPx, blur * _scale, Saturation(_dark), stripScale: Backdrop.StripFor(_dark)); }
             catch (Exception e) { _backdropState = "render failed: " + e.Message; }
         }
         if (pic != null) {

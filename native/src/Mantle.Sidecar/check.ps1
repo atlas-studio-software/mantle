@@ -144,9 +144,23 @@ function Invoke-Pass([string]$tag, [string]$out, [string[]]$props) {
     # The trx Counters element is the summary of record.
     $trx = Get-ChildItem $tdir -Recurse -Filter '*.trx' -ErrorAction SilentlyContinue | Select-Object -First 1
     if ($trx) {
-      $c = ([xml](Get-Content $trx.FullName -Raw)).TestRun.ResultSummary.Counters
+      $doc = [xml](Get-Content $trx.FullName -Raw)
+      $c = $doc.TestRun.ResultSummary.Counters
       $skipped = [int]$c.total - [int]$c.executed + [int]$c.inconclusive + [int]$c.notExecuted
       $testLine = 'tests {0}/{1} passed, {2} failed, {3} skipped or inconclusive' -f $c.passed, $c.total, $c.failed, $skipped
+      # Every test that did not pass, by NAME with its message, in the log and in the verdict (so the STAGE line says it);
+      # the console filter above stops at 40 lines, which once hid both failures (lane r12-ci-fixes)
+      $named = @()
+      foreach ($r in @($doc.TestRun.Results.UnitTestResult | Where-Object { $_ -and $_.outcome -ne 'Passed' })) {
+        $msg = ''
+        try { $msg = [string]$r.Output.ErrorInfo.Message } catch { $msg = '' }
+        $msg = ($msg -replace '\s+', ' ').Trim()
+        if (-not $msg) { $msg = 'no message' }
+        $word = switch ([string]$r.outcome) { 'Failed' { 'FAILED' } 'NotExecuted' { 'skipped' } 'Inconclusive' { 'inconclusive' } default { [string]$r.outcome } }
+        Say ('  {0} {1}: {2}' -f $word, $r.testName, (Cut $msg 400))
+        $named += ('{0} {1} ({2})' -f $word, $r.testName, (Cut $msg 160))
+      }
+      if ($named.Count -gt 0) { $testLine += ' [' + ($named -join '; ') + ']' }
       $testsOk = ([int]$c.failed -eq 0 -and [int]$c.error -eq 0 -and [int]$c.passed -gt 0 -and $tcode -eq 0)
     } else { $testLine = 'tests: no trx (dotnet test exit ' + $tcode + ')' }
     Say $testLine

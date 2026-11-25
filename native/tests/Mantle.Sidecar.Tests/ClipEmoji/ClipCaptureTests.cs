@@ -174,7 +174,9 @@ namespace Mantle.Sidecar.Tests.ClipEmoji {
       Assert.AreEqual(before + 1, Skipped("private"));
       IDictionary stats = Stats();
       var recent = ((IList)stats["recent"]).Cast<IDictionary>().ToList();
-      IDictionary last = recent[recent.Count - 1];
+      // newest FIRST: ClipHistory.Recent inserts at 0 and keeps 8 (sidecar/ClipHistory.cs:674-677); the old
+      // recent[Count - 1] was the oldest of the 8, an earlier test's "moved" (first cloud run 20261125-173955-a0fe66)
+      IDictionary last = recent[0];
       Assert.AreEqual("skipped", last["result"]);
       Assert.AreEqual("private", last["reason"]);
       Assert.IsNull(last["formats"], "a private copy's format names are not recorded");
@@ -249,10 +251,18 @@ namespace Mantle.Sidecar.Tests.ClipEmoji {
     // CLIP-041: 25 pins at most (the 26th refused in words); an item over the size limit cannot be pinned
     [TestMethod]
     public void Twenty_five_pins_are_accepted_the_26th_is_refused_and_a_too_large_item_cannot_be_pinned() {
-      for (int i = 1; i <= 26; i++) Copy(Text("pin me " + i));
+      // 25 copies, all pinned, THEN the 26th copy: the history keeps 25 unpinned items (CLIP-032, the test above), so 26
+      // copies in a row left 25 items and items[25] did not exist (first cloud run 20261125-173955-a0fe66); a pin does
+      // not count toward the 25, so the 26th copy stays next to 25 pins
+      for (int i = 1; i <= 25; i++) Copy(Text("pin me " + i));
       List<IDictionary> items = Items();
+      Assert.AreEqual(25, items.Count);
       for (int i = 0; i < 25; i++) Ok("clip.pin", Req("item", items[i]["id"], "pinned", true));
-      Assert.AreEqual("25 items are pinned already; unpin one first", Err("clip.pin", Req("item", items[25]["id"], "pinned", true)));
+      Assert.AreEqual("added", Copy(Text("pin me 26")));
+      List<IDictionary> now = Items();
+      Assert.AreEqual(26, now.Count);
+      IDictionary extra = now.Single(o => (string)o["text"] == "pin me 26");
+      Assert.AreEqual("25 items are pinned already; unpin one first", Err("clip.pin", Req("item", extra["id"], "pinned", true)));
       Ok("clip.limits", Req("maxItemBytes", 1300.0));
       // seeded, so the copy limit does not stop it first: 700 characters are 1,400 bytes, over the 1,300 pin limit
       Ok("clip.seed", Req("items", L(Req("kind", "text", "text", new string('x', 700))), "reset", true));

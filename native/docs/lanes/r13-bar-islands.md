@@ -105,3 +105,10 @@ the spec tests. Nothing built or run (no cloud run yet). The plan below is what 
 ## Not verifiable without the user's own desktop
 The islands over the user's wallpaper, the frost line-up and film over a bright sky, the shadow, hover reveal feel, the
 gaps taking clicks, the offline glyph on a real disconnect, a real failed SW_HIDE.
+
+## Merge of native/r12-ci-fixes (d5e965b3)
+- Merged with no conflicts (git auto-merged BarWindow.xaml.cs and BarWindow.Frame.cs). Sidecar check.ps1 and
+  ClipCaptureTests came in unchanged by this lane.
+- `Backdrop.StripFor(dark)` has two callers, both on the old pill glass: RenderGlass (BarWindow.xaml.cs) and the
+  live capture (BarWindow.Frame.cs). In the islands look neither runs (RenderGlass returns early, LiveGlass is not
+  started), so the islands do NOT use StripFor. It keeps working for the electron face (MANTLE_TEST_GLASS=electron).
