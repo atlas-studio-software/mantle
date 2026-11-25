@@ -325,7 +325,8 @@ public sealed partial class FeatureHost
         SetHealth(f, false, $"its {what} handler failed ({Words(e)}), so its keys went back to Windows");
     }
 
-    KeyDelivery RouteChord(string chord, string via)
+    // internal: a live-run test routes a chord exactly as the hook's "chord" event does (FireChord is --test only).
+    internal KeyDelivery RouteChord(string chord, string via)
     {
         if (!_claims.TryGetValue(chord, out var name) || !_features.TryGetValue(name, out var f))
         {

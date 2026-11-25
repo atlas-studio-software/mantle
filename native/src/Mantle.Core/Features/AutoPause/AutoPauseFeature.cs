@@ -166,7 +166,7 @@ public sealed class AutoPauseFeature : IFeature
         if (last != null)
         {
             bool paused = B(last["wePaused"]) || B(last["heldByUs"]);
-            long supp = B(last["repauseSuppressed"]) && last["repauseSuppressedForMs"] is JsonValue v && v.TryGetValue(out double ms) && double.IsFinite(ms) ? (long)ms : 0;
+            long supp = B(last["repauseSuppressed"]) && Mantle.Core.Look.LookSyncCore.TryNum(last["repauseSuppressedForMs"], out double ms) && double.IsFinite(ms) ? (long)ms : 0;
             await _engine.Inherit(paused, supp).ConfigureAwait(true);
         }
         Publish();

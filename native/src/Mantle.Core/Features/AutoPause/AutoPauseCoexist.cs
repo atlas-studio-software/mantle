@@ -85,7 +85,7 @@ public static class AutoPauseCoexist
         {
             if (v.TryGetValue(out bool b)) return b;
             if (v.TryGetValue(out string? s)) return !string.IsNullOrEmpty(s);
-            if (v.TryGetValue(out double d)) return d != 0 && !double.IsNaN(d);
+            if (Mantle.Core.Look.LookSyncCore.TryNum(v, out double d)) return d != 0 && !double.IsNaN(d);   // int/long-built too
         }
         return true;
     }
