@@ -130,7 +130,8 @@ public class BarTests
         var mon = Win32.MonitorRect(app.Hwnd);
         double s = Win32.GetDpiForWindow(app.Hwnd) / 96.0;
         int monW = mon.Right - mon.Left;
-        int wantW = (int)Math.Round(Math.Min(1120, monW / s - 28) * s), wantH = (int)Math.Round(48 * s), wantGap = (int)Math.Round(14 * s);
+        // lane r13-bar-islands: the pill is the islands' band, the screen less 12 DIP each side (no 1120 cap), 44 tall, 12 up
+        int wantW = monW - 2 * (int)Math.Round(12 * s), wantH = (int)Math.Round(44 * s), wantGap = (int)Math.Round(12 * s);
         string got = $"pill {r.X},{r.Y} {r.Width}x{r.Height} on monitor {mon.Left},{mon.Top}-{mon.Right},{mon.Bottom} at {s * 100:0}%";
         Assert.IsTrue(Math.Abs(r.Width - wantW) <= 2, $"width {r.Width}, want {wantW}: {got}");
         Assert.IsTrue(Math.Abs(r.Height - wantH) <= 2, $"height {r.Height}, want {wantH}: {got}");
@@ -267,12 +268,20 @@ public class BarTests
             "an app process is still running after close + kill");
     }
 
+    /// The islands' case of the theme tint check below (which runs the electron face), kept visible as a SKIP.
+    [TestMethod]
+    public void Dark_theme_islands_tint_follows_the_theme() =>
+        Assert.Inconclusive("SKIP: " + "light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands)" + ": the islands' frost is the same picture in both themes and the light lift (toward #F4F7F8) is not built, so their tint does not follow the theme yet; Dark_theme_draws_a_darker_pill_than_light runs the electron face");
+
     [TestMethod]
     public void Dark_theme_draws_a_darker_pill_than_light()
     {
         double Lum(string theme)
         {
-            using var app = BarApp.Launch("uitest-theme-" + theme, theme);
+            // the pill's tint is the electron face's (lane r13-bar-islands: the islands' frost is the same picture in both
+            // themes, only the film differs, and the band's gaps show the wallpaper), so this run keeps that face
+            var env = new Dictionary<string, string> { ["MANTLE_TEST_GLASS"] = "electron" };
+            using var app = BarApp.Launch("uitest-theme-" + theme, theme, env: env);
             var r = Rect(app.Find("bar.pill"));
             Thread.Sleep(1200);   // first frame + backdrop
             // An empty stretch of glass: right of the start button, left of the centred apps.

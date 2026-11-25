@@ -5,8 +5,9 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Mantle.UiTests.BarTasks;
 
 /// <summary>
-/// The counts behind "+N" (ui/bar/helmbadge.js paintMore / paintTile; BAR-257, BAR-1030; lane native-r7-strip-3): 30
-/// scratch pins (copies of charmap, never launched) cannot fit, so the tail waits behind "+N". This test profile's own
+/// The counts behind "+N" (ui/bar/helmbadge.js paintMore / paintTile; BAR-257, BAR-1030; lane native-r7-strip-3): 48
+/// scratch pins (copies of charmap, never launched) cannot fit (30 all fit the islands' wider dock on a 1920 DIP screen;
+/// see StripTests.Overflow), so the tail waits behind "+N". This test profile's own
 /// helmbadge setting points the LAST pin and the FIRST pin at temp badge files (never Helm's real one): "+N" carries only
 /// the hidden app's count, says who needs the user, turns warn on an error, and the panel's tile carries the same disc.
 /// </summary>
@@ -18,7 +19,8 @@ public partial class StripTests
         const string profile = "uitest-strip-ovfbadge";
         _profile = profile;
         string tag = Guid.NewGuid().ToString("N")[..6];
-        const int total = 30;
+        const int total = 48;
+        string lastPin = $"Ovb {total:00}";
         string exes = Path.Combine(Path.GetTempPath(), "mantle-native-uitest-ovfb-exes-" + tag);
         Directory.CreateDirectory(exes);
         var targets = Enumerable.Range(1, total).Select(i => { string t = Path.Combine(exes, $"ovb{i:00}.exe"); File.Copy(CharmapExe, t, true); return t; }).ToArray();
@@ -31,7 +33,7 @@ public partial class StripTests
         WriteBadge(first, "{\"v\":1,\"waiting\":5}");
         Directory.CreateDirectory(Path.Combine(ud, "features"));
         File.WriteAllText(Path.Combine(ud, "features", "helmbadge.json"), "{\"sources\":[" +
-            "{\"exe\":\"ovb30.exe\",\"file\":" + JsonSerializer.Serialize(last) + ",\"label\":\"Last\"}," +
+            "{\"exe\":\"ovb" + total.ToString("00") + ".exe\",\"file\":" + JsonSerializer.Serialize(last) + ",\"label\":\"Last\"}," +
             "{\"exe\":\"ovb01.exe\",\"file\":" + JsonSerializer.Serialize(first) + ",\"label\":\"First\"}]}");
         try {
             using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
@@ -46,7 +48,7 @@ public partial class StripTests
 
             // only the hidden app's count rides on "+N" (the strip's own icons show theirs)
             Host.LogContains(log, $"bar tasks: overflow: \"+{hidden}\" carries the count 2", "\"+N\" did not carry the hidden app's count", 15000);
-            Assert.IsTrue(Host.Until(() => Find(app.Window, "bar.apps.more")?.Name == $"{hidden} more apps that do not fit. Needs you: Ovb 30 2", 3000),
+            Assert.IsTrue(Host.Until(() => Find(app.Window, "bar.apps.more")?.Name == $"{hidden} more apps that do not fit. Needs you: {lastPin} 2", 3000),
                 $"\"+N\"'s name does not say who needs the user: \"{Find(app.Window, "bar.apps.more")?.Name}\"");
             var disc = Host.Until(() => Find(app.Window, "bar.apps.more.count"), 3000);
             Assert.AreEqual("2", disc?.Name, "\"+N\"'s disc does not show 2");
@@ -65,15 +67,15 @@ public partial class StripTests
             IntPtr h = IntPtr.Zero;
             Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, OvfPanel)), 4000), "the panel did not open");
             var w = Host.Uia.FromHandle(h);
-            // Ovb 30 is the last pin; a running-only app the runner has would come after it, so it is found by name
-            var tile = Host.Until(() => w.FindAllDescendants(cf => cf.ByName("Ovb 30"))
+            // the last pin (Ovb 48); a running-only app the runner has would come after it, so it is found by name
+            var tile = Host.Until(() => w.FindAllDescendants(cf => cf.ByName(lastPin))
                 .FirstOrDefault(e => (e.Properties.AutomationId.ValueOrDefault ?? "").StartsWith("bar.ovf.", StringComparison.Ordinal)), 3000);
-            Assert.IsNotNull(tile, "the panel has no tile for Ovb 30");
+            Assert.IsNotNull(tile, "the panel has no tile for " + lastPin);
             Assert.IsTrue(Host.Until(() => (tile!.Properties.ItemStatus.ValueOrDefault ?? "").EndsWith("; badge 2 warn", StringComparison.Ordinal), 3000), $"the tile's status is \"{tile!.Properties.ItemStatus.ValueOrDefault}\"");
             var td = tile!.FindFirstDescendant(cf => cf.ByAutomationId("bar.ovf.count"));
             Assert.AreEqual("2", td?.Name, "the tile has no disc showing 2");
-            var other = Find(w, "bar.ovf." + cs.Count);   // the first tile: not Ovb 30 when two or more wait behind "+N"
-            if (other != null && other.Name != "Ovb 30")
+            var other = Find(w, "bar.ovf." + cs.Count);   // the first tile: not the last pin when two or more wait behind "+N"
+            if (other != null && other.Name != lastPin)
                 Assert.IsNull(other.FindFirstDescendant(cf => cf.ByAutomationId("bar.ovf.count")), $"{other.Name}'s tile has a disc with no count");
             Host.Screenshot("strip-plus-n-tile-count");
 

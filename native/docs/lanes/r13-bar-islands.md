@@ -1,0 +1,137 @@
+# Lane r13-bar-islands (S2): the bar as three islands, offline button, stuck flag
+
+Branch `native/r13-bar-islands`, off native/r12-app-wiring b756536e. Files: BarWindow.*, Surfaces/Bar/** (Core read-only).
+Spec: apps-r3/mantle-bar (NOTES.md, look.css, shell.js, barhide.js), FIXES-2.md, lab/LOOK.md, apps-r3/LIGHT.md, look-sync v2.1.
+
+## Status (third session, 2026-11-25): the first cloud runs (41e6fd6c, 36320574), fixes
+- The band sat 8 DIP in on each side (left island at 20, pill 1880 on 1920; 150 %: 30 / 1860): the pill's `Content`
+  grid kept its electron-face padding 0 8 (found through `LeftIsland.Parent`, which did not take). Renamed `PillContent`
+  and set to 0 directly. The frost and the shadow were placed for the padless band, so they were 8 DIP off too.
+- Battery: the prototype draws `#battery` as a 32 x 36 glyph between network and clock. Electron hides it with no
+  battery, but `.btn { display: flex }` beats `[hidden]`, so the empty button keeps its place and its click. Islands:
+  always the 32 x 36 button (UIA `bar.battery`, opens quick settings); the prototype's battery glyph only when
+  GetSystemPowerStatus reports a battery (the runner has none: an empty box, as Electron's). The level is not read.
+- UI tests: HoverTests (the islands log "no live capture" and never "glass: light: live"; the CPU test measures islands
+  light, islands dark and the electron light face, which keeps the live / stop expectation), ClusterTests (battery 32 x 36,
+  2 apart), StripTests (the running-line pixels in dark: in light, LgInk2 on the frost's flat fallback #2c5258 is 13
+  luminance apart and reads 0 px), StripTests.Overflow / OverflowBadge (48 pins: 30 all fit the islands' dock on 1920).
+- Known, not fixed here: in light the islands' dark Lg inks sit on the frost (or its dark-teal fallback) with little
+  contrast until the light lift lands.
+
+## Status (second session, 2026-11-25)
+Nothing compiled or run here (no .NET SDK on this machine): the first cloud run is the first build. Built:
+- Core (new, pure): Mantle.Core/Look/Levitate/BarIslands.cs (the prototype's numbers, `Layout` with the fitDock rule,
+  `Band` / `BandPx`, `DockRoom`, `Offline` words) and Mantle.Core.Tests/Look/BarIslandsTests.cs. No existing Core file changed.
+- App, gated on `BarGeometry.Islands` (= !DesktopGlass.ElectronLook): BarGeometry gives the band as "the pill" (window
+  = monitor width, 56 DIP shadow room above, 12 below); XAML islands `bar.island.left|dock|right` (no background in the
+  electron face); BarWindow.Islands.cs collapses Glass/Tint/Lip/Edge, sizes the islands (44 x 44 left round a 36 start;
+  dock padding 0 4, gap 2, cells 40 x 36 r8, 20 icons, run dot 4 x 3 two up, separator 1 x 20; status glyphs 32 x 36 r8,
+  gap 2, b-sep 1 x 20 margin 0 4, clock padding 0 8, 12 / 500 and 11), one LevitatePanel per island (placed from the
+  geometry, so the hover-mode reveal transform never misplaces it), one float shadow bitmap for the three boxes, the
+  fitDock rule, the "+N" cut in the dock's room (StripFit with an 8 DIP margin; no slide). LiveGlass and the pre-show
+  capture are not started in the islands look. Hover / pressed fills: Lv inks in dark, Lg in light, through Root's
+  resources overriding LgHover / LgPress for the LgBtn template.
+- The offline network button (below).
+- UI tests: BarTests (pill = band; the dark-vs-light pill test now runs MANTLE_TEST_GLASS=electron), DisplayTests,
+  HoverTests, ClusterTests (glyphs 32 x 36, 2 apart; the battery stand-in is electron-only), new BarFrame/IslandsTests
+  (three islands, order, 44 tall, 12 from the edges, left 44 wide, the dock centred or after the M; the offline name).
+NOT built:
+- The light islands look (LIGHT.md section 1 / section 4b lift toward #F4F7F8), so light-theme contrast of the inks on the frost is
+  short, and these checks run elsewhere with a visible SKIP for the islands / light case (Assert.Inconclusive with the reason):
+  - StripTests running line: moved light -> dark; SKIP Pins_come_first_light_islands_running_line_reads_against_the_frost
+    (run dot #333A4E on the fallback #2c5258 about 13 luminance apart, below the test's 30).
+  - BarTests Dark_theme_draws_a_darker_pill_than_light: moved to the electron face; SKIP Dark_theme_islands_tint_follows_the_theme.
+  - ThemeTests Another_apps_theme..., Match_Windows_flips..., Theme_set_switches... (and Resume_and_unlock, same Launch):
+    moved to the electron face by default; SKIP Islands_theme_change_reaches_the_islands_within_1_s.
+  - Not moved but widened: the idle-CPU test measures islands light, islands dark AND the electron light face.
+- The dock's sliding focus underline (16 x 3, 320 ms ease-lift): the per-cell run / active marks are kept, resized.
+- Glyph ink in dark: the paths keep {ThemeResource LgInk2}; only the clock and the status separator take the Lv inks.
+  The dock's separator keeps LgEdgeOut, "+N" keeps LgSunk.
+- The Wi-Fi bars glyph and "Network: <ssid>" while connected; the islands' first-load rise; a window region for the gaps.
+- An empty dock is an 8 DIP island (the prototype never has one).
+- Tests outside this lane's paths that pin today's bar and will need the islands numbers (or MANTLE_TEST_GLASS=electron):
+  BarTasks/StripTests.cs:93 and StripTests.Overflow.cs:65 (the cell is 36 wide; now 40), StripTests.Overflow.cs:70
+  ("+N" 6 DIP after the last icon; now 2), Theme/ThemeTests.cs Probe (samples r.X + 64 of the pill: in the islands
+  look that is the gap between the M and the dock, the wallpaper). The parity stages (tools/parity) are another agent's.
+- Compile risks to check on the first build: the Root.Resources override of LgHover / LgPress reaching the LgBtn
+  template's VisualState setters; `Dock.ItemsPanelRoot`; the Cell_Loaded walk of the cell template (IslandCell).
+
+## Status (first session, 2026-11-25)
+Done: the stuck flag's trigger (below). NOT done: the islands layout, the offline button, the parity reference list,
+the spec tests. Nothing built or run (no cloud run yet). The plan below is what the next session builds.
+
+## Stuck flag ("Bar may not hide", BAR-189): done here
+- Native already had the words (Chips.cs, bar.js chipData ~203) and the More menu lists every chip first, but nothing in
+  native ever wrote `ShellState.Bar.Ok` / `.Reason` (grep: no writer in Mantle.App or Mantle.Core), so the chip could
+  never show. Electron sets it from main.js:2072 parkBar ("the bar window would not hide: ...").
+- Now: `HideDone` (BarWindow.Frame.cs) raises the `bar` failure chip when the window is still visible after SW_HIDE,
+  and clears it after a hide that works; `RenderPip(force)` repaints the More pip (tone "", ink-2, as the prototype).
+  Chips.List skips the state-based `bar` chip while the failure one is up (never two).
+- To verify: a UI test that forces a failed hide is not written (needs a way to make SW_HIDE fail on the runner).
+
+## Islands: the plan
+- Gate like S1: islands unless `DesktopGlass.ElectronLook` (MANTLE_TEST_GLASS=electron keeps today's face).
+- Geometry (BarGeometry.For, islands mode): the band is screen - 2 x 12 DIP wide, 44 tall (--bar-h), 12 above the bottom
+  (bar zone 68); today it is min(1120, screen - 28) x 48, 14 up. BarIntent keeps its zones on the band (the prototype keeps
+  the bar while the pointer is on the islands or within 8; the band is a superset between the islands). Timings unchanged.
+- XAML: wrap StartBtn, DockRow and RightCluster in three island grids (LeftIsland, DockIsland, RightIsland) with no
+  background, so the electron face lays out exactly as today. Islands mode: Content padding 0; left 44 x 44; dock and
+  status 44 tall, padding 0 4, gap 2; radius 12; Glass/Tint/Lip/Edge collapsed; each island gets a LevitatePanel
+  (Shell/Levitate, the S1 class: frost light by size, dim, v2.1 dark film, hover-only sheen) placed with
+  `LevitatePanel.Place(hwnd, island, dark)` on layout and on every geometry change; one LevitateShadow.Float bitmap
+  for the three boxes in ShadowHost (all themes). Light: no film (LevitatePanel's rule until the light lift is built).
+- Sizes from look.css: start button 36 (22 mark); dock cells 40 x 36, run dot 4 x 3 (text-3), focus underline 16 x 3
+  accent sliding by transform 320 ease-lift; dock-sep 1 x 20, margin 0 4, hair; status glyphs 32 x 36, b-sep 1 x 20
+  margin 0 4; clock padding 0 8, time 12/500, date 11 text-2. Today: cells 36 spacing 6, status 36 spacing 4.
+- Dock placement (shell.js fitDock): centred on the screen; if its right edge + 12 passes the status island's left,
+  it sits 12 after the M (left = 44 + 12). BarWindow.Overflow.cs's fit rule (+N) then works inside the dock island.
+- The gaps between islands are part of the bar window (a click there lands on the bar while it is up, as the shadow room
+  above today's pill does). A window region would clip the shadow; not done, to decide on the user's own desktop.
+
+## Offline network button: the plan
+- Today NetworkBtn is a static monitor glyph with no state. QsPanel already holds the Wi-Fi part (on, connected, ssid,
+  bars) from QsService's snapshot; there is no wired state anywhere in native.
+- Offline = `System.Net.NetworkInformation.NetworkInterface.GetIsNetworkAvailable()` false (NetworkChange events), so a
+  wired machine is not called offline; the words from the Wi-Fi part as net.js:54-59: "Not connected", detail
+  "Wi-Fi is on but not connected to a network" / "Wi-Fi is turned off" / "No connections are available"; tooltip
+  "Not connected\n<detail>\nClick: quick settings". Glyph: globe with a slash at .55 opacity (prototype ?net=off).
+  Connected: the Wi-Fi glyph with bars, label "Network: <ssid>". Virtual adapters (Hyper-V, VPN) can make
+  GetIsNetworkAvailable true while offline: a known limit to name in the test.
+- Built (second session): BarWindow.Network.cs (Surfaces/Bar/QuickSettings) + QsPanel.Wifi / WifiChanged / Refresh; the
+  words are Mantle.Core BarIslands.Offline. A Wi-Fi part that says connected is never called offline. Connected: today's
+  glyph and name "Network" (the Wi-Fi bars glyph is not built). Test runs: MANTLE_TEST_NET=off forces the offline face.
+- Known limits: virtual adapters (Hyper-V, VPN) can make GetIsNetworkAvailable true while the machine is offline, so the
+  button then shows connected. The Wi-Fi part is read at start, on every quick-settings snapshot and on each
+  NetworkAvailabilityChanged; while the panel is closed nothing else refreshes it.
+
+## Parity (plan v0.2): the plan
+- `tools/parity/run-parity.ps1` sets MANTLE_TEST_GLASS=electron, so once the islands land it would keep comparing the
+  OLD face and pass while users see the new one. It must not.
+- Reference list (new, tiny): `tools/parity/references.psd1`, `@{ bar = 'native-golden'; strip = 'native-golden' }`,
+  every other surface 'electron'. run-parity.ps1 reads it: for native-golden it shoots native with the islands look
+  (MANTLE_TEST_GLASS unset), saves the shots as `candidate-<theme>-<scale>.png`, and compares against
+  `tools/parity/goldens/bar/<theme>-<scale>.png` only when `goldens/bar/REVIEW.md` names the reviewer, run id and sha.
+  With no reviewed golden it prints `PARITY bar <theme>: golden pending review (reference native-golden; candidates in
+  <dir>)` and ends `PARITY: FAILED (bar golden pending review ...)`, so the stage is plainly red until a review.
+  Thresholds unchanged (ssim >= 0.98, diffpx <= 0.5 %). Kept small to merge with the 150 % fix (t_5d720b).
+- The `strip` stage (bar-tasks/run-strip-parity.ps1, floor 0.90 in ci.ps1) compares the bar's apps strip with
+  Electron and will drop once the dock is restyled: it needs the same native-golden switch (ci.ps1 is CI's side).
+
+## Spec tests: the plan
+- Mantle.Core.Tests cannot see Mantle.App. The pure model (island count and order, sizes, radii, gaps, tokens, the
+  dock-left rule, the offline words) goes in ONE new pure file. Either Core/Look/Levitate/BarIslands.cs (like S1's
+  PopupLevitate; needs the Mantle Engineer or the EM's OK) with Mantle.Core.Tests/Look/BarIslandsTests.cs, or
+  Surfaces/Bar/Frame/BarIslands.cs in the App with UI tests (UIA rects: 3 islands, order, 44 tall, 12 air).
+- UI tests that assert today's numbers and must move to the islands numbers in the same commit: BarTests.cs:133,
+  BarFrame/DisplayTests.cs:20-25 and :59-64, BarFrame/HoverTests.cs:44, :92, :131 (48 -> 44, 14 -> 12, 1120 cap -> none).
+
+## Not verifiable without the user's own desktop
+The islands over the user's wallpaper, the frost line-up and film over a bright sky, the shadow, hover reveal feel, the
+gaps taking clicks, the offline glyph on a real disconnect, a real failed SW_HIDE.
+
+## Merge of native/r12-ci-fixes (d5e965b3)
+- Merged with no conflicts (git auto-merged BarWindow.xaml.cs and BarWindow.Frame.cs). Sidecar check.ps1 and
+  ClipCaptureTests came in unchanged by this lane.
+- `Backdrop.StripFor(dark)` has two callers, both on the old pill glass: RenderGlass (BarWindow.xaml.cs) and the
+  live capture (BarWindow.Frame.cs). In the islands look neither runs (RenderGlass returns early, LiveGlass is not
+  started), so the islands do NOT use StripFor. It keeps working for the electron face (MANTLE_TEST_GLASS=electron).

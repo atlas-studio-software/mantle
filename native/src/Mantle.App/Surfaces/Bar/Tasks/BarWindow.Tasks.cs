@@ -299,6 +299,7 @@ public sealed partial class BarWindow
         b.AddHandler(UIElement.PointerReleasedEvent, _cellMiddle, true);
         HookCellHover(b);   // the preview flyout's dwell and leave (BarWindow.Previews.cs)
         HookJumpCell(b);    // right-click: the app menu (BarWindow.JumpList.cs)
+        IslandCell(b);      // lane r13-bar-islands: the islands look's cell sizes (Surfaces/Bar/Frame/BarWindow.Islands.cs)
         if (Host.Args.Test) {
             _cellPress ??= new PointerEventHandler((o, _) => TestLine("press", o));
             b.RemoveHandler(UIElement.PointerPressedEvent, _cellPress);

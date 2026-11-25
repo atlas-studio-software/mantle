@@ -61,6 +61,32 @@ red = different, blue = masked), `*-full.png` (whole screen), `*-windows.txt` (v
 Lines: `PARITY bar <theme>: ssim=.. diffpx=..% meanabs=.. (ok|FAILED vs ...)` per theme, then one final
 `PARITY: ok (...)` or `PARITY: FAILED (...)`.
 
+## Reference per surface (plan v0.2)
+
+`references.psd1` says what each surface is compared against: `'electron'` (the default for every surface not
+listed) or `'native-golden'`. Switching a surface is one reviewed line there; the thresholds never loosen.
+
+- `'electron'`: the run above, unchanged (Electron Mantle vs native, `MANTLE_TEST_GLASS=electron`).
+- `'native-golden'` (the bar, since its islands restyle): no Electron run and no `MANTLE_TEST_GLASS`, so native
+  shows its new look. Per theme and scale it shoots the islands band (12 DIP in from the left, right and bottom
+  edges, 44 DIP tall, plus `-Margin`) to `<Out>/<theme>/candidate-<theme>-<pct>.png` (and `-full.png`), and scores
+  it against `goldens/bar/<theme>-<pct>.png` at the same `-MinSsim` / `-MaxDiffPct`. The clock is masked from its
+  UI Automation rect (`bar.clock`); a run without it is a problem.
+
+A golden counts only when `goldens/bar/REVIEW.md` exists with non-empty lines
+
+```
+reviewer: <the CEO | the Product Designer | the user>
+run: <the CI run id the candidates came from>
+sha: <the commit that run built>
+```
+
+written after a side-by-side review of the candidates against the prototype (`apps-r3/mantle-bar`). The script
+never writes into `goldens/`: a reviewer copies the candidates there. Until then each theme prints
+`PARITY bar <theme>: golden pending review (...)` and the last line is
+`PARITY: FAILED (bar golden pending review: <themes>; candidates in <dir>)`. That failure is on purpose: a
+restyled surface must not keep passing against a look users no longer see, nor pass on an unreviewed shot.
+
 ## Masks
 
 - **Clock slot**, always: 175 to 85 px left of the pill's right end (the same slot in both apps on the

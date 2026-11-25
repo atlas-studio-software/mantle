@@ -56,10 +56,14 @@ public sealed partial class BarWindow
         if (barW <= 0 || StartBtn.ActualWidth <= 0) return;
         double leftEnd = StartBtn.TransformToVisual(Pill).TransformPoint(new Point(StartBtn.ActualWidth, 0)).X;
         double wall = RightCluster.ActualWidth > 0 ? RightCluster.TransformToVisual(Pill).TransformPoint(new Point(0, 0)).X : barW - 8;
-        var room = StripFit.Room.Between(barW, leftEnd, wall);
+        bool islands = Surfaces.Bar.Frame.BarGeometry.Islands;
+        // lane r13-bar-islands: the dock island is placed by fitDock (BarWindow.Islands.cs); only the "+N" cut is decided
+        // here, in the room from 12 after the M to 12 before the status island
+        double islandSpan = islands ? IslandDockSpan() : 0;
+        var room = islands ? new StripFit.Room(islandSpan / 2, 0, islandSpan) : StripFit.Room.Between(barW, leftEnd, wall);
         var div = _cells.Select(c => c.HasDivider).ToList();
         var fit = StripFit.Decide(div, room);
-        double shift = Math.Round(fit.Shift);
+        double shift = islands ? 0 : Math.Round(fit.Shift);
         if (DockShift.X != shift) DockShift.X = shift;
         int keep = fit.Hidden > 0 ? fit.Keep : int.MaxValue;
         bool changed = keep != _keep;

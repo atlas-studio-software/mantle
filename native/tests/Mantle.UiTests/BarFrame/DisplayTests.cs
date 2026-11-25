@@ -17,12 +17,12 @@ public sealed class DisplayTests
 
     static string Tail(string dir) { var l = FrameProbe.Log(dir).Split('\n'); return string.Join("\n", l.Skip(Math.Max(0, l.Length - 20))); }
 
-    /// The spec's pill at scale s on the primary display, physical px: min(1120, screen - 28) DIP wide, 48 tall,
-    /// 14 above the bottom edge, centred (the same numbers tools/parity crops with).
+    /// The spec's pill at scale s on the primary display, physical px: the islands' band (lane r13-bar-islands,
+    /// apps-r3/mantle-bar look.css): the screen less 12 DIP each side, 44 tall, 12 above the bottom edge, centred.
     static (double L, double T, double W, double H) Spec(double s)
     {
-        double w = Math.Min(1120, FrameProbe.ScreenW / s - 28) * s, h = 48 * s;
-        return ((FrameProbe.ScreenW - w) / 2, FrameProbe.ScreenH - 14 * s - h, w, h);
+        double w = FrameProbe.ScreenW - 2 * 12 * s, h = 44 * s;
+        return ((FrameProbe.ScreenW - w) / 2, FrameProbe.ScreenH - 12 * s - h, w, h);
     }
 
     /// BAR-087 (125 %: 62 DIP x 1.25 = 77.5 px, the window still ends on the screen's last row), BAR-088 (a scale
@@ -61,7 +61,7 @@ public sealed class DisplayTests
             Assert.AreEqual(want.W, pill.Width, 2.0, "width: " + got);
             Assert.AreEqual(want.H, pill.Height, 2.0, "height: " + got);
             Assert.AreEqual(want.L, pill.Left, 2.0, "left (centred): " + got);
-            Assert.AreEqual(want.T, pill.Top, 2.0, "top (14 DIP above the bottom edge): " + got);
+            Assert.AreEqual(want.T, pill.Top, 2.0, "top (12 DIP above the bottom edge): " + got);
             FrameProbe.GetWindowRect(app.Hwnd, out var wr);
             Assert.AreEqual(FrameProbe.ScreenH, wr.Bottom, $"{pct} %: the window ends at y {wr.Bottom}, not on the screen's bottom edge ({FrameProbe.ScreenH})");
             Assert.IsTrue(Win32.IsWindowVisible(app.Hwnd), $"{pct} %: the bar is not visible after the change");

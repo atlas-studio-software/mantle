@@ -12,8 +12,10 @@ using Microsoft.VisualStudio.TestTools.UnitTesting;
 namespace Mantle.UiTests.BarTasks;
 
 /// <summary>
-/// The strip's fit and "+N" (ui/bar/bar.page.test.js "fit"; BAR-056, BAR-235..238, the "+N" part of BAR-242): 30 scratch
-/// pins (charmap, never launched: a click on a pin is a dry run) cannot fit any bar, so the tail waits behind "+N".
+/// The strip's fit and "+N" (ui/bar/bar.page.test.js "fit"; BAR-056, BAR-235..238, the "+N" part of BAR-242): 48 scratch
+/// pins (charmap, never launched: a click on a pin is a dry run) cannot fit the bar, so the tail waits behind "+N". Lane
+/// r13-bar-islands: the dock may now span the screen less the M, the status island and 12 DIP gaps (no 1120 cap), at
+/// 42 DIP a cell (40 + the 2 gap): about 36 on a 1920 DIP screen, so 30 pins all fit there; 48 (2016 DIP) never do.
 /// </summary>
 public partial class StripTests
 {
@@ -29,8 +31,8 @@ public partial class StripTests
         const string profile = "uitest-strip-overflow";
         _profile = profile;
         string tag = Guid.NewGuid().ToString("N")[..6];
-        const int total = 30;
-        // one pin per app: 30 pins of the same exe are one app on the strip, so each pin gets its own copy of charmap.exe
+        const int total = 48;
+        // one pin per app: 48 pins of the same exe are one app on the strip, so each pin gets its own copy of charmap.exe
         string exes = Path.Combine(Path.GetTempPath(), "mantle-native-uitest-ovf-exes-" + tag);
         Directory.CreateDirectory(exes);
         var targets = Enumerable.Range(1, total).Select(i => { string t = Path.Combine(exes, $"ovf{i:00}.exe"); File.Copy(CharmapExe, t, true); return t; }).ToArray();
@@ -53,23 +55,27 @@ public partial class StripTests
         cs = Cells(app);
         more = Find(app.Window, "bar.apps.more")!;
         int hidden = int.Parse(more.Name.Split(' ')[0]);
-        int keep = cs.Count, all = keep + hidden;   // the 30 pins, then any running-only app the runner has (after them)
+        int keep = cs.Count, all = keep + hidden;   // the 48 pins, then any running-only app the runner has (after them)
         Assert.IsTrue(all >= total && keep < total, $"\"{more.Name}\" and {keep} icons on the strip: not the {total} pins with the tail behind \"+N\"; cells: {Describe(cs)}");
         Assert.AreEqual(hidden == 1 ? "1 more app that do not fit" : $"{hidden} more apps that do not fit", more.Name);
         CollectionAssert.AreEqual(Enumerable.Range(0, keep).ToArray(), cs.Select(c => c.Index).ToArray(), $"the icons on the strip are not the order's head: {Describe(cs)}");
         CollectionAssert.AreEqual(Enumerable.Range(1, keep).Select(i => $"Ovf {i:00}").ToArray(), cs.Select(c => c.Name).ToArray(), "the strip's order");
         Host.LogContains(log, $"bar tasks: fit: {keep} of {all} on the strip, {hidden} behind \"+{hidden}\"", "the fit was not logged");
-        var start = Find(app.Window, "bar.start")!.BoundingRectangle;
-        var wall = Find(app.Window, "bar.downloads")!.BoundingRectangle;
+        // lane r13-bar-islands, the prototype's dock island (apps-r3/mantle-bar look.css .b-dock: padding 0 4, gap 2;
+        // .cell 40 x 36): every icon and "+N" inside the dock island, "+N" one dock gap (2 DIP) after the last icon,
+        // the first icon 4 DIP in from the island's left edge
+        var dock = Find(app.Window, "bar.island.dock")!.BoundingRectangle;
+        var right = Find(app.Window, "bar.island.right")!.BoundingRectangle;
         var mr = more.BoundingRectangle;
-        double s = cs[0].Rect.Width / 36.0;
+        double s = cs[0].Rect.Width / 40.0;
         foreach (var c in cs)
-            Assert.IsTrue(c.Rect.Left >= start.Right && c.Rect.Right <= wall.Left, $"{c.Name} at {c.Rect} is not inside the free span ({start.Right}..{wall.Left})");
-        Assert.IsTrue(mr.Left > cs.Last().Rect.Right && mr.Right <= wall.Left - (int)(8 * s), $"\"+N\" at {mr} is not after the last icon ({cs.Last().Rect}) and inside the span (wall {wall.Left})");
-        // the collapsed tail takes no room: "+N" sits one gap (6 DIP) after the last icon on the strip
-        Assert.IsTrue(Math.Abs(mr.Left - cs.Last().Rect.Right - 6 * s) <= 2, $"\"+N\" is {mr.Left - cs.Last().Rect.Right} px after the last icon, not 6 DIP ({6 * s:0.#} px)");
-        // filled from the span's left edge: the first icon 8 DIP after the Start button
-        Assert.IsTrue(Math.Abs(cs[0].Rect.Left - start.Right - 8 * s) <= 2, $"the first icon is {cs[0].Rect.Left - start.Right} px after Start, not 8 DIP");
+            Assert.IsTrue(c.Rect.Left >= dock.Left && c.Rect.Right <= dock.Right, $"{c.Name} at {c.Rect} is not inside the dock island ({dock})");
+        Assert.IsTrue(mr.Left > cs.Last().Rect.Right && mr.Right <= dock.Right, $"\"+N\" at {mr} is not after the last icon ({cs.Last().Rect}) and inside the dock island ({dock})");
+        Assert.IsTrue(dock.Right + (int)Math.Round(12 * s) <= right.Left + 2, $"the dock island ({dock}) is not 12 DIP clear of the status island ({right})");
+        // the collapsed tail takes no room: "+N" sits one dock gap (2 DIP) after the last icon on the strip
+        Assert.IsTrue(Math.Abs(mr.Left - cs.Last().Rect.Right - 2 * s) <= 2, $"\"+N\" is {mr.Left - cs.Last().Rect.Right} px after the last icon, not 2 DIP ({2 * s:0.#} px)");
+        // the dock island's padding: the first icon 4 DIP in from its left edge
+        Assert.IsTrue(Math.Abs(cs[0].Rect.Left - dock.Left - 4 * s) <= 2, $"the first icon is {cs[0].Rect.Left - dock.Left} px in from the dock island, not 4 DIP");
 
         // BAR-242 ("+N" part): a drag never reaches the tail; its slots are only the icons on the strip
         var last = cs.Last();
