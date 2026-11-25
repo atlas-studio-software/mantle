@@ -8,6 +8,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Mantle.Core.Commands;
 using Mantle.Core.Data;
+using Mantle.Core.Features;
 using Mantle.Core.Features.Clipboard;
 using Mantle.Core.Features.Switcher;
 using Mantle.Core.Features.Timers;
