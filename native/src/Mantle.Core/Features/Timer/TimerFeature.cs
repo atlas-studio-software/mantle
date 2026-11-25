@@ -34,6 +34,19 @@ public sealed class TimerFeature : IFeature
     static Host? _configured;
     public static void Configure(Host h) => _configured = h;
 
+    /// The command the app's resume-from-sleep hook calls (lane r11-app-wiring: Lifecycle/WakeCalls).
+    public const string WakeCommand = "timer.wake";
+
+    /// <summary>The game state as the app gives it (lane r11-app-wiring): Mantle's one rest (RestCoordinator, which game
+    /// mode drives). <paramref name="rest"/> is read at each ask; null (not made yet) = unknown, the TIMER-059 rule: a
+    /// notice shows at once. A rest is held only while the host says why it rests.</summary>
+    public static Func<(bool Known, string? Game)> RestingFrom(Func<IRestHost?> rest) => () =>
+    {
+        IRestHost? h;
+        try { h = rest(); } catch (Exception) { h = null; }
+        return h is null ? (false, null) : (true, h.RestingWhy);
+    };
+
     readonly Host? _given;
     public TimerFeature() { }
     public TimerFeature(Host h) { _given = h; }
@@ -107,6 +120,10 @@ public sealed class TimerFeature : IFeature
         ctx.Command("chime", c => Reply(_engine.Chime(Bool(c.Args, "ok"), Bool(c.Args, "muted"), Str(c.Args, "reason"))));
         ctx.Command("wake", _ => { _engine.OnWake(); return Reply(TimerReply.Done); });
         ctx.OnEnabled(on => { if (!_stopped) _engine.OnEnabled(on); });
+        // lane r11-app-wiring: the timer never rests, so it hears a game rest start and end (timer.js hub.onResting); the
+        // state itself is read from Host.Resting at that moment, so a held notice shows once the game is over (TIMER-057)
+        if (ctx is IFeatureHostAccess more) more.OnRest(_ => { if (!_stopped) _engine.OnRestingChanged(); });
+        else ctx.Log("this host does not say when a game rest ends, so a done pop-up held for a game shows only at Mantle's next start");
         return ValueTask.CompletedTask;
     }
 
