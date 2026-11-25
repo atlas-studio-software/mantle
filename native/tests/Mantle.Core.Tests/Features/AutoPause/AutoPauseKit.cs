@@ -65,7 +65,13 @@ public sealed class FakeNet
         Routes.Add($"{app} {port}{route}");
         // A held /ping is answered only when the test lets it go, from the ports as they are THEN: two apps can both
         // find nobody and both bind (the race the protocol's yield-down rule is for).
-        if (route == "/ping" && PingGate is { } gate) await gate.Task;
+        // The reply is decided when the ping ARRIVES (who was bound then), and only delivered when the gate opens.
+        if (route == "/ping" && PingGate is { } gate)
+        {
+            bool boundAtArrival = _foreign.Contains(port) || _hosts.ContainsKey(port);
+            await gate.Task;
+            if (!boundAtArrival) return LinkReply.Failed("ECONNREFUSED");
+        }
         if (_foreign.Contains(port)) return new LinkReply(200, new JsonObject { ["ok"] = true, ["app"] = "something-else" });
         if (!_hosts.TryGetValue(port, out var host)) return LinkReply.Failed("ECONNREFUSED");
         var gone = new CancellationTokenSource();
