@@ -172,7 +172,17 @@ $charmapPid = ($fixtures | Where-Object ProcessName -eq 'charmap').Id
 $pillW = [Math]::Min(1120, $scr.Width - 28)
 $pill = @{ x = [int](($scr.Width - $pillW) / 2); y = $scr.Height - 14 - 48; w = $pillW; h = 48 }
 $shot = @{ x = $pill.x - 40; y = $pill.y - 60; w = $pill.w + 80; h = $scr.Height - ($pill.y - 60) }
-$park = @{ x = [int]($scr.Width / 2); y = $scr.Height - 1 }        # the bottom edge: Mantle's hover band reveals the bar
+# What "the bar's pixels changed" watches. The old look: the pill. The new look (references.psd1 bar = 'native-golden',
+# lane r13-bar-islands): the bar is three see-through islands 12 DIP from the edges, 44 tall, and most of the old pill's
+# rectangle is wallpaper between them, so the mean change there stays under the threshold (stage11 run
+# 20261125-204941-da1bbb: "never changed the pill's pixels" in both themes). It watches the middle 160 x 44 of the dock
+# island instead, which is centred on the screen (868,1024 185x44 on the 1920x1080 runner). The threshold is unchanged.
+$barRef = 'electron'
+$refFile = Join-Path (Split-Path -Parent $PSScriptRoot) 'tools\parity\references.psd1'
+if (Test-Path $refFile) { try { $refs = Import-PowerShellDataFile $refFile; if ($refs.bar) { $barRef = [string]$refs.bar } } catch { Say "references.psd1 could not be read ($($_.Exception.Message)); the pill is watched" } }
+$watch = if ($barRef -eq 'native-golden') { @{ x = [int]($scr.Width / 2) - 80; y = $scr.Height - 12 - 44; w = 160; h = 44 } } else { $pill }
+Say ("bar reference " + $barRef + ": watching " + $(if ($barRef -eq 'native-golden') { "the dock island" } else { "the pill" }) + " at " + $watch.x + "," + $watch.y + " " + $watch.w + "x" + $watch.h)
+$park =@{ x = [int]($scr.Width / 2); y = $scr.Height - 1 }        # the bottom edge: Mantle's hover band reveals the bar
 $away = @{ x = [int]($scr.Width / 2); y = [int]($scr.Height / 3) }
 
 function Save-Shot([string]$name, $r) {
@@ -190,7 +200,7 @@ function Watch-Pixels([long]$launchMs, [byte[]]$base, [int]$timeoutS, $proc) {
   $end = (Get-Date).AddSeconds($timeoutS)
   while ((Get-Date) -lt $end) {
     if ($proc -and $proc.HasExited) { break }
-    $g = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
+    $g = [BenchNative]::Grab($watch.x, $watch.y, $watch.w, $watch.h)
     $t = NowMs
     if ($null -eq $visible -and [BenchNative]::Diff($g, $base) -gt 6) { $visible = $t - $launchMs }
     if ($null -ne $visible) {
@@ -318,7 +328,7 @@ function Run-Electron([string]$theme) {
   [BenchNative]::ClearBottom($scr.Width, $scr.Height, 320) | Out-Null
   [BenchNative]::SetCursorPos($park.x, $park.y) | Out-Null
   Start-Sleep -Milliseconds 800
-  $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
+  $base = [BenchNative]::Grab($watch.x, $watch.y, $watch.w, $watch.h)
   $log = Join-Path $Out "$tag.log"
   # forward slashes, no quotes: Node reads backslashes inside a quoted NODE_OPTIONS value as escapes
   $env:NODE_OPTIONS = '--require=' + ((Join-Path $bench 'electron-probe.js') -replace '\\', '/')
@@ -438,7 +448,7 @@ function Show-NativeLog([string]$dir) {
 function Launch-Once([string]$tag, [string]$exePath, [string]$theme) {
   $dir = Join-Path $Out $tag
   Prepare-Screen
-  $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
+  $base = [BenchNative]::Grab($watch.x, $watch.y, $watch.w, $watch.h)
   $launch = NowMs
   $proc = Start-Native $exePath $theme $dir
   $px = Watch-Pixels $launch $base 30 $proc
@@ -457,7 +467,7 @@ function Run-Native([string]$tag, [string]$exePath, [string]$theme, [int]$holdS,
   Set-WinTheme $theme
   $dir = Join-Path $Out $tag
   Prepare-Screen
-  $base = [BenchNative]::Grab($pill.x, $pill.y, $pill.w, $pill.h)
+  $base = [BenchNative]::Grab($watch.x, $watch.y, $watch.w, $watch.h)
   $cornerAt = @{ x = $pill.x - 20; y = $pill.y - 50 }   # inside the window's shadow room, outside the pill and its shadow
   $cornerBase = [BenchNative]::Grab($cornerAt.x, $cornerAt.y, 16, 16)
   $launch = NowMs

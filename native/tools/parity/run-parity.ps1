@@ -224,35 +224,27 @@ function Stop-Profile([string]$profile) {
     ForEach-Object { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue }
 }
 # The native clock's screen rect through UI Automation (id bar.clock), or $null.
-function Native-ClockRect([int]$procId) {
-  try {
-    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
-    $A = [System.Windows.Automation.AutomationElement]
-    $win = $A::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children,
-      [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, $procId))
-    if (-not $win) { return $null }
-    $el = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-      [System.Windows.Automation.PropertyCondition]::new($A::AutomationIdProperty, 'bar.clock'))
-    if (-not $el) { return $null }
-    $r = $el.Current.BoundingRectangle
-    return @([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
-  } catch { Say "UIA: $($_.Exception.Message)"; return $null }
-}
+function Native-ClockRect([int]$procId) { return Native-IdRect $procId 'bar.clock' }   # every window of the process (below)
 # Any native element's screen rect through UI Automation (by its id), or $null. native-golden records the dock island
 # (bar.island.dock) in score.json as `dock`, for the strip stage (bar-tasks/run-strip-parity.ps1) to crop.
 function Native-IdRect([int]$procId, [string]$id) {
   try {
     Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
     $A = [System.Windows.Automation.AutomationElement]
-    $win = $A::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children,
+    # EVERY top-level window of the process, not the first: native has several (the bar, the top bar, the pop-up
+    # hosts), and which one UI Automation lists first follows the z-order, so a FindFirst found the bar only some runs
+    # (the parity stage never saw bar.clock while the strip stage did; stage11 run 20261125-204941-da1bbb)
+    $wins = $A::RootElement.FindAll([System.Windows.Automation.TreeScope]::Children,
       [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, $procId))
-    if (-not $win) { return $null }
-    $el = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
-      [System.Windows.Automation.PropertyCondition]::new($A::AutomationIdProperty, $id))
-    if (-not $el) { return $null }
-    $r = $el.Current.BoundingRectangle
-    if ($r.IsEmpty -or $r.Width -le 0 -or $r.Height -le 0) { return $null }
-    return @([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
+    foreach ($win in $wins) {
+      $el = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+        [System.Windows.Automation.PropertyCondition]::new($A::AutomationIdProperty, $id))
+      if (-not $el) { continue }
+      $r = $el.Current.BoundingRectangle
+      if ($r.IsEmpty -or $r.Width -le 0 -or $r.Height -le 0) { continue }
+      return @([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
+    }
+    return $null
   } catch { Say "UIA: $($_.Exception.Message)"; return $null }
 }
 
