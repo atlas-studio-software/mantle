@@ -48,8 +48,8 @@ internal sealed class PopupWindow
             _lev = lev;
             _lift = new PopupLift();
             Root.Children.Add(lev.Picture); Root.Children.Add(lev.Dim); Root.Children.Add(lev.Film); Root.Children.Add(lev.Sheen);
-            // clear but hit-testable, so the hover sheen follows the whole panel, not only its controls
-            face = new Border { CornerRadius = r, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush(Microsoft.UI.Colors.Transparent) };
+            // clear but hit-testable (a brush with no colour), so the hover sheen follows the whole panel, not only its controls
+            face = new Border { CornerRadius = r, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush() };
             Root.PointerEntered += (_, _) => lev.Hover(true);
             Root.PointerExited += (_, _) => lev.Hover(false);
         } else if (DesktopGlass.ElectronLook) {
