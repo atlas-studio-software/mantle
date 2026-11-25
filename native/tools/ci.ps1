@@ -499,6 +499,9 @@ function Stage-strip {
   Select-String -Path $log -Pattern '^STRIP-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
   $f = $Floors['strip']
   $bad = @()
+  # the script's own verdict first: a references.psd1 refusal, or (native-golden) "strip golden pending review: ..."
+  $verdict = @(Select-String -Path $log -Pattern '^STRIP-PARITY: FAILED \((.*)\)\s*$' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if ($verdict.Count) { $bad += (Short $verdict[0].Matches[0].Groups[1].Value) }
   if ($rows.Count -lt 2) { $bad += "$($rows.Count) of 2 strips scored (exit $code)" }
   $under = @($rows | Where-Object { $_.Ssim -lt $f })
   if ($under.Count) { $bad += ("{0} under the floor {1}: {2}" -f $under.Count, $f, (($under | ForEach-Object { "{0} {1:N4}" -f $_.Tag, $_.Ssim }) -join ', ')) }
