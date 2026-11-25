@@ -78,6 +78,20 @@ public sealed class WelcomeHost
         return v.Show ? FirstRun.ShowDelayMs : null;
     }
 
+    /// The one line said at start while native Mantle has no welcome window (lane r11-app-wiring).
+    public const string NoWindow = "native Mantle has no welcome window yet, so nothing was shown and nothing was recorded: first-run.json is left as it was, and the welcome is judged again at the next start";
+
+    /// <summary>The app's start-up while there is no welcome window (lane r11-app-wiring): the verdict is logged once
+    /// (<see cref="Start"/>, WEL-013), and when it is due, <see cref="NoWindow"/> as well. Nothing is recorded (no
+    /// <see cref="Record"/>): the flag stays exactly as the last build that could show the welcome left it, so this build
+    /// writes nothing into a profile it cannot greet. True when the welcome was due.</summary>
+    public bool StartWithoutWindow()
+    {
+        if (Start() is null) return false;
+        _log(NoWindow);
+        return true;
+    }
+
     /// <summary>Centred on the work area, clamped to it (JS Math.round).</summary>
     public static WelcomeRect Place(WelcomeRect workArea)
     {

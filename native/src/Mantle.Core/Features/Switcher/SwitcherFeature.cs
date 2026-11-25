@@ -46,6 +46,20 @@ public sealed class SwitcherFeature : IFeature
 
     static Host? _configured;
     public static void Configure(Host h) => _configured = h;
+
+    /// <summary>The composition root's <see cref="Host.HandBack"/> (lane r11-app-wiring): the stop/rest <c>hotkey</c> ask on
+    /// the UNSCOPED platform, with the hook's own 4 s timeout. Never throws: a throw comes back as a failed reply, which
+    /// StopAsync logs in one line.</summary>
+    public static Func<JsonObject, ValueTask<PlatformReply>> HandBackVia(IPlatform platform)
+    {
+        ArgumentNullException.ThrowIfNull(platform);
+        return async req =>
+        {
+            try { return await platform.CallAsync("hotkey", req, TimeSpan.FromMilliseconds(SwitcherHook.AskTimeoutMs)).ConfigureAwait(true); }
+            catch (Exception e) { return PlatformReply.Fail(PlatformOutcome.Failed, $"hotkey threw: {e.Message}"); }
+        };
+    }
+
     readonly Host? _given;
     public SwitcherFeature() { }
     public SwitcherFeature(Host h) { _given = h; }

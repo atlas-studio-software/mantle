@@ -249,6 +249,26 @@ public partial class MantleApp : Application
         // the feature host on the ONE write gate's stores
         _stores = Stores.For(Host.Paths, Host.Gate, Host.Log);
         var clock = new HostClock(null, loop);
+        // ---- stage 10 feature wiring (lane r11-app-wiring), before the host loads its features (FeatureSeam.Start below).
+        // Each Host only says where things are; every feature still decides its own health, and with no surface (the
+        // clipboard panel, the emoji picker, the switcher overlay, Task View) each stays unhealthy or asks nothing, so its
+        // chord stays Windows' own.
+        // clipboard: the pins file only where the ONE write gate lets native write it (and its .tmp / .unreadable);
+        // anywhere else pins are kept for this run and Electron's file is never touched (ClipHost.PinsFor). A failed check
+        // is said in words and keeps pins for the run (ClipHost.PinsOrRunOnly, tested in AppWiringTests).
+        Mantle.Core.Features.Clipboard.ClipboardFeature.Configure(new(
+            () => Mantle.Core.Features.Clipboard.ClipHost.PinsOrRunOnly(Host.Paths.DataRoot, Host.Gate), clock));
+        Mantle.Core.Features.Emoji.EmojiFeature.Configure(new(clock));
+        // timer: the game state is Mantle's one rest (RestCoordinator, driven by game mode; made further down, so it is read
+        // at each ask, and "unknown" until it exists). No done pop-up or beep is wired yet: a finish is said in words.
+        Mantle.Core.Features.Timers.TimerFeature.Configure(new(Clock: clock, Resting: Mantle.Core.Features.Timers.TimerFeature.RestingFrom(() => _rest)));
+        // switcher: the stop/rest hand-back goes through the UNSCOPED platform (the feature's own refuses calls once its stop
+        // began), so a game rest gives Alt+Tab back to Windows. No overlay and no OnWinKey: Alt+Tab, Win+N and Win+A are
+        // asked back for Windows from the start (SwitcherFeature.NoOverlay).
+        Mantle.Core.Features.Switcher.SwitcherFeature.Configure(new(Clock: clock, HandBack: Mantle.Core.Features.Switcher.SwitcherFeature.HandBackVia(_platform)));
+        // Task View: no surface yet, so it reports itself unhealthy and Win+Tab stays Windows' own (TaskViewFeature.NoSurface)
+        Mantle.Core.Features.TaskView.TaskViewFeature.Configure(new(Clock: clock));
+        // ---- end stage 10 feature wiring
         _features = new FeatureHost(new FeatureHostOptions {
             Flags = new FeatureFlags(test, live), Platform = _platform, Commands = _bus, Events = _events, Stores = _stores,
             State = _hub, Log = log, Clock = clock,
@@ -651,7 +671,9 @@ public partial class MantleApp : Application
     {
         if (_look != null) _look.Refresh(why);
         else Host.Log.Line($"mantle: {why}; the look is not up yet, so there is nothing to re-read");
-        if (why == "the PC woke from sleep" && _bus != null) _ = _bus.CallAsync("gcal.resume", null, "host");   // BAR-463 (powerMonitor 'resume' only)
+        // powerMonitor 'resume' only: timer.wake (TIMER-047: a timeout can be late across a sleep) and gcal.resume (BAR-463),
+        // each started at once; a failed one is one log line (lane r11-app-wiring)
+        _ = WakeCalls.RunAsync(_bus, why, Host.Log.Line);
     }
 
     /// Log-only (look.md, the look.json timing): a UI-thread job of the look path long enough to be felt is named.
@@ -744,8 +766,8 @@ public partial class MantleApp : Application
 
         static IntPtr Proc(IntPtr h, uint m, IntPtr w, IntPtr l)
         {
-            if (m == WM_POWERBROADCAST && (long)w == PBT_APMRESUMEAUTOMATIC) { try { _wake?.Invoke("the PC woke from sleep"); } catch (Exception) { } return (IntPtr)1; }
-            if (m == WM_WTSSESSION_CHANGE && (long)w == WTS_SESSION_UNLOCK) { try { _wake?.Invoke("the screen was unlocked"); } catch (Exception) { } return IntPtr.Zero; }
+            if (m == WM_POWERBROADCAST && (long)w == PBT_APMRESUMEAUTOMATIC) { try { _wake?.Invoke(WakeCalls.Resume); } catch (Exception) { } return (IntPtr)1; }
+            if (m == WM_WTSSESSION_CHANGE && (long)w == WTS_SESSION_UNLOCK) { try { _wake?.Invoke(WakeCalls.Unlock); } catch (Exception) { } return IntPtr.Zero; }
             if ((m == WM_QUERYENDSESSION || m == WM_ENDSESSION) && _on != null) {
                 try { return _on(m == WM_QUERYENDSESSION, w, l); } catch (Exception) { return m == WM_QUERYENDSESSION ? (IntPtr)1 : IntPtr.Zero; }
             }

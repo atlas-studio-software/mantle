@@ -41,6 +41,17 @@ public interface IOcrClipboard
     ValueTask WriteTextAsync(string text);
 }
 
+/// <summary>The clipboard the app hands over while native Mantle has no screenshot overlay (lane r11-app-wiring): it
+/// writes nothing and says why, so a Copy text that somehow comes is a "NOT copied (...)" line and a card error, never a
+/// silent no-op and never the user's clipboard.</summary>
+public sealed class NoOverlayClipboard : IOcrClipboard
+{
+    public const string Words = "native Mantle has no screenshot overlay yet, so Copy text puts nothing on the clipboard";
+    public static readonly NoOverlayClipboard Instance = new();
+    NoOverlayClipboard() { }
+    public ValueTask WriteTextAsync(string text) => throw new InvalidOperationException(Words);
+}
+
 public sealed class OcrService
 {
     public static readonly TimeSpan StatusTimeout = TimeSpan.FromMilliseconds(8000);   // ocr.status at sidecar ready
@@ -61,6 +72,22 @@ public sealed class OcrService
     public OcrService(Sender send, IOcrClipboard clipboard, Action<string> log, Func<double> nowMs, bool test = false, string? expect = null)
     {
         _send = send; _clipboard = clipboard; _log = log; _nowMs = nowMs; _test = test; _expect = test ? expect : null;
+    }
+
+    /// <summary>The app's transport (lane r11-app-wiring): the platform's own call, which never throws (a throw anyway is
+    /// caught in <see cref="Ask"/> and <see cref="CopyTextAsync"/>).</summary>
+    public static Sender Via(IPlatform platform)
+    {
+        ArgumentNullException.ThrowIfNull(platform);
+        return (verb, args, timeout) => platform.CallAsync(verb, args, timeout);
+    }
+
+    /// <summary>screenshot.js's <c>ctx.sidecar.onReady(... checkOcr())</c>: ocr.status at every sidecar ready (and now, when
+    /// it is ready already). The check logs its own answer once (ready, or unavailable with the reason). Dispose to stop.</summary>
+    public IDisposable AskOnReady(IPlatform platform)
+    {
+        ArgumentNullException.ThrowIfNull(platform);
+        return platform.OnReady(() => _ = CheckAsync());
     }
 
     public OcrState State { get; private set; } = OcrState.NotChecked;
