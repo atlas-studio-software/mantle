@@ -2,7 +2,9 @@ using System;
 using System.Numerics;
 using Mantle.App.Native;
 using Mantle.App.Shell.Glass;
+using Mantle.App.Shell.Levitate;
 using Mantle.App.Surfaces.Bar.Frame;
+using Mantle.Core.Look.Levitate;
 using Mantle.App.Shell.Windowing;
 using Microsoft.UI.Composition;
 using Microsoft.UI.Windowing;
@@ -31,13 +33,26 @@ internal sealed class PopupWindow
     public bool Painted { get; set; }
     bool _activated;
 
-    public PopupWindow(string key, string name, bool focusable, bool instant, bool dark, UIElement body)
+    public PopupWindow(string key, string name, bool focusable, bool instant, bool dark, UIElement body, bool levitate = false)
     {
-        Key = key; Name = name; Focusable = focusable; Instant = instant;
+        Key = key; Name = name; Focusable = focusable; Instant = instant; Levitate = levitate;
         Root = new Grid { RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light };
         const string X = "<Border xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation' ";
         Border face;
-        if (DesktopGlass.ElectronLook) {
+        if (levitate) {
+            // lane r12-levitate-host: the levitated look (Shell/Levitate, Mantle.Core PopupLevitate): the pop-up's part of the
+            // frosted still lined up with the screen, the dim, the dark film and the hover-only sheen under the body, all
+            // rounded 14 (pop-overs); no hairline edge, no tint, no sheen at rest. The body paints no background of its own.
+            var r = new CornerRadius(PopupLevitate.Radius);
+            var lev = new LevitatePanel("pop-up " + name, r);
+            _lev = lev;
+            _lift = new PopupLift();
+            Root.Children.Add(lev.Picture); Root.Children.Add(lev.Dim); Root.Children.Add(lev.Film); Root.Children.Add(lev.Sheen);
+            // clear but hit-testable (a brush with no colour), so the hover sheen follows the whole panel, not only its controls
+            face = new Border { CornerRadius = r, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush() };
+            Root.PointerEntered += (_, _) => lev.Hover(true);
+            Root.PointerExited += (_, _) => lev.Hover(false);
+        } else if (DesktopGlass.ElectronLook) {
             // MANTLE_TEST_GLASS=electron (the Electron pairs): --lg-fill-pop with the outer hairline, radius --lg-r-pop
             face = (Border)XamlReader.Load(X + "Background='{ThemeResource LgFillPop}' BorderBrush='{ThemeResource LgEdgeOut}' BorderThickness='1' CornerRadius='{ThemeResource LgRPopCorner}'/>");
         } else {
@@ -78,8 +93,26 @@ internal sealed class PopupWindow
     }
 
     readonly Border? _glassFill;
-    /// The shared desktop-still backdrop (Shell/Glass), null in a MANTLE_TEST_GLASS=electron run.
+    /// The shared desktop-still backdrop (Shell/Glass), null in a MANTLE_TEST_GLASS=electron run and on a levitated pop-up.
     public GlassLayer? Glass { get; }
+
+    /// The pop-up wears the levitated look (its kind asked for it, PopupKind.Levitate): <see cref="_lev"/> paints its
+    /// backdrop and <see cref="_lift"/> runs its motion.
+    public bool Levitate { get; }
+    readonly LevitatePanel? _lev;
+    readonly PopupLift? _lift;
+    /// The levitated backdrop's state for the log ("frost soft", "fallback: why", ...), null on another pop-up.
+    public string? LevitateState => _lev?.State;
+
+    /// A levitated pop-up's backdrop lined up with where it was placed: its rect on <paramref name="monitor"/> (physical px,
+    /// at <paramref name="scale"/> px per DIP), in this theme. Nothing on another pop-up.
+    public void Lift(Win32.RECT monitor, double scale, bool dark)
+    {
+        if (_lev == null) return;
+        double s = scale > 0 ? scale : 1;
+        _lev.Place((monitor.Right - monitor.Left) / s, (monitor.Bottom - monitor.Top) / s,
+            (Rect.Left - monitor.Left) / s, (Rect.Top - monitor.Top) / s, (Rect.Right - Rect.Left) / s, (Rect.Bottom - Rect.Top) / s, dark);
+    }
 
     /// The window's rectangle now, keeping the pop-up's height (the window is taller by the motion slack).
     Win32.RECT Now()
@@ -95,7 +128,8 @@ internal sealed class PopupWindow
     {
         Rect = r;
         int w = r.Right - r.Left, h = r.Bottom - r.Top;
-        _slack = (int)Math.Ceiling(RiseDip * scale); _radius = (int)Math.Round(16 * scale);
+        _slack = (int)Math.Ceiling((Levitate ? PopupLevitate.Slack() : RiseDip) * scale);
+        _radius = (int)Math.Round((Levitate ? PopupLevitate.Radius : 16) * scale);
         Root.Width = w / scale; Root.Height = h / scale;
         Root.HorizontalAlignment = HorizontalAlignment.Left; Root.VerticalAlignment = VerticalAlignment.Top;
         Win32.SetWindowPos(Hwnd, IntPtr.Zero, r.Left, r.Top, w, h + _slack, Win32.SWP_NOACTIVATE | 0x0004 /* SWP_NOZORDER */);
@@ -126,9 +160,11 @@ internal sealed class PopupWindow
         return _vis;
     }
 
-    /// The entrance, from the first frame on. `spring` = the bar's spring samples (0..1).
-    public void Enter(bool reduced, float[] spring)
+    /// The entrance, from the first frame on. `spring` = the bar's spring samples (0..1). A levitated pop-up plays its own
+    /// (PopupLevitate.Enter): it pops up, or lifts in when it opened in place of another (<paramref name="inPlace"/>).
+    public void Enter(bool reduced, float[] spring, bool inPlace = false)
     {
+        if (_lift != null) { EnterLevitated(reduced, inPlace); return; }
         int seq = ++_motion;
         var v = Vis(); var c = v.Compositor;
         v.StopAnimation("Translation"); v.StopAnimation("Opacity");
@@ -159,6 +195,7 @@ internal sealed class PopupWindow
     /// The exit; `done` runs LeaveTailMs after it ends (on the UI thread), unless an Enter came first.
     public void Leave(bool reduced, Action done)
     {
+        if (_lift != null) { LeaveLevitated(reduced, done); return; }
         int seq = ++_motion;
         var v = Vis(); var c = v.Compositor;
         var op = c.CreateScalarKeyFrameAnimation();
@@ -192,10 +229,46 @@ internal sealed class PopupWindow
     public void Rest()
     {
         ++_motion;
+        _lift?.Gone();
         var v = Vis();
         v.StopAnimation("Translation"); v.StopAnimation("Opacity");
+        if (_lift != null) {
+            v.StopAnimation("Translation.Y"); v.StopAnimation("Scale.X"); v.StopAnimation("Scale.Y");
+            v.Scale = Vector3.One;
+        }
         v.Properties.InsertVector3("Translation", Vector3.Zero); v.Opacity = 1;
         Clip(false);
+    }
+
+    // ------------------------------------------------------------------ the levitated motion (lane r12-levitate-host)
+    // Mantle.Core PopupLevitate / PopupLift: transform and opacity only, played by LevitateMotion on the root's visual.
+    // The window keeps PopupLevitate.Slack() (28 DIP, the lift's travel) below the panel, covered by the region only while
+    // a motion runs. Each end is checked against PopupLift's sequence, so a late end of an older motion does nothing.
+
+    void EnterLevitated(bool reduced, bool inPlace)
+    {
+        var lift = _lift!;
+        var tracks = lift.Open(inPlace, reduced);
+        int seq = lift.Seq;
+        Clip(true);
+        PlayLevitated(tracks, PopupLevitate.Origin(inPlace), () => { if (lift.Ended(seq)) Clip(false); });
+    }
+
+    void LeaveLevitated(bool reduced, Action done)
+    {
+        var lift = _lift!;
+        var tracks = lift.Close(reduced);
+        int seq = lift.Seq;
+        Clip(true);
+        PlayLevitated(tracks, PopupLevitate.Origin(false), () => { if (lift.Ended(seq)) done(); });
+    }
+
+    void PlayLevitated(Mantle.Core.Look.Levitate.Track[] tracks, (double X, double Y) origin, Action ended)
+    {
+        var v = Vis();
+        LevitateMotion.Play(Root, tracks, ended, origin.X, origin.Y);
+        // a window shown for the first time may not be laid out yet (ActualSize 0): the origin from the size it was given
+        if (Root.Width > 0 && Root.Height > 0) v.CenterPoint = new Vector3((float)(Root.Width * origin.X), (float)(Root.Height * origin.Y), 0);
     }
 
     public void Show()
@@ -220,8 +293,9 @@ internal sealed class PopupWindow
         if (!Parked) Win32.ShowWindow(Hwnd, Win32.SW_SHOWNOACTIVATE);
         WindowKinds.Cloak(Hwnd, true);
         Glass?.Down();
+        _lev?.Down();
         Parked = true;
     }
 
-    public void Close() { Glass?.Release(); try { Win.Close(); } catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException) { } }
+    public void Close() { Glass?.Release(); _lev?.Release(); try { Win.Close(); } catch (Exception e) when (e is InvalidOperationException or System.Runtime.InteropServices.COMException) { } }
 }

@@ -1,8 +1,10 @@
 using System;
 using System.Collections.Generic;
 using Mantle.App.Native;
+using Mantle.App.Shell.Glass;
 using Mantle.App.Shell.Windowing;
 using Mantle.App.Surfaces.Bar.Frame;
+using Mantle.Core.Look.Levitate;
 using Microsoft.UI.Dispatching;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Media;
@@ -11,8 +13,11 @@ namespace Mantle.App.Shell.Popups;
 
 /// What a pop-up kind is: its key (bar.js keys: qs, cal, media, more, dl, notifs, jl:&lt;app&gt;, ...), its size in
 /// DIP, whether it takes the keyboard, whether it is instant (parked between opens), and whether a switch to
-/// another app closes it (`away`).
-internal sealed record PopupKind(string Key, string Name, double WidthDip, double HeightDip, bool Focusable, bool Instant, bool Away, Func<UIElement> Body);
+/// another app closes it (`away`). `Levitate` (lane r12-levitate-host): the pop-up wears the levitated look, which the
+/// host gives it whole (PopupHost / PopupWindow, Mantle.Core PopupLevitate): the frost, the dim and the film under its
+/// body, rounded 14, 12 DIP above the bar, at most the monitor height less 80, and the pop-up / lift-in motion. A kind
+/// that does not ask keeps today's look (each panel moves over in its own stage).
+internal sealed record PopupKind(string Key, string Name, double WidthDip, double HeightDip, bool Focusable, bool Instant, bool Away, Func<UIElement> Body, bool Levitate = false);
 
 /// The surface gate and the open/close state machine of the bar's pop-ups (WIN-014, BAR-375, BAR-376):
 ///  - ONE pop-up at a time; opening another replaces it in place (no exit, room handed on);
@@ -80,6 +85,7 @@ internal sealed class PopupHost
         if (Math.Abs(_kind.HeightDip - heightDip) < 0.5 && Math.Abs(_kind.WidthDip - w) < 0.5) return true;
         _kind = _kind with { HeightDip = heightDip, WidthDip = w };
         _win.Place(Place(_kind, _anchor), _bar.Geometry.Scale);
+        _win.Lift(_bar.Geometry.Monitor, _bar.Geometry.Scale, _bar.Dark);
         Host.Log.Line($"pop-up {_kind.Name}: resized to {Math.Round(heightDip)} DIP high" + (double.IsNaN(widthDip) ? "" : $", {Math.Round(w)} DIP wide"));
         return true;
     }
@@ -194,6 +200,7 @@ internal sealed class PopupHost
             if (_st == St.Shown && _win != null) WindowKinds.Raise(_win.Hwnd, _q, "pop-up " + kind.Name, _fgAtOpen);   // brought forward
             return;   // opening: this open joins the first
         }
+        bool inPlace = _st != St.Hidden;   // a levitated pop-up opening in place of another lifts in (PopupLevitate.Enter)
         if (_st != St.Hidden) CloseNow($"replaced by {kind.Name}", motion: false);   // BAR-375/389: no exit, the room handed on
         if (!_bar.IsUp) _bar.Reveal("a pop-up opened");
         int seq = ++_seq;
@@ -201,7 +208,7 @@ internal sealed class PopupHost
         _fgAtOpen = Win32.GetForegroundWindow();
         bool reused = _parked.TryGetValue(kind.Key, out var w);
         if (w == null) {
-            w = new PopupWindow(kind.Key, kind.Name, kind.Focusable, kind.Instant, _bar.Dark, kind.Body());
+            w = new PopupWindow(kind.Key, kind.Name, kind.Focusable, kind.Instant, _bar.Dark, kind.Body(), Levitated(kind));
             if (kind.Focusable) w.Root.KeyDown += (_, e) => { if (e.Key == Windows.System.VirtualKey.Escape) { e.Handled = true; Close("Esc"); } };   // BAR-393
             if (kind.Instant) _parked[kind.Key] = w;
             var made = w;
@@ -211,9 +218,11 @@ internal sealed class PopupHost
         _win = w;
         w.Root.RequestedTheme = _bar.Dark ? ElementTheme.Dark : ElementTheme.Light;
         w.Place(Place(kind, anchor), _bar.Geometry.Scale);
+        w.Lift(_bar.Geometry.Monitor, _bar.Geometry.Scale, _bar.Dark);   // a levitated pop-up's frost, lined up (else nothing)
         w.Show();
-        w.Enter(_bar.ReducedMotion, BarWindow.SpringCurve);   // BAR-387/390
-        Host.Log.Line($"pop-up {kind.Name}: opening ({(reused ? "parked, uncloaked" : "a new window")}{(kind.Focusable ? ", takes the keyboard" : ", no focus")})");
+        w.Enter(_bar.ReducedMotion, BarWindow.SpringCurve, inPlace);   // BAR-387/390; levitated: PopupLevitate.Enter
+        Host.Log.Line($"pop-up {kind.Name}: opening ({(reused ? "parked, uncloaked" : "a new window")}{(kind.Focusable ? ", takes the keyboard" : ", no focus")}"
+            + (w.Levitate ? $", levitated: {(inPlace ? "lifts in" : "pops up")}" : "") + ")");
         if (reused && w.Painted) Shown(seq);
         else {
             void First(object? s, object e) { CompositionTarget.Rendering -= First; w.Painted = true; _q.TryEnqueue(() => Shown(seq)); }
@@ -234,7 +243,7 @@ internal sealed class PopupHost
         }
         _watch?.Arm();
         if (_watch != null && k.Away && _watchAway) ArmAway();
-        Host.Log.Line($"pop-up {k.Name}: shown at {FrameNative.Rect(w.Rect)}");
+        Host.Log.Line($"pop-up {k.Name}: shown at {FrameNative.Rect(w.Rect)}" + (w.Levitate ? $", levitated ({w.LevitateState})" : ""));
         OnScreen?.Invoke(k.Key);
     }
 
@@ -249,7 +258,12 @@ internal sealed class PopupHost
         } catch (ArgumentException) { return false; }
     }
 
+    /// A kind wears the levitated look when it asks for it, except in a MANTLE_TEST_GLASS=electron run (the Electron pairs
+    /// compare today's look).
+    static bool Levitated(PopupKind k) => k.Levitate && !DesktopGlass.ElectronLook;
+
     /// Placement (BAR-379, BAR-380): centred on its anchor, clamped 8 DIP inside the bar window, 7 DIP above the pill.
+    /// A levitated pop-up (PopupLevitate.Place): 12 DIP above the pill, 12 inside the monitor, at most its height less 80.
     Win32.RECT Place(PopupKind k, FrameworkElement anchor)
     {
         var g = _bar.Geometry; double s = g.Scale;
@@ -259,6 +273,13 @@ internal sealed class PopupHost
             var p = anchor.TransformToVisual(null).TransformPoint(new Windows.Foundation.Point(anchor.ActualWidth / 2, 0));
             cx = g.Window.Left + p.X * s;
         } catch (ArgumentException) { cx = (g.Pill.Left + g.Pill.Right) / 2.0; }
+        if (Levitated(k)) {
+            var m = g.Monitor;
+            var b = PopupLevitate.Place((cx - m.Left) / s, k.WidthDip, k.HeightDip, (g.Pill.Top - m.Top) / s, (m.Right - m.Left) / s, (m.Bottom - m.Top) / s);
+            int lx = m.Left + (int)Math.Round(b.X * s), lb = m.Top + (int)Math.Round(b.Bottom * s);
+            int lw = (int)Math.Round(b.W * s), lh = (int)Math.Round(b.H * s);
+            return new Win32.RECT { Left = lx, Top = lb - lh, Right = lx + lw, Bottom = lb };
+        }
         int x = (int)Math.Round(cx - w / 2.0);
         x = Math.Max(g.Window.Left + (int)Math.Round(InsetDip * s), Math.Min(x, g.Window.Right - (int)Math.Round(InsetDip * s) - w));
         int bottom = g.Pill.Top - (int)Math.Round(GapDip * s);
@@ -281,9 +302,10 @@ internal sealed class PopupHost
         string fate = w?.Instant == true ? "parked" : "closed", end = fate;
         if (w != null) {
             if (motion && painted && Win32.IsWindowVisible(w.Hwnd)) {
-                int ms = _bar.ReducedMotion ? PopupWindow.ReducedMs : (int)Math.Round(PopupWindow.DurSMs * PopupWindow.LeaveK);
+                int ms = w.Levitate ? (int)Math.Round(Motion.TotalMs(PopupLevitate.Exit(_bar.ReducedMotion), false))
+                    : _bar.ReducedMotion ? PopupWindow.ReducedMs : (int)Math.Round(PopupWindow.DurSMs * PopupWindow.LeaveK);
                 w.Leave(_bar.ReducedMotion, () => { if (w.Instant) w.Park(); else w.Close(); Host.Log.Line($"pop-up {k?.Name ?? "?"}: exit done, {fate}"); });
-                end = $"exit {ms} ms + {PopupWindow.LeaveTailMs} ms, then {fate}";
+                end = w.Levitate ? $"levitated exit {ms} ms, then {fate}" : $"exit {ms} ms + {PopupWindow.LeaveTailMs} ms, then {fate}";
             } else {
                 w.Rest();
                 if (w.Instant) w.Park(); else w.Close();

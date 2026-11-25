@@ -139,7 +139,7 @@ public sealed partial class BarWindow
         if (!closing) { _dl.WasFresh.Clear(); _dl.Note = ""; _dl.Loading = _dl.View.ValueKind != JsonValueKind.Object; PaintDl(measureOnly: true); }
         double h = closing ? 200 : Math.Min(560, _dl.Need());
         var dl = _dl;
-        Popups.Toggle(new PopupKind(DlKey, "Downloads", DownloadsShelf.WidthDip, h, Focusable: false, Instant: true, Away: true, () => dl.Root), _dlBtn);
+        Popups.Toggle(new PopupKind(DlKey, "Downloads", DownloadsShelf.WidthDip, h, Focusable: false, Instant: true, Away: true, () => dl.Root, Levitate: true), _dlBtn);   // lane r12-levitate-host: the levitated look, from the host
         if (Popups.OpenKey != DlKey || closing) return;
         Host.Log.Line($"downloads: the shelf opened ({DownloadsShelf.WidthDip}x{h} DIP)");
         _ = DlRefresh(false);
