@@ -27,6 +27,9 @@ internal sealed class Chips
 
     public bool Clear(string key) => _failures.Remove(key);
 
+    /// BAR-189, bar.js chipData ~203 (the prototype's ?bar=stuck uses the same words): one problem, tone "" (ink-2 pip).
+    public const string StuckLabel = "Bar may not hide", StuckReason = "The bar may stay up instead of tucking away. Restarting Mantle usually fixes this";
+
     /// The tray strip's "unavailable" reason (lane native-r7-notif, Surfaces/Bar/Tray), or null: it suppresses
     /// "Tray icons not updating" and is the More menu's "Tray icons not shown" line.
     public string? TrayUnavailable { get; set; }
@@ -46,8 +49,8 @@ internal sealed class Chips
             o.Add(new Chip("desktop", "Desktop not attached", "Mantle's desktop could not sit on the wallpaper, so desktop icons may not show. Restarting Mantle usually fixes this", ""));
         if (!s.Hotkey.WinTap && s.Mode != ShellMode.Test)
             o.Add(new Chip("hotkey", "Windows key not taken", "Tapping the Windows key opens Windows' Start, not Mantle's launcher. Restarting Mantle usually fixes this", ""));
-        if (!string.IsNullOrEmpty(s.Bar.Reason) && !s.Bar.Ok && s.Bar.Reason != ShellState.NotStartedYet)
-            o.Add(new Chip("bar", "Bar may not hide", "The bar may stay up instead of tucking away. Restarting Mantle usually fixes this", ""));
+        if (!string.IsNullOrEmpty(s.Bar.Reason) && !s.Bar.Ok && s.Bar.Reason != ShellState.NotStartedYet && !_failures.ContainsKey("bar"))
+            o.Add(new Chip("bar", StuckLabel, StuckReason, ""));
         if (!s.Tray.Watch && s.Tray.Ok && TrayUnavailable == null)   // one problem, one chip: an unreadable tray says so in the More menu
             o.Add(new Chip("traywatch", "Tray icons not updating", "New or changed tray icons will not show until Mantle restarts", ""));
         return o;

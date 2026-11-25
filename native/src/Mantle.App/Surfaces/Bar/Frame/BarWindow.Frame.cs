@@ -237,7 +237,12 @@ public sealed partial class BarWindow
         _revealed = false; _hiding = false;
         DisarmWatch();
         ClearPicture();   // BAR-038: only after the exit has finished
-        Host.Log.Line("bar hidden: " + (Win32.IsWindowVisible(_hwnd) ? "STILL VISIBLE after SW_HIDE" : "window hidden, nothing renders"));
+        bool stuck = Win32.IsWindowVisible(_hwnd);
+        Host.Log.Line("bar hidden: " + (stuck ? "STILL VISIBLE after SW_HIDE" : "window hidden, nothing renders"));
+        // lane r13-bar-islands, BAR-189 (main.js parkBar -> bar.js chipData ~203; prototype apps-r3/mantle-bar ?bar=stuck): a
+        // bar window that would not hide is ONE problem, "Bar may not hide", the More pip (ink-2, not warn) and the More
+        // menu's first line. Nothing in native wrote ShellState.Bar.Ok, so the bar raises it itself; a hide that works clears it.
+        if (stuck ? _chips.Fail("bar", Chips.StuckLabel, Chips.StuckReason) : _chips.Clear("bar")) RenderPip(force: true);
     }
 
     /// The compositor moves the island (BAR-017, BAR-020, BAR-029): the window sits at its rest place and never
