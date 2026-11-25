@@ -24,8 +24,9 @@ namespace Mantle.Core.Features.Notes;
 /// notes in module scope and saves them at wake (NOTE-091).
 ///
 /// Every write goes through <see cref="SafeFile"/>: without a configured gate (<see cref="Configure"/>) nothing is saved
-/// at all (fail closed) and the pad says so. The live folder is the one Electron Mantle writes; today's gate refuses it,
-/// so a native run reads the user's notes but never writes them.
+/// at all (fail closed) and the pad says so. The live folder is the one Electron Mantle writes; lane r11-notes-gate: the gate's
+/// notes rule (Data/WriteGate.cs) lets a --live run that is the only shell save files directly in it, and refuses every other
+/// run (the pad then keeps the text and says why).
 /// </summary>
 [Feature("notes", "Quick notes (Win+Alt+N)", true, Chords = new[] { "Win+Alt+N" }, Rest = true)]
 public sealed class NotesFeature : IFeature
@@ -100,7 +101,10 @@ public sealed class NotesFeature : IFeature
         _ctx = ctx;
         _h = _given ?? _configured ?? new Host();
         _clock = _h.Clock ?? new HostClock();
-        string profile = _h.UserProfile ?? Environment.GetEnvironmentVariable("USERPROFILE") ?? Path.GetTempPath();
+        _safe = _h.Safe ?? new SafeFile(WriteGate.Never(NoGate));   // fail closed: no gate, no write
+        // lane r11-notes-gate: the profile is the gate's own (WriteGate.NotesProfile, built from NotesPaths.UserProfile), so
+        // the folder this pad saves to is exactly the one the gate's notes rule allows; never a second lookup that could differ
+        string profile = _h.UserProfile ?? _safe.Gate.NotesProfile ?? NotesPaths.UserProfile() ?? Path.GetTempPath();
         string dataRoot = _h.DataRoot ?? Path.Combine(Path.GetTempPath(), "mantle-notes-test");
         string dir;
         if (_h.Dir != null) dir = _h.Dir;
@@ -109,7 +113,6 @@ public sealed class NotesFeature : IFeature
             dir = c.Dir;
             if (c.Note != null) ctx.Log(Scrub(c.Note, dir));
         }
-        _safe = _h.Safe ?? new SafeFile(WriteGate.Never(NoGate));   // fail closed: no gate, no write
         _store = new NotesStore(dir, _safe, LocalNow, Now, _h.Sleep);
         _rescueDir = _h.RescueDir;
         if (_rescueDir != null) _rescued = NotesStore.ListRescue(_rescueDir).TakeLast(3).ToArray();

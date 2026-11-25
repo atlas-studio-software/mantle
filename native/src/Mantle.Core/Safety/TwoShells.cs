@@ -134,11 +134,14 @@ public static class TwoShells
         };
     }
 
-    /// <summary>The ONE write gate for this run: data-look's <see cref="WriteGate"/>, told about Electron by this class.</summary>
+    /// <summary>The ONE write gate for this run: data-look's <see cref="WriteGate"/>, told about Electron by this class.
+    /// lane r11-notes-gate: and given the notes folder's profile (<see cref="Mantle.Core.Features.Notes.NotesPaths.UserProfile"/>, the
+    /// known-folder API), the same string the notes feature then reads back from <see cref="WriteGate.NotesProfile"/>.</summary>
     public static WriteGate Gate(DataPaths paths, LaunchArgs args, Func<string, string?> env)
     {
         string profile = ElectronProfile(env), exe = InstalledExe(env);
         var watch = Stopwatch.StartNew();
-        return WriteGate.For(paths, args, OtherShell(() => Probe(profile, exe), () => watch.Elapsed.TotalMilliseconds));
+        return WriteGate.For(paths, args, OtherShell(() => Probe(profile, exe), () => watch.Elapsed.TotalMilliseconds),
+            Mantle.Core.Features.Notes.NotesPaths.UserProfile(), Mantle.Core.Features.Notes.NotesPaths.KnownDocuments());
     }
 }
