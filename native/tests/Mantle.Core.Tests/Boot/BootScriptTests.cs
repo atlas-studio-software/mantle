@@ -141,7 +141,7 @@ public class BootScriptTests
 
         var noStart = DryRun("switch-back.ps1", "-Exe", exe)!.Value;
         Assert.Contains(noStart.Item2, l => l.StartsWith("step 6: skipped (no -StartElectron)", StringComparison.Ordinal));
-        Assert.DoesNotContain(noStart.Item2, l => l.Contains("/Run", StringComparison.Ordinal));
+        Assert.DoesNotContain(noStart.Item2, l => l.Contains("would run: schtasks.exe /Run", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -162,12 +162,12 @@ public class BootScriptTests
             "step 4: disable Electron's logon task 'Mantle'",
             "would run: schtasks.exe /Change /TN Mantle /DISABLE",
             "step 5: register (or re-point) the native logon task 'Mantle Native'",
-            $"install-autostart.ps1",
-            $" -Exe \"{exe}\" -TaskName \"Mantle Native\"",
+            $" -Exe \"{exe}\" -TaskName \"Mantle Native\"",   // after -File <tools>\install-autostart.ps1 (asserted below)
             "step 6: start the native task now",
             "would run: schtasks.exe /Run /TN \"Mantle Native\"",
             "switch-to-native: dry run done; nothing was changed");
         Assert.Contains(lines, l => l.StartsWith("step 2:", StringComparison.Ordinal) && l.Contains(@"mantle\lockfile not held", StringComparison.Ordinal) && l.Contains("(never killed here)", StringComparison.Ordinal));
+        Assert.Contains(lines, l => l.Contains("would run: powershell.exe ", StringComparison.Ordinal) && l.Contains("install-autostart.ps1", StringComparison.Ordinal) && l.Contains($" -Exe \"{exe}\"", StringComparison.Ordinal));
 
         // an installed Electron: its own Mantle.exe --quit and the restore script inside its app folder
         var inst = DryRun("switch-to-native.ps1", "-Exe", exe, "-ElectronExe", @"X:\P\Mantle\Mantle.exe")!.Value;
