@@ -46,6 +46,18 @@ public sealed class IslandsTests
         Assert.IsTrue(centred || afterM, "the dock is neither centred on the screen nor 12 DIP after the M: " + got);
         if (afterM && !centred)
             Assert.IsTrue(centre + dock.Width / 2.0 + gap > right.Left, "the dock left the centre with room to spare: " + got);
+
+        // inside the islands (look.css .b-dock / .b-right: padding 0 4; .cell 40 x 36): the status island ends 4 DIP after
+        // "more"; the first app cell (the runner always has a running app; a test run shows no pins) is 40 x 36, 4 DIP in
+        var more = app.Find("bar.more").BoundingRectangle;
+        Assert.AreEqual(4 * s, right.Right - more.Right, 1.5, $"\"more\" ends {right.Right - more.Right} px before the status island's right edge, want 4 DIP: {more}; " + got);
+        var cell0 = app.TryFind("bar.app.0", 8000);
+        if (cell0 != null) {
+            Rectangle c = cell0.BoundingRectangle, d = app.Find("bar.island.dock").BoundingRectangle;
+            Assert.AreEqual(40 * s, c.Width, 1.0, $"the first dock cell is {c.Width} px wide, want 40 DIP: {c} in {d}");
+            Assert.AreEqual(36 * s, c.Height, 1.0, $"the first dock cell is {c.Height} px tall, want 36 DIP: {c} in {d}");
+            Assert.AreEqual(4 * s, c.Left - d.Left, 1.5, $"the first dock cell is {c.Left - d.Left} px in from the dock island, want 4 DIP: {c} in {d}");
+        }
     }
 
     /// The offline network button (Electron ui/bar/net.js, the prototype's ?net=off): MANTLE_TEST_NET=off draws it whatever
