@@ -158,7 +158,7 @@ public class AutoPauseLinkTests
         var m = new LinkApp("mantle", P, sp, net, c); var q = new LinkApp("quartz", P, sp, net, c);
         // Both apps probe before either binds (held pings), so both find nobody, both bind, and the one on the higher
         // port must see the host below it and yield (docs/autopause-protocol.md: binding is the lock, lowest wins).
-        net.PingGate = new TaskCompletionSource<bool>();
+        net.PingGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);   // async: every held probe is queued before any app runs on
         var starts = Task.WhenAll(m.Link.Start(), q.Link.Start());
         for (int i = 0; i < 200 && net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)) < 2 * P.Count; i++) await Task.Yield();
         Assert.Equal(2 * P.Count, net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)));   // every first probe is in
