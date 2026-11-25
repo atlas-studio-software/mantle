@@ -325,7 +325,7 @@ public sealed partial class BarWindow
         if (Host.Args.NoBackdrop) return () => null;
         return () => {
             var shot = Backdrop.Grab(pill, mon, maxSigma);
-            return shot == null ? null : Backdrop.Blurred(shot, pill, sigma, sat);
+            return shot == null ? null : Backdrop.Blurred(shot, pill, sigma, sat, Backdrop.BarStripScale);
         };
     }
 
