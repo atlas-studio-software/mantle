@@ -50,7 +50,7 @@ public static class AutoPauseElection
     public static AfterBind After(int? boundPort, bool hostBelow) => boundPort == null ? AfterBind.HostAlone : hostBelow ? AfterBind.Yield : AfterBind.Host;
 
     /// A host on protocol 2 or later is followed with /watch; an older one (the standalone bridge) with /ping every 3 s.
-    public static bool Watches(JsonObject? status) => status != null && status["protocol"] is JsonValue v && v.TryGetValue(out double p) && p >= 2;
+    public static bool Watches(JsonObject? status) => status != null && Mantle.Core.Look.LookSyncCore.TryNum(status["protocol"], out double p) && p >= 2;   // an int-built or a parsed number
 }
 
 /// <summary>

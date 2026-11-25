@@ -104,11 +104,11 @@ public class TimerCoreTests
     [Fact]
     public void A_custom_label_is_one_line_without_control_or_bidi_characters_and_at_most_60_long()
     {
-        Assert.Equal("tea is ready", TimerCore.CleanLabel("tea\nis‮ready"));
-        Assert.Equal("a b", TimerCore.CleanLabel("  a \u0007b  "));
+        Assert.Equal("tea is ready", TimerCore.CleanLabel("tea\nis\u202Eready"));
+        Assert.Equal("a b", TimerCore.CleanLabel("  a\u2028\u0007b  "));
         Assert.Equal(60, TimerCore.CleanLabel(new string('x', 500)).Length);
         Assert.Equal("", TimerCore.CleanLabel(null));
-        Assert.Equal("", TimerCore.CleanLabel("‎‏"));
+        Assert.Equal("", TimerCore.CleanLabel("\u200E\u200F"));
         string cut = TimerCore.CleanLabel(new string('x', 59) + "\U0001F600tail");
         Assert.Equal(59, cut.Length);   // never half a surrogate pair
     }
