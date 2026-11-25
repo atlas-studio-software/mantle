@@ -113,7 +113,7 @@ public class LevitateTests
     // ------------------------------------------------------------------ the dim
 
     [Fact]
-    public void Dim_defaults_to_020_a_saved_value_wins_clamped_to_020_090()
+    public void Dim_defaults_to_020_a_saved_value_in_020_090_wins_anything_else_is_the_seed()
     {
         Assert.Equal(0.20, LevitateDim.Resolve(null));
         Assert.Equal(0.20, LevitateDim.Resolve(double.NaN));
@@ -122,7 +122,7 @@ public class LevitateTests
         Assert.Equal(0.20, LevitateDim.Resolve(0.20));
         Assert.Equal(0.90, LevitateDim.Resolve(0.90));
         Assert.Equal(0.20, LevitateDim.Resolve(0.05));   // the prototype's own slider goes down to 0; the contract does not
-        Assert.Equal(0.90, LevitateDim.Resolve(0.95));
+        Assert.Equal(0.20, LevitateDim.Resolve(0.95));   // out of range: the seed, not clamped (look-sync v2.1)
         Assert.Equal(0.20, LevitateDim.Resolve(-1));
     }
 
@@ -131,11 +131,34 @@ public class LevitateTests
     {
         var look = JsonNode.Parse("{\"glass\":{\"dark\":{\"dim\":0.45,\"dimAuto\":false},\"light\":{\"dim\":1.5}}}");
         Assert.Equal((0.45, false), LevitateDim.Read(look, "dark"));
-        Assert.Equal((0.90, true), LevitateDim.Read(look, "light"));     // clamped; dimAuto absent = automatic
+        Assert.Equal((0.20, true), LevitateDim.Read(look, "light"));     // 1.5 is out of range: the seed; dimAuto absent = automatic
         Assert.Equal((0.45, false), LevitateDim.Read(look, "anything")); // anything but light is dark
         Assert.Equal((0.20, true), LevitateDim.Read(null, "dark"));
         Assert.Equal((0.20, true), LevitateDim.Read(JsonNode.Parse("{\"glass\":{\"dark\":{\"dim\":\"x\"}}}"), "dark"));
         Assert.Equal((0.30, true), LevitateDim.Read(JsonNode.Parse("{\"glass\":{\"v\":{\"dark\":{\"dim\":0.3,\"dimAuto\":true}}}}"), "dark"));   // shared() shape
+    }
+
+    /// lane r12-app-wiring (EM t_af477e; look-sync dca42dc look-sync.js:53-58 SEED, CONTRACT.md:352/:378): the saved Dim the
+    /// levitated panels paint (LevitatePanel.FromGlass reads the look host's glass through LevitateDim.Read). Seed 0.20 in both
+    /// themes; a stored valid value, 0.30 included, always wins; missing, out of range or not a number reads as the seed.
+    [Theory]
+    [InlineData("dark"), InlineData("light")]
+    public void Saved_dim_v21_seed_020_a_stored_030_wins_bad_values_read_as_the_seed(string theme)
+    {
+        (double, bool) R(string glassTheme) => LevitateDim.Read(JsonNode.Parse("{\"glass\":{\"" + theme + "\":" + glassTheme + "}}"), theme);
+        Assert.Equal(0.20, R("{\"blurPx\":0,\"panel\":0}").Item1);          // missing
+        Assert.Equal(0.20, LevitateDim.Read(JsonNode.Parse("{}"), theme).Dim);     // no glass at all
+        Assert.Equal(0.20, LevitateDim.Read(null, theme).Dim);                       // no look
+        Assert.Equal(0.30, R("{\"dim\":0.30}").Item1);                       // the old seed, stored: it wins, no special case
+        Assert.Equal(0.30, R("{\"dim\":0.3,\"dimAuto\":false}").Item1);
+        Assert.Equal(0.20, R("{\"dim\":1.5}").Item1);                        // out of range
+        Assert.Equal(0.20, R("{\"dim\":0.1}").Item1);                        // below the range: never 0.10
+        Assert.Equal(0.20, R("{\"dim\":\"0.45\"}").Item1);                // a string is not a number
+        Assert.Equal(0.20, R("{\"dim\":null}").Item1);
+        Assert.Equal(0.20, R("{\"dim\":true}").Item1);
+        Assert.Equal(0.20, LevitateDim.Resolve(double.NaN));                         // NaN (JSON cannot carry it; the double road can)
+        Assert.Equal(0.90, R("{\"dim\":0.90}").Item1);                       // the range ends are valid
+        Assert.Equal(0.20, R("{\"dim\":0.20}").Item1);
     }
 
     // ------------------------------------------------------------------ the pad-stretch blur

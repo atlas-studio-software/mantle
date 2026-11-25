@@ -43,7 +43,7 @@ public class PopupLevitateTests
         Assert.Equal(0.20, PopupLevitate.Dim(0));
         Assert.Equal(0.35, PopupLevitate.Dim(0.35));
         Assert.Equal(0.90, PopupLevitate.Dim(0.90));
-        Assert.Equal(0.90, PopupLevitate.Dim(5));
+        Assert.Equal(0.20, PopupLevitate.Dim(5));   // out of range reads as the seed (look-sync v2.1), not clamped
     }
 
     [Fact]
