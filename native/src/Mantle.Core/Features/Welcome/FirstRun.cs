@@ -21,7 +21,7 @@ public sealed record WelcomeFlag(string State, string? How = null, string? At = 
         if (Evidence != null)
         {
             var a = new JsonArray();
-            foreach (var e in Evidence) a.Add(JsonValue.Create(e));
+            foreach (var e in Evidence) a.Add((JsonNode?)JsonValue.Create(e));   // the non-generic Add: Add<T> is not AOT-safe (IL2026/IL3050)
             o["evidence"] = a;
         }
         if (Note != null) o["note"] = Note;

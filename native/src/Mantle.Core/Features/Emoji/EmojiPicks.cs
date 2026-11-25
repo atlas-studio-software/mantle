@@ -101,7 +101,7 @@ public sealed class EmojiPicks
     static JsonArray Node(IEnumerable<string> list)
     {
         var a = new JsonArray();
-        foreach (var s in list) a.Add(JsonValue.Create(s));
+        foreach (var s in list) a.Add((JsonNode?)JsonValue.Create(s));   // the non-generic Add: Add<T> is not AOT-safe (IL2026/IL3050)
         return a;
     }
 
