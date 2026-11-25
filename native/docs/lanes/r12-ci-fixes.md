@@ -27,6 +27,14 @@ bilinear stretch back with pixel centres aligned) runs before the blur for the b
 RenderGlass, BarWindow.Frame.cs light loop). The launcher's glass is unchanged (stripScale 1). The threshold, the masks and
 the parity reference are unchanged.
 
+LIGHT ONLY (`Backdrop.StripFor(dark)`): in dark, Electron's bar glass is not the screen. It is the WALLPAPER cut to the
+pill (main.js backdropPicture: dark -> wallStill.rect, lane mantle-seethru-bar-desktop), so the runner's text is not in
+Electron's dark glass at all. The first run with the strip in both themes (cloudtest 20261125-184007-ca2d34, gh
+45677512004, on 06f00146) gave light-150 ssim 0.9856, diffpx 0.46 % (ok; it was 0.9790 / 0.54 %) and light 0.9969 /
+0.02 %. Dark-150 got WORSE, 0.9838 / 0.59 % (it was 0.9847 / 0.50 %), because the smeared text covers more pixels. So
+dark keeps the 1:1 grab. The real dark fix is to port the wallpaper cut, so the native bar's dark glass is the still,
+not the screen. That is not done here. The bar-islands lane (Levitate over the still) replaces this glass anyway.
+
 Not copied: Electron's light strip is also stretched over a box 14 CSS px bigger than the pill on every side (bar.css
 `.bdrop img`, left/top -14px), so its picture is slightly magnified. Native lays the picture 1:1 over the pill.
 

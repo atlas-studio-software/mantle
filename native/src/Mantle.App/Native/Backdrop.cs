@@ -52,6 +52,11 @@ internal static class Backdrop
     /// sharp in native and smeared in Electron: 560 of the 742 light-150 pixels over the parity threshold).
     public const int BarStripScale = 4;
 
+    /// LIGHT ONLY: in dark Electron's bar glass is not the screen at all but the wallpaper cut to the pill (main.js
+    /// backdropPicture: theme dark -> wallStill.rect, lane mantle-seethru-bar-desktop), so a quarter screen strip would
+    /// match nothing there. Native's dark bar still paints its 1:1 grab (the wallpaper cut is not ported; lane note).
+    public static int StripFor(bool dark) => dark ? 1 : BarStripScale;
+
     /// The UI-thread half of Render: the cropped BGRA pixels into a bitmap.
     public static WriteableBitmap ToBitmap(byte[] crop, int cw, int ch, WriteableBitmap? into = null)
     {
