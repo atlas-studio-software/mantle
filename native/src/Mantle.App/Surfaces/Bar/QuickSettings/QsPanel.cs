@@ -304,9 +304,28 @@ internal sealed partial class QsPanel
             if (Held(p.Key) && Part(p.Key)?["level"] is JsonNode lv) o["level"] = lv.DeepClone();         // a held slider keeps the pointer's value
             _parts[p.Key] = o;
         }
+        WifiChanged?.Invoke();
     }
 
     JsonObject? Part(string k) => _parts.TryGetValue(k, out var v) ? v : null;
+
+    /// Lane r13-bar-islands: the Wi-Fi part as the bar's network button reads it (read-only): both null while it is not
+    /// read, could not be read or there is no adapter; else whether it is on and connected (null when the part does not say).
+    public (bool? On, bool? Connected) Wifi
+    {
+        get {
+            var w = Part("wifi");
+            if (w == null || !QsParts.IsOk(w) || QsParts.IsFalse(w["present"]) || QsParts.IsTrue(w["pending"])) return (null, null);
+            return (Tri(w["on"]), Tri(w["connected"]));
+        }
+    }
+    static bool? Tri(JsonNode? n) => QsParts.IsTrue(n) ? true : QsParts.IsFalse(n) ? false : (bool?)null;
+
+    /// A snapshot was taken or a set read back (the Wi-Fi part may have changed), on the UI thread.
+    public event Action? WifiChanged;
+
+    /// Read the parts again (the bar's network button heard that the network changed); nothing without the road.
+    public void Refresh() => _ = Snapshot();
     bool Held(string part) => part == "volume" ? _vol.Dragging || _vol.InFlight : part == "brightness" && (_bright.Dragging || _bright.InFlight);
 
     /// qsSet: the guess drawn at once (pending), the read-back has the last word, a refusal springs back and says why.
@@ -320,7 +339,7 @@ internal sealed partial class QsPanel
         if (_link == null) { _busy.Remove(part); _note[key] = QsView.SetNote(part, "Quick settings is still starting"); Paint(); return false; }
         var r = await _link.CallAsync("qs.set", new JsonObject { ["part"] = part, ["value"] = value.DeepClone() });
         if (--_busy[part] <= 0) _busy.Remove(part);
-        if (r.Ok && r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("state", out var st) && Obj(st) is JsonObject s) _parts[key] = s;
+        if (r.Ok && r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("state", out var st) && Obj(st) is JsonObject s) { _parts[key] = s; if (key == "wifi") WifiChanged?.Invoke(); }
         if (!r.Ok) {
             _note[key] = QsView.SetNote(part, r.Error);
             _ = Snapshot();   // what the system says, again: the guess is undone

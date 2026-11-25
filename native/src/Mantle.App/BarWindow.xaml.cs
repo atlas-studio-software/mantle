@@ -160,6 +160,7 @@ public sealed partial class BarWindow : Window
         Tick();
         StartFrame();
         StartQuickSettings();   // lane native-bar-qs: Volume / Network / Battery open the quick-settings pop-up (Surfaces/Bar/QuickSettings)
+        StartNetwork();         // lane r13-bar-islands: the network button says when the machine is offline (Surfaces/Bar/QuickSettings/BarWindow.Network.cs)
         StartCalendar();        // lane native-r7-calendar: a left or right click on the clock opens the calendar (Surfaces/Bar/Calendar)
         StartNotifications();   // lane native-r7-notif: the bell + centre, the tray strip, the More menu (Surfaces/Bar/Notifications, Tray, Chips)
         StartMedia();           // lane native-r7-media: the now-playing chip and its card (Surfaces/Bar/Media)
@@ -384,7 +385,7 @@ public sealed partial class BarWindow : Window
         if (Win32.waveOutGetNumDevs() > 0)
             foreach (var arc in new[] { "M10 6.2a2.6 2.6 0 0 1 0 3.6", "M11.8 4.9a5 5 0 0 1 0 6.2", "M13.6 3.6a7.4 7.4 0 0 1 0 8.8" })
                 VolumeHost.Children.Add(PathEl(arc, false, 1.2));
-        // network (net.js): the wired glyph. Wi-Fi bars are migration work.
+        // network (net.js): the wired glyph. Wi-Fi bars are migration work. Offline: BarWindow.Network.cs swaps in the globe.
         NetworkHost.Children.Add(PathEl(RoundRect(2, 2.6, 12, 8.4, 1.3), false, 1.2));
         NetworkHost.Children.Add(PathEl("M6 13.6h4M8 11v2.6", false, 1.2));
         NotifsHost.Children.Add(PathEl("M8 2.2a3.9 3.9 0 0 0-3.9 3.9v2.6L2.9 11h10.2l-1.2-2.3V6.1A3.9 3.9 0 0 0 8 2.2Z", false));

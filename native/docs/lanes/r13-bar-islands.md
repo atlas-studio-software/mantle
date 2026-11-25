@@ -44,6 +44,12 @@ the spec tests. Nothing built or run (no cloud run yet). The plan below is what 
   "Not connected\n<detail>\nClick: quick settings". Glyph: globe with a slash at .55 opacity (prototype ?net=off).
   Connected: the Wi-Fi glyph with bars, label "Network: <ssid>". Virtual adapters (Hyper-V, VPN) can make
   GetIsNetworkAvailable true while offline: a known limit to name in the test.
+- Built (second session): BarWindow.Network.cs (Surfaces/Bar/QuickSettings) + QsPanel.Wifi / WifiChanged / Refresh; the
+  words are Mantle.Core BarIslands.Offline. A Wi-Fi part that says connected is never called offline. Connected: today's
+  glyph and name "Network" (the Wi-Fi bars glyph is not built). Test runs: MANTLE_TEST_NET=off forces the offline face.
+- Known limits: virtual adapters (Hyper-V, VPN) can make GetIsNetworkAvailable true while the machine is offline, so the
+  button then shows connected. The Wi-Fi part is read at start, on every quick-settings snapshot and on each
+  NetworkAvailabilityChanged; while the panel is closed nothing else refreshes it.
 
 ## Parity (plan v0.2): the plan
 - `tools/parity/run-parity.ps1` sets MANTLE_TEST_GLASS=electron, so once the islands land it would keep comparing the

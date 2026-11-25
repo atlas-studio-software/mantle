@@ -47,4 +47,20 @@ public sealed class IslandsTests
         if (afterM && !centred)
             Assert.IsTrue(centre + dock.Width / 2.0 + gap > right.Left, "the dock left the centre with room to spare: " + got);
     }
+
+    /// The offline network button (Electron ui/bar/net.js, the prototype's ?net=off): MANTLE_TEST_NET=off draws it whatever
+    /// the runner's network is; its name is "Not connected, " and one of net.js's three details.
+    [TestMethod]
+    public void Offline_network_button_says_not_connected_and_why()
+    {
+        var env = new System.Collections.Generic.Dictionary<string, string> { ["MANTLE_TEST_NET"] = "off" };
+        using var app = BarApp.Launch("uitest-netoff", env: env);
+        var net = app.Find("bar.network");
+        string[] want = {
+            "Not connected, Wi-Fi is on but not connected to a network",
+            "Not connected, Wi-Fi is turned off",
+            "Not connected, No connections are available",
+        };
+        Assert.IsTrue(Host.Until(() => System.Array.IndexOf(want, net.Name ?? "") >= 0, 8000), $"the network button is named \"{net.Name}\"");
+    }
 }
