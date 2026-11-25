@@ -216,8 +216,11 @@ namespace Mantle {
       // A supervisor that replaces one that went away carries its crash history on.
       List<long> crashes = PriorCrashes();
       if (_haveMutex) WriteState(null, null, null);   // who watches whom, before anything can happen
+      bool nativeMain = rec0 != null && Json.GetBool(rec0, "native", false);
       Say("supervisor: watching Mantle's main process " + mainPid + " (supervisor pid " + _me + "); a crash brings it back, " +
-          MaxCrashes + " crashes inside " + (WindowMs / 60000) + " minutes stop the retries");
+          (nativeMain
+            ? CrashLoop.MaxRestarts + " restarts inside " + (CrashLoop.WindowMs / 60000) + " minutes, the next crash stays down (native Mantle, crash.json)"
+            : MaxCrashes + " crashes inside " + (WindowMs / 60000) + " minutes stop the retries"));
       int launched = 0;   // the main THIS supervisor started last (0 = it watches the one that started it)
 
       for (;;) {
@@ -236,6 +239,50 @@ namespace Mantle {
         // FIRST, whatever the reason main is gone (and before any wait, restart or give-up): Windows'
         // own notification banners back. A main restarted below turns them off again itself.
         BannersBack(mainPid);
+
+        // NATIVE Mantle (the record says "native": true, Mantle.Core/Lifecycle/Supervisor.cs): ONE rule, CrashLoop.cs
+        // (crash.json, 3 restarts in 10 minutes, never while another shell is live). Electron's records never carry
+        // "native", so everything below this block is Electron's road exactly as it was.
+        Dictionary<string, object> nspec = recIsHis ? rec : (rec ?? rec0);
+        if (nspec != null && Json.GetBool(nspec, "native", false)) {
+          object nsd, ncn;
+          string standWhy = null, note = null;
+          if (recIsHis && Json.TryGet(rec, "standDown", out nsd) && nsd is Dictionary<string, object>)
+            standWhy = Json.GetString((Dictionary<string, object>)nsd, "why") ?? "no reason was given";
+          if (recIsHis && Json.TryGet(rec, "crashNote", out ncn) && ncn is Dictionary<string, object>)
+            note = Json.GetString((Dictionary<string, object>)ncn, "what");
+          int dead = mainPid, lastStarted = launched;
+          bool his = recIsHis, codeKnown = haveCode, cleanExit = haveCode && raw == 0;
+          uint deadCode = raw;
+          long endMs = mainEndedMs > 0 ? mainEndedMs : diedAt;
+          var facts = new CrashFacts {
+            Pid = dead, CodeHex = codeHex, Words = ExitWords(codeKnown ? (long)deadCode : -1, note), What = note,
+            StandDownWhy = standWhy, ShuttingDown = GetSystemMetrics(SM_SHUTTINGDOWN) != 0,
+            OtherMain = () => his ? 0 : OtherLiveMain(dead, lastStarted == dead && cleanExit ? 5000 : 0),
+            TreeKill = () => codeKnown && deadCode == 1 && TreeKilled(endMs),
+          };
+          CrashOutcome r = CrashLoop.Handle(new NativeHost(nspec, dead, diedAt), facts);
+          CloseTracked();
+          if (r.Kind == "quit" || r.Kind == "treekill") WriteState(new List<long>(), null, null);   // a deliberate stop ends the story
+          else if (!r.Counted) WriteState(null, null, null);
+          else WriteState(new List<long>(),
+                          Json.Obj("at", diedAt, "oldPid", dead, "codeHex", codeHex, "words", facts.Words, "what", note, "native", true, "kind", r.Kind,
+                                   "restarted", r.NewPid > 0, "newPid", r.NewPid > 0 ? (object)r.NewPid : null, "recent", r.Recent),
+                          r.Kind == "gaveup" || r.Kind == "startfailed"
+                            ? Json.Obj("at", diedAt, "count", r.Recent, "windowMs", CrashLoop.WindowMs, "pid", dead, "codeHex", codeHex, "native", true,
+                                       "restore", Json.Obj("result", r.Restore, "verified", r.Verified, "dryRun", _test))
+                            : null);
+          if (r.NewPid <= 0) return r.Exit;
+          launched = r.NewPid; _watching = r.NewPid;
+          h = OpenProcess(SYNCHRONIZE | PROCESS_QUERY_LIMITED_INFORMATION, false, r.NewPid);
+          if (h == IntPtr.Zero) {
+            Say("supervisor: the new Mantle " + r.NewPid + " could not be watched (it may have stopped at once); the supervisor exits");
+            return 1;
+          }
+          mainPid = r.NewPid;
+          continue;
+        }
+
         object sd;
         if (recIsHis && Json.TryGet(rec, "standDown", out sd) && sd is Dictionary<string, object>) {
           string why = Json.GetString((Dictionary<string, object>)sd, "why") ?? "no reason was given";
@@ -335,6 +382,133 @@ namespace Mantle {
           return 1;
         }
         mainPid = newPid;
+      }
+    }
+
+    /// CrashLoop's world for a NATIVE main (lane r12-crash-restart): crash.json in the watched folder, the shell
+    /// probes, the restore script, the restart (the same waits and Launch as Electron's road) and the dialog.
+    sealed class NativeHost : ICrashHost {
+      readonly Dictionary<string, object> _spec;
+      readonly int _dead;
+      readonly long _diedAt;
+      public NativeHost(Dictionary<string, object> spec, int dead, long diedAt) { _spec = spec; _dead = dead; _diedAt = diedAt; }
+      public long Now() { return NowMs(); }
+      public List<long> History() { return CrashHistory(); }
+      public string WriteCrash(Dictionary<string, object> record) { return WriteCrashFile(Json.Write(record)); }
+      public string OtherShell() { return OtherShellNow(); }
+      public string RunRestore(out int exitCode, out string output) {
+        exitCode = -1; output = "";
+        if (_test) return "a test instance never runs it";
+        return RunRestoreRaw(RestoreCommand(), out exitCode, out output);
+      }
+      public int StartAgain(out string why) {
+        why = null;
+        int left = WaitForChildren(_dead, 10000);
+        if (left > 0) Say("supervisor: " + left + " of the old main's helper process(es) were still running after 10 s; starting Mantle anyway");
+        bool waited = WaitForTaskbar(30000);
+        if (waited) Say("supervisor: it waited for the Windows taskbar to come back first");
+        long minGap = 1000 - (NowMs() - _diedAt);
+        if (minGap > 0) Thread.Sleep((int)minGap);
+        if (GetSystemMetrics(SM_SHUTTINGDOWN) != 0) { why = "Windows started signing out or shutting down first"; return 0; }
+        if (_test && !Directory.Exists(_dir)) { why = "the test's folder is gone"; return 0; }
+        string other = OtherShellNow();   // asked again right before the start: the waits above take up to 40 s
+        if (other != null) { why = "another Mantle became the live shell meanwhile (" + other + ")"; return 0; }
+        return Launch(_spec, out why);
+      }
+      public bool AskAgain(string text) {
+        if (_test) return false;
+        return MessageBoxW(IntPtr.Zero, text, "Mantle stopped", MB_YESNO | MB_ICONWARNING | MB_TOPMOST | MB_SETFOREGROUND) == IDYES;
+      }
+      public void Log(string line) { Say(line); }
+    }
+
+    static string CrashFile() { return Path.Combine(_dir, "crash.json"); }
+
+    /// crash.json's history (main.js's shape); a missing or unreadable file is an empty list.
+    static List<long> CrashHistory() {
+      var list = new List<long>();
+      Dictionary<string, object> rec = ReadJson(CrashFile());
+      object hist;
+      if (rec != null && Json.TryGet(rec, "history", out hist) && hist is IList) {
+        foreach (object o in (IList)hist) {
+          try { if (o is long || o is int || o is double) list.Add(Convert.ToInt64(o, CultureInfo.InvariantCulture)); } catch (Exception) { }
+        }
+      }
+      return list;
+    }
+
+    /// crash.json written whole (tmp + replace). null = written; else the reason, said (never swallowed: the
+    /// loop guard depends on it, and a crash that cannot be counted is not started again).
+    static string WriteCrashFile(string text) {
+      string file = CrashFile();
+      string tmp = file + ".tmp-" + _me;
+      try {
+        File.WriteAllText(tmp, text, new UTF8Encoding(false));
+        if (File.Exists(file)) File.Replace(tmp, file, null);
+        else File.Move(tmp, file);
+        return null;
+      } catch (Exception ex) {
+        try { if (File.Exists(tmp)) File.Delete(tmp); } catch (Exception) { }
+        return ex.Message;
+      }
+    }
+
+    public const string LiveShellMutex = "Local\\Mantle.LiveShell";   // Mantle.Core/Safety/LiveLock.cs MutexName
+
+    /// Another shell that is live now, in words, or null (Mantle.Core/Safety/TwoShells.cs, read-only, fail closed):
+    /// another native holds Local\Mantle.LiveShell (the dead main's own is abandoned, which counts as free);
+    /// Electron Mantle's single-instance lockfile in this folder is held; an installed Mantle.exe runs.
+    static string OtherShellNow() {
+      var seen = new List<string>();
+      try {
+        Mutex m;
+        if (Mutex.TryOpenExisting(LiveShellMutex, out m)) {
+          using (m) {
+            bool got;
+            try { got = m.WaitOne(0); } catch (AbandonedMutexException) { got = true; }
+            if (got) { try { m.ReleaseMutex(); } catch (Exception) { } }
+            else seen.Add("another Mantle holds " + LiveShellMutex);
+          }
+        }
+      } catch (Exception ex) { seen.Add(LiveShellMutex + " could not be checked (" + ex.Message + "), so it is taken as held"); }
+      string lockFile = Path.Combine(_dir, "lockfile");
+      if (File.Exists(lockFile)) {
+        try { using (new FileStream(lockFile, FileMode.Open, FileAccess.Read, FileShare.None)) { } }
+        catch (FileNotFoundException) { }
+        catch (DirectoryNotFoundException) { }
+        catch (IOException ex) {
+          int c = Marshal.GetHRForException(ex) & 0xFFFF;
+          seen.Add(c == 32 || c == 33 ? "Electron Mantle's single-instance lock is held" : "Electron Mantle's lock file could not be checked (" + ex.Message + "), so it is taken as held");
+        }
+        catch (Exception ex) { seen.Add("Electron Mantle's lock file could not be checked (" + ex.Message + "), so it is taken as held"); }
+      }
+      try {
+        string inst = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Programs", "Mantle", "Mantle.exe");
+        foreach (Process p in Process.GetProcessesByName("Mantle")) {
+          try { if (string.Equals(p.MainModule.FileName, inst, StringComparison.OrdinalIgnoreCase)) seen.Add("Mantle.exe is running (pid " + p.Id + ")"); }
+          catch (Exception) { }
+          finally { p.Dispose(); }
+        }
+      } catch (Exception) { }
+      return seen.Count == 0 ? null : string.Join("; ", seen.ToArray());
+    }
+
+    /// The restore script's exit code and stdout. null = it ran; else why it would not.
+    static string RunRestoreRaw(string command, out int exitCode, out string output) {
+      exitCode = -1; output = "";
+      try {
+        int sp = command.IndexOf(' ');
+        var psi = new ProcessStartInfo(command.Substring(0, sp), command.Substring(sp + 1)) {
+          UseShellExecute = false, CreateNoWindow = true, RedirectStandardOutput = true,
+        };
+        using (Process p = Process.Start(psi)) {
+          output = p.StandardOutput.ReadToEnd();
+          if (!p.WaitForExit(60000)) return "the restore script did not finish in 60 s";
+          exitCode = p.ExitCode;
+          return null;
+        }
+      } catch (Exception ex) {
+        return "the restore script would not run (" + ex.Message + ")";
       }
     }
 
