@@ -44,6 +44,9 @@ public sealed class FakeNet
     public readonly HashSet<string> Dead = new();
     public readonly List<string> Routes = new();
 
+    /// While set, every /ping waits for it (set it to hold probes back, complete it to answer them; null = no hold).
+    public TaskCompletionSource<bool>? PingGate;
+
     /// A port taken by other software (it answers nothing useful).
     public void TakeForeign(int port) => _foreign.Add(port);
 
@@ -60,6 +63,15 @@ public sealed class FakeNet
         await Task.Yield();
         if (Dead.Contains(app)) { await new TaskCompletionSource<bool>().Task; }
         Routes.Add($"{app} {port}{route}");
+        // A held /ping is answered only when the test lets it go, from the ports as they are THEN: two apps can both
+        // find nobody and both bind (the race the protocol's yield-down rule is for).
+        // The reply is decided when the ping ARRIVES (who was bound then), and only delivered when the gate opens.
+        if (route == "/ping" && PingGate is { } gate)
+        {
+            bool boundAtArrival = _foreign.Contains(port) || _hosts.ContainsKey(port);
+            await gate.Task;
+            if (!boundAtArrival) return LinkReply.Failed("ECONNREFUSED");
+        }
         if (_foreign.Contains(port)) return new LinkReply(200, new JsonObject { ["ok"] = true, ["app"] = "something-else" });
         if (!_hosts.TryGetValue(port, out var host)) return LinkReply.Failed("ECONNREFUSED");
         var gone = new CancellationTokenSource();

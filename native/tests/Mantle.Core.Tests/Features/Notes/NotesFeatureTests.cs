@@ -55,6 +55,9 @@ public sealed class NotesFeatureTests : IDisposable
         await body(k);
     });
 
+    // A live run (test: false): the chord comes from the hook, never FireChord (that one is --test only).
+    static KeyDelivery Hook(K k) => k.R.Host.RouteChord("Win+Alt+N", "hook");
+
     static async Task<JsonElement> Call(K k, string verb, JsonObject? args = null)
     {
         var r = await k.R.Bus.CallAsync("notes." + verb, args);
@@ -80,10 +83,10 @@ public sealed class NotesFeatureTests : IDisposable
         Assert.Equal(NotesFeature.Healthy, k.R.Hub.Piece("notes").Reason);
         Assert.Equal("Win+Alt+N or the notes icon on the top bar opens the pad", NotesFeature.Healthy);
         Assert.Contains("Win+Alt+N", k.R.Host.Wanted().Chords);
-        Assert.True(k.R.Host.FireChord("Win+Alt+N").Delivered);
+        Assert.True(Hook(k).Delivered);
         Assert.True(k.F.IsOpen);
         Assert.Contains(k.R.Events.Published, p => p.Name == NotesFeature.OpenEvent && ((JsonElement)p.Payload!).GetProperty("focus").GetBoolean());
-        k.R.Host.FireChord("Win+Alt+N");
+        Hook(k);
         Assert.False(k.F.IsOpen);
         await Task.Yield();
     });
@@ -96,7 +99,7 @@ public sealed class NotesFeatureTests : IDisposable
         k.R.Host.SetEnabled("notes", false, "the tray");
         Assert.False(k.F.IsOpen);
         Assert.DoesNotContain("Win+Alt+N", k.R.Host.Wanted().Chords);
-        Assert.False(k.R.Host.FireChord("Win+Alt+N").Delivered);
+        Assert.False(Hook(k).Delivered);
         var r = await k.R.Bus.CallAsync("notes.open");
         Assert.False(r.Ok);
         Assert.Equal(NotesFeature.OffWords, r.Error);
@@ -109,7 +112,7 @@ public sealed class NotesFeatureTests : IDisposable
         Assert.False(p.Ok);
         Assert.Equal(NotesFeature.NoSurface, p.Reason);
         Assert.DoesNotContain("Win+Alt+N", k.R.Host.Wanted().Chords);
-        Assert.False(k.R.Host.FireChord("Win+Alt+N").Delivered);
+        Assert.False(Hook(k).Delivered);
         await Task.Yield();
     }, surface: false);
 
@@ -118,7 +121,7 @@ public sealed class NotesFeatureTests : IDisposable
     {
         Assert.Equal(new[] { "notes" }, await k.R.Host.RestAllAsync("VALORANT runs"));
         Assert.DoesNotContain("Win+Alt+N", k.R.Host.Wanted().Chords);
-        Assert.False(k.R.Host.FireChord("Win+Alt+N").Delivered);
+        Assert.False(Hook(k).Delivered);
         await k.R.Host.WakeAllAsync("VALORANT exited");
         Assert.Contains("Win+Alt+N", k.R.Host.Wanted().Chords);
     });
@@ -131,7 +134,7 @@ public sealed class NotesFeatureTests : IDisposable
         k.F.Blurred(closes: true);
         Assert.False(k.F.IsOpen);
         Assert.Equal("closed by the same click", (await Call(k, "toggle", new JsonObject { ["via"] = "icon" })).GetProperty("why").GetString());
-        k.R.Host.FireChord("Win+Alt+N");
+        Hook(k);
         Assert.True(k.F.IsOpen);
     });
 

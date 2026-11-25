@@ -167,7 +167,7 @@ public class ClipboardFeatureTests
     {
         await Up(r);
         bool esc = true;
-        r.Platform.Handle("clip.arm", _ => { if (esc) { esc = false; _ = r.Bus.CallAsync("clipboard.close"); } return PlatformReply.Success(JsonDocument.Parse(Arm).RootElement.Clone()); });
+        r.Platform.Handle("clip.arm", arg => { if (esc) { esc = false; _ = r.Bus.CallAsync("clipboard.close"); } return PlatformReply.Success(JsonDocument.Parse(Arm).RootElement.Clone()); });
         WinV(r);
         await Settle(r, () => !esc);
         r.Time.AdvanceMs(500);

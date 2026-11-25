@@ -28,7 +28,8 @@ public static class FeatureRules
     /// Names a feature may not take: Mantle's own command prefixes and event names (a feature's name is its command prefix).
     public static readonly IReadOnlySet<string> Reserved = new HashSet<string>(StringComparer.Ordinal)
     {
-        "features", "state", "sys", "windows", "bar", "launcher", "desktop", "switcher", "notifs",
+        // "switcher" is not here: the Alt+Tab switcher IS the feature "switcher" (lane r9-switcher), its commands switcher.*
+        "features", "state", "sys", "windows", "bar", "launcher", "desktop", "notifs",
         "qs", "wallpaper", "shell", "tray", "media", "battery", "volume", "net", "apps", "mantle", "test", "theme",
     };
 

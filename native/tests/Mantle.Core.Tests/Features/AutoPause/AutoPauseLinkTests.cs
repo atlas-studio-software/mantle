@@ -95,8 +95,11 @@ public class AutoPauseLinkTests
         await m.Hold(true);
         await m.Link.Stop("Mantle quits");
         Assert.Equal(("playing", "mantle:1"), (sp.State, Ap.J(sp.Plays)));
+        // lib's until(() => q.link.role() === 'host', 3000): the re-election's probes and bind are async, so let
+        // them run between clock steps instead of asserting right after one jump
         time.AdvanceMs(AutoPauseLink.ReelectMs + 50);
-        Assert.Equal("host", q.Link.Role);
+        for (int waited = 0; waited < 3000 && q.Link.Role != "host"; waited += 20) { await Task.Yield(); time.AdvanceMs(20); }
+        Assert.True(q.Link.Role == "host", $"quartz is {q.Link.Role} || quartz log: {string.Join(" / ", q.Logs.TakeLast(15))} || mantle log: {string.Join(" / ", m.Logs.TakeLast(10))}");
         Assert.Equal((1, 1), (sp.TotalPauses, sp.TotalPlays));
         await q.Link.Stop("done");
     });
@@ -153,10 +156,19 @@ public class AutoPauseLinkTests
     {
         var sp = new FakeSpotify(); var net = new FakeNet(); var c = Ap.Clock(loop, time);
         var m = new LinkApp("mantle", P, sp, net, c); var q = new LinkApp("quartz", P, sp, net, c);
-        await Task.WhenAll(m.Link.Start(), q.Link.Start());
+        // Both apps probe before either binds (held pings), so both find nobody, both bind, and the one on the higher
+        // port must see the host below it and yield (docs/autopause-protocol.md: binding is the lock, lowest wins).
+        net.PingGate = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);   // async: every held probe is queued before any app runs on
+        var starts = Task.WhenAll(m.Link.Start(), q.Link.Start());
+        for (int i = 0; i < 200 && net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)) < 2 * P.Count; i++) await Task.Yield();
+        Assert.Equal(2 * P.Count, net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)));   // every first probe is in
+        var gate = net.PingGate; net.PingGate = null; gate.SetResult(true);
+        await starts;
         var client = m.Link.Role == "client" ? m : q;
         Assert.Equal((int?)P[0], client.Link.Port);
-        Assert.Contains(client.Logs, l => l.Contains("another app is the auto-pause host"));
+        var host = client == m ? q : m;
+        Assert.True(client.Logs.Any(l => l.Contains("another app is the auto-pause host")),
+            $"client log: {string.Join(" / ", client.Logs.TakeLast(12))} || host log: {string.Join(" / ", host.Logs.TakeLast(12))}");
         await Task.WhenAll(m.Link.Stop("done"), q.Link.Stop("done"));
     });
 

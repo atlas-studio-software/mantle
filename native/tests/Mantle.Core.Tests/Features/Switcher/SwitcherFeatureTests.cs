@@ -30,7 +30,13 @@ public class SwitcherFeatureTests
         public PhysRect PrimaryWork => new(0, 0, 1920, 1040);
     }
 
-    static void T(Func<Rig, Task> body, bool test = false) => HostLoop.Run(async (_, time) => await body(new Rig(time, test)));
+    // A failure carries the host's last log lines, so a cloud run (which keeps only the test message) says why.
+    static void T(Func<Rig, Task> body, bool test = false) => HostLoop.Run(async (_, time) =>
+    {
+        var r = new Rig(time, test);
+        try { await body(r); }
+        catch (Exception e) { throw new Xunit.Sdk.XunitException(e.Message + " || host log: " + string.Join(" / ", r.Lines.TakeLast(25))); }
+    });
 
     static FeatureDescriptor D(SwitcherFeature.Host h) =>
         FeatureDescriptor.Of(typeof(SwitcherFeature).GetCustomAttribute<FeatureAttribute>()!, () => new SwitcherFeature(h));
