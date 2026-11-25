@@ -96,7 +96,7 @@ public class AutoPauseLinkTests
         await m.Link.Stop("Mantle quits");
         Assert.Equal(("playing", "mantle:1"), (sp.State, Ap.J(sp.Plays)));
         time.AdvanceMs(AutoPauseLink.ReelectMs + 50);
-        Assert.Equal("host", q.Link.Role);
+        Assert.True(q.Link.Role == "host", $"quartz is {q.Link.Role} || quartz log: {string.Join(" / ", q.Logs.TakeLast(15))} || mantle log: {string.Join(" / ", m.Logs.TakeLast(10))}");
         Assert.Equal((1, 1), (sp.TotalPauses, sp.TotalPlays));
         await q.Link.Stop("done");
     });
@@ -156,7 +156,9 @@ public class AutoPauseLinkTests
         await Task.WhenAll(m.Link.Start(), q.Link.Start());
         var client = m.Link.Role == "client" ? m : q;
         Assert.Equal((int?)P[0], client.Link.Port);
-        Assert.Contains(client.Logs, l => l.Contains("another app is the auto-pause host"));
+        var host = client == m ? q : m;
+        Assert.True(client.Logs.Any(l => l.Contains("another app is the auto-pause host")),
+            $"client log: {string.Join(" / ", client.Logs.TakeLast(12))} || host log: {string.Join(" / ", host.Logs.TakeLast(12))}");
         await Task.WhenAll(m.Link.Stop("done"), q.Link.Stop("done"));
     });
 

@@ -145,6 +145,8 @@ public sealed partial class FeatureHost
         public string Reason = "starting";
         public bool Running;
         public bool Stopped;
+        /// Its StopAsync is running: its platform calls still go out, so it can hand back what it holds (Spotify, Alt+Tab).
+        public bool InStop;
         public bool Rest;
         public string? Resting;
         public Task? RestP;
