@@ -42,13 +42,13 @@ internal sealed class LevitatePanel
     public Border Picture { get; }
     /// The black wash at alpha dim over it.
     public Border Dim { get; }
-    /// The neutral film rgba(10, 12, 14, a) over the dim (a = the v2 brightness check; 0 in manual).
+    /// The neutral film rgba(10, 12, 14, a) over the dim (a = the v2.1 brightness check; 0 in manual; 0 in light, always).
     public Border Film { get; }
     /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size); over the film, under the UI.
     public Border Sheen { get; }
     /// "frost light" | "frost soft" while the copy is up, else "fallback: why" (tests and logs).
     public string State { get; private set; } = "not shown yet";
-    /// The film alpha now (an exact 2-decimal v2 step: 0, 0.04 .. 0.56).
+    /// The film alpha now (an exact 2-decimal v2.1 step: 0, 0.04 .. 0.72; always 0 in light).
     public double FilmAlpha { get; private set; }
 
     public LevitatePanel(string name, CornerRadius radius)
@@ -170,7 +170,10 @@ internal sealed class LevitatePanel
         if (!ReferenceEquals(_brush.ImageSource, bmp)) _brush.ImageSource = bmp;
         Picture.Background = _brush;
         var (dim, auto) = _look ?? FromGlass(_dark);
-        double film = Legibility.ForPanel(p.LightPx, p.SoftPx, _vw, _vh, _x, _y, _w, _h, dim, auto);
+        // Dark only (lane r11-lift21): this layer lays the DARK film rgb(10, 12, 14), and the dark film must never be laid in
+        // light. The light Levitate look (look-sync v2.1's lift toward #F4F7F8, Legibility.LiftAlpha(samples, dim, "light"))
+        // is not built yet; until it is, a light panel gets no film. Wiring it is a later job (lane note r11-lift21).
+        double film = _dark ? Legibility.ForPanel(p.LightPx, p.SoftPx, _vw, _vh, _x, _y, _w, _h, dim, auto) : 0;
         _dim.Color = Rgba(0, 0, 0, dim);
         _film.Color = Rgba(LevitateTokens.FilmR, LevitateTokens.FilmG, LevitateTokens.FilmB, film);
         Dim.Visibility = Visibility.Visible;
