@@ -98,7 +98,7 @@ public sealed class SafeFile
     public string? EnsureFolder(string dir)
     {
         if (Directory.Exists(dir)) return null;
-        string? no = Gate.Refusal(dir);
+        string? no = Gate.FolderRefusal(dir);   // lane r11-notes-gate: never a subfolder of Mantle Notes
         if (no != null) return no;
         try { Directory.CreateDirectory(dir); return null; }
         catch (Exception e) { return Code(e); }

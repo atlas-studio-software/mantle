@@ -160,6 +160,33 @@ public sealed class NotesFeatureTests : IDisposable
         Assert.Contains("<!-- mantle:note -->\nxxx", OnDisk(), StringComparison.Ordinal);   // saved mid-burst, by the 3 s cap
     });
 
+    // lane r11-notes-gate: the app hands the pad no folder and no profile of its own (App.xaml.cs passes Host.Gate.NotesProfile),
+    // so a live run's pad saves where the gate's notes rule points: <the gate's profile>\Documents\Mantle Notes\notes.md.
+    [Fact]
+    public void A_live_pad_given_only_the_gate_saves_in_the_gates_own_Mantle_Notes_folder() => HostLoop.Run(async (_, time) =>
+    {
+        string profile = Path.Combine(_root, "profile");
+        var args = LaunchArgs.Parse(new[] { "--live" });
+        var paths = DataPaths.Resolve(args, n => n == "APPDATA" ? Path.Combine(_root, "appdata") : null, Path.GetTempPath());
+        var gate = WriteGate.For(paths, args, () => null, profile, NotesPaths.DocsRoot(profile));
+        var k = new K { R = new Rig(time, test: false) };
+        k.R.HookTakesAll();
+        k.R.Platform.Start();
+        var h = new NotesFeature.Host(Safe: new SafeFile(gate), Clock: new HostClock(time), LocalNow: () => new DateTime(2026, 11, 25, 3, 0, 0),
+            RescueDir: Data, Sleep: _ => { }, UserProfile: gate.NotesProfile, Surface: true);
+        var a = typeof(NotesFeature).GetCustomAttribute<FeatureAttribute>()!;
+        k.R.Host.Load(new[] { FeatureDescriptor.Of(a, () => new NotesFeature(h)) });
+        await k.R.Host.Installed;
+        await k.R.Host.ApplyLiveAsync();
+        await Call(k, "open");
+        Type(k, "saved through the notes rule");
+        await Call(k, "close");
+        string saved = Path.Combine(NotesPaths.LiveDir(profile), "notes.md");
+        Assert.Equal("<!-- mantle:note -->\nsaved through the notes rule\n", File.ReadAllText(saved));
+        Assert.True(k.F.Saved["ok"]!.GetValue<bool>());
+        Assert.Equal(new[] { saved }, Directory.GetFileSystemEntries(NotesPaths.LiveDir(profile)));   // no tmp left behind
+    });
+
     [Fact]
     public void Loss_closing_the_pad_saves_at_once() => T(async k =>
     {
