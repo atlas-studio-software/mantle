@@ -352,6 +352,18 @@ public class LevitateFilmTests
         }
     }
 
+    /// The sha256 of look-sync 5d9e4f6's test/fixtures/lift-v2.json and lift-light.json (git show 5d9e4f6:test/fixtures/...,
+    /// LF line ends, no CR in either). A checkout may turn LF into CRLF (core.autocrlf), so CRs are dropped before hashing;
+    /// any other byte that differs fails. When look-sync changes a file, copy it again and put its new sha here.
+    [Theory]
+    [InlineData("lift-v2.json", "be0d36d50dbe21b383ee88fdeb93149263728594810a38d8f2133bb22625a001")]
+    [InlineData("lift-light.json", "219691ca1ad37f36eca42d925f71c77e1bcf59d7fcacb63796bdb8b55adc257e")]
+    public void The_vector_files_are_byte_copies_of_look_sync_5d9e4f6(string file, string sha)
+    {
+        byte[] lf = File.ReadAllBytes(Path.Combine(V2Dir, file)).Where(b => b != (byte)'\r').ToArray();
+        Assert.Equal(sha, Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(lf)).ToLowerInvariant());
+    }
+
     [Fact]
     public void Only_look_syncs_files_are_in_the_v2_folder()
     {

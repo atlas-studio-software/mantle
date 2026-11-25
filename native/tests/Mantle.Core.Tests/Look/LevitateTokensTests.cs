@@ -195,7 +195,10 @@ public class LevitateTokensTests
     public void The_film_the_frost_and_the_dim()
     {
         Assert.Equal(((byte)10, (byte)12, (byte)14), (LevitateTokens.FilmR, LevitateTokens.FilmG, LevitateTokens.FilmB));
-        Assert.Equal((0.56, 0.04, 0.163), (LevitateTokens.FilmCap, LevitateTokens.FilmStep, LevitateTokens.FilmTarget));
+        // look-sync v2.1 (5d9e4f6): cap .72 and dark target 0.066 (v2 was .56 / 0.163); light lifts toward #F4F7F8 to 0.386
+        Assert.Equal((0.72, 0.04, 0.066), (LevitateTokens.FilmCap, LevitateTokens.FilmStep, LevitateTokens.FilmTarget));
+        Assert.Equal(((byte)244, (byte)247, (byte)248, 0.386),
+            (LevitateTokens.LightFilmR, LevitateTokens.LightFilmG, LevitateTokens.LightFilmB, LevitateTokens.LightFilmTarget));
         Assert.Equal((512, 6.0, 15.0), (LevitateTokens.FrostWidth, LevitateTokens.LightBlurPx, LevitateTokens.SoftBlurPx));
         Assert.Equal((48.0, 20000.0), (LevitateTokens.BigMinSide, LevitateTokens.BigMinArea));
         Assert.Equal((0.20, 0.20, 0.90), (LevitateTokens.DimDefault, LevitateTokens.DimMin, LevitateTokens.DimMax));
