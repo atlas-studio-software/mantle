@@ -23,7 +23,7 @@ public enum PopupPhase { Hidden, Opening, Shown, Closing }
 /// <list type="bullet">
 /// <item>Frost: soft when the panel is big (short side &gt;= 48 AND area &gt;= 20000 DIP, its layout size), else light;
 /// a size that is not a finite number &gt;= 0 is light (look-sync frostKind).</item>
-/// <item>Dim: the saved value clamped to 0.20..0.90, default 0.20 (<see cref="LevitateDim.Resolve"/>).</item>
+/// <item>Dim: the saved value when it is in 0.20..0.90, else the seed 0.20 (<see cref="LevitateDim.Resolve"/>).</item>
 /// <item>Film: the v2.1 dark brightness check (<see cref="Legibility.Film(Rgb[], double, string)"/>) in DARK with the check
 /// on; 0 in light (native has no light Levitate look yet) and 0 in manual.</item>
 /// <item>Placement: centred on its anchor, its bottom <see cref="AboveBar"/> (12) above the bar, kept <see cref="EdgeGap"/>
@@ -81,7 +81,7 @@ public static class PopupLevitate
     public static FrostKind Frost(double w, double h) =>
         double.IsFinite(w) && double.IsFinite(h) && w >= 0 && h >= 0 && Island.IsBig(w, h) ? FrostKind.Soft : FrostKind.Light;
 
-    /// The dim to paint: the saved value clamped to 0.20..0.90, 0.20 when there is none.
+    /// The dim to paint: the saved value when it is in 0.20..0.90, else the seed 0.20.
     public static double Dim(double? saved) => LevitateDim.Resolve(saved);
 
     /// The film alpha over these samples (off the copy the panel shows, before the dim): the dark v2.1 check when dark and

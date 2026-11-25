@@ -56,4 +56,15 @@
   <ItemGroup>
     <None Include="AUTOMATION.md" />
   </ItemGroup>
+  <!--
+    The way back without Mantle (lane r12-app-wiring): Electron's standalone restore script and every script it calls
+    (Join-Path $PSScriptRoot ...), copied to tools\ next to MantleNative.exe on build and publish. Host.RestoreScript, the
+    printed recovery command, the dirty-start restore, ShellGuard's fallback, the supervisor's give-up and switch-back.ps1
+    all expect tools\restore-windows.ps1 there. publish.ps1 fails when one is missing; AppWiringTests pins this list
+    against what restore-windows.ps1 calls. Repo tools\ is the one copy: never edit these in the output.
+  -->
+  <ItemGroup>
+    <MantleRestoreScript Include="..\..\..\tools\restore-windows.ps1;..\..\..\tools\restore-windows.cmd;..\..\..\tools\restore-banners.ps1;..\..\..\tools\restore-osd.ps1;..\..\..\tools\ramreclaim-undo.ps1" />
+    <None Include="@(MantleRestoreScript)" Link="tools\%(Filename)%(Extension)" CopyToOutputDirectory="PreserveNewest" CopyToPublishDirectory="PreserveNewest" Visible="false" />
+  </ItemGroup>
 </Project>

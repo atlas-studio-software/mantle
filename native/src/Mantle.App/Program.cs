@@ -26,6 +26,9 @@ internal static class Host
     /// THE ONE write gate for this run (Data/WriteGate, told about Electron by Safety/TwoShells) and its writer.
     public static WriteGate Gate = null!;
     public static SafeFile Files = null!;
+    /// The live-shell lock (Safety/LiveLock, Local\Mantle.LiveShell), held by a --live run for the life of the process; Main's
+    /// thread took it and Main's finally lets it go (a named mutex has thread affinity). Null in every other run.
+    public static IDisposable? LiveLock;
     public static string StateFile => Path.Combine(Paths.DataRoot, "shell-state.json");
     public static string RestoreScript => Path.Combine(AppContext.BaseDirectory, "tools", "restore-windows.ps1");
     public static string RecoveryCommand => "powershell -NoProfile -ExecutionPolicy Bypass -File \"" + RestoreScript + "\" -StateFile \"" + StateFile + "\"";
@@ -139,6 +142,12 @@ internal static class Program
                 log.Dispose();
                 return ExitCodes.Failed;
             }
+            // ONE SHELL AT A TIME (lane r12-boot): the lock native HOLDS while it is the live shell, so a second native --live
+            // (on another data root, which the single-instance claim does not see) and, later, Electron refuse
+            var live = Mantle.Core.Safety.LiveLock.TryTake(out string? liveWhy, log.Line);
+            if (live == null) { log.Line("mantle: " + liveWhy); Say(Console.Error, "mantle: " + liveWhy); claim.Dispose(); log.Dispose(); return ExitCodes.Failed; }
+            Host.LiveLock = live;   // held for the life of the process; Main's thread took it
+            log.Line("live shell: holding " + live.Name + (live.Note != null ? " (" + live.Note + ")" : ""));
             foreach (var l in StartLines.LiveLines(System.IO.Path.Combine(AppContext.BaseDirectory, "tools", "restore-windows.ps1"), System.IO.Path.Combine(paths.DataRoot, "shell-state.json"))) { log.Line(l); Say(Console.Out, l); }
             var (_, countdown) = StartWake.Countdown(true, console: false);   // a WinExe has no console to press Ctrl+C in
             log.Line("mantle: " + countdown);
@@ -174,6 +183,7 @@ internal static class Program
             code = 1;
         } finally {
             data.Dispose();
+            Host.LiveLock?.Dispose();   // the thread that took it (Main's), before the claim
             claim.Dispose();
             log.Dispose();
         }

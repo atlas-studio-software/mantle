@@ -187,14 +187,11 @@ internal sealed class LevitatePanel
             $"levitate {_name}: {state} ({why}): {_w:0}x{_h:0} DIP at ({_x:0}, {_y:0}) on {_vw:0}x{_vh:0}; copy at ({dx:0.#}, {dy:0.#}) size {cw:0.#}x{ch:0.#}; dim {dim:0.00}, {(auto ? "automatic" : "manual")}, film {Legibility.Show(film):0.00}"));
     }
 
-    /// The dim and the mode from the look DesktopGlass follows: its Wash answer's mode (dimAuto) and Dim, clamped to the
-    /// contract range. Wash.Alpha already put a missing or out-of-range Dim at its seed (.30), so the levitated default .20 is
-    /// not reached through this road (lane note: the raw glass.&lt;theme&gt; is not exposed by the look host yet).
-    static (double Dim, bool Auto) FromGlass(bool dark)
-    {
-        var w = DesktopGlass.Look?.For(dark);
-        return w == null ? (LevitateTokens.DimDefault, true) : (LevitateDim.Resolve(w.Dim), w.Mode != "manual");
-    }
+    /// The dim and the mode from the look DesktopGlass follows: the look host's saved <c>glass.&lt;theme&gt;.dim</c> and
+    /// <c>dimAuto</c>, read by <see cref="LevitateDim.Read"/> (look-sync v2.1: seed 0.20; a stored value in 0.20..0.90 wins,
+    /// 0.30 included; missing, not a number or out of range = 0.20). No look read yet: the seed, automatic (lane r12-app-wiring;
+    /// before it this went through Wash's answer, not the saved value).
+    static (double Dim, bool Auto) FromGlass(bool dark) => LevitateDim.Read(DesktopGlass.Look?.Values, dark ? "dark" : "light");
 
     void Fallback(string why)
     {

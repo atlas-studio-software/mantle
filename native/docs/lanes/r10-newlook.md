@@ -91,6 +91,9 @@ second `Film` overload over `double[]` luminances in Legibility.cs; the step loo
   not expose the raw `glass.<theme>` to the App. So until it does, a missing Dim paints .30, not .20, and an out-of-range
   one paints .30, not the clamp. `LevitateDim.Read` is ready for the raw values; the swap is one line in
   `LevitatePanel.FromGlass`. `LevitatePanel.Look(dim, auto)` overrides it meanwhile.
+  SUPERSEDED 2026-11-25 (lane r12-app-wiring, docs/lanes/r12-app-wiring.md): the swap is made (FromGlass reads the look
+  host's saved glass through `LevitateDim.Read`), and an out-of-range Dim now reads as the seed .20, not clamped
+  (look-sync v2.1 dca42dc: "a stored value wins"; the same rule as `Wash.Alpha` and `Legibility.PanelLift`).
 - The cover is computed on the blurred copy's own size (512 x h), not the still's original size: only the aspect enters
   the geometry, and the bitmap's height is rounded, so the two can differ by under one bitmap row.
 - The sampling map floors (bitmap pixel = floor((sx - ox) / cw * bw)) and clamps; the prototype's exact rounding was not

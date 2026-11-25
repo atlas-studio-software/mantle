@@ -154,7 +154,7 @@ public static class Legibility
     /// Settings row. <paramref name="look"/>: the look values <c>{ glass }</c> (or shared()'s <c>{ glass: { v } }</c>);
     /// <paramref name="theme"/>: "light", anything else is dark; <paramref name="samples"/> as <see cref="LiftAlpha(double[][], double, string)"/>.
     /// Dim: <c>glass.&lt;theme&gt;.dim</c> if it is a number in 0.20..0.90, else the seed 0.20 (NOT clamped: look-sync's
-    /// rule; <see cref="LevitateDim.Resolve"/> clamps). Check on (<c>dimAuto</c> absent or true): alpha =
+    /// rule, the same as <see cref="LevitateDim.Resolve"/>). Check on (<c>dimAuto</c> absent or true): alpha =
     /// LiftAlpha(samples, dim, theme); off (<c>dimAuto</c> false): alpha 0, the panel is pure blur over the dimmed picture.
     /// Film: rgb(10, 12, 14) in dark, #F4F7F8 in light. A surface that has not built its light look does not call this in
     /// light. Never throws.

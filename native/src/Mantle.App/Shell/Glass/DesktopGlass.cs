@@ -26,7 +26,9 @@ using Microsoft.UI.Xaml.Media.Imaging;
 namespace Mantle.App.Shell.Glass;
 
 /// What the look says now: the still to paint (or why none) and the tint per theme. Made on the host thread.
-internal sealed record GlassLook(string? Still, double Rev, string? Why, WashResult Dark, WashResult Light)
+/// <paramref name="Values"/>: the look host's own values (LookHost.Local(): <c>{ lookSync, accent, glass }</c>, a copy), so the
+/// levitated panels read the SAVED <c>glass.&lt;theme&gt;.dim</c> and dimAuto through LevitateDim.Read (lane r12-app-wiring).
+internal sealed record GlassLook(string? Still, double Rev, string? Why, WashResult Dark, WashResult Light, System.Text.Json.Nodes.JsonObject? Values = null)
 {
     public WashResult For(bool dark) => dark ? Dark : Light;
 }
@@ -87,7 +89,7 @@ internal static class DesktopGlass
                 GlassLook g;
                 try {
                     var s = look.DesktopStill();
-                    g = new GlassLook(s.Still, s.Rev, s.Why, look.Wash("dark"), look.Wash("light"));
+                    g = new GlassLook(s.Still, s.Rev, s.Why, look.Wash("dark"), look.Wash("light"), look.Local());
                 } catch (Exception e) { Host.Log.Line("glass: the look could not be read (" + e.Message + ")"); return; }
                 double read = Ms(t0);
                 int told = Take(g, why);
