@@ -101,11 +101,18 @@ public static class LevitateTokens
     /// The uniform black wash over the blurred copy: the default, and the range a saved value is clamped to (nothing below
     /// 0.20 is written: the owner's decision).
     public const double DimDefault = 0.20, DimMin = 0.20, DimMax = 0.90;
-    /// The neutral film the brightness check lays over a bright panel: rgb(10, 12, 14) at the check's alpha.
+    /// The neutral film the brightness check lays over a bright panel in DARK: rgb(10, 12, 14) at the check's alpha
+    /// (look-sync LIFT.rgb).
     public const byte FilmR = 10, FilmG = 12, FilmB = 14;
-    /// The film never goes above this; it grows in these steps (rounded to 2 decimals) from 0 until the panel's bright
-    /// sample is at or below the target luminance.
-    public const double FilmCap = 0.56, FilmStep = 0.04, FilmTarget = 0.163;
+    /// The film never goes above FilmCap (LIFT.max, both themes); it grows in FilmStep steps (round2(k * 0.04), both themes)
+    /// from 0 until, in DARK, the panel's bright sample is at or below FilmTarget (LIFT.target). look-sync v2.1 (5d9e4f6):
+    /// target 0.066 (was 0.163) and cap .72 (was .56), so the worst of text, text-2, ok and down reads at 4.5:1.
+    public const double FilmCap = 0.72, FilmStep = 0.04, FilmTarget = 0.066;
+    /// The LIGHT theme's lift (LIGHT.md section 4b, look-sync LIFT.light): the neutral #F4F7F8 laid over a dark panel, at the
+    /// smallest FilmStep step (up to FilmCap) that brings the panel's dark sample to a luminance of at least LightFilmTarget.
+    /// Not drawn by native yet: the light Levitate look waits for its own job (lane note r11-lift21).
+    public const byte LightFilmR = 244, LightFilmG = 247, LightFilmB = 248;
+    public const double LightFilmTarget = 0.386;
 
     /// Until the blurred bitmap is ready (or when it fails): this flat colour, #2c5258 (still legible).
     public const byte FallbackR = 0x2c, FallbackG = 0x52, FallbackB = 0x58;
