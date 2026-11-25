@@ -37,6 +37,31 @@ if (-not $Out) { $Out = Join-Path $root 'native\out\parity\bar-tasks' }
 New-Item -ItemType Directory -Force -Path $Out | Out-Null
 $Out = (Resolve-Path $Out).Path
 
+# ------------------------------------------------------------------ the reference (plan v0.2, references.psd1)
+# The same reader and rule as run-parity.ps1, for the surface 'strip'. 'electron' (no file, no entry): Electron Mantle
+# vs native, as below (the 0.90 floor in ci.ps1). 'native-golden': the bar has the new look, so the strip is the dock
+# island (bar.island.dock, recorded by run-parity.ps1 in score.json), cropped out of native's candidate and scored
+# against goldens/strip/<theme>-<pct>.png with the SAME floor, which counts only once goldens/strip/REVIEW.md has
+# non-empty reviewer:, run: and sha: lines. Without them every theme is "golden pending review" and the stage fails.
+# This script never writes into goldens/.
+$refFile = Join-Path $root 'native\tools\parity\references.psd1'
+$refs = if (Test-Path $refFile) { Import-PowerShellDataFile $refFile } else { @{} }
+function Reference([string]$surface) { if ($refs.ContainsKey($surface) -and $refs[$surface]) { [string]$refs[$surface] } else { 'electron' } }
+$reference = Reference 'strip'; $barReference = Reference 'bar'
+if ($reference -notin 'electron', 'native-golden') { Write-Host "STRIP-PARITY: FAILED (references.psd1: strip = '$reference'; it must be 'electron' or 'native-golden')"; exit 4 }
+# the strip is shot by run-parity.ps1's bar run, so the two must agree: Electron is shot only for an 'electron' bar, and
+# the dock island is recorded only for a 'native-golden' bar
+if ($reference -ne $barReference) { Write-Host "STRIP-PARITY: FAILED (references.psd1: strip = '$reference' but bar = '$barReference'; the strip is cropped from the bar's run, so both must name the same reference)"; exit 4 }
+$golden = $reference -eq 'native-golden'
+$goldenDir = Join-Path $root 'native\tools\parity\goldens\strip'
+$reviewFile = Join-Path $goldenDir 'REVIEW.md'
+$reviewed = $false
+if ($golden -and (Test-Path $reviewFile)) {
+  $rv = Get-Content $reviewFile -Raw
+  $reviewed = ($rv -match '(?im)^[ \t]*reviewer:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*run:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*sha:[ \t]*\S')
+}
+Say ("reference {0}{1}" -f $reference, $(if ($golden) { "; goldens/strip reviewed: $reviewed" } else { '' }))
+
 if ($Build) {
   & (Join-Path $root 'native/tools/ci.ps1') -Stages build
   if (-not (Test-Path (Join-Path $root 'native/out/bin/MantleNative/MantleNative.exe'))) { Write-Host 'STRIP-PARITY: FAILED (the build stage made no MantleNative.exe)'; exit 1 }
@@ -105,6 +130,58 @@ function Save-Bgra([byte[]]$px, [int]$w, [int]$h, [string]$path) {
   for ($row = 0; $row -lt $h; $row++) { [Runtime.InteropServices.Marshal]::Copy($px, $row * $w * 4, [IntPtr]::Add($d.Scan0, $row * $d.Stride), $w * 4) }
   $bmp.UnlockBits($d); $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
 }
+if ($golden) {
+  # native-golden: the dock island out of native's candidate (run-parity's crop of the islands band), vs the reviewed
+  # golden; the same STRIP-PARITY <tag>: ssim= line, so ci.ps1's floor applies unchanged. No golden = pending, a FAIL.
+  $lines = @(); $pending = @(); $problems = @()
+  foreach ($dir in @(Get-ChildItem -Directory $Out | Sort-Object Name)) {
+    $tag = $dir.Name; $sj = Join-Path $dir.FullName 'score.json'
+    if (-not (Test-Path $sj)) { continue }   # <Out>/<theme>/ of a scale other than 100 holds only candidates
+    $score = Get-Content $sj -Raw | ConvertFrom-Json
+    if ($score.reference -ne 'native-golden') { $problems += "${tag}: run-parity's score.json is not native-golden"; continue }
+    $cand = [string]$score.candidate
+    if (-not $cand -or -not (Test-Path $cand)) { $problems += "${tag}: no native candidate (see run-parity's lines above)"; Write-Host "STRIP-PARITY ${tag}: no candidate"; continue }
+    if (-not $score.dock) { $problems += "${tag}: no dock island rect (bar.island.dock) in score.json"; Write-Host "STRIP-PARITY ${tag}: no dock island rect"; continue }
+    $crop = $score.crop; $dk = @($score.dock | ForEach-Object { [int]$_ })
+    $pct = if ($tag -match '-(\d+)$') { [int]$Matches[1] } else { 100 }
+    $theme = $tag -replace '-\d+$', ''
+    # the dock island in crop px, inside the candidate
+    $sx = [Math]::Max(0, $dk[0] - [int]$crop.x); $sy = [Math]::Max(0, $dk[1] - [int]$crop.y)
+    $sw = [Math]::Min([int]$crop.w - $sx, $dk[2]); $sh2 = [Math]::Min([int]$crop.h - $sy, $dk[3])
+    if ($sw -le 0 -or $sh2 -le 0) { $problems += "${tag}: the dock island ($($dk -join ',')) is outside the crop"; Write-Host "STRIP-PARITY ${tag}: dock island outside the crop"; continue }
+    $b = Read-Bgra $cand $sx $sy $sw $sh2
+    $cs = Join-Path (Split-Path -Parent $cand) "strip-candidate-$theme-$pct.png"
+    Save-Bgra $b $sw $sh2 $cs
+    $gp = Join-Path $goldenDir "$theme-$pct.png"
+    if (-not ($reviewed -and (Test-Path $gp))) {
+      $pending += $tag
+      $line = "STRIP-PARITY ${tag}: golden pending review (reference native-golden; candidate $cs, dock island $sx,$sy ${sw}x$sh2 of the crop; freeze only after a side-by-side review against apps-r3/mantle-bar by the CEO, the Product Designer or the user, from a committed run)"
+      Write-Host $line; $lines += $line; continue
+    }
+    $gi = [System.Drawing.Image]::FromFile($gp); $gw = $gi.Width; $gh = $gi.Height; $gi.Dispose()
+    if ($gw -ne $sw -or $gh -ne $sh2) { $problems += "${tag}: golden $gp is ${gw}x$gh, the dock island is ${sw}x$sh2; not scored"; Write-Host "STRIP-PARITY ${tag}: golden size differs (${gw}x$gh vs ${sw}x$sh2)"; continue }
+    $a = Read-Bgra $gp 0 0 $gw $gh
+    $s = [ParityNative]::Diff($a, $b, $sw, $sh2, [int[]]@(), $PixelThreshold)
+    $pair = [byte[]]::new($sw * ($sh2 * 2 + 4) * 4)
+    [Array]::Copy($a, 0, $pair, 0, $a.Length)
+    for ($i = $a.Length; $i -lt $a.Length + $sw * 4 * 4; $i += 4) { $pair[$i] = 0; $pair[$i + 1] = 0; $pair[$i + 2] = 255; $pair[$i + 3] = 255 }
+    [Array]::Copy($b, 0, $pair, $a.Length + $sw * 4 * 4, $b.Length)
+    Save-Bgra $pair $sw ($sh2 * 2 + 4) (Join-Path $dir.FullName 'strip-pair.png')
+    $line = "STRIP-PARITY ${tag}: ssim={0:N4} diffpx={1:N2}% meanabs={2:N2} (dock island {3},{4} {5}x{6} of the crop vs golden {7})" -f $s.Ssim, $s.DiffPxPct, $s.MeanAbs, $sx, $sy, $sw, $sh2, $gp
+    Write-Host $line; $lines += $line
+  }
+  $scoredN = @($lines | Where-Object { $_ -match 'ssim=' }).Count
+  if (-not $lines.Count -and -not $problems.Count) { $problems += "no score.json from run-parity in $Out" }
+  if ($problems.Count) {
+    Write-Host ("STRIP-PARITY: FAILED (reference native-golden; {0} scored, {1} pending; {2} problem(s): {3}; run-parity exit {4})" -f $scoredN, $pending.Count, $problems.Count, ($problems -join '; '), $code)
+    exit 1
+  }
+  if ($pending.Count) { Write-Host ("STRIP-PARITY: FAILED (strip golden pending review: {0}; candidates in {1})" -f ($pending -join ', '), $Out); exit 1 }
+  # the bar's own pending review fails run-parity's exit; the strip's verdict here is its own (ci.ps1 applies the floor)
+  Write-Host ("STRIP-PARITY: done (reference native-golden; run-parity exit {0}; {1} pair(s)); look at native/out/parity/bar-tasks/*/strip-pair.png" -f $code, $scoredN)
+  exit 0
+}
+
 $lines = @()
 foreach ($dir in @(Get-ChildItem -Directory $Out | Sort-Object Name)) {
   $tag = $dir.Name

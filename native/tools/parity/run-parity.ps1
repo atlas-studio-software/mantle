@@ -238,6 +238,23 @@ function Native-ClockRect([int]$procId) {
     return @([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
   } catch { Say "UIA: $($_.Exception.Message)"; return $null }
 }
+# Any native element's screen rect through UI Automation (by its id), or $null. native-golden records the dock island
+# (bar.island.dock) in score.json as `dock`, for the strip stage (bar-tasks/run-strip-parity.ps1) to crop.
+function Native-IdRect([int]$procId, [string]$id) {
+  try {
+    Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
+    $A = [System.Windows.Automation.AutomationElement]
+    $win = $A::RootElement.FindFirst([System.Windows.Automation.TreeScope]::Children,
+      [System.Windows.Automation.PropertyCondition]::new($A::ProcessIdProperty, $procId))
+    if (-not $win) { return $null }
+    $el = $win.FindFirst([System.Windows.Automation.TreeScope]::Descendants,
+      [System.Windows.Automation.PropertyCondition]::new($A::AutomationIdProperty, $id))
+    if (-not $el) { return $null }
+    $r = $el.Current.BoundingRectangle
+    if ($r.IsEmpty -or $r.Width -le 0 -or $r.Height -le 0) { return $null }
+    return @([int]$r.X, [int]$r.Y, [int]$r.Width, [int]$r.Height)
+  } catch { Say "UIA: $($_.Exception.Message)"; return $null }
+}
 
 # ------------------------------------------------------------------ one theme
 $results = [ordered]@{}
@@ -336,6 +353,7 @@ foreach ($pct in $scaleList) {
       if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
       elseif ($golden) { Problem "native ${tag}: no bar.clock through UI Automation, so its ticking clock cannot be masked against the golden" }
       else { Say "native ${t}: no bar.clock through UI Automation; the clock slot mask alone covers it" }
+      if ($golden) { $dk = Native-IdRect $np.Id 'bar.island.dock'; if ($dk) { $r.dock = $dk; Say ("native {0}: dock island {1}" -f $tag, ($dk -join ',')) } else { Say "native ${tag}: no bar.island.dock through UI Automation (the strip stage cannot crop it)" } }
     } else {
       Problem ("native {0}: no ready.json in 45 s (exited: {1})" -f $t, $np.HasExited)
     }

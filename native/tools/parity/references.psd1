@@ -9,7 +9,8 @@
 # Every surface not listed here is 'electron'.
 # Switching a surface is one reviewed line in this file. The thresholds never loosen when a surface switches.
 # bar:   read by run-parity.ps1.
-# strip: read by the strip stage once the CI side adopts it (not yet).
+# strip: read by the strip stage (bar-tasks/run-strip-parity.ps1, lane r13-strip-golden): the same rule with
+#        goldens/strip/; it must name the same reference as bar (the strip is cropped from the bar's run).
 @{
   bar   = 'native-golden'
   strip = 'native-golden'
