@@ -237,18 +237,19 @@ public partial class MantleApp : Application
         // ---- game mode wiring (lane native-r7-media3): [Feature("gamemode")] keeps gamemode-restore.json in <userData> through
         // the ONE write gate; a --test run is a dry run (nothing sent) and reads only the test profile's record.
         Mantle.Core.Features.GameMode.GameModeFeature.Configure(new(Host.Paths.DataRoot, OwnPids: () => new[] { Environment.ProcessId }, Files: Host.Files));
-        // ---- notes wiring (lane r11-notes-gate): [Feature("notes")] saves through the ONE write gate. Its profile is the gate's
-        // own (Host.Gate.NotesProfile, the known-folder API via NotesPaths.UserProfile), so the pad's folder is exactly the
-        // gate's allowed <profile>\Documents\Mantle Notes; only a --live run that is the only shell writes there. Rescue copies
-        // go to the data root. No pad surface is drawn yet, so Surface stays false (Win+Alt+N stays Windows' own).
-        Mantle.Core.Features.Notes.NotesFeature.Configure(new(Safe: Host.Files, RescueDir: Host.Paths.DataRoot,
-            UserProfile: Host.Gate.NotesProfile, DataRoot: Host.Paths.DataRoot, Surface: false));
-        if (Mantle.Core.Features.Notes.NotesPaths.DocumentsNote(Host.Gate.NotesProfile, Mantle.Core.Features.Notes.NotesPaths.KnownDocuments()) is { } docsNote)
-            log(docsNote);   // once per run: Windows' Documents was moved (OneDrive); the notes stay in the literal one
 
         // the feature host on the ONE write gate's stores
         _stores = Stores.For(Host.Paths, Host.Gate, Host.Log);
         var clock = new HostClock(null, loop);
+        // ---- notes wiring (lane r11-notes-gate): [Feature("notes")] saves through the ONE write gate. Its profile is the gate's
+        // own (Host.Gate.NotesProfile, the known-folder API via NotesPaths.UserProfile), so the pad's folder is exactly the
+        // gate's allowed <profile>\Documents\Mantle Notes; only a --live run that is the only shell writes there. Rescue copies
+        // go to the data root. No pad surface is drawn yet, so Surface stays false (Win+Alt+N stays Windows' own).
+        // Its timers (the 400 ms autosave, the 3 s cap) run on the host's own clock, like every other feature's (stage 11).
+        Mantle.Core.Features.Notes.NotesFeature.Configure(new(Safe: Host.Files, Clock: clock, RescueDir: Host.Paths.DataRoot,
+            UserProfile: Host.Gate.NotesProfile, DataRoot: Host.Paths.DataRoot, Surface: false));
+        if (Mantle.Core.Features.Notes.NotesPaths.DocumentsNote(Host.Gate.NotesProfile, Mantle.Core.Features.Notes.NotesPaths.KnownDocuments()) is { } docsNote)
+            log(docsNote);   // once per run: Windows' Documents was moved (OneDrive); the notes stay in the literal one
         // ---- stage 10 feature wiring (lane r11-app-wiring), before the host loads its features (FeatureSeam.Start below).
         // Each Host only says where things are; every feature still decides its own health, and with no surface (the
         // clipboard panel, the emoji picker, the switcher overlay, Task View) each stays unhealthy or asks nothing, so its

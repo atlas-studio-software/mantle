@@ -66,6 +66,9 @@ public sealed class NotesFeature : IFeature
     /// Tests: is a rest carry waiting?
     internal static bool Carrying => _carry != null;
 
+    /// Tests: the clock the pad's timers run on (the host's, when the app configures one).
+    internal HostClock Clock => _clock;
+
     readonly Host? _given;
     public NotesFeature() { }
     public NotesFeature(Host h) { _given = h; }

@@ -187,6 +187,30 @@ public sealed class NotesFeatureTests : IDisposable
         Assert.Equal(new[] { saved }, Directory.GetFileSystemEntries(NotesPaths.LiveDir(profile)));   // no tmp left behind
     });
 
+    // stage 11: the app configures the notes feature (NotesFeature.Configure, as App.xaml.cs does) with the host's own clock,
+    // so the pad's timers run on it, not on a clock of its own: the 400 ms autosave fires when THAT clock moves.
+    [Fact]
+    public void A_configured_pad_runs_its_timers_on_the_host_clock_it_was_given() => HostLoop.Run(async (_, time) =>
+    {
+        var hostClock = new HostClock(time);
+        var k = new K { R = new Rig(time, test: false) };
+        k.R.HookTakesAll();
+        k.R.Platform.Start();
+        NotesFeature.Configure(new NotesFeature.Host(Dir: Dir, Safe: new SafeFile(WriteGate.Scratch(Data)), Clock: hostClock,
+            LocalNow: () => new DateTime(2026, 11, 25, 4, 0, 0), RescueDir: Data, Sleep: _ => { }, Surface: true));
+        var a = typeof(NotesFeature).GetCustomAttribute<FeatureAttribute>()!;
+        k.R.Host.Load(new[] { FeatureDescriptor.Of(a, () => new NotesFeature()) });   // no Host given: the configured one
+        await k.R.Host.Installed;
+        await k.R.Host.ApplyLiveAsync();
+        Assert.Same(hostClock, k.F.Clock);
+        await Call(k, "open");
+        Type(k, "on the host clock");
+        time.AdvanceMs(300);
+        Assert.DoesNotContain("on the host clock", OnDisk(), StringComparison.Ordinal);
+        time.AdvanceMs(150);
+        Assert.Equal("<!-- mantle:note -->\non the host clock\n", OnDisk());
+    });
+
     [Fact]
     public void Loss_closing_the_pad_saves_at_once() => T(async k =>
     {
