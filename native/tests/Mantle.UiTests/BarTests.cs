@@ -273,7 +273,10 @@ public class BarTests
     {
         double Lum(string theme)
         {
-            using var app = BarApp.Launch("uitest-theme-" + theme, theme);
+            // the pill's tint is the electron face's (lane r13-bar-islands: the islands' frost is the same picture in both
+            // themes, only the film differs, and the band's gaps show the wallpaper), so this run keeps that face
+            var env = new Dictionary<string, string> { ["MANTLE_TEST_GLASS"] = "electron" };
+            using var app = BarApp.Launch("uitest-theme-" + theme, theme, env: env);
             var r = Rect(app.Find("bar.pill"));
             Thread.Sleep(1200);   // first frame + backdrop
             // An empty stretch of glass: right of the start button, left of the centred apps.

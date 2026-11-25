@@ -3,6 +3,36 @@
 Branch `native/r13-bar-islands`, off native/r12-app-wiring b756536e. Files: BarWindow.*, Surfaces/Bar/** (Core read-only).
 Spec: apps-r3/mantle-bar (NOTES.md, look.css, shell.js, barhide.js), FIXES-2.md, lab/LOOK.md, apps-r3/LIGHT.md, look-sync v2.1.
 
+## Status (second session, 2026-11-25)
+Nothing compiled or run here (no .NET SDK on this machine): the first cloud run is the first build. Built:
+- Core (new, pure): Mantle.Core/Look/Levitate/BarIslands.cs (the prototype's numbers, `Layout` with the fitDock rule,
+  `Band` / `BandPx`, `DockRoom`, `Offline` words) and Mantle.Core.Tests/Look/BarIslandsTests.cs. No existing Core file changed.
+- App, gated on `BarGeometry.Islands` (= !DesktopGlass.ElectronLook): BarGeometry gives the band as "the pill" (window
+  = monitor width, 56 DIP shadow room above, 12 below); XAML islands `bar.island.left|dock|right` (no background in the
+  electron face); BarWindow.Islands.cs collapses Glass/Tint/Lip/Edge, sizes the islands (44 x 44 left round a 36 start;
+  dock padding 0 4, gap 2, cells 40 x 36 r8, 20 icons, run dot 4 x 3 two up, separator 1 x 20; status glyphs 32 x 36 r8,
+  gap 2, b-sep 1 x 20 margin 0 4, clock padding 0 8, 12 / 500 and 11), one LevitatePanel per island (placed from the
+  geometry, so the hover-mode reveal transform never misplaces it), one float shadow bitmap for the three boxes, the
+  fitDock rule, the "+N" cut in the dock's room (StripFit with an 8 DIP margin; no slide). LiveGlass and the pre-show
+  capture are not started in the islands look. Hover / pressed fills: Lv inks in dark, Lg in light, through Root's
+  resources overriding LgHover / LgPress for the LgBtn template.
+- The offline network button (below).
+- UI tests: BarTests (pill = band; the dark-vs-light pill test now runs MANTLE_TEST_GLASS=electron), DisplayTests,
+  HoverTests, ClusterTests (glyphs 32 x 36, 2 apart; the battery stand-in is electron-only), new BarFrame/IslandsTests
+  (three islands, order, 44 tall, 12 from the edges, left 44 wide, the dock centred or after the M; the offline name).
+NOT built:
+- The dock's sliding focus underline (16 x 3, 320 ms ease-lift): the per-cell run / active marks are kept, resized.
+- Glyph ink in dark: the paths keep {ThemeResource LgInk2}; only the clock and the status separator take the Lv inks.
+  The dock's separator keeps LgEdgeOut, "+N" keeps LgSunk.
+- The Wi-Fi bars glyph and "Network: <ssid>" while connected; the islands' first-load rise; a window region for the gaps.
+- An empty dock is an 8 DIP island (the prototype never has one).
+- Tests outside this lane's paths that pin today's bar and will need the islands numbers (or MANTLE_TEST_GLASS=electron):
+  BarTasks/StripTests.cs:93 and StripTests.Overflow.cs:65 (the cell is 36 wide; now 40), StripTests.Overflow.cs:70
+  ("+N" 6 DIP after the last icon; now 2), Theme/ThemeTests.cs Probe (samples r.X + 64 of the pill: in the islands
+  look that is the gap between the M and the dock, the wallpaper). The parity stages (tools/parity) are another agent's.
+- Compile risks to check on the first build: the Root.Resources override of LgHover / LgPress reaching the LgBtn
+  template's VisualState setters; `Dock.ItemsPanelRoot`; the Cell_Loaded walk of the cell template (IslandCell).
+
 ## Status (first session, 2026-11-25)
 Done: the stuck flag's trigger (below). NOT done: the islands layout, the offline button, the parity reference list,
 the spec tests. Nothing built or run (no cloud run yet). The plan below is what the next session builds.
