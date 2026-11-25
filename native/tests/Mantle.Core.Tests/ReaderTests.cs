@@ -48,8 +48,8 @@ public class ReaderTests
         Assert.True(r.Value.LookSync);
         Assert.Null(r.Value.AccentHue);
         Assert.Equal(GlassSettings.Seed, r.Value.Glass);
-        Assert.Equal(5, r.Value.Glass.Dark.BlurPx);
-        Assert.Equal(12, r.Value.Glass.Light.BlurPx);
+        Assert.Equal(0, r.Value.Glass.Dark.BlurPx);    // look-sync seed: blur 0, dim 0.20 in both themes (the user, 2026-11-24)
+        Assert.Equal(0, r.Value.Glass.Light.BlurPx);
     }
 
     [Fact]

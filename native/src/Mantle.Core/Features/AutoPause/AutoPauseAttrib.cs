@@ -93,7 +93,8 @@ public static class AutoPauseAttrib
 
     static string? Str(JsonNode? n) => n is JsonValue v && v.TryGetValue(out string? s) ? s : null;
     static bool Bool(JsonNode? n) => n is JsonValue v && v.TryGetValue(out bool b) && b;
-    static double? Num(JsonNode? n) => n is JsonValue v && v.TryGetValue(out double d) && double.IsFinite(d) ? d : null;
+    // Any number: a value built in code holds an int or a long (TryGetValue<double> refuses those), a parsed one a JsonElement.
+    static double? Num(JsonNode? n) => Mantle.Core.Look.LookSyncCore.TryNum(n, out double d) && double.IsFinite(d) ? d : null;
 
     /// <summary>The meter's rows, or null when the reading is unusable (null, ok:false, no sessions array).</summary>
     public static IReadOnlyList<AudioRow>? Rows(JsonObject? peaks)
