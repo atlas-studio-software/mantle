@@ -53,6 +53,13 @@ if ($code -ne 0 -or -not (Test-Path $exe)) {
   Write-Host "PUBLISH ${Mode}: FAILED (exit $code after ${secs}s; $short)"
   exit 1
 }
+# the way back without Mantle (Mantle.App.csproj MantleRestoreScript): a folder without it is not a build to run
+$restoreSet = @('restore-windows.ps1', 'restore-windows.cmd', 'restore-banners.ps1', 'restore-osd.ps1', 'ramreclaim-undo.ps1')
+$missing = @($restoreSet | Where-Object { -not (Test-Path -LiteralPath (Join-Path $Out "tools\$_") -PathType Leaf) })
+if ($missing.Count -gt 0) {
+  Write-Host "PUBLISH ${Mode}: FAILED (tools\ next to MantleNative.exe is missing $($missing -join ', '); see Mantle.App.csproj MantleRestoreScript)"
+  exit 1
+}
 $files = @(Get-ChildItem -Recurse -File $Out)
 $mb = [math]::Round((($files | Measure-Object -Sum Length).Sum) / 1MB, 1)
 $exeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)

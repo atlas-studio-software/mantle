@@ -44,6 +44,8 @@ its own yet, so Electron's `restore-banners.ps1` / `ramreclaim-undo.ps1` step (B
 
 ## App wiring (Program.cs; NOT done here, Mantle.App is the other side)
 
+DONE in lane r12-app-wiring (docs/lanes/r12-app-wiring.md), as written below, plus a log line naming the lock.
+
 Right after the TwoShells refusal block in the `args.Kind == RunKind.Live` branch (Program.cs:132-141),
 before the live lines are printed:
 
