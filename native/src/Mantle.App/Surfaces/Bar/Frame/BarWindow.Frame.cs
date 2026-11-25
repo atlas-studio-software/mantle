@@ -99,13 +99,14 @@ public sealed partial class BarWindow
     {
         bool widthChanged = Math.Abs(g.PillWdip - _pillW) > 0.01;
         TakeGeometry(g);
-        Root.Width = _pillW + 2 * BarGeometry.ShadowSide;
-        Root.Height = BarGeometry.ShadowTop + BarGeometry.BarH + BarGeometry.Lift;
+        Root.Width = _pillW + 2 * BarGeometry.SideNow;
+        Root.Height = BarGeometry.ShadowTop + BarGeometry.BarHNow + BarGeometry.LiftNow;
         Pill.Width = _pillW;
-        Pill.Margin = new Thickness(BarGeometry.ShadowSide, BarGeometry.ShadowTop, 0, 0);
+        Pill.Margin = new Thickness(BarGeometry.SideNow, BarGeometry.ShadowTop, 0, 0);
         SnapHairlines(g.Scale);
-        if (_vis != null) _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarH), 0);
-        if (widthChanged && !_dark && _started) AddShadow();
+        if (_vis != null) _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarHNow), 0);
+        if (BarGeometry.Islands) LayoutIslands("the geometry changed (" + why + ")");   // lane r13-bar-islands (BarWindow.Islands.cs)
+        else if (widthChanged && !_dark && _started) AddShadow();
         if (_started) Host.Log.Line($"bar placed ({why}): {g.Describe()}");
     }
 
@@ -118,7 +119,9 @@ public sealed partial class BarWindow
         _started = true;
         _sub = SubProc;
         FrameNative.SetWindowSubclass(_hwnd, _sub, new UIntPtr(0x4D46), IntPtr.Zero);
-        _live = new LiveGlass(_hwnd, DispatcherQueue, PrepareShot, ShowShot, Host.Log.Line);
+        // the islands look (lane r13-bar-islands) frosts each island from the shared still (LevitatePanel): no live capture
+        if (!BarGeometry.Islands) _live = new LiveGlass(_hwnd, DispatcherQueue, PrepareShot, ShowShot, Host.Log.Line);
+        else Host.Log.Line("bar glass: the islands look: each island is frosted from the shared still, no live capture of the screen behind the bar");
         Closed += (_, _) => StopFrame();
         StartPopups();
         Host.Log.Line($"bar frame: {FrameMode} mode ({ModeWhy()}); {_g.Describe()}; {(_reducedMotion ? "Windows animation effects are off: fades only" : "full motion")}");
@@ -129,7 +132,7 @@ public sealed partial class BarWindow
             Host.Log.Line("bar keep zone: " + BarIntent.Describe(_g));
         } else {
             _revealed = true;
-            if (FrameMode == "dock") { _ = DockBar("start"); _live.Reveal(_dark); }
+            if (FrameMode == "dock") { _ = DockBar("start"); _live?.Reveal(_dark); }
         }
     }
 
@@ -301,7 +304,7 @@ public sealed partial class BarWindow
         if (FrameMode != "hover") return;
         _vis = ElementCompositionPreview.GetElementVisual(Root);
         ElementCompositionPreview.SetIsTranslationEnabled(Root, true);
-        _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarH), 0);
+        _vis.CenterPoint = new Vector3((float)(Root.Width / 2), (float)(BarGeometry.ShadowTop + BarGeometry.BarHNow), 0);
         if (!_reducedMotion) { _vis.Properties.InsertVector3("Translation", new Vector3(0, (float)DownY, 0)); _vis.Scale = new Vector3((float)DownS, (float)DownS, 1); }
         _vis.Opacity = 0;
     }
@@ -314,6 +317,7 @@ public sealed partial class BarWindow
     // ------------------------------------------------------------------ the glass while up
     void PictureBeforeShow()
     {
+        if (BarGeometry.Islands) return;   // the islands are frosted from the shared still (BarWindow.Islands.cs)
         var work = PrepareShot();
         byte[]? px = null; string err = "";
         try { px = work(); if (px == null) err = "the screen behind the bar could not be read"; }
@@ -366,7 +370,7 @@ public sealed partial class BarWindow
     async Task DockBar(string why)
     {
         var g = BarGeometry.Compute();
-        int size = (int)Math.Round(BarGeometry.BarH * g.Scale);
+        int size = (int)Math.Round(BarGeometry.BarHNow * g.Scale);
         var slot = new Win32.RECT { Left = g.Monitor.Left, Right = g.Monitor.Right, Top = g.Monitor.Bottom - size, Bottom = g.Monitor.Bottom };
         string how;
         if (_shell == null) how = "nothing reserved: the platform is not wired to the bar in this build, so maximised windows may sit under it";

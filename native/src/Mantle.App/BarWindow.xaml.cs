@@ -70,6 +70,7 @@ public sealed partial class BarWindow : Window
         InitializeComponent();
         _dark = Application.Current.RequestedTheme == ApplicationTheme.Dark;
         _hwnd = WinRT.Interop.WindowNative.GetWindowHandle(this);
+        SetUpIslands();   // lane r13-bar-islands: the three islands unless MANTLE_TEST_GLASS=electron (Surfaces/Bar/Frame/BarWindow.Islands.cs)
 
         // the primary monitor and its scale, before anything is placed; the frame mode (hover, dock or up)
         FrameMode = PickMode();
@@ -79,7 +80,7 @@ public sealed partial class BarWindow : Window
         SystemBackdrop = new TransparentBackdrop();
         ConfigureWindow();
         PaintBackdrop();
-        if (!_dark) AddShadow();   // dark: the lip only, no drop shadow (bar.css, dark .bar --pane-drop)
+        if (!_dark && !Surfaces.Bar.Frame.BarGeometry.Islands) AddShadow();   // dark: the lip only, no drop shadow (bar.css, dark .bar --pane-drop); the islands draw their own
         BuildGlyphs();
         PoseDown();
 
@@ -170,6 +171,7 @@ public sealed partial class BarWindow : Window
 
     void PaintBackdrop()
     {
+        if (Surfaces.Bar.Frame.BarGeometry.Islands) { _backdropState = "the islands look: frosted from the shared still"; return; }
         var glass = Host.Data.EffectiveGlass;
         if (!Host.Args.NoBackdrop) {
             try {
@@ -183,6 +185,7 @@ public sealed partial class BarWindow : Window
 
     void RenderGlass()
     {
+        if (Surfaces.Bar.Frame.BarGeometry.Islands) return;   // no pill glass in the islands look
         double blur = Host.Data.EffectiveGlass.For(_dark).BlurPx;
         WriteableBitmap? pic = null;
         if (_shot != null) {
@@ -302,7 +305,8 @@ public sealed partial class BarWindow : Window
         if (dark == _dark) { Host.Log.Line($"look: {(why != null ? why + "; " : "")}the bar already shows {(dark ? "dark" : "light")}"); return; }
         _dark = dark;
         Root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
-        if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
+        if (Surfaces.Bar.Frame.BarGeometry.Islands) IslandsTheme();
+        else if (dark) ElementCompositionPreview.SetElementChildVisual(ShadowHost, null);
         else AddShadow();
         RenderGlass();
         if (FrameMode == "hover" && !IsUp) ClearPicture();   // a hidden bar keeps no picture (BAR-035)

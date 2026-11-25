@@ -10,18 +10,21 @@ public sealed class ClusterTests
     [TestCleanup]
     public void Cleanup() => Host.KillAll();
 
-    /// Electron's hidden battery button still takes 14 px (.btn display:flex beats [hidden]) + the 4 px gap,
-    /// so network -> clock is 4 + 14 + 4 DIP; without the slot the cluster sat ~18 px further right.
+    /// Lane r13-bar-islands: the status island's glyph buttons are 32 x 36 DIP, 2 apart (look.css .glyph, .b-right gap 2).
+    /// Electron's 14 DIP stand-in for its hidden battery button (the parity known gap "right-cluster") belongs to the
+    /// MANTLE_TEST_GLASS=electron face only, so network -> clock is the 2 DIP gap here.
     [TestMethod]
-    public void Battery_slot_keeps_the_cluster_where_Electron_has_it()
+    public void Status_glyphs_are_32_by_36_and_2_apart()
     {
         using var app = BarApp.Launch("uitest-cluster");
         double s = Win32.GetDpiForWindow(app.Hwnd) / 96.0;
         var net = app.Find("bar.network").BoundingRectangle;
-        var bat = app.Find("bar.battery").BoundingRectangle;
+        var vol = app.Find("bar.volume").BoundingRectangle;
         var clock = app.Find("bar.clock").BoundingRectangle;
-        Assert.AreEqual(14 * s, bat.Width, 1.0, "the battery slot is 14 DIP wide");
-        Assert.AreEqual(22 * s, clock.Left - net.Right, 1.5, $"network right {net.Right}, battery {bat.Left}..{bat.Right}, clock left {clock.Left}");
+        Assert.AreEqual(32 * s, net.Width, 1.0, $"the network button is {net.Width} px wide, want 32 DIP");
+        Assert.AreEqual(36 * s, net.Height, 1.0, $"the network button is {net.Height} px tall, want 36 DIP");
+        Assert.AreEqual(2 * s, net.Left - vol.Right, 1.5, $"volume right {vol.Right}, network left {net.Left}: want the 2 DIP gap");
+        Assert.AreEqual(2 * s, clock.Left - net.Right, 1.5, $"network right {net.Right}, clock left {clock.Left}: want the 2 DIP gap (no battery slot)");
     }
 
     /// bar.js renderChips: one pip on "more" stands in for every problem, warn-coloured when one is a warning.

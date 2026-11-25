@@ -130,7 +130,8 @@ public class BarTests
         var mon = Win32.MonitorRect(app.Hwnd);
         double s = Win32.GetDpiForWindow(app.Hwnd) / 96.0;
         int monW = mon.Right - mon.Left;
-        int wantW = (int)Math.Round(Math.Min(1120, monW / s - 28) * s), wantH = (int)Math.Round(48 * s), wantGap = (int)Math.Round(14 * s);
+        // lane r13-bar-islands: the pill is the islands' band, the screen less 12 DIP each side (no 1120 cap), 44 tall, 12 up
+        int wantW = monW - 2 * (int)Math.Round(12 * s), wantH = (int)Math.Round(44 * s), wantGap = (int)Math.Round(12 * s);
         string got = $"pill {r.X},{r.Y} {r.Width}x{r.Height} on monitor {mon.Left},{mon.Top}-{mon.Right},{mon.Bottom} at {s * 100:0}%";
         Assert.IsTrue(Math.Abs(r.Width - wantW) <= 2, $"width {r.Width}, want {wantW}: {got}");
         Assert.IsTrue(Math.Abs(r.Height - wantH) <= 2, $"height {r.Height}, want {wantH}: {got}");

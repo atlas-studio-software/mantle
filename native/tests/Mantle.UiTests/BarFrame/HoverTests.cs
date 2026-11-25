@@ -41,7 +41,7 @@ public sealed class HoverTests
         Assert.IsTrue(FrameProbe.LogHas(dir, "bar revealed (the cursor reached the bottom edge)", 2000), "no reveal line");
         // on the pill: it stays up (the rest band)
         FrameNativeRect(h, out var r);
-        FrameProbe.SetCursorPos((r.Left + r.Right) / 2, r.Bottom - (int)Math.Round(14 * Win32.GetDpiForWindow(h) / 96.0) - 10);
+        FrameProbe.SetCursorPos((r.Left + r.Right) / 2, r.Bottom - (int)Math.Round(12 * Win32.GetDpiForWindow(h) / 96.0) - 10);
         Thread.Sleep(1200);
         Assert.IsTrue(Win32.IsWindowVisible(h), "the bar hid with the cursor resting on the pill");
         Host.Screenshot("frame-hover-revealed");
@@ -89,7 +89,7 @@ public sealed class HoverTests
         var pill = app.Find("bar.pill").BoundingRectangle;
         double s = Win32.GetDpiForWindow(app.Hwnd) / 96.0;
         Assert.AreEqual(FrameProbe.ScreenH, pill.Bottom, 1.0 + s, $"the docked pill should end at the screen's bottom edge; pill {pill}");
-        Assert.AreEqual(Math.Round(48 * s), pill.Height, 1.0, "the docked pill is not 48 DIP tall");
+        Assert.AreEqual(Math.Round(44 * s), pill.Height, 1.0, "the docked pill (the islands' band) is not 44 DIP tall");
         var after = FrameProbe.WorkArea();
         Assert.AreEqual(before.Bottom, after.Bottom, $"a test run changed the work area ({before.Bottom} -> {after.Bottom}); it must reserve nothing");
         StringAssert.Contains(FrameProbe.Log(dir), "nothing reserved", "the dock line does not say why nothing was reserved");
@@ -128,7 +128,7 @@ public sealed class HoverTests
             FrameProbe.CursorToEdge();
             Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(h), 1500), "no reveal for the shown measurement");
             FrameProbe.GetWindowRect(h, out var r);
-            FrameProbe.SetCursorPos((r.Left + r.Right) / 2, r.Bottom - (int)Math.Round(14 * Win32.GetDpiForWindow(h) / 96.0) - 10);
+            FrameProbe.SetCursorPos((r.Left + r.Right) / 2, r.Bottom - (int)Math.Round(12 * Win32.GetDpiForWindow(h) / 96.0) - 10);
             Thread.Sleep(2000);
             var shown = FrameProbe.CpuThreads(app.Proc, 15000);
             bool stillUp = Win32.IsWindowVisible(h);

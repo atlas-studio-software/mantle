@@ -1,0 +1,220 @@
+using System;
+using Mantle.App.Shell.Levitate;
+using Mantle.App.Surfaces.Bar.Frame;
+using Mantle.App.Surfaces.Osd;
+using Mantle.Core.Look.Levitate;
+using Microsoft.UI.Text;
+using Microsoft.UI.Xaml;
+using Microsoft.UI.Xaml.Controls;
+using Microsoft.UI.Xaml.Media;
+using Microsoft.UI.Xaml.Shapes;
+
+namespace Mantle.App;
+
+/// <summary>
+/// Lane r13-bar-islands: the bar as THREE floating islands (apps-r3/mantle-bar look.css "the bar: three islands", shell.js
+/// fitDock; the numbers are Mantle.Core <see cref="BarIslands"/>): left (the M), the dock, right (the status cluster), each
+/// 44 DIP tall at radius 12, the band 12 DIP from the screen's edges. Every run but MANTLE_TEST_GLASS=electron
+/// (<see cref="BarGeometry.Islands"/>); there the pill stays exactly as before and nothing here runs.
+/// <list type="bullet">
+/// <item>The pill's own layers (Glass, Tint, Lip, Edge) are collapsed: no hairline, lip, tint or sheen at rest. Each
+/// island wears a <see cref="LevitatePanel"/> (frost by size, dim, the v2.1 dark film, none in light; the sheen on hover
+/// only), placed from the geometry on every layout, geometry or theme change.</item>
+/// <item>One float shadow bitmap (<see cref="LevitateShadow"/>) round the three boxes, in ShadowHost, in both themes.</item>
+/// <item>The dock is centred on the screen; when its right edge + 12 would pass the right island, it sits 12 after the M
+/// (<see cref="BarIslands.Layout"/>). The island is placed by its layout margin (the frost lines up from the layout).</item>
+/// <item>Hover / pressed fills: the Levitate inks in dark (white .07 / .05), today's Lg tokens in light, given to the
+/// bar's buttons through Root's resources (the LgBtn template's LgHover / LgPress).</item>
+/// </list>
+/// </summary>
+public sealed partial class BarWindow
+{
+    LevitatePanel? _lvLeft, _lvDock, _lvRight;
+    readonly SolidColorBrush _isHover = new(), _isPress = new();
+    string _islandShadowKey = "", _islandsSaid = "";
+
+    /// The islands' sizes and layers, once, from the constructor (before the first layout).
+    void SetUpIslands()
+    {
+        if (!BarGeometry.Islands) return;
+        foreach (var layer in new UIElement[] { Glass, Tint, Lip, Edge }) layer.Visibility = Visibility.Collapsed;
+        if (LeftIsland.Parent is Grid content) content.Padding = new Thickness(0);   // the XAML's "Content" grid (padding 0 8 in the pill)
+        Pill.Height = BarIslands.BarH;
+        // the LgBtn template's hover / pressed fills resolve from here first (lightweight styling)
+        Root.Resources["LgHover"] = _isHover;
+        Root.Resources["LgPress"] = _isPress;
+
+        // left: 44 x 44 round a 36 start button (its 22 mark is the XAML's Viewbox)
+        LeftIsland.Width = BarIslands.LeftW;
+        LeftIsland.Height = BarIslands.BarH;
+        StartBtn.Width = BarIslands.StartSize;
+        StartBtn.Height = BarIslands.StartSize;
+        StartBtn.HorizontalAlignment = HorizontalAlignment.Center;
+        StartBtn.CornerRadius = new CornerRadius(BarIslands.CellRadius);
+
+        // the dock: padding 0 4, gap 2; placed by its left margin (LayoutIslands)
+        DockIsland.HorizontalAlignment = HorizontalAlignment.Left;
+        DockIsland.Height = BarIslands.BarH;
+        DockRow.HorizontalAlignment = HorizontalAlignment.Left;
+        DockRow.Margin = new Thickness(BarIslands.DockPadX, 0, BarIslands.DockPadX, 0);
+        DockRow.Spacing = BarIslands.DockGap;
+        DockMore.Width = BarIslands.CellW;
+        DockMore.Height = BarIslands.CellH;
+        DockMore.CornerRadius = new CornerRadius(BarIslands.CellRadius);
+
+        // right: padding 0 4, gap 2, glyphs 32 x 36 at radius 8, the separator 1 x 20 margin 0 4, the clock padding 0 8
+        RightIsland.Height = BarIslands.BarH;
+        RightIsland.HorizontalAlignment = HorizontalAlignment.Right;
+        RightCluster.Margin = new Thickness(BarIslands.RightPadX, 0, BarIslands.RightPadX, 0);
+        RightCluster.Spacing = BarIslands.RightGap;
+        RightSep.Height = BarIslands.SepH;
+        RightSep.Margin = new Thickness(BarIslands.SepMarginX, 0, BarIslands.SepMarginX, 0);
+        foreach (var b in new[] { DownloadsBtn, VolumeBtn, NetworkBtn, NotifsBtn, MoreBtn }) {
+            b.Width = BarIslands.GlyphW;
+            b.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
+        }
+        if (MoreBtn.Content is Grid more) more.Width = BarIslands.GlyphW;
+        // the 14 DIP stand-in for Electron's hidden battery button is for the Electron pairs only
+        BatteryBtn.Visibility = Visibility.Collapsed;
+        ClockBtn.Padding = new Thickness(BarIslands.ClockPadX, 0, BarIslands.ClockPadX, 0);
+        ClockBtn.MinWidth = 0;
+        ClockBtn.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
+        ClockT.FontSize = BarIslands.ClockTime;
+        ClockT.FontWeight = FontWeights.Medium;
+        ClockD.FontSize = BarIslands.ClockDate;
+
+        _lvLeft = IslandPanel("bar left island", LeftIsland);
+        _lvDock = IslandPanel("bar dock island", DockIsland);
+        _lvRight = IslandPanel("bar right island", RightIsland);
+        Pill.SizeChanged += (_, _) => LayoutIslands("the band was sized");
+        DockRow.SizeChanged += (_, _) => LayoutIslands("the dock changed size");
+        RightCluster.SizeChanged += (_, _) => LayoutIslands("the status island changed size");
+        PaintIslandInks();
+        Host.Log.Line("bar look: three islands (lane r13-bar-islands); MANTLE_TEST_GLASS=electron keeps the pill");
+    }
+
+    /// One island's levitated layers under its content, the hover sheen from the pointer.
+    static LevitatePanel IslandPanel(string name, Grid island)
+    {
+        var r = new CornerRadius(BarIslands.Radius);
+        var lev = new LevitatePanel(name, r);
+        island.Children.Insert(0, lev.Sheen);
+        island.Children.Insert(0, lev.Film);
+        island.Children.Insert(0, lev.Dim);
+        island.Children.Insert(0, lev.Picture);   // Picture, Dim, Film, Sheen, then the island's own content
+        island.CornerRadius = r;
+        // clear but hit-testable (a brush with no colour), so the sheen follows the whole island
+        island.Background = new SolidColorBrush();
+        island.PointerEntered += (_, _) => lev.Hover(true);
+        island.PointerExited += (_, _) => lev.Hover(false);
+        return lev;
+    }
+
+    /// The islands placed for the screen and the dock's and status island's widths now (shell.js fitDock), their frost
+    /// lined up and the shadow drawn. From the geometry (ApplyGeometry) and every size change; cheap when nothing moved.
+    void LayoutIslands(string why)
+    {
+        if (!BarGeometry.Islands || _lvLeft == null || _lvDock == null || _lvRight == null) return;
+        double s = _scale > 0 ? _scale : 1;
+        double screenW = (_monitor.Right - _monitor.Left) / s, screenH = (_monitor.Bottom - _monitor.Top) / s;
+        if (screenW <= 0 || screenH <= 0) return;
+        var l = BarIslands.Layout(screenW, DockRow.ActualWidth, RightCluster.ActualWidth);
+        if (Math.Abs(DockIsland.Margin.Left - l.Dock.X) > 0.01) DockIsland.Margin = new Thickness(l.Dock.X, 0, 0, 0);
+        // the band's top-left on the monitor (DIP): the frost is lined up from the geometry, not from a render transform
+        double bx = (_pillPx.Left - _monitor.Left) / s, by = (_pillPx.Top - _monitor.Top) / s;
+        _lvLeft.Place(screenW, screenH, bx + l.Left.X, by + l.Left.Y, l.Left.W, l.Left.H, _dark);
+        _lvDock.Place(screenW, screenH, bx + l.Dock.X, by + l.Dock.Y, l.Dock.W, l.Dock.H, _dark);
+        _lvRight.Place(screenW, screenH, bx + l.Right.X, by + l.Right.Y, l.Right.W, l.Right.H, _dark);
+        IslandShadow(l);
+        string said = FormattableString.Invariant($"left {l.Left.X:0.#}+{l.Left.W:0.#}, dock {l.Dock.X:0.#}+{l.Dock.W:0.#}{(l.DockLeft ? " (after the M: centred it would run into the status island)" : " (centred)")}, right {l.Right.X:0.#}+{l.Right.W:0.#} in a {_pillW:0.#} DIP band");
+        if (said != _islandsSaid) { _islandsSaid = said; Host.Log.Line($"bar islands ({why}): {said}"); }
+    }
+
+    /// The float shadow round the three islands, one bitmap the size of the window's content, redrawn only when a box,
+    /// the size or the scale changed.
+    void IslandShadow(BarIslandsLayout l)
+    {
+        double s = _scale > 0 ? _scale : 1;
+        double w = Root.Width, h = Root.Height;
+        if (double.IsNaN(w) || double.IsNaN(h) || w <= 0 || h <= 0) return;
+        double x0 = BarGeometry.SideNow, y0 = BarGeometry.ShadowTop, r = BarIslands.Radius;
+        var boxes = new[] {
+            new CssShadow.Box(x0 + l.Left.X, y0 + l.Left.Y, l.Left.W, l.Left.H, r),
+            new CssShadow.Box(x0 + l.Dock.X, y0 + l.Dock.Y, l.Dock.W, l.Dock.H, r),
+            new CssShadow.Box(x0 + l.Right.X, y0 + l.Right.Y, l.Right.W, l.Right.H, r),
+        };
+        int wp = (int)Math.Ceiling(w * s), hp = (int)Math.Ceiling(h * s);
+        string key = FormattableString.Invariant($"{wp}x{hp}@{s}:{boxes[0]}:{boxes[1]}:{boxes[2]}");
+        if (key == _islandShadowKey) return;
+        _islandShadowKey = key;
+        var img = new Image {
+            Source = LevitateShadow.Bitmap(wp, hp, s, boxes),
+            Width = wp / s, Height = hp / s, Stretch = Stretch.Fill, IsHitTestVisible = false,
+        };
+        ShadowHost.Children.Clear();
+        ShadowHost.Children.Add(img);
+    }
+
+    /// The theme changed: the inks, the frost's dim and film.
+    void IslandsTheme()
+    {
+        PaintIslandInks();
+        _lvLeft?.Theme(_dark);
+        _lvDock?.Theme(_dark);
+        _lvRight?.Theme(_dark);
+        LayoutIslands("the theme changed");
+    }
+
+    /// Dark: the Levitate inks (Theme/Levitate.xaml); light: today's Lg tokens (as the levitated Downloads shelf).
+    void PaintIslandInks()
+    {
+        _isHover.Color = IslandInk("LvCtlFillHover", "LgHover") is SolidColorBrush hb ? hb.Color : default;
+        _isPress.Color = IslandInk("LvCtlFillPressed", "LgPress") is SolidColorBrush pb ? pb.Color : default;
+        ClockT.Foreground = IslandInk("LvText", "LgInk");
+        ClockD.Foreground = IslandInk("LvText2", "LgInk2");
+        RightSep.Fill = IslandInk("LvHair", "LgEdgeOut");
+    }
+
+    Brush IslandInk(string lv, string lg)
+    {
+        if (_dark && Application.Current.Resources.TryGetValue(lv, out var v) && v is Brush b) return b;
+        return (Brush)TokenOr(lg, "LgInk2");
+    }
+
+    /// A dock cell in the islands look (from Cell_Loaded): 40 x 36 at radius 8, a 20 icon, the run dot 4 x 3 two up,
+    /// the separator 1 x 20 with margin 0 4 (plus the 2 gap after it), the dock's gap 2.
+    void IslandCell(Button b)
+    {
+        if (!BarGeometry.Islands) return;
+        b.Width = BarIslands.CellW;
+        b.CornerRadius = new CornerRadius(BarIslands.CellRadius);
+        if (Dock.ItemsPanelRoot is StackPanel panel && panel.Spacing != BarIslands.DockGap) panel.Spacing = BarIslands.DockGap;
+        if (VisualTreeHelper.GetParent(b) is StackPanel row && row.Children.Count > 0 && row.Children[0] is Rectangle sep) {
+            sep.Height = BarIslands.SepH;
+            sep.Margin = new Thickness(BarIslands.SepMarginX, 0, BarIslands.SepMarginX + BarIslands.DockGap, 0);
+        }
+        if (b.Content is Grid face && face.Children.Count > 0 && face.Children[0] is StackPanel stack) {
+            face.Height = BarIslands.CellH;
+            stack.VerticalAlignment = VerticalAlignment.Bottom;
+            stack.Margin = new Thickness(0, 0, 0, BarIslands.RunBottom);
+            if (stack.Children.Count > 0 && stack.Children[0] is Grid icon) {
+                icon.Width = BarIslands.CellIcon;
+                icon.Height = BarIslands.CellIcon;
+                foreach (var c in icon.Children)
+                    if (c is Image im) { im.Width = BarIslands.CellIcon; im.Height = BarIslands.CellIcon; }
+            }
+            if (stack.Children.Count > 1 && stack.Children[1] is Grid ind && ind.Children.Count > 0 && ind.Children[0] is Border run)
+                run.Width = BarIslands.RunW;
+        }
+    }
+
+    /// The span the dock's cells may fill (DIP) in the islands look: from 12 after the M to 12 before the status island,
+    /// less the dock's own padding, and less 8 because StripFit counts today's 36 + 6 cells (the islands' 40 + 2 is the
+    /// same pitch, but the first cell, "+N" and the separator differ by up to 8).
+    double IslandDockSpan()
+    {
+        double s = _scale > 0 ? _scale : 1;
+        double screenW = (_monitor.Right - _monitor.Left) / s;
+        return Math.Max(0, BarIslands.DockRoom(screenW, RightCluster.ActualWidth) - 2 * BarIslands.DockPadX - 8);
+    }
+}

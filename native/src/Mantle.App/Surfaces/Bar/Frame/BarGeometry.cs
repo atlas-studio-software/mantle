@@ -1,6 +1,7 @@
 using System;
 using System.Runtime.InteropServices;
 using Mantle.App.Native;
+using Mantle.Core.Look.Levitate;
 
 namespace Mantle.App.Surfaces.Bar.Frame;
 
@@ -8,10 +9,21 @@ namespace Mantle.App.Surfaces.Bar.Frame;
 /// BAR-088): the pill is min(1120, screen - 28) DIP wide (at least 120), 48 DIP tall, resting 14 DIP above the
 /// bottom edge. The window holds the pill plus room for the light drop shadow above and beside it; its bottom
 /// is the screen's physical bottom, never a rounded height. The reveal band is the bottom 4 DIP (BAR-026).
+/// Lane r13-bar-islands: unless MANTLE_TEST_GLASS=electron (the Electron screenshot pairs keep the pill above), "the
+/// pill" is the islands' band (Mantle.Core BarIslands): the screen less 12 DIP each side, 44 DIP tall, 12 DIP above the
+/// bottom; the window is the monitor's width with the same 56 DIP of shadow room above. BarIntent's zones and timings
+/// apply to the band unchanged.
 internal readonly record struct BarGeometry(uint Dpi, double Scale, Win32.RECT Monitor, double PillWdip, Win32.RECT Window, Win32.RECT Pill, int BandTop)
 {
     public const double BarH = 48, Lift = 14, SideGapTotal = 28, MaxW = 1120, BandDip = 4;
     public const double ShadowTop = 56, ShadowSide = 28;   // room in the window for the light drop shadow
+
+    /// The bar is three islands (every run but MANTLE_TEST_GLASS=electron).
+    public static bool Islands => !Mantle.App.Shell.Glass.DesktopGlass.ElectronLook;
+    /// The bar's height, its air to the bottom edge and the room beside it in the window (DIP), for the look in effect.
+    public static double BarHNow => Islands ? BarIslands.BarH : BarH;
+    public static double LiftNow => Islands ? BarIslands.Gap : Lift;
+    public static double SideNow => Islands ? BarIslands.Gap : ShadowSide;
 
     public static BarGeometry Compute()
     {
@@ -25,6 +37,13 @@ internal readonly record struct BarGeometry(uint Dpi, double Scale, Win32.RECT M
     public static BarGeometry For(Win32.RECT m, uint dpi)
     {
         double s = dpi / 96.0;
+        if (Islands) {
+            var (bl, bt, br, bb) = BarIslands.BandPx(m.Left, m.Top, m.Right, m.Bottom, s);
+            var band = new Win32.RECT { Left = bl, Top = bt, Right = br, Bottom = bb };
+            double bandW = BarIslands.Band((m.Right - m.Left) / s, (m.Bottom - m.Top) / s).W;
+            var bwin = new Win32.RECT { Left = m.Left, Top = bt - (int)Math.Round(ShadowTop * s), Right = m.Right, Bottom = m.Bottom };
+            return new BarGeometry(dpi, s, m, bandW, bwin, band, m.Bottom - (int)Math.Round(BandDip * s));
+        }
         double wDip = Math.Min(MaxW, Math.Max(120, (m.Right - m.Left) / s - SideGapTotal));
         int wPx = (int)Math.Round((wDip + 2 * ShadowSide) * s), hPx = (int)Math.Round((ShadowTop + BarH + Lift) * s);
         int x = m.Left + ((m.Right - m.Left) - wPx) / 2, y = m.Bottom - hPx;
