@@ -1,9 +1,9 @@
 // lane r10-look: native Mantle publishes the look-sync `desktop` record, so Helm and Quartz paint the same wallpaper
 // (CONTRACT.md section 4 and the user's 2026-10-10 answer 2: the desktop wallpaper is the one place a picture is chosen). Native has no
 // wallpaper library yet, so the desktop's picture is Windows' own wallpaper (SPI_GETDESKWALLPAPER). The publishing itself
-// (still first, then the record, keep 3, the guard, the rev and retries) is Mantle.Core's DesktopPublisher; this file is
-// only where the wallpaper comes from and when to look again: at start, on WM_SETTINGCHANGE SPI_SETDESKWALLPAPER (the
-// bar's frame, where the live glass hears it too) and when the glass changes (the guard is worked out for its dim and blur).
+// (still first, then the record, keep 3, the rev and retries; no top band on v2) is Mantle.Core's DesktopPublisher; this file
+// is only where the wallpaper comes from and when to look again: at start and on WM_SETTINGCHANGE SPI_SETDESKWALLPAPER (the
+// bar's frame, where the live glass hears it too). Never on a timer, never for a glass change (lane r13-desktop-record).
 using System;
 using System.Globalization;
 using System.IO;
@@ -24,10 +24,10 @@ internal static class DesktopPublish
     public const string TestEnv = "MANTLE_TEST_WALLPAPER";
 
     static DesktopPublisher? _pub;
-    static IDisposable? _off;
 
-    /// App start (host thread), after the look host started: publish once, then on every glass change. Never throws.
-    public static void Start(LookHost look, SafeFile files)
+    /// App start (host thread), after the look host started: publish once. <paramref name="restingWhy"/>: why Mantle rests
+    /// for a game now, else null (a rest keeps the last record rather than share ok:false). Never throws.
+    public static void Start(LookHost look, SafeFile files, Func<string?>? restingWhy = null)
     {
         if (_pub != null) return;
         try {
@@ -42,11 +42,9 @@ internal static class DesktopPublish
             }
             var pub = new DesktopPublisher(new DesktopPublisherOptions {
                 Sync = look.Sync, Files = files, Source = new WindowsWallpaper(testPicture),
-                Glass = () => look.Local()["glass"], Log = line => Host.Log.Line(line),
+                RestingWhy = restingWhy, Log = line => Host.Log.Line(line),
             });
             _pub = pub;
-            // the listener runs under the look host's lock: it only posts
-            _off = look.OnChange(e => { if (e.Why is "glass" or "apply" or "sync") Check("the glass changed (" + e.Why + ")"); });
             Check("start");
         } catch (Exception e) { Host.Log.Line("desktop: the desktop record publisher did not start (" + e.GetType().Name + ": " + e.Message + ")"); }
     }
@@ -64,7 +62,7 @@ internal static class DesktopPublish
 }
 
 /// Windows' own wallpaper as the desktop's picture: a full-size JPEG still (quality 90, at most the cover size of the primary
-/// screen) and the still decoded for the guard the way the glass layers decode it (DesktopGlass.Decode). Pool thread.
+/// screen). Pool thread.
 internal sealed class WindowsWallpaper : IDesktopSource
 {
     const float JpegQuality = 0.9f;
@@ -124,14 +122,7 @@ internal sealed class WindowsWallpaper : IDesktopSource
         }
     }
 
-    public DesktopPicture Picture(string stillFile)
-    {
-        var (w, h, scale) = Primary();
-        var (px, _, _) = DesktopGlass.Decode(stillFile, w, h);
-        return new DesktopPicture(px, w, h, scale);
-    }
-
-    /// The primary monitor in physical pixels and its scale (the desktop layer's monitor; the guard's band is on it).
+    /// The primary monitor in physical pixels and its scale (the desktop layer's monitor; the still covers it).
     static (int W, int H, double Scale) Primary()
     {
         IntPtr mon = Mantle.App.Native.Win32.MonitorFromPoint(new Mantle.App.Native.Win32.POINT { X = 0, Y = 0 }, 1 /* PRIMARY */);

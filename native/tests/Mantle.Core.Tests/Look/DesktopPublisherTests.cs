@@ -13,35 +13,34 @@ using Xunit;
 namespace Mantle.Core.Tests.Look;
 
 /// <summary>
-/// DesktopPublisher (lane r10-look): native Mantle publishes look.json <c>desktop</c> as lib/look-desktop.js does (CONTRACT.md
-/// sections 2 and 4, "desktop.guard", "2026-11-11"). Temp folders only: every test makes its own look-sync folder, and the
+/// DesktopPublisher (lane r10-look; v2 shape since lane r13-desktop-record): native Mantle publishes look.json <c>desktop</c> as
+/// lib/look-desktop.js does (CONTRACT.md sections 2 and 4, the Lane 0 freeze and "Retired on v2" at look-sync dca42dc: no
+/// <c>guard</c>, no <c>region</c>, no <c>answers</c>). Temp folders only: every test makes its own look-sync folder, and the
 /// LOOK_SYNC_DIR case resolves the folder through DataPaths with a fake APPDATA, so the user's real %APPDATA%\look-sync is
-/// never named. The wallpaper is a fake source (no WinRT): a few JPEG-looking bytes and a flat grey picture for the guard.
+/// never named. The wallpaper is a fake source (no WinRT): a few JPEG-looking bytes.
 /// </summary>
 public class DesktopPublisherTests
 {
     const string GlassJson = "{\"dark\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"light\":{\"blurPx\":0,\"dim\":0.3,\"panel\":0},\"render\":\"picture\"}";
     const string LocalJson = "{\"theme\":\"light\",\"accent\":{\"hue\":30},\"glass\":{\"dark\":{\"blurPx\":8,\"dim\":0.6,\"panel\":-0.1},\"light\":{\"blurPx\":12,\"dim\":0.45,\"panel\":0},\"render\":\"picture\"}}";
-    static readonly string[] RecordKeys = { "id", "type", "title", "file", "ok", "reason", "still", "stillSize", "guard", "rev", "by" };
+    /// The v2 record, exactly (CONTRACT section 2 minus the retired keys): no guard, no guardReason, no region, no answers.
+    static readonly string[] RecordKeys = { "id", "type", "title", "file", "ok", "reason", "still", "stillSize", "rev", "by" };
 
-    /// The wallpaper the tests show; each hook runs where the publisher is between the still and the record.
+    /// The wallpaper the tests show.
     sealed class FakeSource : IDesktopSource
     {
         public DesktopNow Now = new(new DesktopPick("windows:aaa", "picture", "Snow", @"C:\pics\snow.jpg"), null);
         public byte[] Jpeg = { 0xFF, 0xD8, 0xFF, 0xE0, 1, 2, 3, 0xFF, 0xD9 };
         public int W = 64, H = 32;
-        public const int PW = 160, PH = 200;
-        public Action<string>? DuringPicture;
+        /// When set, the still cannot be made: Still throws this message.
+        public string? StillThrows;
         public readonly List<string> Calls = new();
         public DesktopNow Current() { lock (Calls) Calls.Add("current"); return Now; }
-        public DesktopShot Still(DesktopPick pick) { lock (Calls) Calls.Add("still " + pick.Id); return new DesktopShot(true, (byte[])Jpeg.Clone(), W, H, null); }
-        public DesktopPicture Picture(string stillFile)
+        public DesktopShot Still(DesktopPick pick)
         {
-            lock (Calls) Calls.Add("picture " + Path.GetFileName(stillFile));
-            DuringPicture?.Invoke(stillFile);
-            var px = new byte[PW * PH * 4];
-            for (int i = 0; i < px.Length; i += 4) { px[i] = 128; px[i + 1] = 128; px[i + 2] = 128; px[i + 3] = 255; }
-            return new DesktopPicture(px, PW, PH, 1.0);
+            lock (Calls) Calls.Add("still " + pick.Id);
+            if (StillThrows != null) throw new InvalidOperationException(StillThrows);
+            return new DesktopShot(true, (byte[])Jpeg.Clone(), W, H, null);
         }
         public void Show(string id, string title) => Now = new(new DesktopPick(id, "picture", title, @"C:\pics\" + title + ".jpg"), null);
     }
@@ -53,7 +52,10 @@ public class DesktopPublisherTests
         public readonly ListLog Log = new();
         public readonly LookSync Sync;
         public readonly DesktopPublisher Pub;
-        public string Glass = GlassJson;
+        /// Runs between the still and the record (DesktopPublisherOptions.BeforeRecord).
+        public Action<string?>? BeforeRecord;
+        /// Why Mantle rests now, else null.
+        public string? Resting;
         public string Dir => T.Path;
         public Rig(bool syncOn = true, int[]? retry = null, string? dir = null, SafeFile? files = null)
         {
@@ -64,8 +66,8 @@ public class DesktopPublisherTests
                 RetryDelays = retry ?? new[] { 5, 10, 20 }, Pid = 4242,
             });
             Pub = new DesktopPublisher(new DesktopPublisherOptions {
-                Sync = Sync, Files = f, Source = Source, Glass = () => JsJson.Parse(Glass), Log = Log.Line,
-                RetryDelays = retry ?? new[] { 5, 10, 20 }, Pid = 4242,
+                Sync = Sync, Files = f, Source = Source, Log = Log.Line, RestingWhy = () => Resting,
+                RetryDelays = retry ?? new[] { 5, 10, 20 }, Pid = 4242, BeforeRecord = s => BeforeRecord?.Invoke(s),
             });
         }
         public JsonObject Doc() => (JsonObject)JsJson.Parse(File.ReadAllText(Path.Combine(Sync.Dir, "look.json")))!;
@@ -90,9 +92,9 @@ public class DesktopPublisherTests
     {
         using var rig = new Rig();
         bool stillThere = false, recordThere = true;
-        rig.Source.DuringPicture = still => {
-            // the guard reads the still between the still's write and the record's: the still is there, the record is not yet
-            stillThere = File.Exists(still);
+        rig.BeforeRecord = still => {
+            // between the still's write and the record's: the still is there, the record is not yet
+            stillThere = still != null && File.Exists(still);
             string lj = Path.Combine(rig.Dir, "look.json");
             recordThere = File.Exists(lj) && JsJson.Parse(File.ReadAllText(lj)) is JsonObject d && d["desktop"] != null;
         };
@@ -109,7 +111,7 @@ public class DesktopPublisherTests
         Assert.Equal("mantle", LookSyncCore.Str(rec["by"]));
         Assert.Equal("[64,32]", J(rec["stillSize"]));
         Assert.Null(LookSyncCore.CheckDesktop(rec));
-        Assert.Equal(new[] { "current", "still windows:aaa", "picture wall-2.jpg" }, rig.Source.Calls);
+        Assert.Equal(new[] { "current", "still windows:aaa" }, rig.Source.Calls);   // no picture read back: there is no top band
         Assert.Contains(rig.Log.Lines, l => l.StartsWith("desktop: shared the desktop wallpaper: picture windows:aaa, still 64x32 (rev 2", StringComparison.Ordinal));
     }
 
@@ -151,7 +153,7 @@ public class DesktopPublisherTests
         Assert.Equal(2, (await rig.Pub.CheckAsync("start")).Rev);
         using var helm = Other(rig.Dir, "helm");
         double helmRev = -1;
-        rig.Source.DuringPicture = _ => {
+        rig.BeforeRecord = _ => {
             // Helm writes the theme while Mantle is between its still and its record
             var w = helm.PublishAsync("theme", JsonValue.Create("dark")).GetAwaiter().GetResult();
             Assert.True(w.Ok, w.Reason);
@@ -193,7 +195,7 @@ public class DesktopPublisherTests
         };
         using var rig = new Rig(retry: new[] { 50, 100, 200 }, dir: d.Path, files: files);
         Assert.Equal("published", (await rig.Pub.CheckAsync("start")).What);
-        rig.Source.DuringPicture = _ => {
+        rig.BeforeRecord = _ => {
             // a reader that does not share delete (antivirus, a backup): the rename over look.json is refused while it holds it
             held = new FileStream(lj, FileMode.Open, FileAccess.Read, FileShare.Read);
         };
@@ -291,50 +293,123 @@ public class DesktopPublisherTests
     }
 
     [Fact]
-    public async Task The_record_has_no_region_key_and_its_guard_is_the_contracts_100_DIP_band()
+    public async Task The_record_is_the_v2_shape_no_guard_no_region_no_answers_and_schema_stays_1()
     {
         using var rig = new Rig();
-        await rig.Pub.CheckAsync("start");
+        // an old v1 draft's wallpaperRequest in the file: the shared module's migrate drops it on the write (Lane 0 freeze)
+        File.WriteAllText(Path.Combine(rig.Dir, "look.json"),
+            "{\"schema\":1,\"rev\":4,\"writer\":{\"app\":\"helm\",\"instance\":\"h\",\"pid\":1,\"at\":\"2026-11-11T10:00:00.000Z\"},\"look\":{}," +
+            "\"wallpaperRequest\":{\"rev\":4,\"by\":\"helm\",\"kind\":\"builtin\",\"id\":\"snow-peak\",\"path\":null}}");
+        var o = await rig.Pub.CheckAsync("start");
+        Assert.Equal("published", o.What);
         var rec = rig.Record();
         Assert.Equal(RecordKeys, rec.Select(kv => kv.Key).ToArray());
-        Assert.False(rec.ContainsKey("region"));
-        Assert.False(rec.ContainsKey("answers"));
-        Assert.False(rig.Doc().ContainsKey("wallpaperRequest"));
-        foreach (var theme in new[] { "dark", "light" }) {
-            var g = (JsonObject)rec["guard"]![theme]!;
-            Assert.Equal(new[] { "alpha", "contrast", "dim", "blurPx", "region", "monitor" }, g.Select(kv => kv.Key).ToArray());
-            Assert.Equal("{\"topDip\":0,\"heightDip\":100}", J(g["region"]));
-            Assert.Equal("[" + FakeSource.PW + "," + FakeSource.PH + "]", J(g["monitor"]));
-            Assert.Equal(0.3, Num(g["dim"]));
-            Assert.Equal(0, Num(g["blurPx"]));
-            double a = Num(g["alpha"]);
-            Assert.InRange(a, 0.3, 0.88);
-        }
-        // look-sync's own checks and washAlpha take it as a valid top band for the synced glass
-        Assert.Null(LookGuard.CheckGuard(rec["guard"]));
-        Assert.Null(LookGuard.CheckGuardLight(rec["guard"]));
+        foreach (var k in DesktopPublisher.NotPublished) Assert.False(rec.ContainsKey(k), k + " must not be in a v2 native record");
+        Assert.DoesNotContain("region", J(rec));                                  // not nested anywhere either
+        var doc = rig.Doc();
+        Assert.False(doc.ContainsKey("wallpaperRequest"));
+        Assert.Equal(1, Num(doc["schema"]));                                      // never bumped
+        Assert.Equal(Num(doc["rev"]), Num(rec["rev"]));                           // the field's rev is the doc's
+        Assert.Null(LookSyncCore.CheckDesktop(rec));
+        // a v2 reader with no top band takes the record as it is: the wash stays at Dim with the guard's reason, never guarded
         var look = (JsonObject)JsJson.Parse("{\"glass\":" + GlassJson + "}")!;
-        var w = Wash.Alpha(look, rec, "dark");
-        Assert.True(w.Guarded, w.Text);
+        Assert.False(Wash.Alpha(look, rec, "dark").Guarded);
     }
 
     [Fact]
-    public async Task The_same_wallpaper_again_publishes_nothing_and_a_new_dim_republishes_the_same_still()
+    public async Task The_same_wallpaper_again_publishes_nothing_and_no_glass_input_republishes()
     {
+        // v2: the record carries no top band, so nothing about the glass is in it; only a wallpaper change publishes
         using var rig = new Rig();
         var first = await rig.Pub.CheckAsync("start");
         var same = await rig.Pub.CheckAsync("Windows' wallpaper changed");
-        Assert.Equal("same", same.What);
-        Assert.Equal(first.Rev, Num(rig.Record()["rev"]));
-        rig.Glass = GlassJson.Replace("\"dark\":{\"blurPx\":0,\"dim\":0.3", "\"dark\":{\"blurPx\":0,\"dim\":0.5", StringComparison.Ordinal);
         var again = await rig.Pub.CheckAsync("the glass changed");
-        Assert.Equal("republished", again.What);
-        Assert.Equal(first.Rev + 1, again.Rev);
-        var rec = rig.Record();
-        Assert.Equal(first.Still, LookSyncCore.Str(rec["still"]));
-        Assert.Equal(0.5, Num(rec["guard"]!["dark"]!["dim"]));
+        Assert.Equal("same", same.What);
+        Assert.Equal("same", again.What);
+        Assert.Equal(first.Rev, Num(rig.Record()["rev"]));
         Assert.Equal(new[] { "wall-2.jpg" }, rig.Stills());
         Assert.Equal(1, rig.Source.Calls.Count(c => c.StartsWith("still ", StringComparison.Ordinal)));
+    }
+
+    [Fact]
+    public async Task A_record_with_a_v1_top_band_from_the_last_run_is_republished_once_without_it()
+    {
+        using var rig = new Rig();
+        Directory.CreateDirectory(Path.Combine(rig.Dir, "stills"));
+        string still = rig.StillPath(6);
+        File.WriteAllBytes(still, rig.Source.Jpeg);
+        // what native wrote before v2 (and Electron still writes): the same wallpaper, a still that is there, and a guard
+        File.WriteAllText(Path.Combine(rig.Dir, "look.json"),
+            "{\"schema\":1,\"rev\":6,\"writer\":{\"app\":\"mantle\",\"instance\":\"old\",\"pid\":1,\"at\":\"2026-11-24T10:00:00.000Z\"},\"look\":{}," +
+            "\"desktop\":{\"id\":\"windows:aaa\",\"type\":\"picture\",\"title\":\"Snow\",\"file\":" + J(JsonValue.Create(@"C:\pics\snow.jpg")) +
+            ",\"ok\":true,\"reason\":null,\"still\":" + J(JsonValue.Create(still)) + ",\"stillSize\":[64,32]," +
+            "\"guard\":{\"dark\":{\"alpha\":0.4,\"contrast\":5,\"dim\":0.3,\"blurPx\":0,\"region\":{\"topDip\":0,\"heightDip\":100},\"monitor\":[160,200]}},\"rev\":6,\"by\":\"mantle\"}}");
+        var o = await rig.Pub.CheckAsync("start");
+        Assert.Equal("published", o.What);
+        Assert.Equal(7, o.Rev);
+        var rec = rig.Record();
+        Assert.Equal(RecordKeys, rec.Select(kv => kv.Key).ToArray());
+        // and the next start adopts that clean record
+        var next = new DesktopPublisher(new DesktopPublisherOptions { Sync = rig.Sync, Files = new SafeFile(WriteGate.Scratch(rig.Dir)), Source = rig.Source, Log = rig.Log.Line });
+        Assert.Equal("adopted", (await next.CheckAsync("start")).What);
+        Assert.Equal(7, Num(rig.Record()["rev"]));
+    }
+
+    [Fact]
+    public async Task During_a_game_rest_a_check_that_would_share_ok_false_keeps_the_last_record()
+    {
+        using var rig = new Rig();
+        var first = await rig.Pub.CheckAsync("start");
+        Assert.Equal("published", first.What);
+        string before = J(rig.Record());
+        rig.Resting = "VALORANT.exe runs";
+        // no picture now (the wallpaper unloaded) and, after that, a still that cannot be made: neither is shared while resting
+        rig.Source.Now = DesktopNow.None("Windows' wallpaper file is missing");
+        var a = await rig.Pub.CheckAsync("Windows' wallpaper changed");
+        rig.Source.Show("windows:bbb", "B");
+        rig.Source.StillThrows = "the file is in use";
+        var b = await rig.Pub.CheckAsync("Windows' wallpaper changed");
+        Assert.Equal("kept", a.What);
+        Assert.Equal("kept", b.What);
+        Assert.Equal(before, J(rig.Record()));                                    // the same record, the same rev
+        Assert.Equal(new[] { "wall-2.jpg" }, rig.Stills());
+        Assert.Contains(rig.Log.Lines, l => l.Contains("while Mantle rests (VALORANT.exe runs)", StringComparison.Ordinal));
+        // the rest ends: the next check says what is true
+        rig.Resting = null;
+        var c = await rig.Pub.CheckAsync("the rest ended");
+        Assert.Equal("published", c.What);
+        Assert.False(rig.Record()["ok"]!.GetValue<bool>());
+        Assert.Equal("the still could not be made (the file is in use)", LookSyncCore.Str(rig.Record()["reason"]));
+    }
+
+    [Fact]
+    public async Task A_rest_never_holds_back_a_new_picture_that_has_a_still()
+    {
+        using var rig = new Rig();
+        await rig.Pub.CheckAsync("start");
+        rig.Resting = "game mode is on";
+        rig.Source.Show("windows:ccc", "C");
+        var o = await rig.Pub.CheckAsync("Windows' wallpaper changed");
+        Assert.Equal("published", o.What);
+        Assert.Equal("C", LookSyncCore.Str(rig.Record()["title"]));
+        Assert.True(rig.Record()["ok"]!.GetValue<bool>());
+    }
+
+    [Fact]
+    public async Task A_torn_look_json_is_healed_and_the_record_lands_valid_naming_a_still_that_is_there()
+    {
+        using var rig = new Rig();
+        // a half-written file (another writer died mid-write, outside the tmp + rename road)
+        File.WriteAllText(Path.Combine(rig.Dir, "look.json"), "{\"schema\":1,\"rev\":5,\"writer\":{\"app\":\"hel");
+        var o = await rig.Pub.CheckAsync("start");
+        Assert.Equal("published", o.What);
+        var doc = rig.Doc();                                                      // parses: the file is whole again
+        var rec = (JsonObject)doc["desktop"]!;
+        Assert.Null(LookSyncCore.CheckDesktop(rec));
+        Assert.Equal(Num(doc["rev"]), Num(rec["rev"]));
+        Assert.True(File.Exists(LookSyncCore.Str(rec["still"])));
+        Assert.Equal(1, Num(doc["schema"]));
+        Assert.Empty(Directory.EnumerateFiles(rig.Dir, "*.tmp"));
     }
 
     [Fact]
@@ -343,7 +418,7 @@ public class DesktopPublisherTests
         using var rig = new Rig();
         var first = await rig.Pub.CheckAsync("start");
         var again = new DesktopPublisher(new DesktopPublisherOptions {
-            Sync = rig.Sync, Files = new SafeFile(WriteGate.Scratch(rig.Dir)), Source = rig.Source, Glass = () => JsJson.Parse(rig.Glass), Log = rig.Log.Line,
+            Sync = rig.Sync, Files = new SafeFile(WriteGate.Scratch(rig.Dir)), Source = rig.Source, Log = rig.Log.Line,
         });
         var o = await again.CheckAsync("start");
         Assert.Equal("adopted", o.What);
@@ -362,7 +437,8 @@ public class DesktopPublisherTests
         Assert.False(rec["ok"]!.GetValue<bool>());
         Assert.Equal("Windows shows a plain colour, not a picture", LookSyncCore.Str(rec["reason"]));
         Assert.Null(rec["still"]);
-        Assert.Equal("there is no wallpaper picture to work it out from", LookSyncCore.Str(rec["guardReason"]));
+        // ok:false is the same key set (in its own order: JSON key order is not part of the contract): no guardReason any more
+        Assert.Equal(RecordKeys.OrderBy(k => k, StringComparer.Ordinal), rec.Select(kv => kv.Key).OrderBy(k => k, StringComparer.Ordinal));
         Assert.Null(LookSyncCore.CheckDesktop(rec));
         Assert.Empty(rig.Stills());
     }
@@ -396,13 +472,14 @@ public class DesktopPublisherTests
     public async Task A_source_that_throws_is_a_reason_not_a_crash()
     {
         using var rig = new Rig();
-        rig.Source.DuringPicture = _ => throw new InvalidOperationException("boom");
+        rig.Source.StillThrows = "boom";
         var o = await rig.Pub.CheckAsync("start");
         Assert.Equal("published", o.What);
         var rec = rig.Record();
-        Assert.True(rec["ok"]!.GetValue<bool>());
-        Assert.Null(rec["guard"]);
-        Assert.Equal("the still could not be read for it (boom)", LookSyncCore.Str(rec["guardReason"]));
+        Assert.False(rec["ok"]!.GetValue<bool>());                                // ok:false with the reason, never a crash
+        Assert.Equal("the still could not be made (boom)", LookSyncCore.Str(rec["reason"]));
+        Assert.Null(rec["still"]);
+        Assert.Empty(rig.Stills());
         Assert.Single(rig.Log.Lines, l => l.Contains("boom", StringComparison.Ordinal));
     }
 }
