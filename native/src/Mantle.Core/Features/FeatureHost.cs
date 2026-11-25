@@ -145,6 +145,8 @@ public sealed partial class FeatureHost
         public string Reason = "starting";
         public bool Running;
         public bool Stopped;
+        /// Its StopAsync is running: its platform calls still go out, so it can hand back what it holds (Spotify, Alt+Tab).
+        public bool InStop;
         public bool Rest;
         public string? Resting;
         public Task? RestP;
@@ -325,7 +327,8 @@ public sealed partial class FeatureHost
         SetHealth(f, false, $"its {what} handler failed ({Words(e)}), so its keys went back to Windows");
     }
 
-    KeyDelivery RouteChord(string chord, string via)
+    // internal: a live-run test routes a chord exactly as the hook's "chord" event does (FireChord is --test only).
+    internal KeyDelivery RouteChord(string chord, string via)
     {
         if (!_claims.TryGetValue(chord, out var name) || !_features.TryGetValue(name, out var f))
         {

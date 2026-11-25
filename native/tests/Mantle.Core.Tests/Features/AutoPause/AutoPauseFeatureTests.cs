@@ -60,6 +60,8 @@ public class AutoPauseFeatureTests
         k.R.Host.Load(new[] { FeatureDescriptor.Of(a, () => k.F = new AutoPauseFeature(h), AutoPauseFeature.Options) });
         await k.R.Host.Installed;
         try { await body(k); }
+        // a failure carries the host's last log lines (a cloud run keeps only the test message)
+        catch (Exception e) { throw new Xunit.Sdk.XunitException(e.Message + " || host log: " + string.Join(" / ", k.R.Lines.TakeLast(25))); }
         finally { await k.R.Host.StopAllAsync("the test ended"); }
     });
 

@@ -171,7 +171,7 @@ public sealed class TimerFeature : IFeature
         try {
             var o = new JsonObject { ["title"] = n.Title, ["sub"] = n.Sub, ["endAt"] = n.EndAt };
             var buttons = new JsonArray();
-            foreach (TimerButton b in n.Buttons) buttons.Add(new JsonObject { ["id"] = b.Id, ["label"] = b.Label, ["tooltip"] = b.Tooltip, ["primary"] = b.Primary });
+            foreach (TimerButton b in n.Buttons) buttons.Add((JsonNode)new JsonObject { ["id"] = b.Id, ["label"] = b.Label, ["tooltip"] = b.Tooltip, ["primary"] = b.Primary });
             o["buttons"] = buttons;
             _ctx.Broadcast(DoneEvent, El(o));
         } catch (Exception ex) { _ctx.Log($"the done event could not be sent: {ex.GetType().Name}"); }

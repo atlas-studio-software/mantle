@@ -302,7 +302,8 @@ public sealed class AutoPauseHost
 
     static string Str(JsonNode? n) => n is JsonValue v && v.TryGetValue(out string? s) ? s ?? "" : "";
     static bool Bool(JsonNode? n) => n is JsonValue v && v.TryGetValue(out bool b) && b;
-    static double Num(JsonNode? n) => n is JsonValue v && v.TryGetValue(out double d) && double.IsFinite(d) ? d : 0;
+    // Any number: a value built in code holds an int or a long (TryGetValue<double> refuses those), a parsed one a JsonElement.
+    static double Num(JsonNode? n) => Mantle.Core.Look.LookSyncCore.TryNum(n, out double d) && double.IsFinite(d) ? d : 0;
 
     // ---- start / stop
 

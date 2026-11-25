@@ -204,7 +204,7 @@ public sealed class AutoPauseServer : IDisposable
         try { gone.Cancel(); } catch (ObjectDisposedException) { /* already done */ }
     }
 
-    static async Task<(string? Head, byte[] Rest)> ReadHead(NetworkStream s, CancellationToken cut)
+    static async Task<(string? Head, byte[] Tail)> ReadHead(NetworkStream s, CancellationToken cut)
     {
         var buf = new byte[AutoPauseHttp.MaxHead];
         int have = 0;

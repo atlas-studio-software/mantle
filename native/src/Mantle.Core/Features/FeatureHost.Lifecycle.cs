@@ -227,6 +227,7 @@ public sealed partial class FeatureHost
         void Done(string line)
         {
             if (done.Task.IsCompleted) return;
+            f.InStop = false;
             timer?.Dispose();
             Unhook(f);
             f.Running = false;
@@ -239,6 +240,7 @@ public sealed partial class FeatureHost
         var h = f.Handle;
         if (h == null) { Done($"stopped before its install finished; its stop() runs when it does ({why})"); return done.Task; }
         ValueTask vt;
+        f.InStop = true;   // cleared in Done: on time, late (the deadline) or failed
         try { vt = h.StopAsync(new FeatureStop(why, rest)); }
         catch (Exception e) { Done($"stop() threw: {Words(e)} ({why})"); return done.Task; }
         _ = Watch();
