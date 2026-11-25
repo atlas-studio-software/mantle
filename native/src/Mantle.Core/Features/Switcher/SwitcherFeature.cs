@@ -111,7 +111,7 @@ public sealed class SwitcherFeature : IFeature
             _ = Apply(on ? "the switcher was turned on" : "the switcher was turned off");
         });
 
-        ctx.Command("ready", _ => Guard(() =>
+        ctx.Command("ready", cmd => Guard(() =>
         {
             if (!_page.Ready && _h.Overlay is not null)
             {

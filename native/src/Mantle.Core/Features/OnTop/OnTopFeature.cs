@@ -101,7 +101,7 @@ public sealed class OnTopFeature : IFeature
     {
         if (_core.Count > 0 && _sweep == null && !_stopped) {
             var host = _host;
-            _sweep = new Timer(_ => {
+            _sweep = new Timer(state => {
                 void Tick() => _ = SweepTick();
                 if (host != null) host.Post(_ => Tick(), null); else Tick();
             }, null, SweepEvery, SweepEvery);

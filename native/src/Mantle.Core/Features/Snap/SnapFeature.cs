@@ -69,7 +69,7 @@ public sealed class SnapFeature : IFeature
         _ctx.Health(p.Ok, p.Reason);
         if (p.RetryAfter is { } after) {
             var host = _host;
-            _probeTimer = new Timer(_ => {
+            _probeTimer = new Timer(state => {
                 void Go() => _ = ProbeAsync(attempt + 1);
                 if (host != null) host.Post(_ => Go(), null); else Go();
             }, null, after, Timeout.InfiniteTimeSpan);
