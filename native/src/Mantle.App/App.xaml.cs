@@ -65,11 +65,17 @@ public partial class MantleApp : Application
         InitializeComponent();
         UnhandledException += (_, e) => {
             Host.Log.Line("UNHANDLED: " + e.Exception);
-            // SAFE-018: the crash record goes through the ONE write gate; then Windows is put back and we exit 1
-            var plan = Crash.Record(Host.Paths.DataRoot, Host.Files, e.Exception?.Message, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
-            Host.Log.Line("mantle: Mantle " + plan.Why);
-            if (plan.Restart) _supervisor?.CrashNote(Crash.What(e.Exception?.Message));
-            else _supervisor?.StandDown("Mantle " + plan.Why);
+            if (_supervisor?.On == true) {
+                // lane r12-crash-restart: ONE rule, ONE counter. The supervisor (sidecar/CrashLoop.cs) writes this crash into
+                // crash.json and decides (3 restarts in 10 minutes), as it does for a crash that never reaches this handler;
+                // writing it here as well would count it twice. Main leaves only the error's words for the record.
+                _supervisor.CrashNote(Crash.What(e.Exception?.Message));
+                Host.Log.Line("mantle: Mantle stopped with an error; the supervisor counts it and decides whether it starts again");
+            } else {
+                // SAFE-018: the crash record goes through the ONE write gate; then Windows is put back and we exit 1
+                var plan = Crash.Record(Host.Paths.DataRoot, Host.Files, e.Exception?.Message, DateTimeOffset.UtcNow.ToUnixTimeMilliseconds());
+                Host.Log.Line("mantle: Mantle " + plan.Why + " (no supervisor is watching, so nothing starts it again)");
+            }
             e.Handled = true;
             Quit("Mantle stopped with an error", 1, crash: true);
         };

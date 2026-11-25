@@ -23,4 +23,9 @@
   <ItemGroup>
     <Content Include="Fixtures\**\*" CopyToOutputDirectory="PreserveNewest" />
   </ItemGroup>
+  <ItemGroup>
+    <!-- lane r12-crash-restart: the supervisor's ONE crash rule for native (pure, C# 5) is linked here so the unit stage
+         runs it with fakes; Mantle.Sidecar compiles the same file (CrashLoopTests) -->
+    <Compile Include="..\..\..\sidecar\CrashLoop.cs" Link="Lifecycle\CrashLoop.linked.cs" />
+  </ItemGroup>
 </Project>
