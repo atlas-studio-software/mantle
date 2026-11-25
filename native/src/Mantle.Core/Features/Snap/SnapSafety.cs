@@ -13,8 +13,13 @@ namespace Mantle.Core.Features.Snap;
 //      back on a monitor that no longer exists.
 //   2. Translate returns the frame untouched when the monitor is the SAME one, even if its work area shrank
 //      or its scale changed since (a resolution change, the taskbar moved), so the frame can hang off it.
-// sidecar/*.cs is shared with the Electron build and not this lane's to change, so the native move path
+// sidecar/*.cs is shared with the Electron build and was not that lane's to change, so the native move path
 // (SnapCore) checks every landed frame with Clamp and puts a stranded window back with ONE layouts.place.
+// Lane r11-snap-strand closed both holes in Snap.cs itself (for Electron too): Translate now fits a frame whose
+// monitor is gone, and one on the same monitor whose title bar is off its work area, by SnapGeom.TitleBarOn, the
+// twin of TitleBarOn below (keep the two the same rule). The Clamp check stays as the second guard, for what the
+// plan cannot see (an app that refuses the size it was given); on a plan the sidecar made safe, its fast path
+// (TitleBarOn on the move's own monitor) holds and it makes no extra call.
 //
 // All rects are VISIBLE frames (DWMWA_EXTENDED_FRAME_BOUNDS) in physical screen pixels, the sidecar's units.
 

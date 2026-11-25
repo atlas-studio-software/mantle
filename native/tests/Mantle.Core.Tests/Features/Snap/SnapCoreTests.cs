@@ -219,8 +219,9 @@ public class SnapCoreTests
     [Fact]
     public async Task An_unsnap_whose_remembered_monitor_is_gone_is_put_back_on_a_live_monitor_with_one_layouts_place()
     {
-        // the sidecar's un-snap put the pre-snap frame back where it was on P, which is unplugged: 2200..3000 is on no monitor.
-        // Clamp onto A: left = max(0, min(2200, 1920-800)) = 1120.
+        // the fake sidecar's un-snap answers the pre-snap frame where it was on P, which is unplugged: 2200..3000 is on no
+        // monitor (the real Snap.cs did this before lane r11-snap-strand; it now fits it itself, so this is the second
+        // guard's own test). Clamp onto A: left = max(0, min(2200, 1920-800)) = 1120.
         var f = new Fake();
         f.Answers["snap.move"] = _ => Ok(Move("\"from\":\"left\",\"to\":\"normal\",\"action\":\"unsnap\",\"restoredFrom\":\"remembered\",\"frame\":{\"x\":2200,\"y\":200,\"w\":800,\"h\":600}"));
         f.Answers["snap.monitors"] = _ => Ok("{\"monitors\":[" + MonA + "]}");

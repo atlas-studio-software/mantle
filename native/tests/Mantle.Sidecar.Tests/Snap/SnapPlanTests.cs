@@ -300,6 +300,65 @@ namespace Mantle.Sidecar.Tests.Snap {
         Same(r.P("frame"), new[] { -1920 + 400, 240, -1920 + 400 + 800, 240 + 640 }), r.ToString());
     }
 
+    // ------------------------------------------------------------ un-snap never strands a window (lane r11-snap-strand)
+    // SnapGeom.Translate now fits a frame whose monitor is gone, and one on the same monitor whose title bar is off its
+    // work area, by the rule of SnapSafety.TitleBarOn (SnapGeom.TitleBarOn is its twin): the top 32 DIP inside the work
+    // area (2 px slack) and min(width, 64 DIP) of it across, DIP to px = (dip * dpi + 48) / 96. sidecar/test-snap.js
+    // has the same cases.
+    static R UnsnapLeft(JsonArray mons, int[] work, int[] pre, string preMonitor) {
+      int[] l = Zone(work, "left");
+      return Plan(new JsonObject { ["monitors"] = mons, ["frame"] = A(l), ["dir"] = "right",
+        ["remembered"] = new JsonObject { ["zone"] = "left", ["frame"] = A(l), ["pre"] = A(pre), ["preMonitor"] = preMonitor } });
+    }
+
+    [TestMethod] // SNAP-028 (never strands): the remembered monitor is gone
+    public void Unsnap_whose_remembered_monitor_is_gone_fits_the_frame_onto_the_current_work_area() {
+      // [2200,150,3000,750] (800x600) was on a monitor that is unplugged: preMon is null. Fit onto A's 0..1920 x 0..1040:
+      // left = max(0, min(2200, 1920-800=1120)) = 1120, top = max(0, min(150, 1040-600=440)) = 150.
+      var r = UnsnapLeft(One(), OneWork, new[] { 2200, 150, 3000, 750 }, "GONE");
+      Assert.IsTrue(r.Ok && r.S("action") == "unsnap" && r.S("restoredFrom") == "remembered" && r.S("monitor") == "A" &&
+        Same(r.P("frame"), new[] { 1120, 150, 1920, 750 }), r.ToString());
+      // 2560x1600 is bigger than the work area: shrunk to 1920x1040 at 0,0
+      var big = UnsnapLeft(One(), OneWork, new[] { 1920, -100, 4480, 1500 }, "GONE");
+      Assert.IsTrue(big.Ok && Same(big.P("frame"), new[] { 0, 0, 1920, 1040 }), big.ToString());
+    }
+
+    [TestMethod] // SNAP-028 (never strands): the same monitor, its work area shrank so the title bar is off it
+    public void Unsnap_on_the_same_monitor_after_its_work_area_shrank_fits_the_title_bar_back_on() {
+      // the resolution shrank: [2000,200,2600,800] has -80 px of title bar across 0..1920. Fit: left = 1920-600 = 1320.
+      var r = UnsnapLeft(One(), OneWork, new[] { 2000, 200, 2600, 800 }, "A");
+      Assert.IsTrue(r.Ok && r.S("restoredFrom") == "remembered" && Same(r.P("frame"), new[] { 1320, 200, 1920, 800 }), r.ToString());
+      // the taskbar moved to the top (work from y 48): top 10 < 48-2. Fit: top = max(48, min(10, 1080-600)) = 48.
+      int[] topWork = { 0, 48, 1920, 1080 };
+      var top = UnsnapLeft(Mons(Mon("A", new[] { 0, 0, 1920, 1080 }, topWork, 96, true)), topWork, new[] { 100, 10, 900, 610 }, "A");
+      Assert.IsTrue(top.Ok && Same(top.P("frame"), new[] { 100, 48, 900, 648 }), top.ToString());
+    }
+
+    [TestMethod] // SNAP-014, SNAP-025, SNAP-028: partly off the screen on purpose, title bar grabbable -> exactly where it was
+    public void Unsnap_puts_a_frame_left_partly_off_the_screen_back_exactly_while_its_title_bar_is_grabbable() {
+      // [1500,600,2300,1300]: bar 600..632 inside 0..1042, 420 px of it across. Kept, though its right and bottom are off.
+      var r = UnsnapLeft(One(), OneWork, new[] { 1500, 600, 2300, 1300 }, "A");
+      Assert.IsTrue(r.Ok && r.S("restoredFrom") == "remembered" && Same(r.P("frame"), new[] { 1500, 600, 2300, 1300 }), r.ToString());
+      // 64 px across at 100 % is enough; 63 is not (fit: left = max(0, min(-737, 1120)) = 0)
+      var on = UnsnapLeft(One(), OneWork, new[] { -736, 300, 64, 900 }, "A");
+      Assert.IsTrue(on.Ok && Same(on.P("frame"), new[] { -736, 300, 64, 900 }), "64 px: " + on);
+      var off = UnsnapLeft(One(), OneWork, new[] { -737, 300, 63, 900 }, "A");
+      Assert.IsTrue(off.Ok && Same(off.P("frame"), new[] { 0, 300, 800, 900 }), "63 px: " + off);
+      // at 125 % the 64 DIP are (64*120+48)/96 = 80 px: 80 across stays, 79 is fitted (top stays 300, inside 40..1552)
+      var on125 = UnsnapLeft(Hi(), HiWork, new[] { -720, 300, 80, 900 }, "H");
+      Assert.IsTrue(on125.Ok && Same(on125.P("frame"), new[] { -720, 300, 80, 900 }), "80 px at 125 %: " + on125);
+      var off125 = UnsnapLeft(Hi(), HiWork, new[] { -721, 300, 79, 900 }, "H");
+      Assert.IsTrue(off125.Ok && Same(off125.P("frame"), new[] { 0, 300, 800, 900 }), "79 px at 125 %: " + off125);
+    }
+
+    [TestMethod] // SNAP-026 (never strands): Windows' own restore rect, stranded on the same monitor
+    public void Windows_restore_rect_with_its_title_bar_off_the_same_monitor_is_fitted_onto_it() {
+      // placement [1880,300,2680,900]: most of it is off A but A is still its monitor (the only overlap); 40 px of
+      // title bar across < 64. Fit: left = 1920-800 = 1120.
+      var r = Plan(new JsonObject { ["monitors"] = One(), ["frame"] = A(Zone(OneWork, "right")), ["dir"] = "left", ["placement"] = A(1880, 300, 2680, 900) });
+      Assert.IsTrue(r.Ok && r.S("restoredFrom") == "windows" && Same(r.P("frame"), new[] { 1120, 300, 1920, 900 }), r.ToString());
+    }
+
     [TestMethod] // SNAP-079: the assist after a cross-monitor snap is on the NEW monitor
     public void Assist_after_a_cross_monitor_snap_is_on_the_new_monitor() {
       int[] onB = Zone(BW, "left");
