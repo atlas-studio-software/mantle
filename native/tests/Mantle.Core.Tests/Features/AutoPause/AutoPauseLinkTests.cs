@@ -160,8 +160,8 @@ public class AutoPauseLinkTests
         // port must see the host below it and yield (docs/autopause-protocol.md: binding is the lock, lowest wins).
         net.PingGate = new TaskCompletionSource<bool>();
         var starts = Task.WhenAll(m.Link.Start(), q.Link.Start());
-        for (int i = 0; i < 200 && net.Routes.Count(r => r.EndsWith("/ping", StringComparison.Ordinal)) < 2 * P.Count; i++) await Task.Yield();
-        Assert.Equal(2 * P.Count, net.Routes.Count(r => r.EndsWith("/ping", StringComparison.Ordinal)));   // every first probe is in
+        for (int i = 0; i < 200 && net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)) < 2 * P.Count; i++) await Task.Yield();
+        Assert.Equal(2 * P.Count, net.Routes.Count(r => r.EndsWith("/ping", System.StringComparison.Ordinal)));   // every first probe is in
         var gate = net.PingGate; net.PingGate = null; gate.SetResult(true);
         await starts;
         var client = m.Link.Role == "client" ? m : q;
