@@ -3,6 +3,21 @@
 Branch `native/r13-bar-islands`, off native/r12-app-wiring b756536e. Files: BarWindow.*, Surfaces/Bar/** (Core read-only).
 Spec: apps-r3/mantle-bar (NOTES.md, look.css, shell.js, barhide.js), FIXES-2.md, lab/LOOK.md, apps-r3/LIGHT.md, look-sync v2.1.
 
+## Status (third session, 2026-11-25): the first cloud runs (41e6fd6c, 36320574), fixes
+- The band sat 8 DIP in on each side (left island at 20, pill 1880 on 1920; 150 %: 30 / 1860): the pill's `Content`
+  grid kept its electron-face padding 0 8 (found through `LeftIsland.Parent`, which did not take). Renamed `PillContent`
+  and set to 0 directly. The frost and the shadow were placed for the padless band, so they were 8 DIP off too.
+- Battery: the prototype draws `#battery` as a 32 x 36 glyph between network and clock. Electron hides it with no
+  battery, but `.btn { display: flex }` beats `[hidden]`, so the empty button keeps its place and its click. Islands:
+  always the 32 x 36 button (UIA `bar.battery`, opens quick settings); the prototype's battery glyph only when
+  GetSystemPowerStatus reports a battery (the runner has none: an empty box, as Electron's). The level is not read.
+- UI tests: HoverTests (the islands log "no live capture" and never "glass: light: live"; the CPU test measures islands
+  light, islands dark and the electron light face, which keeps the live / stop expectation), ClusterTests (battery 32 x 36,
+  2 apart), StripTests (the running-line pixels in dark: in light, LgInk2 on the frost's flat fallback #2c5258 is 13
+  luminance apart and reads 0 px), StripTests.Overflow / OverflowBadge (48 pins: 30 all fit the islands' dock on 1920).
+- Known, not fixed here: in light the islands' dark Lg inks sit on the frost (or its dark-teal fallback) with little
+  contrast until the light lift lands.
+
 ## Status (second session, 2026-11-25)
 Nothing compiled or run here (no .NET SDK on this machine): the first cloud run is the first build. Built:
 - Core (new, pure): Mantle.Core/Look/Levitate/BarIslands.cs (the prototype's numbers, `Layout` with the fitDock rule,

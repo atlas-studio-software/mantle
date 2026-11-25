@@ -38,7 +38,10 @@ public sealed partial class BarWindow
     {
         if (!BarGeometry.Islands) return;
         foreach (var layer in new UIElement[] { Glass, Tint, Lip, Edge }) layer.Visibility = Visibility.Collapsed;
-        if (LeftIsland.Parent is Grid content) content.Padding = new Thickness(0);   // the XAML's "Content" grid (padding 0 8 in the pill)
+        // the pill's 0 8 padding is the electron face's: the band itself is 12 DIP from the screen's edges, so the left and
+        // right islands sit flush on its ends (named, not found through LeftIsland.Parent: the first cloud run still drew
+        // them 8 DIP in, the band 1880 wide on a 1920 screen)
+        PillContent.Padding = new Thickness(0);
         Pill.Height = BarIslands.BarH;
         // the LgBtn template's hover / pressed fills resolve from here first (lightweight styling)
         Root.Resources["LgHover"] = _isHover;
@@ -74,8 +77,7 @@ public sealed partial class BarWindow
             b.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
         }
         if (MoreBtn.Content is Grid more) more.Width = BarIslands.GlyphW;
-        // the 14 DIP stand-in for Electron's hidden battery button is for the Electron pairs only
-        BatteryBtn.Visibility = Visibility.Collapsed;
+        IslandBattery();
         ClockBtn.Padding = new Thickness(BarIslands.ClockPadX, 0, BarIslands.ClockPadX, 0);
         ClockBtn.MinWidth = 0;
         ClockBtn.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
@@ -91,6 +93,26 @@ public sealed partial class BarWindow
         RightCluster.SizeChanged += (_, _) => LayoutIslands("the status island changed size");
         PaintIslandInks();
         Host.Log.Line("bar look: three islands (lane r13-bar-islands); MANTLE_TEST_GLASS=electron keeps the pill");
+    }
+
+    /// The battery button in the status island: a 32 x 36 glyph button between network and clock (shell.js #battery,
+    /// look.css .glyph), opening quick settings like volume and network. Electron hides it when the machine has no
+    /// battery, yet its `.btn { display: flex }` beats `[hidden]`, so the empty button keeps its place and its click;
+    /// so here: with no battery the box stays (in UIA, clickable, the same 32 x 36) and only the glyph is left out. Never
+    /// Collapsed. The glyph is the prototype's (data.js `battery`, its 24 box drawn in 16). The level is not read yet.
+    void IslandBattery()
+    {
+        BatteryBtn.Width = BarIslands.GlyphW;
+        BatteryBtn.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
+        BatteryBtn.Visibility = Visibility.Visible;
+        var (has, why) = IslandPower.HasBattery();
+        if (has) {
+            var host = new Canvas { Width = BarIslands.GlyphIcon, Height = BarIslands.GlyphIcon };
+            host.Children.Add(PathEl(RoundRect(2, 5, 10.67, 6, 1.47), false, 1.2));
+            foreach (var d in new[] { "M14 7v2", "M4 7v2", "M6 7v2", "M8 7v2" }) host.Children.Add(PathEl(d, false, 1.2));
+            BatteryBtn.Content = host;
+        } else BatteryBtn.Content = null;
+        Host.Log.Line($"bar battery: {(has ? "the glyph is drawn" : "no glyph (" + why + "); the 32 x 36 button keeps its place and opens quick settings, as Electron's hidden one does")}");
     }
 
     /// One island's levitated layers under its content, the hover sheen from the pointer.
@@ -216,5 +238,26 @@ public sealed partial class BarWindow
         double s = _scale > 0 ? _scale : 1;
         double screenW = (_monitor.Right - _monitor.Left) / s;
         return Math.Max(0, BarIslands.DockRoom(screenW, RightCluster.ActualWidth) - 2 * BarIslands.DockPadX - 8);
+    }
+}
+
+/// Whether Windows reports a system battery (GetSystemPowerStatus; BatteryFlag 128 = none, 255 = unknown), for the
+/// islands' battery glyph. Read once at start; never throws.
+internal static class IslandPower
+{
+    [System.Runtime.InteropServices.StructLayout(System.Runtime.InteropServices.LayoutKind.Sequential)]
+    struct SYSTEM_POWER_STATUS { public byte ACLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag; public uint BatteryLifeTime, BatteryFullLifeTime; }
+
+    [System.Runtime.InteropServices.DllImport("kernel32.dll")]
+    static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS s);
+
+    public static (bool Has, string Why) HasBattery()
+    {
+        try {
+            if (!GetSystemPowerStatus(out var p)) return (false, "Windows did not say whether there is a battery");
+            if ((p.BatteryFlag & 128) != 0) return (false, "this machine reports no battery");
+            if (p.BatteryFlag == 255) return (false, "Windows does not know whether there is a battery");
+            return (true, "ok");
+        } catch (Exception e) { return (false, "the battery could not be read: " + e.GetType().Name); }
     }
 }

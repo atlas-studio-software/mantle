@@ -51,8 +51,11 @@ public sealed class HoverTests
         Assert.IsTrue(FrameProbe.LogHas(dir, "bar hidden: window hidden, nothing renders", 1000), "no hidden line");
         string log = FrameProbe.Log(dir);
         StringAssert.Contains(log, "bar hiding: the cursor has been away from the bar for 180 ms");
-        StringAssert.Contains(log, "glass: light: live, 4 pictures a second while up");
-        StringAssert.Contains(log, "glass: stopped (the window is down");
+        // lane r13-bar-islands: the islands frost each island from the shared still; the pill's live capture never runs
+        // (its "glass: light: live" and "glass: stopped" lines belong to the MANTLE_TEST_GLASS=electron face, measured in
+        // Bar_and_glass_idle_cpu_hidden_at_rest_and_shown)
+        StringAssert.Contains(log, IslandsNoCapture);
+        Assert.IsFalse(log.Contains(LiveLight, StringComparison.Ordinal), "the islands look started the pill's live glass capture");
         // a second reveal works too (re-reads the geometry each time)
         FrameProbe.CursorToEdge();
         Assert.IsTrue(Host.Until(() => Win32.IsWindowVisible(h), 1500), "the second reveal did not happen");
@@ -60,6 +63,10 @@ public sealed class HoverTests
     }
 
     static void FrameNativeRect(IntPtr h, out Win32.RECT r) => FrameProbe.GetWindowRect(h, out r);
+
+    /// The app's lines for the bar's glass: the islands look (no capture) and the electron face's live light glass.
+    const string IslandsNoCapture = "bar glass: the islands look: each island is frosted from the shared still, no live capture of the screen behind the bar";
+    const string LiveLight = "glass: light: live, 4 pictures a second while up";
 
     /// BAR-091: a fullscreen window in front keeps the bar down; a maximised one does not.
     [TestMethod]
@@ -98,8 +105,10 @@ public sealed class HoverTests
         Host.Screenshot("frame-dock");
     }
 
-    /// The promise: idle CPU near zero. One run per theme: the bar + its glass hidden at rest, then shown and idle
-    /// (cursor resting on the pill: light refreshes its glass 4 times a second while up, dark holds one still).
+    /// The promise: idle CPU near zero. One run per theme in the islands look (each island frosted from the shared still:
+    /// no live capture runs, hidden or shown), and one in the MANTLE_TEST_GLASS=electron face's light theme, whose pill
+    /// refreshes its glass 4 times a second while up and logs its stop on hide: the bar + its glass hidden at rest, then
+    /// shown and idle (cursor resting on the pill).
     /// Hidden at rest is judged over 45 s by the CPU cycles the process used (QueryThreadCycleTime, exact), as % of one
     /// core. The CPU time Windows charges (Process.TotalProcessorTime) moves in whole 15.6 ms clock ticks and lands on
     /// whichever thread runs at the tick: over the same 45 s it read 0.139 to 1.423 % while the cycles read 0.38 to 0.65 %
@@ -113,10 +122,13 @@ public sealed class HoverTests
         var lines = new List<string>();
         var tables = new List<string>();
         var worst = new Dictionary<string, double>();
-        foreach (var theme in new[] { "light", "dark" })
+        foreach (var (theme, electron) in new[] { ("light", false), ("dark", false), ("light", true) })
         {
+            string run = electron ? "electron " + theme : theme;
             // the app's own idle probe counts the same window from inside (UI-thread messages, timers, sidecar lines)
-            var (app, h, dir) = Hover("cpu-" + theme, theme, new Dictionary<string, string> { ["MANTLE_TEST_IDLE_PROBE"] = $"3000,{HiddenMs}" });
+            var env = new Dictionary<string, string> { ["MANTLE_TEST_IDLE_PROBE"] = $"3000,{HiddenMs}" };
+            if (electron) env["MANTLE_TEST_GLASS"] = "electron";
+            var (app, h, dir) = Hover("cpu-" + (electron ? "electron-" : "") + theme, theme, env);
             using var _ = app;
             int logFrom = FrameProbe.Log(dir).Length;   // from the first hide: the probe arms there and starts 3 s later
             Thread.Sleep(3000);
@@ -135,15 +147,21 @@ public sealed class HoverTests
             FrameProbe.CursorAway();
             Host.Until(() => !Win32.IsWindowVisible(h), 2000);
             Thread.Sleep(500);
-            int pics = FrameProbe.Count(dir, "glass: stopped");
+            int pics = FrameProbe.Count(dir, "glass: stopped"), live = FrameProbe.Count(dir, LiveLight), still = FrameProbe.Count(dir, IslandsNoCapture);
             var after = FrameProbe.Cpu(app.Proc, 5000);
-            string line = $"IDLE-CPU {theme}: hidden at rest {hidden.Threads.CyclePct} % of one core by cycles over {HiddenMs / 1000} s ({hidden.App} % charged in clock ticks, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}";
+            string line = $"IDLE-CPU {run}: hidden at rest {hidden.Threads.CyclePct} % of one core by cycles over {HiddenMs / 1000} s ({hidden.App} % charged in clock ticks, {hidden.Threads.Switches} wakeups; dwm {hidden.Dwm} %), shown idle {shown.App} % ({shown.Threads.CyclePct} % by cycles; dwm {shown.Dwm} %), hidden again {after.App} %; bar stayed up {stillUp}; glass stops logged {pics}, live starts {live}, islands no-capture lines {still}";
             lines.Add(line); Console.WriteLine(line);
-            tables.Add($"{theme}, hidden at rest:\n{hidden.Threads.Table()}\n  what the app counted inside (its idle probe):\n{(inside.Length > 0 ? inside : "  (no idle probe lines)")}\n  what the app logged meanwhile:\n{(logged.Length > 0 ? logged : "  (nothing)")}");
-            tables.Add($"{theme}, shown idle:\n{shown.Threads.Table()}");
-            worst["hidden " + theme] = hidden.Threads.CyclePct; worst["shown " + theme] = shown.App;
+            tables.Add($"{run}, hidden at rest:\n{hidden.Threads.Table()}\n  what the app counted inside (its idle probe):\n{(inside.Length > 0 ? inside : "  (no idle probe lines)")}\n  what the app logged meanwhile:\n{(logged.Length > 0 ? logged : "  (nothing)")}");
+            tables.Add($"{run}, shown idle:\n{shown.Threads.Table()}");
+            worst["hidden " + run] = hidden.Threads.CyclePct; worst["shown " + run] = shown.App;
             Assert.IsTrue(stillUp, "the bar hid during the shown measurement: " + line);
-            if (theme == "light") Assert.IsTrue(pics >= 1, "light glass never logged its stop on hide: " + line);
+            if (electron) {
+                Assert.IsTrue(live >= 1, "the electron face's light glass never went live while up: " + line);
+                Assert.IsTrue(pics >= 1, "light glass never logged its stop on hide: " + line);
+            } else {
+                Assert.AreEqual(1, still, "the islands look did not say once that it runs no live capture: " + line);
+                Assert.IsTrue(live == 0 && pics == 0, "the islands look ran the pill's live glass capture: " + line);
+            }
             // the top bar's top-row hints listener (lane native-r8-topbar): listening, and it never woke in this window
             Assert.IsTrue(FrameProbe.Count(dir, "top-row hints: listening on") == 1, "the top-row hints listener did not start once: " + line);
             Assert.AreEqual(0, FrameProbe.Count(dir, "hints: listener woke"), "the top-row hints listener woke at rest: " + line);
@@ -151,7 +169,7 @@ public sealed class HoverTests
         File.WriteAllLines(Path.Combine(Host.OutDir, "idle-cpu.txt"), lines);
         File.WriteAllText(Path.Combine(Host.OutDir, "idle-threads.txt"), string.Join("\n\n", tables) + "\n");
         string Named(string which) => string.Join("\n", lines) + "\n" + string.Join("\n", tables.Where(t => t.Contains(which, StringComparison.Ordinal)));
-        Assert.IsTrue(worst["hidden light"] < 1.0 && worst["hidden dark"] < 1.0, "hidden at rest costs 1 % of a core or more (by cycles):\n" + Named("hidden at rest"));
-        Assert.IsTrue(worst["shown light"] < 20 && worst["shown dark"] < 20, "shown idle costs 20 % of a core or more:\n" + Named("shown idle"));
+        Assert.IsTrue(worst.Where(kv => kv.Key.StartsWith("hidden ", StringComparison.Ordinal)).All(kv => kv.Value < 1.0), "hidden at rest costs 1 % of a core or more (by cycles):\n" + Named("hidden at rest"));
+        Assert.IsTrue(worst.Where(kv => kv.Key.StartsWith("shown ", StringComparison.Ordinal)).All(kv => kv.Value < 20), "shown idle costs 20 % of a core or more:\n" + Named("shown idle"));
     }
 }

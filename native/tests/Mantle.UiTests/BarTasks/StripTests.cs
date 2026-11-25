@@ -85,8 +85,9 @@ public partial class StripTests
     static Cell? Named(List<Cell> cs, string name) => cs.FirstOrDefault(c => c.Name.Contains(name, StringComparison.Ordinal));
 
     /// <summary>
-    /// The pixels that differ from the band's median under the icon, where the running line sits (bar.css .cell .ind:
-    /// 3 px tall, 6 px or 16 px wide, 13 DIP below the cell's centre). A cell with no line has next to none.
+    /// The pixels that differ from the band's median under the icon, where the running line sits (lane r13-bar-islands,
+    /// apps-r3/mantle-bar look.css .cell .run: 4 x 3, 2 DIP above the 36 DIP cell's bottom, so 13 DIP below its centre; the
+    /// active line 16 x 3 in the same place). A cell with no line has next to none.
     /// </summary>
     static int LinePixels(Cell c)
     {
@@ -165,7 +166,10 @@ public partial class StripTests
         var pins = PinFolder("order-" + tag, ("Gamma Reg", RegeditExe), ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
         const string profile = "uitest-strip-order";
         _profile = profile;
-        using var app = BarApp.Launch(profile, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
+        // dark: the prototype's theme (apps-r3/mantle-bar is dark only; light lives in ../light-mantle). Its run dot is
+        // text-3, light on the frost; in light the islands' ink is today's dark LgInk2, which on the frost's flat fallback
+        // (#2c5258, a test run shares no wallpaper still) is 13 luminance apart, so no line reads in the pixels
+        using var app = BarApp.Launch(profile, "dark", env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
         using var a = new Host.Fixture($"Strip pinned {tag}", 60, 60);                 // powershell.exe: Alpha Shell's app
         using var b = new Host.Fixture($"Strip running {tag}", 520, 60, "pwsh.exe");   // pinned by nobody: after the divider
 
