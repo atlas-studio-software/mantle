@@ -437,7 +437,8 @@ public class DesktopPublisherTests
         Assert.False(rec["ok"]!.GetValue<bool>());
         Assert.Equal("Windows shows a plain colour, not a picture", LookSyncCore.Str(rec["reason"]));
         Assert.Null(rec["still"]);
-        Assert.Equal(RecordKeys, rec.Select(kv => kv.Key).ToArray());   // ok:false is the same shape: no guardReason any more
+        // ok:false is the same key set (in its own order: JSON key order is not part of the contract): no guardReason any more
+        Assert.Equal(RecordKeys.OrderBy(k => k, StringComparer.Ordinal), rec.Select(kv => kv.Key).OrderBy(k => k, StringComparer.Ordinal));
         Assert.Null(LookSyncCore.CheckDesktop(rec));
         Assert.Empty(rig.Stills());
     }
