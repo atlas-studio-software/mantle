@@ -43,7 +43,7 @@ public sealed partial class FeatureHost
 
         /// False once the feature stopped, rested, failed or was restarted: this context adds nothing more.
         internal bool Alive => _f.Gen == _gen && !_f.Stopped;
-        internal bool Stopping => _f.Gen == _gen && _f.Stopped && _f.InStop;
+        internal bool InOwnStop => _f.Gen == _gen && _f.Stopped && _f.InStop;
 
         internal void MustBeAlive(string what)
         {
@@ -206,7 +206,7 @@ public sealed partial class FeatureHost
         public async ValueTask<PlatformReply> CallAsync(string verb, JsonObject? args = null, TimeSpan? timeout = null, CancellationToken cancel = default)
         {
             // A stopping feature may still call while its own StopAsync runs (the hand-back); after that, nothing.
-            if (!_ctx.Alive && !_ctx.Stopping) return PlatformReply.Fail(PlatformOutcome.Refused, $"{_f.Label} is stopped, so it asks Windows for nothing more");
+            if (!_ctx.Alive && !_ctx.InOwnStop) return PlatformReply.Fail(PlatformOutcome.Refused, $"{_f.Label} is stopped, so it asks Windows for nothing more");
             try { return await _h._o.Platform.CallAsync(verb, args, timeout ?? PlatformDefaults.FeatureCallTimeout, cancel); }
             catch (Exception e) { return PlatformReply.Fail(PlatformOutcome.Failed, $"{verb} threw: {Words(e)}"); }
         }
