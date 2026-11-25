@@ -41,8 +41,21 @@ internal static class Backdrop
 
     /// Blur (and saturate) a copy of the shot, cropped to the pill. `into` is reused when it has the pill's size
     /// (the light glass loop swaps ~4 pictures a second; a new bitmap each time would only churn memory).
-    public static WriteableBitmap Render(Shot shot, Win32.RECT pill, double sigmaPx, double saturate, WriteableBitmap? into = null)
-        => ToBitmap(Blurred(shot, pill, sigmaPx, saturate), pill.Right - pill.Left, pill.Bottom - pill.Top, into);
+    public static WriteableBitmap Render(Shot shot, Win32.RECT pill, double sigmaPx, double saturate, WriteableBitmap? into = null, int stripScale = 1)
+        => ToBitmap(Blurred(shot, pill, sigmaPx, saturate, stripScale), pill.Right - pill.Left, pill.Bottom - pill.Top, into);
+
+    /// THE BAR'S STRIP IS A QUARTER-RESOLUTION PICTURE in Electron: main.js asks the sidecar for the screen behind the
+    /// bar at BACKDROP_SCALE = 4 (sidecar/Backdrop.cs: HighQualityBilinear down to 1/4 a side) and the page stretches it
+    /// back over the pill (bar.css .bdrop img, object-fit: fill) before the CSS blur. So fine detail behind the bar (a
+    /// line of desktop text, a window edge) is smeared even at blur 0. The bar passes this so its glass is that same
+    /// picture (lane r12-ci-fixes: at 150 % the runner's "Windows Server" desktop text lay under the pill's right end,
+    /// sharp in native and smeared in Electron: 560 of the 742 light-150 pixels over the parity threshold).
+    public const int BarStripScale = 4;
+
+    /// LIGHT ONLY: in dark Electron's bar glass is not the screen at all but the wallpaper cut to the pill (main.js
+    /// backdropPicture: theme dark -> wallStill.rect, lane mantle-seethru-bar-desktop), so a quarter screen strip would
+    /// match nothing there. Native's dark bar still paints its 1:1 grab (the wallpaper cut is not ported; lane note).
+    public static int StripFor(bool dark) => dark ? 1 : BarStripScale;
 
     /// The UI-thread half of Render: the cropped BGRA pixels into a bitmap.
     public static WriteableBitmap ToBitmap(byte[] crop, int cw, int ch, WriteableBitmap? into = null)
@@ -54,10 +67,11 @@ internal static class Backdrop
     }
 
     /// The thread-free half of Render (no XAML object): blur, saturate, crop to the pill. Safe off the UI thread.
-    public static byte[] Blurred(Shot shot, Win32.RECT pill, double sigmaPx, double saturate)
+    public static byte[] Blurred(Shot shot, Win32.RECT pill, double sigmaPx, double saturate, int stripScale = 1)
     {
         byte[] px = (byte[])shot.Px.Clone();
         int w = shot.W, h = shot.H;
+        if (stripScale > 1) Strip(px, w, h, stripScale);
         if (sigmaPx > 0.5) Blur(px, w, h, sigmaPx);
         if (Math.Abs(saturate - 1) > 0.001) Saturate(px, saturate);
 
@@ -91,6 +105,41 @@ internal static class Backdrop
             return Win32.GetDIBits(mem, bmp, 0, (uint)h, bits, ref bmi, 0) == 0 ? null : bits;
         } finally {
             Win32.DeleteObject(bmp); Win32.DeleteDC(mem); Win32.ReleaseDC(IntPtr.Zero, screen);
+        }
+    }
+
+    /// Electron's strip, in place: the picture averaged down to 1/k a side (round(w/k) x round(h/k), each small pixel
+    /// the mean of its box, as a high-quality bilinear downscale does) and stretched back to w x h bilinearly with pixel
+    /// centres aligned (a browser's object-fit: fill). See <see cref="BarStripScale"/>.
+    internal static void Strip(byte[] px, int w, int h, int k)
+    {
+        int sw = Math.Max(1, (int)Math.Round((double)w / k)), sh = Math.Max(1, (int)Math.Round((double)h / k));
+        if (sw == w && sh == h) return;
+        var small = new double[sw * sh * 3];
+        for (int sy = 0; sy < sh; sy++) {
+            int y0 = sy * h / sh, y1 = Math.Max(y0 + 1, (sy + 1) * h / sh);
+            for (int sx = 0; sx < sw; sx++) {
+                int x0 = sx * w / sw, x1 = Math.Max(x0 + 1, (sx + 1) * w / sw);
+                double b = 0, g = 0, r = 0; int n = 0;
+                for (int y = y0; y < y1; y++)
+                    for (int x = x0; x < x1; x++) { int o = (y * w + x) * 4; b += px[o]; g += px[o + 1]; r += px[o + 2]; n++; }
+                int d = (sy * sw + sx) * 3;
+                small[d] = b / n; small[d + 1] = g / n; small[d + 2] = r / n;
+            }
+        }
+        for (int y = 0; y < h; y++) {
+            double fy = (y + 0.5) * sh / h - 0.5; int ya = (int)Math.Floor(fy); double ty = fy - ya;
+            int ra = Math.Clamp(ya, 0, sh - 1) * sw, rb = Math.Clamp(ya + 1, 0, sh - 1) * sw;
+            for (int x = 0; x < w; x++) {
+                double fx = (x + 0.5) * sw / w - 0.5; int xa = (int)Math.Floor(fx); double tx = fx - xa;
+                int ca = Math.Clamp(xa, 0, sw - 1), cb = Math.Clamp(xa + 1, 0, sw - 1);
+                int o = (y * w + x) * 4;
+                for (int c = 0; c < 3; c++) {
+                    double v = (small[(ra + ca) * 3 + c] * (1 - tx) + small[(ra + cb) * 3 + c] * tx) * (1 - ty)
+                             + (small[(rb + ca) * 3 + c] * (1 - tx) + small[(rb + cb) * 3 + c] * tx) * ty;
+                    px[o + c] = (byte)Math.Clamp((int)Math.Round(v), 0, 255);
+                }
+            }
         }
     }
 

@@ -321,11 +321,12 @@ public sealed partial class BarWindow
         var pill = _pillPx; var mon = _monitor; double sigma = Host.Data.EffectiveGlass.For(_dark).BlurPx * _scale;
         double maxSigma = Math.Max(Host.Data.EffectiveGlass.Dark.BlurPx, Host.Data.EffectiveGlass.Light.BlurPx) * _scale;
         double sat = Saturation(_dark);
+        int strip = Backdrop.StripFor(_dark);
         _glassW = pill.Right - pill.Left; _glassH = pill.Bottom - pill.Top;
         if (Host.Args.NoBackdrop) return () => null;
         return () => {
             var shot = Backdrop.Grab(pill, mon, maxSigma);
-            return shot == null ? null : Backdrop.Blurred(shot, pill, sigma, sat);
+            return shot == null ? null : Backdrop.Blurred(shot, pill, sigma, sat, strip);
         };
     }
 
