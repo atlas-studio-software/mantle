@@ -4,6 +4,7 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 using Mantle.Core.Features.Downloads;
+using Mantle.Core.Look.Levitate;
 using Microsoft.UI.Text;
 using Microsoft.UI.Xaml;
 using Microsoft.UI.Xaml.Automation;
@@ -21,7 +22,8 @@ namespace Mantle.App.Surfaces.Bar.Downloads;
 /// </summary>
 internal sealed class DownloadsShelf
 {
-    public const double WidthDip = 340;
+    /// A list panel of the levitated look (lane r12-levitate-host): 360 wide (was 340).
+    public const double WidthDip = PopupLevitate.ListWidth;
     static readonly Dictionary<string, string> KindWord = new(StringComparer.Ordinal) {
         ["file"] = "File", ["doc"] = "Document", ["sheet"] = "Spreadsheet", ["code"] = "Code", ["archive"] = "Archive", ["image"] = "Image",
         ["video"] = "Video", ["audio"] = "Audio", ["slides"] = "Presentation", ["app"] = "App or installer", ["disk"] = "Disk image", ["folder"] = "Folder",
@@ -37,8 +39,14 @@ internal sealed class DownloadsShelf
     readonly TextBlock _sub = T(11), _note = T(12), _detail = T(11);
     readonly StackPanel _list = new() { Spacing = 1 };
     readonly ScrollViewer _scroll = new() { MaxHeight = 366, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
-    readonly Button _folder = new() { HorizontalAlignment = HorizontalAlignment.Right, Padding = new Thickness(8, 4, 8, 4) };
-    readonly Border _foot = new() { BorderThickness = new Thickness(0, 1, 0, 0), Padding = new Thickness(0, 6, 0, 0), Margin = new Thickness(2, 6, 2, 0) };
+    // the foot's one text button (look.css .link): 28 tall, padding 0 12, radius 8, 12 / 500, text-2, fill-1 on hover
+    readonly Button _folder = new() { HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center, Height = 28,
+        Padding = new Thickness(12, 0, 12, 0), CornerRadius = new CornerRadius(LevitateTokens.RadiusCtlL), FontSize = 12, FontWeight = FontWeights.Medium };
+    // the foot: a 40 DIP row, a hair line on top, padding 0 8 0 16 (panels/downloads.css .dl-foot)
+    readonly Border _foot = new() { Height = PopupLevitate.FootHeight, BorderThickness = new Thickness(0, PopupLevitate.FootLine, 0, 0),
+        Padding = new Thickness(PopupLevitate.FootPadLeft, 0, PopupLevitate.FootPadRight, 0) };
+    // the hover / press fills of the rows and buttons (lightweight styling), one brush each, re-coloured on every paint
+    readonly SolidColorBrush _fill1 = new(), _fill2 = new(), _press = new(), _clear = new(), _hoverInk = new();
     readonly List<Button> _rows = new();
     readonly List<RowParts> _parts = new();
     readonly Action<string> _log;
@@ -58,34 +66,47 @@ internal sealed class DownloadsShelf
     {
         _log = log;
         Uia(Root, "dl.panel", "Downloads");
-        Root.Padding = new Thickness(8, 11, 8, 8);
+        // the levitated list panel (lane r12-levitate-host; bar prototype apps-r3/mantle-bar panels/downloads.css): one island,
+        // 360 wide, padding 8 round the list; the head and the foot are 40 DIP rows from the island's edge. The pop-up host
+        // paints the frost, the dim and the film under it (PopupKind.Levitate), so the panel has no background of its own.
+        Root.Padding = new Thickness(0);
         Root.Children.Add(_stack);
-        var head = new Grid { Padding = new Thickness(6, 0, 6, 4) };
-        var h = T(14); h.Text = "Downloads"; h.FontWeight = FontWeights.SemiBold;
+        var head = new Grid { Height = PopupLevitate.HeadHeight, Padding = new Thickness(PopupLevitate.HeadPadLeft, 0, PopupLevitate.HeadPadRight, 0) };
+        var h = T(PopupLevitate.TitleSize); h.Text = "Downloads"; h.FontWeight = FontWeights.SemiBold; h.VerticalAlignment = VerticalAlignment.Center;
         Uia(h, "dl.title", "Downloads");
-        _sub.HorizontalAlignment = HorizontalAlignment.Right; _sub.VerticalAlignment = VerticalAlignment.Bottom;
+        _sub.HorizontalAlignment = HorizontalAlignment.Right; _sub.VerticalAlignment = VerticalAlignment.Center; _sub.Margin = new Thickness(0, 0, 8, 0);
         Uia(_sub, "dl.sub", "");
         head.Children.Add(h); head.Children.Add(_sub);
         _stack.Children.Add(head);
         _scroll.Content = _list;
+        _scroll.Margin = new Thickness(PopupLevitate.ListPadding, 0, PopupLevitate.ListPadding, 0);
+        _scroll.Padding = new Thickness(0, 0, 0, 4);
         Uia(_scroll, "dl.list", "Downloads list");
         _stack.Children.Add(_scroll);
-        _note.Margin = new Thickness(6, 6, 6, 0); _note.TextWrapping = TextWrapping.Wrap;
+        _note.Margin = new Thickness(16, 6, 16, 4); _note.TextWrapping = TextWrapping.Wrap;
         Uia(_note, "dl.note", "");
         _stack.Children.Add(_note);
-        var foot = new StackPanel { Spacing = 4 };
-        _detail.TextWrapping = TextWrapping.Wrap; _detail.Padding = new Thickness(4, 0, 4, 0);
+        _detail.TextWrapping = TextWrapping.Wrap; _detail.Margin = new Thickness(16, 2, 16, 6);
         Uia(_detail, "dl.detail", "");
-        foot.Children.Add(_detail);
-        var fl = new StackPanel { Orientation = Orientation.Horizontal, Spacing = 6 };
-        fl.Children.Add(new FontIcon { Glyph = KindGlyph["folder"], FontSize = 13 });
-        fl.Children.Add(new TextBlock { Text = "Open Downloads folder", FontSize = 12 });
-        _folder.Content = fl;
+        _stack.Children.Add(_detail);
+        _folder.Content = new TextBlock { Text = "Open Downloads folder" };
         Uia(_folder, "dl.folder", "Open Downloads folder");
+        Fills(_folder, _fill1, _press);
         _folder.Click += (_, _) => Act?.Invoke("folder", null, "Could not open the Downloads folder");
-        foot.Children.Add(_folder);
-        _foot.Child = foot;
+        _foot.Child = _folder;
         _stack.Children.Add(_foot);
+    }
+
+    /// Lightweight styling of one button: its hover and press fills (the shelf's own brushes), no border in any state, the
+    /// text ink on hover.
+    void Fills(Button b, Brush hover, Brush press)
+    {
+        b.Resources["ButtonBackgroundPointerOver"] = hover;
+        b.Resources["ButtonBackgroundPressed"] = press;
+        b.Resources["ButtonBorderBrushPointerOver"] = _clear;
+        b.Resources["ButtonBorderBrushPressed"] = _clear;
+        b.Resources["ButtonForegroundPointerOver"] = _hoverInk;
+        b.Resources["ButtonForegroundPressed"] = _hoverInk;
     }
 
     /// The rows in order (the keyboard walks them).
@@ -95,6 +116,11 @@ internal sealed class DownloadsShelf
     public void Paint(bool dark, long nowMs)
     {
         _dark = dark;
+        // fill-1 (hover), fill-2 (the reveal's hover), fill-press; in light today's --lg-hover / --lg-press
+        _fill1.Color = Color(Ink("LvCtlFillHover", "LgHover"));
+        _fill2.Color = Color(Ink("LvCtlFillOn", "LgHover"));
+        _press.Color = Color(Ink("LvCtlFillPressed", "LgPress"));
+        _hoverInk.Color = Color(Ink("LvText", "LgInk"));
         var v = View;
         bool has = v.ValueKind == JsonValueKind.Object;
         var items = has && v.TryGetProperty("items", out var it) && it.ValueKind == JsonValueKind.Array ? it.EnumerateArray().ToList() : new List<JsonElement>();
@@ -104,7 +130,7 @@ internal sealed class DownloadsShelf
         _sub.Text = partial > 0 ? $"{partial} still downloading…" : "";
         _sub.Visibility = partial > 0 ? Visibility.Visible : Visibility.Collapsed;
         AutomationProperties.SetName(_sub, _sub.Text);
-        _sub.Foreground = B("LgInk3");
+        _sub.Foreground = Ink("LvText2", "LgInk3");
 
         bool noFolder = state is "missing" or "unresolved";
         string? folder = Str(v, "folder");
@@ -112,7 +138,7 @@ internal sealed class DownloadsShelf
         ToolTipService.SetToolTip(_folder, tip);
         AutomationProperties.SetHelpText(_folder, tip);
         _folder.IsEnabled = !Busy.Contains("*") && !noFolder && state != "resting" && !(has && folder == null && !bad);
-        _folder.Foreground = B(_folder.IsEnabled ? "LgInk2" : "LgInk3");
+        _folder.Foreground = _folder.IsEnabled ? Ink("LvText2", "LgInk2") : Ink("LvText4", "LgInk3");
         _folder.Background = new SolidColorBrush();
         _folder.BorderThickness = new Thickness(0);
         AutomationProperties.SetHelpText(_scroll, KbdNote);
@@ -160,30 +186,38 @@ internal sealed class DownloadsShelf
         string say = Note.Length > 0 ? Note : Str(v, "seenNote") ?? "";
         _note.Text = say.Length > 0 ? DownloadsList.Sentence(say) : "";
         _note.Visibility = say.Length > 0 ? Visibility.Visible : Visibility.Collapsed;
-        _note.Foreground = B("LgInk2");
+        _note.Foreground = Ink("LvText2", "LgInk2");
         AutomationProperties.SetName(_note, _note.Text);
         var words = new List<string>();
         if (Str(v, "detail") is { Length: > 0 } d) words.Add(d);
         if (!bad && Str(v, "watchReason") is { Length: > 0 } wr) words.Add(DownloadsList.Sentence(wr));
         _detail.Text = string.Join(" ", words);
         _detail.Visibility = words.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
-        _detail.Foreground = B("LgInk3");
+        _detail.Foreground = Ink("LvText3", "LgInk3");
         AutomationProperties.SetName(_detail, _detail.Text);
-        _foot.BorderBrush = B("LgDivider");
+        _foot.BorderBrush = Ink("LvHair", "LgDivider");
         Root.Background = null;
     }
 
     StackPanel Empty(string big, string? sub, string status)
     {
-        var u = new StackPanel { Padding = new Thickness(8, 18, 8, 16) };
+        // the one Mantle empty-state recipe (panels/downloads.css .dl-empty): padding 32 16, a 40 DIP tile at radius 12 for
+        // "nothing yet", the line 14 / 600, the sentence 12 in text-2, 4 apart
+        var u = new StackPanel { Padding = new Thickness(16, 32, 16, 32), Spacing = 4 };
         Uia(u, "dl.empty", big);
         AutomationProperties.SetItemStatus(u, status);
-        var b = T(13.5); b.Text = big; b.HorizontalAlignment = HorizontalAlignment.Center; b.TextAlignment = TextAlignment.Center;
-        b.Foreground = B(status == "bad" ? "LgWarn" : "LgInk");
+        if (status == "empty")
+            u.Children.Add(new Border {
+                Width = 40, Height = 40, Margin = new Thickness(0, 0, 0, 8), HorizontalAlignment = HorizontalAlignment.Center,
+                CornerRadius = new CornerRadius(LevitateTokens.IslandRadius), Background = Ink("LvCtlFillHover", "LgTile"), IsHitTestVisible = false,
+                Child = new FontIcon { Glyph = "", FontSize = 20, Foreground = Ink("LvText2", "LgInk2") },
+            });
+        var b = T(PopupLevitate.TitleSize); b.FontWeight = FontWeights.SemiBold; b.Text = big; b.TextWrapping = TextWrapping.Wrap; b.HorizontalAlignment = HorizontalAlignment.Center; b.TextAlignment = TextAlignment.Center;
+        b.Foreground = status == "bad" ? B("LgWarn") : Ink("LvText", "LgInk");
         Uia(b, "dl.empty.big", big);
         u.Children.Add(b);
         if (sub != null) {
-            var s = T(12); s.Text = sub; s.TextWrapping = TextWrapping.Wrap; s.TextAlignment = TextAlignment.Center; s.Foreground = B("LgInk2"); s.Margin = new Thickness(0, 4, 0, 0);
+            var s = T(12); s.Text = sub; s.TextWrapping = TextWrapping.Wrap; s.TextAlignment = TextAlignment.Center; s.Foreground = Ink("LvText2", "LgInk2");
             Uia(s, "dl.empty.sub", sub);
             u.Children.Add(s);
         }
@@ -192,7 +226,7 @@ internal sealed class DownloadsShelf
 
     TextBlock Line(string text, string id)
     {
-        var t = T(11); t.Text = text; t.TextWrapping = TextWrapping.Wrap; t.TextAlignment = TextAlignment.Center; t.Foreground = B("LgInk3"); t.Margin = new Thickness(0, 6, 0, 0);
+        var t = T(11); t.Text = text; t.TextWrapping = TextWrapping.Wrap; t.TextAlignment = TextAlignment.Center; t.Foreground = Ink("LvText3", "LgInk3"); t.Margin = new Thickness(0, 6, 0, 0);
         t.IsTextSelectionEnabled = id == "dl.path";
         Uia(t, id, text);
         return t;
@@ -205,7 +239,7 @@ internal sealed class DownloadsShelf
     {
         public string Item = "", Shown = "";
         public bool Hover;
-        public readonly Grid Cell = new() { MinHeight = 42 };
+        public readonly Grid Cell = new() { Height = PopupLevitate.RowHeight };
         public Button Row = null!, Show = null!;
         public Border Tile = null!;
         public FontIcon Glyph = null!;
@@ -216,23 +250,27 @@ internal sealed class DownloadsShelf
     RowParts MakeRow()
     {
         var p = new RowParts();
+        // a row (panels/downloads.css .dl-row): 40 tall, padding 0 4 0 12, its parts 12 apart, radius 8, fill-1 on hover and
+        // fill-press pressed; the right padding leaves the Show in folder button (28) and its 12 of air clear
         var row = new Button {
-            HorizontalAlignment = HorizontalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch, Padding = new Thickness(10, 5, 36, 5),
-            Background = new SolidColorBrush(), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(8), CanDrag = true,
+            HorizontalAlignment = HorizontalAlignment.Stretch, VerticalAlignment = VerticalAlignment.Stretch, HorizontalContentAlignment = HorizontalAlignment.Stretch,
+            Padding = new Thickness(PopupLevitate.RowPadLeft, 0, PopupLevitate.RowPadRight + PopupLevitate.TileSize + PopupLevitate.RowGap, 0),
+            Background = new SolidColorBrush(), BorderThickness = new Thickness(0), CornerRadius = new CornerRadius(PopupLevitate.RowRadius), CanDrag = true,
         };
-        var g = new Grid { ColumnSpacing = 10 };
-        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(28) });
+        Fills(row, _fill1, _press);
+        var g = new Grid { ColumnSpacing = PopupLevitate.RowGap };
+        g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(PopupLevitate.TileSize) });
         g.ColumnDefinitions.Add(new ColumnDefinition { Width = new GridLength(1, GridUnitType.Star) });
-        p.Glyph = new FontIcon { FontSize = 15 };
-        p.Tile = new Border { Width = 28, Height = 28, Child = p.Glyph };
+        p.Glyph = new FontIcon { FontSize = 16 };
+        p.Tile = new Border { Width = PopupLevitate.TileSize, Height = PopupLevitate.TileSize, Child = p.Glyph };
         g.Children.Add(p.Tile);
         var txt = new StackPanel { VerticalAlignment = VerticalAlignment.Center };
         Grid.SetColumn(txt, 1);
-        p.NameT = T(12.5); p.NameT.FontWeight = FontWeights.Medium; p.NameT.TextTrimming = TextTrimming.CharacterEllipsis;
-        p.MetaT = T(11); p.MetaT.Margin = new Thickness(0, 1, 0, 0);
+        p.NameT = T(13); p.NameT.FontWeight = FontWeights.Medium; p.NameT.TextTrimming = TextTrimming.CharacterEllipsis;
+        p.MetaT = T(11);
         txt.Children.Add(p.NameT); txt.Children.Add(p.MetaT);
         g.Children.Add(txt);
-        p.Dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 4, Height = 4, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-7, 0, 0, 0) };
+        p.Dot = new Microsoft.UI.Xaml.Shapes.Ellipse { Width = 4, Height = 4, HorizontalAlignment = HorizontalAlignment.Left, VerticalAlignment = VerticalAlignment.Center, Margin = new Thickness(-PopupLevitate.RowPadLeft + 4, 0, 0, 0) };   // 4 from the row's left edge
         g.Children.Add(p.Dot);
         row.Content = g;
         row.Click += (_, _) => Act?.Invoke("open", p.Item, "Could not open " + p.Shown);
@@ -241,17 +279,22 @@ internal sealed class DownloadsShelf
         p.Row = row;
 
         var show = new Button {
-            Width = 28, Height = 28, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(0, 0, 4, 0), Background = new SolidColorBrush(), BorderThickness = new Thickness(0),
-            Content = new FontIcon { Glyph = "", FontSize = 13 }, Opacity = .55,
+            Width = PopupLevitate.TileSize, Height = PopupLevitate.TileSize, Padding = new Thickness(0), HorizontalAlignment = HorizontalAlignment.Right, VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(0, 0, PopupLevitate.RowPadRight, 0), Background = new SolidColorBrush(), BorderThickness = new Thickness(0),
+            CornerRadius = new CornerRadius(LevitateTokens.RadiusCtlL), Content = new FontIcon { Glyph = "", FontSize = 14 }, Opacity = 0,
         };
+        Fills(show, _fill2, _press);
         ToolTipService.SetToolTip(show, "Show in folder");
         show.Click += (_, _) => Act?.Invoke("reveal", p.Item, $"Could not show {p.Shown} in its folder");
-        // shown on hover or focus (.dl-row:hover .dl-reveal, :focus-visible); always reachable by Tab and by UI Automation
-        p.Cell.PointerEntered += (_, _) => { p.Hover = true; show.Opacity = 1; };
-        p.Cell.PointerExited += (_, _) => { p.Hover = false; show.Opacity = show.FocusState != FocusState.Unfocused ? 1 : .55; };
-        show.GotFocus += (_, _) => show.Opacity = 1;
-        show.LostFocus += (_, _) => show.Opacity = p.Hover ? 1 : .55;
+        // there on hover and keyboard focus, out of the way otherwise (.dl-row:hover / :focus-within .dl-reveal); clear, it
+        // is still hit-testable and always reachable by Tab and by UI Automation
+        void Seen() => show.Opacity = p.Hover || show.FocusState != FocusState.Unfocused || row.FocusState != FocusState.Unfocused ? 1 : 0;
+        p.Cell.PointerEntered += (_, _) => { p.Hover = true; Seen(); };
+        p.Cell.PointerExited += (_, _) => { p.Hover = false; Seen(); };
+        show.GotFocus += (_, _) => Seen();
+        show.LostFocus += (_, _) => Seen();
+        row.GotFocus += (_, _) => Seen();
+        row.LostFocus += (_, _) => Seen();
         p.Cell.Children.Add(show);
         p.Show = show;
         return p;
@@ -270,10 +313,10 @@ internal sealed class DownloadsShelf
 
         var row = p.Row;
         row.Tag = item; row.Opacity = busy ? .5 : 1; row.IsHitTestVisible = !busy;
-        p.Tile.CornerRadius = new CornerRadius(_dark ? 8 : 7); p.Tile.Background = B("LgTile");
-        p.Glyph.Glyph = KindGlyph[kind]; p.Glyph.Foreground = B("LgInk2");
-        p.NameT.Text = nm; p.NameT.Foreground = B("LgInk");
-        p.MetaT.Text = meta; p.MetaT.Foreground = B("LgInk3");
+        p.Tile.CornerRadius = new CornerRadius(PopupLevitate.TileRadius); p.Tile.Background = Ink("LvCtlFillHover", "LgTile");
+        p.Glyph.Glyph = KindGlyph[kind]; p.Glyph.Foreground = Ink("LvText2", "LgInk2");
+        p.NameT.Text = nm; p.NameT.Foreground = Ink("LvText", "LgInk");
+        p.MetaT.Text = meta; p.MetaT.Foreground = Ink("LvText2", "LgInk3");
         p.Dot.Fill = B("LgAcc"); p.Dot.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
         string label = $"{nm}, {(fresh ? "new, " : "")}{KindWord[kind]}, {meta}";
         string tip = nm + "\n" + (dir ? "Click to open the folder" : "Click to open") + ", or drag it into an app or onto the desktop";
@@ -284,7 +327,7 @@ internal sealed class DownloadsShelf
 
         var show = p.Show;
         show.Tag = "r:" + item; show.IsHitTestVisible = !busy;
-        ((FontIcon)show.Content).Foreground = B("LgInk2");
+        ((FontIcon)show.Content).Foreground = Ink("LvText2", "LgInk2");
         Uia(show, $"dl.reveal.{n}", "Show in folder");
     }
 
@@ -326,6 +369,19 @@ internal sealed class DownloadsShelf
     static string? Str(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.String ? v.GetString() : null;
     static int? Int(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
     static long Long(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var i) ? i : 0;
+
+    /// The levitated look's ink (Theme/Levitate.xaml: the look is dark, one neutral family) in dark; in light today's --lg-*
+    /// token, since the light Levitate look is not built yet (the host lays no film in light either). The accent stays the
+    /// steel --lg-acc in both (the "islands" accent profile is a later job).
+    Brush Ink(string lv, string lg)
+    {
+        if (!_dark) return B(lg);
+        if (Application.Current.Resources.TryGetValue(lv, out var v) && v is Brush b) return b;
+        if (_missing.Add(lv)) _log($"downloads: the levitated token {lv} is missing from Theme/Levitate.xaml, so {lg} is used");
+        return B(lg);
+    }
+
+    static global::Windows.UI.Color Color(Brush b) => b is SolidColorBrush s ? s.Color : default;
 
     readonly HashSet<string> _missing = new();
     /// The --lg-* token of the panel's theme (Theme/Tokens.xaml), read in code so a repaint follows the bar's theme.
