@@ -130,6 +130,20 @@ public sealed class WriteGate
         return null;
     }
 
+    /// <summary>Null when the FOLDER <paramref name="fullDir"/> may be made; else why not. The same as <see cref="Refusal"/>,
+    /// except that inside the notes folder only the folder itself is ever made, never a subfolder: <see cref="Refusal"/>
+    /// sees only a path, and a folder directly in Mantle Notes looks just like a file there. SafeFile.EnsureFolder asks this.</summary>
+    public string? FolderRefusal(string fullDir)
+    {
+        string? no = Refusal(fullDir);
+        if (no != null || _notesDir == null) return no;
+        string p;
+        try { p = Norm(fullDir); } catch (Exception e) { return "the path could not be checked (" + e.GetType().Name + ")"; }
+        if (Under(p, _notesDir) && !p.Equals(_notesDir, StringComparison.OrdinalIgnoreCase))
+            return Path.GetFileName(p) + " would be a folder inside Mantle Notes; Mantle's notes are only files directly in the Mantle Notes folder, so native Mantle never makes it";
+        return null;
+    }
+
     /// An alternate data stream ("x.md:evil"): a colon anywhere after the drive's own "C:". Refused for every path.
     static string? StreamWords(string raw)
     {
