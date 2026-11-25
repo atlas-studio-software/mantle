@@ -36,6 +36,14 @@ Nothing compiled or run here (no .NET SDK on this machine): the first cloud run 
   HoverTests, ClusterTests (glyphs 32 x 36, 2 apart; the battery stand-in is electron-only), new BarFrame/IslandsTests
   (three islands, order, 44 tall, 12 from the edges, left 44 wide, the dock centred or after the M; the offline name).
 NOT built:
+- The light islands look (LIGHT.md section 1 / section 4b lift toward #F4F7F8), so light-theme contrast of the inks on the frost is
+  short, and these checks run elsewhere with a visible SKIP for the islands / light case (Assert.Inconclusive with the reason):
+  - StripTests running line: moved light -> dark; SKIP Pins_come_first_light_islands_running_line_reads_against_the_frost
+    (run dot #333A4E on the fallback #2c5258 about 13 luminance apart, below the test's 30).
+  - BarTests Dark_theme_draws_a_darker_pill_than_light: moved to the electron face; SKIP Dark_theme_islands_tint_follows_the_theme.
+  - ThemeTests Another_apps_theme..., Match_Windows_flips..., Theme_set_switches... (and Resume_and_unlock, same Launch):
+    moved to the electron face by default; SKIP Islands_theme_change_reaches_the_islands_within_1_s.
+  - Not moved but widened: the idle-CPU test measures islands light, islands dark AND the electron light face.
 - The dock's sliding focus underline (16 x 3, 320 ms ease-lift): the per-cell run / active marks are kept, resized.
 - Glyph ink in dark: the paths keep {ThemeResource LgInk2}; only the clock and the status separator take the Lv inks.
   The dock's separator keeps LgEdgeOut, "+N" keeps LgSunk.

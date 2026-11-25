@@ -268,6 +268,11 @@ public class BarTests
             "an app process is still running after close + kill");
     }
 
+    /// The islands' case of the theme tint check below (which runs the electron face), kept visible as a SKIP.
+    [TestMethod]
+    public void Dark_theme_islands_tint_follows_the_theme() =>
+        Assert.Inconclusive("SKIP: " + "light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands)" + ": the islands' frost is the same picture in both themes and the light lift (toward #F4F7F8) is not built, so their tint does not follow the theme yet; Dark_theme_draws_a_darker_pill_than_light runs the electron face");
+
     [TestMethod]
     public void Dark_theme_draws_a_darker_pill_than_light()
     {

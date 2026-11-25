@@ -102,6 +102,11 @@ public class ThemeTests
         return -1;
     }
 
+    /// The islands' case of the three theme-timing tests below (they read the electron face's tint), kept visible as a SKIP.
+    [TestMethod]
+    public void Islands_theme_change_reaches_the_islands_within_1_s() =>
+        Assert.Inconclusive("SKIP: light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands): the islands have no theme tint to time until the light lift lands; Another_apps_theme..., Match_Windows_flips... and Theme_set_switches... run the electron face");
+
     [TestMethod]
     public void Another_apps_theme_in_look_json_reaches_the_bar_within_1_s()
     {

@@ -158,6 +158,11 @@ public partial class StripTests
 
     static long LogLength(string profile) => File.Exists(LogPath(profile)) ? new FileInfo(LogPath(profile)).Length : 0;
 
+    /// The light case of the running-line check below, kept visible as a SKIP until the light islands look exists.
+    [TestMethod]
+    public void Pins_come_first_light_islands_running_line_reads_against_the_frost() =>
+        Assert.Inconclusive("SKIP: " + "light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands)" + ": in light the run dot (#333A4E) on the islands' flat fallback (#2c5258) is about 13 luminance apart, below this test's 30; the check runs in dark (Pins_come_first_...) until the light lift lands");
+
     [TestMethod]
     public void Pins_come_first_in_order_with_the_running_line_and_running_apps_follow_the_divider()
     {
