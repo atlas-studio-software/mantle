@@ -41,6 +41,15 @@ public static class ClipHost
             : new(null, "pins are kept for this run only and not saved, so Electron Mantle's pins file is left alone: " + no);
     }
 
+    /// <summary>The app's pins choice (lane r11-app-wiring): <see cref="PinsFor"/>, and when the gate's check itself throws
+    /// (an "is Electron running?" probe that fails), no file, so the pins are kept for this run only, with the reason in
+    /// words. Never throws.</summary>
+    public static ClipPinsChoice PinsOrRunOnly(string dataRoot, WriteGate gate)
+    {
+        try { return PinsFor(dataRoot, gate); }
+        catch (Exception e) { return new(null, "pins are kept for this run only: the pins file's place could not be checked (" + e.Message + ")"); }
+    }
+
     /// <summary>clip.start's request: <c>{pinsFile?, listen}</c>. A test instance does not listen at all (its items are
     /// seeded), so none of the user's copies can reach a test page.</summary>
     public static JsonObject StartRequest(ClipPinsChoice pins, bool test)

@@ -247,11 +247,9 @@ public partial class MantleApp : Application
         // chord stays Windows' own.
         // clipboard: the pins file only where the ONE write gate lets native write it (and its .tmp / .unreadable);
         // anywhere else pins are kept for this run and Electron's file is never touched (ClipHost.PinsFor). A failed check
-        // is said in words and keeps pins for the run.
-        Mantle.Core.Features.Clipboard.ClipboardFeature.Configure(new(() => {
-            try { return Mantle.Core.Features.Clipboard.ClipHost.PinsFor(Host.Paths.DataRoot, Host.Gate); }
-            catch (Exception e) { return new Mantle.Core.Features.Clipboard.ClipPinsChoice(null, "pins are kept for this run only: the pins file's place could not be checked (" + e.Message + ")"); }
-        }, clock));
+        // is said in words and keeps pins for the run (ClipHost.PinsOrRunOnly, tested in AppWiringTests).
+        Mantle.Core.Features.Clipboard.ClipboardFeature.Configure(new(
+            () => Mantle.Core.Features.Clipboard.ClipHost.PinsOrRunOnly(Host.Paths.DataRoot, Host.Gate), clock));
         Mantle.Core.Features.Emoji.EmojiFeature.Configure(new(clock));
         // timer: the game state is Mantle's one rest (RestCoordinator, driven by game mode; made further down, so it is read
         // at each ask, and "unknown" until it exists). No done pop-up or beep is wired yet: a finish is said in words.

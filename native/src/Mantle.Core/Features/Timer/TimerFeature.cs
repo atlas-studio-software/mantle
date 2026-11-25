@@ -44,8 +44,24 @@ public sealed class TimerFeature : IFeature
     {
         IRestHost? h;
         try { h = rest(); } catch (Exception) { h = null; }
-        return h is null ? (false, null) : (true, h.RestingWhy);
+        return h is null ? (false, null) : (true, GameWords(h.RestingWhy));
     };
+
+    /// <summary>The rest's reason as the game's own words, for "while &lt;game&gt; ran" (TimerEngine adds " ran") and "the
+    /// pop-up waits for the game to end (&lt;game&gt;)". The rest says "VALORANT runs" (GameModePlan) or "game mode is on
+    /// (by hand)", so: "X runs" / "X is running" / "resting while X runs" -&gt; "X"; "game mode is on ..." -&gt; "game mode";
+    /// anything else as it is (lib/features/timer.js gameWords + pastTense). Null (not resting) stays null.</summary>
+    public static string? GameWords(string? why)
+    {
+        if (why == null) return null;
+        string w = why.Trim();
+        if (w.StartsWith("resting while ", StringComparison.OrdinalIgnoreCase)) w = w["resting while ".Length..].Trim();
+        if (w.StartsWith("game mode is on", StringComparison.Ordinal)) return "game mode";
+        if (w.EndsWith(" is running", StringComparison.Ordinal)) w = w[..^" is running".Length];
+        else if (w.EndsWith(" runs", StringComparison.Ordinal)) w = w[..^" runs".Length];
+        w = w.Trim();
+        return w.Length > 0 ? w : "a game";
+    }
 
     readonly Host? _given;
     public TimerFeature() { }
