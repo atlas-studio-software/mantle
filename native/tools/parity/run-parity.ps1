@@ -49,6 +49,26 @@ if (-not $env:CI -and -not $env:GITHUB_ACTIONS -and $env:MANTLE_PARITY_LOCAL -ne
   exit 2
 }
 
+# ------------------------------------------------------------------ the reference (plan v0.2, references.psd1)
+# 'electron' (no file, no entry): Electron Mantle vs native, as below. 'native-golden': the surface has the new look,
+# so there is no Electron run: native is shot (no MANTLE_TEST_GLASS=electron) on the islands band and scored against
+# goldens/<surface>/<theme>-<pct>.png at the same thresholds, which count only once goldens/<surface>/REVIEW.md has
+# non-empty reviewer:, run: and sha: lines. Without them every theme is "golden pending review" and the stage fails.
+# This script never writes into goldens/.
+$reference = 'electron'
+$refFile = Join-Path $PSScriptRoot 'references.psd1'
+if (Test-Path $refFile) { $refs = Import-PowerShellDataFile $refFile; if ($refs.ContainsKey($Surface) -and $refs[$Surface]) { $reference = [string]$refs[$Surface] } }
+if ($reference -notin 'electron', 'native-golden') { Write-Host "PARITY: FAILED (references.psd1: $Surface = '$reference'; it must be 'electron' or 'native-golden')"; exit 4 }
+$golden = $reference -eq 'native-golden'
+$goldenDir = Join-Path $PSScriptRoot "goldens\$Surface"
+$reviewFile = Join-Path $goldenDir 'REVIEW.md'
+$reviewed = $false
+if ($golden -and (Test-Path $reviewFile)) {
+  $rv = Get-Content $reviewFile -Raw
+  $reviewed = ($rv -match '(?im)^[ \t]*reviewer:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*run:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*sha:[ \t]*\S')
+}
+$pending = [System.Collections.Generic.List[string]]::new()
+
 Add-Type -Path (Join-Path $PSScriptRoot 'ParityNative.cs')   # default references only (ReferencedAssemblies drops them)
 $deskCs = Join-Path $PSScriptRoot '..\desk\Desk.cs'   # the runner desktop helpers (taskbar out of the way)
 if ((Test-Path $deskCs) -and -not ('Desk' -as [type])) { Add-Type -Path $deskCs }
@@ -59,6 +79,14 @@ function Save-Bgra([byte[]]$px, [int]$w, [int]$h, [string]$path) {
   $d = $bmp.LockBits([System.Drawing.Rectangle]::new(0, 0, $w, $h), [System.Drawing.Imaging.ImageLockMode]::WriteOnly, $bmp.PixelFormat)
   for ($row = 0; $row -lt $h; $row++) { [System.Runtime.InteropServices.Marshal]::Copy($px, $row * $w * 4, [IntPtr]::Add($d.Scan0, $row * $d.Stride), $w * 4) }
   $bmp.UnlockBits($d); $bmp.Save($path, [System.Drawing.Imaging.ImageFormat]::Png); $bmp.Dispose()
+}
+# PNG -> BGRA bytes (stride = w * 4): a native golden, read back for the score.
+function Load-Bgra([string]$path) {
+  $bmp = [System.Drawing.Bitmap]::new($path); $w = $bmp.Width; $h = $bmp.Height; $px = [byte[]]::new($w * $h * 4)
+  $d = $bmp.LockBits([System.Drawing.Rectangle]::new(0, 0, $w, $h), [System.Drawing.Imaging.ImageLockMode]::ReadOnly, [System.Drawing.Imaging.PixelFormat]::Format32bppArgb)
+  for ($row = 0; $row -lt $h; $row++) { [System.Runtime.InteropServices.Marshal]::Copy([IntPtr]::Add($d.Scan0, $row * $d.Stride), $px, $row * $w * 4, $w * 4) }
+  $bmp.UnlockBits($d); $bmp.Dispose()
+  return @{ Px = $px; W = $w; H = $h }
 }
 [void][ParityNative]::DpiAware()
 
@@ -109,6 +137,7 @@ if (-not $Exe -or -not (Test-Path $Exe)) {
 if (-not $Exe -or -not (Test-Path $Exe)) { Write-Host "PARITY: FAILED (no native exe: set MANTLE_NATIVE_EXE or run the build first; see $Out\publish.log)"; exit 3 }
 Say "native exe $Exe"
 $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'
+if ($golden) { Remove-Item Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue; Say "reference native-golden: native on its own look, no Electron run" }
 
 
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the
@@ -238,6 +267,14 @@ foreach ($pct in $scaleList) {
   $clockSlot = @(($pillX + $pw - [int](175 * $scale)), $pillY, [int](90 * $scale), $pillH)
   $appsSlot = @(($pillX + [int]($pw / 2) - [int](220 * $scale)), $pillY, [int](440 * $scale), $pillH)
   Say ("pill spec px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $pillX, $pillY, $pw, $pillH, $crop.x, $crop.y, $crop.w, $crop.h)
+  if ($golden) {
+    # native-golden: the islands band (12 DIP from the left, right and bottom edges, 44 DIP tall) plus -Margin
+    $bandX = [int](12 * $scale); $bandW = [int](($W / $scale - 24) * $scale); $bandH = [int](44 * $scale); $bandY = [int]($H - (12 + 44) * $scale)
+    $cx = [Math]::Max(0, $bandX - $Margin); $cy = [Math]::Max(0, $bandY - $Margin)
+    $cr = [Math]::Min($W, $bandX + $bandW + $Margin); $cb = [Math]::Min($H, $bandY + $bandH + $Margin)
+    $crop = @{ x = $cx; y = $cy; w = $cr - $cx; h = $cb - $cy }
+    Say ("islands band px {0},{1} {2}x{3}; crop {4},{5} {6}x{7}" -f $bandX, $bandY, $bandW, $bandH, $crop.x, $crop.y, $crop.w, $crop.h)
+  }
   foreach ($t in $themes) {
     $tag = if ($pct -eq 100) { $t } else { "$t-$pct" }
     $dir = Join-Path $Out $tag; New-Item -ItemType Directory -Force -Path $dir | Out-Null
@@ -246,8 +283,11 @@ foreach ($pct in $scaleList) {
     if ($MaskApps) { $r.masks += , $appsSlot }
     foreach ($g in $gapList) { $r.masks += , $g.rect }
     $ePx = $null; $nPx = $null
+    # native-golden: the pill-relative masks do not fit the islands; the clock is masked from UI Automation below
+    if ($golden) { $r.masks = @(); $r.reference = 'native-golden' }
 
-    # Electron Mantle (--test instance, made visible)
+    # Electron Mantle (--test instance, made visible). ---- reference 'electron' only (body left unindented on purpose)
+    if (-not $golden) {
     $ej = Join-Path $dir 'electron.json'; Remove-Item $ej -ErrorAction SilentlyContinue
     $bgE = [ParityNative]::Grab(0, 0, $W, $H)   # the screen before Electron starts (Shoot's no-bar guard)
     $node = Start-Process node -ArgumentList (Join-Path $PSScriptRoot 'electron-bar.mjs'), "--root=$root", "--theme=$t", "--out=$ej", '--hold=240' `
@@ -275,6 +315,7 @@ foreach ($pct in $scaleList) {
     Start-Sleep -Seconds 2
     Stop-Profile "parity-$t"
     if (-not $node.HasExited) { Stop-Process -Id $node.Id -Force -ErrorAction SilentlyContinue }
+    }   # ---- end of the reference 'electron' only block
 
     # the native app
     $nd = Join-Path $dir 'native-bench'; New-Item -ItemType Directory -Force -Path $nd | Out-Null
@@ -287,16 +328,32 @@ foreach ($pct in $scaleList) {
       Start-Sleep -Milliseconds 800
       [ParityNative]::ParkCursor([int]($W / 2), [int]($H / 3))
       $app = @(Get-Tree $np.Id); $keep = $app + @($fixture.Id)
-      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $dir 'native' $app $bgN }
+      $nDir = $dir; $nName = 'native'   # native-golden: <Out>/<theme>/candidate-<theme>-<pct>.png (+ -full.png)
+      if ($golden) { $nDir = Join-Path $Out $t; New-Item -ItemType Directory -Force -Path $nDir | Out-Null; $nName = "candidate-$t-$pct" }
+      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $nDir $nName $app $bgN }
       $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
       $nc = Native-ClockRect $np.Id
       if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }
+      elseif ($golden) { Problem "native ${tag}: no bar.clock through UI Automation, so its ticking clock cannot be masked against the golden" }
       else { Say "native ${t}: no bar.clock through UI Automation; the clock slot mask alone covers it" }
     } else {
       Problem ("native {0}: no ready.json in 45 s (exited: {1})" -f $t, $np.HasExited)
     }
     if (-not $np.HasExited) { Stop-Process -Id $np.Id -Force -ErrorAction SilentlyContinue }
     Stop-Profile "parity-$t"
+
+    # native-golden: the reviewed golden stands in for the Electron shot in the diff below; no reviewed golden = pending
+    if ($golden -and $nPx) {
+      $gp = Join-Path $goldenDir "$t-$pct.png"; $cand = Join-Path $nDir "$nName.png"; $r.candidate = $cand
+      if ($reviewed -and (Test-Path $gp)) {
+        $gl = Load-Bgra $gp; $r.golden = $gp
+        if ($gl.W -eq $crop.w -and $gl.H -eq $crop.h) { $ePx = $gl.Px }
+        else { Problem ("{0}: golden {1} is {2}x{3}, the crop is {4}x{5}; not scored" -f $tag, $gp, $gl.W, $gl.H, $crop.w, $crop.h) }
+      } else {
+        $r.pending = $true; $pending.Add($tag)
+        Write-Host ("PARITY bar {0}: golden pending review (reference native-golden; candidate {1}; freeze only after a side-by-side review against apps-r3/mantle-bar by the CEO, the Product Designer or the user, from a committed run)" -f $tag, $cand)
+      }
+    }
 
     # diff
     if ($ePx -and $nPx) {
@@ -319,7 +376,7 @@ foreach ($pct in $scaleList) {
       $r.ok = $pass
       Write-Host ("PARITY bar {0}: ssim={1:N4} diffpx={2:N2}% meanabs={3:N2} ({4} vs ssim>={5}, diffpx<={6}%)" -f $tag, $s.Ssim, $s.DiffPxPct, $s.MeanAbs, $(if ($pass) { 'ok' } else { 'FAILED' }), $MinSsim, $MaxDiffPct)
       if (-not $pass) { Problem ("{0}: below the threshold (ssim {1:N4}, diffpx {2:N2}%)" -f $tag, $s.Ssim, $s.DiffPxPct) }
-    } else { $r.ok = $false; if (-not $problems.Count) { Problem "${tag}: a capture is missing" } }
+    } else { $r.ok = $false; if (-not $problems.Count -and -not $r.pending) { Problem "${tag}: a capture is missing" } }
     $r | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $dir 'score.json')
     $results[$tag] = $r
   }
@@ -329,8 +386,10 @@ if ([Math]::Abs([ParityNative]::PrimaryDpi() / 96.0 * 100 - 100) -ge 1) { Say ("
 if (-not $fixture.HasExited) { Stop-Process -Id $fixture.Id -Force -ErrorAction SilentlyContinue }
 # The taskbar stays on auto-hide (runner only): later stages measure the bottom edge too.
 $results | ConvertTo-Json -Depth 8 | Set-Content -Encoding utf8 (Join-Path $Out 'parity.json')
-$parts = @(foreach ($t in $results.Keys) { $x = $results[$t]; if ($x.score) { "$t ssim=$($x.score.ssim) diffpx=$($x.score.diffPxPct)%" } else { "$t no score" } })
+$parts = @(foreach ($t in $results.Keys) { $x = $results[$t]; if ($x.score) { "$t ssim=$($x.score.ssim) diffpx=$($x.score.diffPxPct)%" } elseif ($x.pending) { "$t golden pending review" } else { "$t no score" } })
 if ($gapList.Count) { $parts += 'known gaps masked: ' + (($gapList | ForEach-Object { $_.id }) -join ', ') + ' (see the known-gap lines)' }
+# native-golden with no reviewed golden fails the stage on purpose: a candidate is not a pass
+if ($pending.Count -and $problems.Count -eq 0) { Write-Host ("PARITY: FAILED (bar golden pending review: " + ($pending -join ', ') + "; candidates in $Out)"); exit 1 }
 if ($problems.Count -eq 0) { Write-Host ("PARITY: ok (" + ($parts -join '; ') + ")"); exit 0 }
 Write-Host ("PARITY: FAILED (" + ($parts -join '; ') + "; " + $problems.Count + " problem(s): " + ($problems -join '; ') + ")")
 exit 1
