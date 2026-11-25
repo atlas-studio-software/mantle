@@ -174,31 +174,41 @@ public class DesktopPublisherTests
     [Fact]
     public async Task A_locked_look_json_is_retried_and_the_record_lands()
     {
-        using var rig = new Rig(retry: new[] { 50, 100, 200 });
-        Assert.Equal("published", (await rig.Pub.CheckAsync("start")).What);
-        string lj = Path.Combine(rig.Dir, "look.json");
+        // No polling thread (it raced the retry delays and lost under a busy test run, 2 of 8 cloud runs on 2026-11-25): the
+        // write's own hook says when the rename over look.json was refused; at that moment the new copy must be waiting as a
+        // tmp, and the held file is released there, so the next try lands. The order is fixed, whatever the machine's load.
+        using var d = new TestDir("desk-locked");
+        string lj = Path.Combine(d.Path, "look.json");
         FileStream? held = null;
-        Task? release = null;
         bool sawRefusedRename = false;
+        int refusals = 0;
+        var files = new SafeFile(WriteGate.Scratch(d.Path)) {
+            OnRenameRefused = (path, attempt, code) => {
+                if (!string.Equals(path, lj, StringComparison.OrdinalIgnoreCase) || held == null) return;
+                refusals++;
+                sawRefusedRename = Directory.EnumerateFiles(d.Path, "look.json.mantle.*.tmp").Any();
+                held.Dispose();   // the reader lets go inside the first wait
+                held = null;
+            },
+        };
+        using var rig = new Rig(retry: new[] { 50, 100, 200 }, dir: d.Path, files: files);
+        Assert.Equal("published", (await rig.Pub.CheckAsync("start")).What);
         rig.Source.DuringPicture = _ => {
             // a reader that does not share delete (antivirus, a backup): the rename over look.json is refused while it holds it
             held = new FileStream(lj, FileMode.Open, FileAccess.Read, FileShare.Read);
-            release = Task.Run(() => {
-                var sw = Stopwatch.StartNew();
-                while (sw.ElapsedMilliseconds < 3000 && !Directory.EnumerateFiles(rig.Dir, "look.json.mantle.*.tmp").Any()) Thread.Sleep(2);
-                sawRefusedRename = Directory.EnumerateFiles(rig.Dir, "look.json.mantle.*.tmp").Any();
-                Thread.Sleep(30);   // inside the first 50 ms wait
-                held!.Dispose();
-            });
         };
-        rig.Source.Show("windows:b", "B");
-        var o = await rig.Pub.CheckAsync("Windows' wallpaper changed");
-        await release!;
-        Assert.True(sawRefusedRename, "the new copy should wait as a tmp while look.json is held");
-        Assert.Equal("published", o.What);
-        Assert.Equal(3, o.Rev);
-        Assert.Equal("B", LookSyncCore.Str(rig.Record()["title"]));
-        Assert.Empty(Directory.EnumerateFiles(rig.Dir, "*.tmp"));
+        try {
+            rig.Source.Show("windows:b", "B");
+            var o = await rig.Pub.CheckAsync("Windows' wallpaper changed");
+            Assert.True(sawRefusedRename, "the new copy should wait as a tmp while look.json is held");
+            Assert.Equal(1, refusals);   // refused once while held, then it landed
+            Assert.Equal("published", o.What);
+            Assert.Equal(3, o.Rev);
+            Assert.Equal("B", LookSyncCore.Str(rig.Record()["title"]));
+            Assert.Empty(Directory.EnumerateFiles(d.Path, "*.tmp"));
+        } finally {
+            held?.Dispose();
+        }
     }
 
     [Fact]

@@ -25,6 +25,11 @@ public sealed class SafeFile
 
     public bool FlushToDisk { get; } = true;
 
+    /// <summary>Tests only: called on the writing thread each time the rename over <c>path</c> was refused and is about
+    /// to be tried again (path, the attempt that failed from 0, the code), while the tmp copy waits beside it. It lets a test
+    /// release a file it holds at a known moment instead of racing the retry delays. A throw from it is ignored.</summary>
+    public Action<string, int, string>? OnRenameRefused { get; init; }
+
     /// Node's error code for an exception (ENOENT, EPERM, EBUSY, ...), for messages that must read like Electron's.
     internal static string Code(Exception e) => e switch {
         FileNotFoundException => "ENOENT",
@@ -67,7 +72,11 @@ public sealed class SafeFile
                 return null;
             } catch (Exception e) {
                 string code = Code(e);
-                if (attempt < retryMs.Length && Retryable(code)) { Thread.Sleep(retryMs[attempt]); continue; }
+                if (attempt < retryMs.Length && Retryable(code)) {
+                    try { OnRenameRefused?.Invoke(path, attempt, code); } catch (Exception) { /* a test hook never breaks a write */ }
+                    Thread.Sleep(retryMs[attempt]);
+                    continue;
+                }
                 TryRemove(tmpPath);
                 return code + (attempt > 0 ? " (after " + (attempt + 1) + " tries)" : "");
             }
