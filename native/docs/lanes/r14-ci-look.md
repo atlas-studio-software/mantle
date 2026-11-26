@@ -44,6 +44,13 @@ Fix (run-parity.ps1, golden path only): `MANTLE_TEST_WALLPAPER` = the runner's w
 publishes it as its desktop picture (DesktopPublish.TestEnv, lane r10-look) into the run's own look-sync folder, and the
 islands frost from the same picture that is on the screen. The strip stage runs run-parity.ps1, so it gets the same.
 
+Side effect, fixed in the same lane: Shoot's "is the bar in the shot" guard compared the whole 1920-wide crop with the
+screen before the app started (at least `$MinVsEmpty` = 4 of 255 on average). Frosted from the very wallpaper under them,
+with the air between them that wallpaper, a bar that was there read 3.13 (light) and 3.61 (dark) at 100 % (run
+20261126-035619-fed647, steady over 6 shots), so both 100 % shots were refused. In native-golden the guard now measures
+over the three islands only (`bar.island.left`, `bar.island.dock`, `bar.island.right` through UI Automation,
+`ParityNative.RegionsVsFull`); with no island found it falls back to the whole crop. The threshold is unchanged.
+
 ## 3. The accent 'islands' profile in Core
 
 `Mantle.Core/Look/Accent.cs` is now look-sync accent.js at c29ba47: profiles steel (the default, unchanged) and islands,

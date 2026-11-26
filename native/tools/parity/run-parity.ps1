@@ -204,16 +204,22 @@ function Wait-Still([string]$tag, [int[]]$app) {
 # guard of launcher/run-launcher.ps1): on 11-10 two runs scored one theme 0.72-0.75 with an Electron shot that held
 # no bar at all, clean grab or not, while the other themes read 0.98+. A bar over the crop moves it far more than
 # $MinVsEmpty (4 of 255 on average); the empty screen under it reads ~0.
-function Shoot([string]$dir, [string]$name, [int[]]$app, [byte[]]$bg) {
+# native-golden (lane r14-ci-look): $islands (flat crop-px rects of the three islands, from UI Automation) narrows the
+# "vs the screen before the app" measure to the islands. They are frosted from the wallpaper under them and the air
+# between them is that wallpaper, so over the whole 1920-wide crop a bar that IS there read 3.13 (light) and 3.61 (dark)
+# at 100 % (run 20261126-035619-fed647), under $MinVsEmpty. The threshold is unchanged; only where it is measured.
+function Shoot([string]$dir, [string]$name, [int[]]$app, [byte[]]$bg, [int[]]$islands = $null) {
   $ok = $false; $what = "$name $tag"
   for ($try = 1; $try -le 6 -and -not $ok; $try++) {
     $c = [ParityNative]::CleanGrab($app, $crop.x, $crop.y, $crop.w, $crop.h, 60, 5000)
     $f = [ParityNative]::CleanGrab($app, 0, 0, $W, $H, 60, 5000)
     $same = [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $f.Px, $W, $crop.x, $crop.y)
-    $vsBg = if ($bg) { [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $bg, $W, $crop.x, $crop.y) } else { 999 }
+    $vsBg = if (-not $bg) { 999 }
+      elseif ($islands) { [ParityNative]::RegionsVsFull($c.Px, $crop.w, $crop.h, $bg, $W, $crop.x, $crop.y, $islands) }
+      else { [ParityNative]::CropVsFull($c.Px, $crop.w, $crop.h, $bg, $W, $crop.x, $crop.y) }
     $ok = $c.Clean -and $f.Clean -and $same -lt 3 -and $vsBg -ge $MinVsEmpty
-    Say ("{0}: shot {1}: crop clean={2} ({3} window(s), {4} ms, {5} grab(s)), full clean={6} ({7} ms), crop vs full {8:N2}, vs the screen before the app {9:N2}{10}" -f $what, $try,
-      $c.Clean, $c.Windows, $c.WaitedMs, $c.Tries, $f.Clean, $f.WaitedMs, $same, $vsBg, $(if ($ok) { '' } else { ': taken again' }))
+    Say ("{0}: shot {1}: crop clean={2} ({3} window(s), {4} ms, {5} grab(s)), full clean={6} ({7} ms), crop vs full {8:N2}, vs the screen before the app {9:N2}{11}{10}" -f $what, $try,
+      $c.Clean, $c.Windows, $c.WaitedMs, $c.Tries, $f.Clean, $f.WaitedMs, $same, $vsBg, $(if ($ok) { '' } else { ': taken again' }), $(if ($islands) { ' (over the islands)' } else { '' }))
     if (-not $ok) { Start-Sleep -Milliseconds 600 }
   }
   if (-not $ok) {
@@ -355,7 +361,21 @@ foreach ($pct in $scaleList) {
       $app = @(Get-Tree $np.Id); $keep = $app + @($fixture.Id)
       $nDir = $dir; $nName = 'native'   # native-golden: <Out>/<theme>/candidate-<theme>-<pct>.png (+ -full.png)
       if ($golden) { $nDir = Join-Path $Out $t; New-Item -ItemType Directory -Force -Path $nDir | Out-Null; $nName = "candidate-$t-$pct" }
-      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) { $r.nativeMotion = Wait-Still "native $tag" $app; $nPx = Shoot $nDir $nName $app $bgN }
+      if ((Clear-Taskbar "native $tag") -and (Clear-Crop "native $tag" $keep)) {
+        $r.nativeMotion = Wait-Still "native $tag" $app
+        $isl = $null
+        if ($golden) {
+          # the three islands in crop px (UI Automation), for Shoot's "is the bar in it" guard; none found = the whole crop
+          $fl = [System.Collections.Generic.List[int]]::new()
+          foreach ($iid in 'bar.island.left', 'bar.island.dock', 'bar.island.right') {
+            $q = Native-IdRect $np.Id $iid
+            if ($q) { $fl.AddRange([int[]]@(($q[0] - $crop.x), ($q[1] - $crop.y), $q[2], $q[3])) }
+          }
+          if ($fl.Count) { $isl = $fl.ToArray(); Say ("native {0}: the bar-in-the-shot guard looks at {1} island(s): {2} (crop px)" -f $tag, ($fl.Count / 4), ($isl -join ',')) }
+          else { Say "native ${tag}: no island through UI Automation; the bar-in-the-shot guard looks at the whole crop" }
+        }
+        $nPx = Shoot $nDir $nName $app $bgN $isl
+      }
       $r.native = Get-Content (Join-Path $nd 'ready.json') -Raw | ConvertFrom-Json
       $nc = Native-ClockRect $np.Id
       if ($nc) { $r.masks += , $nc; Say ("native {0}: clock {1}" -f $t, ($nc -join ',')) }

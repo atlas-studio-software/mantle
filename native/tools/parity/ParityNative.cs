@@ -307,6 +307,23 @@ public static class ParityNative
         return s / (cw * ch * 3.0);
     }
 
+    /// <summary>The same measure as CropVsFull, over some rects of the crop only (flat x, y, w, h in crop px, clamped):
+    /// native-golden's "is the bar in the shot" guard over the islands themselves, since the islands are frosted from the
+    /// very wallpaper under them and the air between them IS that wallpaper (lane r14-ci-look). 0 when no pixel is in.</summary>
+    public static double RegionsVsFull(byte[] crop, int cw, int ch, byte[] full, int fw, int cx, int cy, int[] rects)
+    {
+        double s = 0; long n = 0;
+        for (int k = 0; k + 3 < (rects ?? new int[0]).Length; k += 4)
+            for (int row = Math.Max(0, rects[k + 1]); row < Math.Min(ch, rects[k + 1] + rects[k + 3]); row++)
+                for (int col = Math.Max(0, rects[k]); col < Math.Min(cw, rects[k] + rects[k + 2]); col++)
+                {
+                    int a = (row * cw + col) * 4, b = ((cy + row) * fw + cx + col) * 4;
+                    s += Math.Abs(crop[a] - full[b]) + Math.Abs(crop[a + 1] - full[b + 1]) + Math.Abs(crop[a + 2] - full[b + 2]);
+                    n++;
+                }
+        return n == 0 ? 0 : s / (n * 3.0);
+    }
+
     /// <summary>Motion over clean grabs only (see CleanGrab): a grab without the bar in it is not motion.</summary>
     public static double MotionClean(int[] pids, int x, int y, int w, int h, int gapMs)
     {
