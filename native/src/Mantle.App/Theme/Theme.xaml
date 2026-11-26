@@ -15,5 +15,8 @@
     <ResourceDictionary Source="ms-appx:///Theme/Tokens.xaml"/>
     <!-- lane r10-newlook: the levitated look's tokens (islands, gaps, control fills, motion) -->
     <ResourceDictionary Source="ms-appx:///Theme/Levitate.xaml"/>
+    <!-- lane r15-quick-launcher: the restyled quick settings and launcher (prototype numbers, theme inks) -->
+    <ResourceDictionary Source="ms-appx:///Theme/LvQuick.xaml"/>
+    <ResourceDictionary Source="ms-appx:///Theme/LvLauncher.xaml"/>
   </ResourceDictionary.MergedDictionaries>
 </ResourceDictionary>

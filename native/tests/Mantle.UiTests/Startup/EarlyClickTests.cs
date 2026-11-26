@@ -33,6 +33,11 @@ public class EarlyClickTests
         Host.LogContains(() => FrameProbe.Log(dir), "qs: hot corners row: no link to the host yet (Mantle is still starting)", "the panel opened after the host was up, so this run did not test the early click");
         Assert.IsFalse(FrameProbe.Log(dir).Contains("features: started", StringComparison.Ordinal), "the host was already up when the panel opened");
         var w = Host.Uia.FromHandle(h);
+        // lane r15-quick-launcher: the sparse quick settings keep the Hot corners row one level down, under "More settings"
+        AutomationElement? row = Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.more.row")), 3000);
+        Assert.IsNotNull(row, "no qs.more.row in the quick-settings pop-up");
+        ClickEl(row!);
+        Host.LogContains(() => FrameProbe.Log(dir), "qs: the More settings view opened", "More settings did not open", 3000);
         AutomationElement? Sub() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.corners.sub"));
         Assert.AreEqual("Loading…", Sub()?.Name, "the row did not wait for the host");
 

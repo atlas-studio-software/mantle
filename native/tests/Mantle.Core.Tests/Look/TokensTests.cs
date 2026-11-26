@@ -119,6 +119,7 @@ public class TokensTests
             if (rel.Contains(Path.DirectorySeparatorChar + "obj" + Path.DirectorySeparatorChar) || rel.StartsWith("obj", StringComparison.Ordinal) || rel.StartsWith("bin", StringComparison.Ordinal)) continue;
             if (rel == Path.Combine("Theme", "Tokens.xaml")) continue;
             if (rel == Path.Combine("Theme", "Levitate.xaml")) continue;   // lane r10-newlook: the levitated look's token file (LevitateTokensTests mirrors it)
+            if (rel == Path.Combine("Theme", "LvQuick.xaml") || rel == Path.Combine("Theme", "LvLauncher.xaml")) continue;   // lane r15-quick-launcher: the restyled surfaces' token files (QuickSpecTests, LauncherSpecTests pin them)
             var lines = File.ReadAllLines(f);
             for (int i = 0; i < lines.Length; i++) {
                 string code = lines[i];

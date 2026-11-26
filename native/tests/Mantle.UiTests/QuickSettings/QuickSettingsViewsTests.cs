@@ -86,7 +86,10 @@ public class QuickSettingsViewsTests
         // ---- Wi-Fi
         Press(w, "qs.more.wifi");
         Has(dir, "qs: the Wi-Fi view opened", "the Wi-Fi view did not open");
-        Has(dir, "pop-up Quick settings: resized to 384 DIP high", "the pop-up was not re-sized for the view");
+        // lane r15-quick-launcher: in the islands look every view shares the main view's box (quick.js fit()), so a view
+        // no longer re-sizes the pop-up to the old 384 DIP sub-view height
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("pop-up Quick settings: resized to 384 DIP high", StringComparison.Ordinal), "the Wi-Fi view re-sized the pop-up; the islands look keeps the main view's box");
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("the pop-up could not be re-sized", StringComparison.Ordinal), "the view said it may be clipped");
         Assert.AreEqual("Wi-Fi", El(w, "qs.view.title").Name);
         var home = El(w, "qs.wifi.net.0");
         Assert.AreEqual("Mantle test", home.Name);

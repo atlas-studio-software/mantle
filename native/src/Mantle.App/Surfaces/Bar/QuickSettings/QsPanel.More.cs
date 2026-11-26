@@ -27,7 +27,7 @@ internal sealed partial class QsPanel
 {
     /// The pop-up's room: its height re-asked, the keyboard taken and given back for the password field, and the close
     /// (a way out that opened Windows' own panel closes quick settings, as qs-tiles.js's ctx.close does).
-    public sealed record Room(Func<double, double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys, Action<string>? Close = null);
+    public sealed record Room(Func<double, double, bool> Resize, Func<(bool Ok, string Words)> TakeKeys, Action<string> GiveKeys, Action<string>? Close = null, Func<bool>? Reduced = null);
 
     public const double SubHeightDip = QsMoreView.ViewHeightDip + 2 * PadY + 2;
 
@@ -154,9 +154,9 @@ internal sealed partial class QsPanel
         }
         _gen++;
         _view = kind;
+        if (kind == "more") { EnterMore(); return; }   // the sparse layout's more-settings view (QsPanel.MoreSettings.cs)
         _vNote.Clear();
-        _stack.Visibility = Visibility.Collapsed;
-        _sub.Visibility = Visibility.Visible;
+        Swap(MainView, _sub);   // the islands look: sink and lift (QsPanel.Islands.cs)
         (_vTitle.Text, _moreTarget, _moreWhat, string more) = kind switch {
             "wifi" => ("Wi-Fi", "ms-settings:network-wifi", "Wi-Fi settings", "More Wi-Fi settings"),
             "bt" => ("Bluetooth", "ms-settings:bluetooth", "Bluetooth settings", "More Bluetooth settings"),
@@ -169,8 +169,9 @@ internal sealed partial class QsPanel
         PaintFrame();
         _vList.Children.Clear();
         // a view keeps the panel's width (qs-more.js pins it, BAR-609); the way back re-fits the main view (never skipped)
-        _fitted = 0; _fittedW = 0;
-        bool roomed = _room.Resize(SubHeightDip, _width);
+        // the islands look: every view shares the main view's box (quick.js fit), so the pop-up keeps its size
+        if (!_isl) { _fitted = 0; _fittedW = 0; }
+        bool roomed = _isl || _room.Resize(SubHeightDip, _width);
         _log($"qs: the {_vTitle.Text} view opened" + (roomed ? "" : "; the pop-up could not be re-sized, so the view may be clipped"));
         int g = _gen;
         if (kind == "wifi") { if (_wifiData != null) RenderWifi(true); else StateBlock(_vList, "Looking for networks…", null, null, null, false); _ = WifiOpen(g); }
@@ -192,12 +193,12 @@ internal sealed partial class QsPanel
         if (_view == null) return;
         _gen++;
         if (_kbd) ReleaseKeys(closing ? "the panel closed" : "the view was left");
+        if (_view == "more") { BackMore(why, closing); return; }
         if (_view == "bt") _ = Call("qs.bt.watch", new JsonObject { ["on"] = false });   // always sent: a stop is idempotent
         _log($"qs: the {_vTitle.Text} view closed ({why})");
         _view = null; _wPwFor = null; _pw = null; _pwProblem = null; _wSig = ""; _bSig = ""; _aDevSig = ""; _aKeys = "";
         _aRows.Clear();
-        _sub.Visibility = Visibility.Collapsed;
-        _stack.Visibility = Visibility.Visible;
+        Swap(_sub, MainView, closing);   // a close jumps (the pop-up's own exit is the motion)
         if (closing) return;
         Paint();
         Fit();
@@ -217,6 +218,7 @@ internal sealed partial class QsPanel
 
     double Need()
     {
+        if (_isl) return IslandsNeed();   // its own content, at least 240; the host caps it at the screen less 80
         _width = _view != null ? _width : MainWidth();
         Root.Width = _width - 2;
         Root.Measure(new Windows.Foundation.Size(_width - 2, double.PositiveInfinity));
