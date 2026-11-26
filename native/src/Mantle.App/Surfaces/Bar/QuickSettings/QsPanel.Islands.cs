@@ -1,5 +1,6 @@
 using System;
 using System.Globalization;
+using System.Linq;
 using System.Text.Json.Nodes;
 using Mantle.Core.Features.PowerMode;
 using Mantle.Core.Features.QuickSettings;
@@ -53,6 +54,30 @@ internal sealed partial class QsPanel
         if (!_forcedOff || w == null || !QsParts.IsTrue(w["connected"])) return w;
         var c = (JsonObject)w.DeepClone();
         c["connected"] = false;
+        return c;
+    }
+
+    bool _forcedOffListSaid;
+    /// The Wi-Fi list (the tile's "›" view) as it is drawn: under the offline test switch nothing in it is connected,
+    /// so the list agrees with the tile and the bar's button. A connected network reads as the prototype's
+    /// quick.js netSub() has it for one that is not ("Saved · " and its security, or Open), and its action is Connect
+    /// (a saved network) or the one its kind takes, never Disconnect. The fixture or the sidecar's reading is untouched.
+    JsonObject WifiListShown(JsonObject r)
+    {
+        if (!_forcedOff || r["networks"] is not JsonArray nets || !nets.OfType<JsonObject>().Any(n => QsParts.IsTrue(n["connected"]) || QsParts.IsTrue(n["connecting"])))
+            return r;
+        var c = (JsonObject)r.DeepClone();
+        foreach (var n in ((JsonArray)c["networks"]!).OfType<JsonObject>()) {
+            if (!QsParts.IsTrue(n["connected"]) && !QsParts.IsTrue(n["connecting"])) continue;
+            n["connected"] = false;
+            n["connecting"] = false;
+            if (QsParts.Str(n["action"]) is "disconnect" or null)
+                n["action"] = QsParts.IsTrue(n["known"]) ? "connect" : QsParts.IsTrue(n["secure"]) ? "password" : "open";
+        }
+        if (!_forcedOffListSaid) {
+            _forcedOffListSaid = true;
+            _log("qs: MANTLE_TEST_NET=off: the Wi-Fi list is drawn with no network connected, as the tile");
+        }
         return c;
     }
 

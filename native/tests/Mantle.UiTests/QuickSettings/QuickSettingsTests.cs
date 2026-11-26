@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using FlaUI.Core.AutomationElements;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -174,6 +175,35 @@ public class QuickSettingsTests
         StringAssert.StartsWith(Status(wifi), "on", "the Wi-Fi tile is not drawn on (Wi-Fi on, nothing connected)");
         Assert.IsTrue(FrameProbe.LogHas(dir, "qs: MANTLE_TEST_NET=off: the Wi-Fi tile is drawn on and not connected", 2000), "no offline line. Log:\n" + Tail(dir));
         Host.Screenshot("qs-offline-light");
+    }
+
+    /// Lane r16-trial-fixes: the launcher's window had room round its island (the shadow's) that took a click without
+    /// closing it. Quick settings (a levitated pop-up in the islands look) has no such room: its window region is the
+    /// island's rounded shape (PopupWindow.Place / Clip; the motion slack below it is in the region only while a motion
+    /// runs), so a click just below the island reaches what is under it and the outside watch closes the pop-up.
+    [TestMethod]
+    public void A_click_just_below_the_island_closes_quick_settings_as_an_outside_click()
+    {
+        string dir = FrameProbe.NewDir("qs-below");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_QS"] = Fixture };
+        using var app = BarApp.Launch("qs-below", "light", env: env, extra: new[] { "--bench-out=" + dir, "--test-popwatch" });
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: a --test run with MANTLE_TEST_QS", 15000), "the fixture was not taken. Log:\n" + Tail(dir));
+        Assert.IsTrue(FrameProbe.LogHas(dir, "pop-ups: the outside watch arms while one is open", 3000), "--test-popwatch did not arm the outside watch. Log:\n" + Tail(dir));
+        ClickEl(app.Find("bar.volume"));
+        Panel(app, dir);
+        IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings");
+        Assert.IsTrue(FrameProbe.LogHas(dir, "pop-up Quick settings: shown at ", 3000), "quick settings never said where it was shown. Log:\n" + Tail(dir));
+        // the island's rectangle (physical px) as the host placed it, without the motion slack below it
+        var m = Regex.Match(FrameProbe.Log(dir), @"pop-up Quick settings: shown at (-?\d+),(-?\d+) (\d+)x(\d+)(, levitated)?");
+        Assert.IsTrue(m.Success, "the shown line has no rectangle. Log:\n" + Tail(dir));
+        int l = int.Parse(m.Groups[1].Value), t = int.Parse(m.Groups[2].Value), w = int.Parse(m.Groups[3].Value), ht = int.Parse(m.Groups[4].Value);
+        string look = m.Groups[5].Success ? "levitated" : "not levitated";
+        double s = Win32.GetDpiForWindow(h) / 96.0;
+        Thread.Sleep(800);   // the entrance has landed: the region is the island's shape again
+        int x = l + w / 2, y = t + ht + (int)Math.Round(10 * s);
+        ZOrder.Click(x, y);
+        Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), $"a click 10 DIP below the island ({look}) at ({x}, {y}) did not close quick settings. Log:\n" + Tail(dir));
+        Assert.IsTrue(FrameProbe.LogHas(dir, "pop-up Quick settings: closed (a left click outside)", 2000), "the close was not an outside click. Log:\n" + Tail(dir));
     }
 
     [TestMethod]

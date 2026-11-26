@@ -36,6 +36,8 @@ public class EarlyClickTests
         // lane r15-quick-launcher: the sparse quick settings keep the Hot corners row one level down, under "More settings"
         AutomationElement? row = Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.more.row")), 3000);
         Assert.IsNotNull(row, "no qs.more.row in the quick-settings pop-up");
+        // the row takes a press only once the pop-up is on screen (a press before "shown at" can be lost)
+        Host.LogContains(() => FrameProbe.Log(dir), "pop-up Quick settings: shown at", "quick settings never said it was on screen");
         ClickEl(row!);
         Host.LogContains(() => FrameProbe.Log(dir), "qs: the More settings view opened", "More settings did not open", 3000);
         AutomationElement? Sub() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.corners.sub"));
