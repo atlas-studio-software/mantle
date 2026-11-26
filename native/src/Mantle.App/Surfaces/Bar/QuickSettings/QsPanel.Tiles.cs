@@ -37,7 +37,7 @@ internal sealed partial class QsPanel
     void SizeRows()
     {
         for (int r = 0; r < _grid.RowDefinitions.Count; r++)
-            _grid.RowDefinitions[r].Height = _dark && r < DarkRows.Length ? new GridLength(DarkRows[r]) : GridLength.Auto;
+            _grid.RowDefinitions[r].Height = _dark && !_isl && r < DarkRows.Length ? new GridLength(DarkRows[r]) : GridLength.Auto;
     }
 
     static double WallMs() => DateTimeOffset.UtcNow.ToUnixTimeMilliseconds();

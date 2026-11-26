@@ -30,7 +30,11 @@ public class GameModeTests
         IntPtr h = IntPtr.Zero;
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings")), 3000), "quick settings did not open");
         Has(dir, "qs: the panel opened from bar.volume", "no opened line");
-        return Host.Uia.FromHandle(h);
+        // lane r15-quick-launcher: the sparse quick settings keep the Game mode row one level down, under "More settings"
+        var more = Host.Uia.FromHandle(h);
+        ClickEl(El(more, "qs.more.row"));
+        Has(dir, "qs: the More settings view opened", "More settings did not open", 3000);
+        return more;
     }
 
     [TestMethod]

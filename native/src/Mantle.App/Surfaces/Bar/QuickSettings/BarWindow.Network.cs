@@ -49,7 +49,11 @@ public sealed partial class BarWindow
         });
         NetworkChange.NetworkAvailabilityChanged += _netHandler;
         Closed += (_, _) => { if (_netHandler != null) NetworkChange.NetworkAvailabilityChanged -= _netHandler; };
-        if (_qs != null) _qs.WifiChanged += () => PaintNetwork("the Wi-Fi part was read");
+        if (_qs != null) {
+            _qs.WifiChanged += () => PaintNetwork("the Wi-Fi part was read");
+            // lane r15-quick-settings: the Wi-Fi tile follows the same test switch, so the tile and this button never disagree
+            _qs.ForcedOffline = _netForcedOff;
+        }
         PaintNetwork("start");
     }
 

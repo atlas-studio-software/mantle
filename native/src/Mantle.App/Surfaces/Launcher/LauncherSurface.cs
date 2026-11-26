@@ -44,7 +44,9 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     sealed class Row
     {
         public required Grid Root;
-        public required Border Wash, Tick, Tile;
+        public required Border Wash, Tile;
+        public required Grid Tick;                                        // a Grid: the islands look gives it a UIA peer (row-tick)
+        public Grid? Main;                                                // the islands look: its padding changes for a Quick links row
         public required TextBlock Letter, Name, Sub;
         public required Grid GlyphBox;
         public required Image Pic;
@@ -60,7 +62,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     Window _win = null!;
     IntPtr _hwnd;
     Grid _root = null!;
-    Border _panel = null!, _edge = null!, _lip = null!, _slot = null!, _focusLine = null!, _foot = null!;
+    Border _panel = null!, _edge = null!, _lip = null!, _slot = null!, _foot = null!;
+    Grid _focusLine = null!;                                              // a Grid: the islands look gives it a UIA peer (field-line)
     TextBox _q = null!;
     StackPanel _list = null!;
     ScrollViewer _scroll = null!;
@@ -86,7 +89,6 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     readonly List<UIElement> _want = [];
     readonly Dictionary<string, Microsoft.UI.Xaml.Media.Imaging.BitmapImage?> _pics = new(StringComparer.Ordinal);
     LauncherLook? _look;
-    Mantle.App.Shell.Glass.GlassLayer? _glass;   // the shared desktop-still backdrop (look.md SEE-010); null with MANTLE_TEST_GLASS=electron
 
     public bool Shown => _shown;
 
@@ -101,6 +103,10 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         _ctx = ctx;
         _tok = new LauncherTokens(ctx.Log);
         _keys = ctx.Test && !Mantle.App.Host.Quiet && Environment.GetEnvironmentVariable(KeysEnv) == "1";
+        // lane r15-quick-launcher: the islands look (LauncherSurface.Islands.cs) whenever the bar wears it; off (MANTLE_TEST_GLASS=electron,
+        // the Electron pairs) the old glass look below, unchanged
+        _lv = Mantle.App.Surfaces.Bar.Frame.BarGeometry.Islands;
+        if (_lv) _spec = LauncherSpec.Read(ctx.Log);
         Build();
         _look = new LauncherLook(ctx.Dispatcher, ctx.Log, _panel, _bdrop, _shadow, _dim);
         _look.NoPictureChanged += Footer;
@@ -124,14 +130,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         Win32.SetWindowLongPtr(_hwnd, Win32.GWL_EXSTYLE, new IntPtr(ex));
         if (Mantle.App.Host.Quiet) Win32.SetLayeredWindowAttributes(_hwnd, 0, 0, Win32.LWA_ALPHA);
         TransparentBackdrop.MakeSeeThrough(_hwnd);
-        if (!Mantle.App.Shell.Glass.DesktopGlass.ElectronLook) {
-            // the pane paints the desktop still lined up with the screen under one tint; no still: its own fill (and the log says why)
-            _glass = new Mantle.App.Shell.Glass.GlassLayer("launcher", _hwnd, _panel.CornerRadius, s => Mantle.App.Surfaces.Bar.Frame.FrameNative.GetWindowRect(_hwnd, out var r) ? (r.Left + InsetDip * s, r.Top + InsetDip * s) : (0.0, 0.0),
-                plain => _fill.Visibility = plain ? Visibility.Visible : Visibility.Collapsed);
-            _panelGrid.Children.Insert(0, _glass.Tint);
-            _panelGrid.Children.Insert(0, _glass.Picture);
-            _win.AppWindow.Changed += (_, e) => { if (e.DidPositionChange && _shown) _glass?.Moved(); };
-        }
+        // the islands look: one levitated island (it replaces the see-through GlassLayer, which ran exactly when this does)
+        if (_lv) LvCreate();
 
         // TextChanging, not TextChanged: it comes synchronously with the edit, so the rows are made before the frame that
         // draws the new text (TextChanged is posted after it, which put some keystrokes' rows one frame late: LAU-016)
@@ -161,7 +161,12 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
 
     /// The accent line under the query (.slot:focus-within::after): while the query has focus, whether or not the window is
     /// active (Chromium keeps :focus-within in an inactive window; the parity pairs show Electron's --test launcher with it).
-    void FocusLine() => _focusLine.Opacity = _q.FocusState != FocusState.Unfocused ? 1 : 0;
+    void FocusLine()
+    {
+        bool on = _q.FocusState != FocusState.Unfocused;
+        _focusLine.Opacity = on ? 1 : 0;
+        if (_lv) AutomationProperties.SetItemStatus(_focusLine, on ? "focused" : "");   // UIA reads no opacity
+    }
 
     // ------------------------------------------------------------------ the tree (ui/launcher/index.html + launcher.css)
 
@@ -187,7 +192,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         catch (Exception e) { _ctx.Log.Line("the search line's focus border could not be turned off (" + e.Message + "); it may draw a line under the text"); }
 
         // bottom: -1px of the slot's padding box = ON the divider's own row (the pane does not change height), not below it
-        _focusLine = new Border { Height = 1, VerticalAlignment = VerticalAlignment.Bottom, Opacity = 0, IsHitTestVisible = false };
+        _focusLine = _lv ? new LauncherGrid(Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.Group) : new Grid();
+        _focusLine.Height = 1; _focusLine.VerticalAlignment = VerticalAlignment.Bottom; _focusLine.Opacity = 0; _focusLine.IsHitTestVisible = false;
         var slotGrid = new Grid();
         _slot = new Border { Height = 58, Padding = new Thickness(16, 0, 16, 0), BorderThickness = new Thickness(0, 0, 0, 1), Child = _q };
         slotGrid.Children.Add(_slot);
@@ -254,6 +260,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         _root = new Grid();
         _root.Children.Add(_shadow);
         _root.Children.Add(_panel);
+        if (_lv) LvBuild();                                               // the islands look's field, list and foot sizes
 
         foreach (var (el, id) in new (FrameworkElement, string)[] { (_panelGrid, "panel"), (_q, "q"), (_list, "results"), (_hint, "hint"), (_counts, "counts"), (_notice, "notice") })
             AutomationProperties.SetAutomationId(el, id);
@@ -293,15 +300,15 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         _dark = dark;
         var t = _tok;
         _root.RequestedTheme = dark ? ElementTheme.Dark : ElementTheme.Light;
-        double r = dark ? 18 : 20;                                           // --lg-r-xl in dark, --panel-r in light
-        _panel.CornerRadius = _edge.CornerRadius = _bdrop.CornerRadius = _fill.CornerRadius = new CornerRadius(r);
-        _dim.CornerRadius = new CornerRadius(0, r, r, 0);
-        if (_glass != null) { _glass.Picture.CornerRadius = _glass.Tint.CornerRadius = new CornerRadius(r); _glass.Theme(dark); }
         // the pooled rows and headings carry this theme's sizes and brushes: made again on the next render
         _pool.Clear(); _heads.Clear(); _empty = null; _list?.Children.Clear(); _rows.Clear(); _hintKey = "";
         if (!_shown && _look?.Folding == true) _win?.AppWindow.Hide();        // a fold cut short by the theme still ends hidden
         _look?.Rest();
         _look?.ClearPicture();
+        if (_lv) { LvTheme(dark); Render(); RenderHint(); return; }      // the islands look (LauncherSurface.Islands.cs)
+        double r = dark ? 18 : 20;                                           // --lg-r-xl in dark, --panel-r in light
+        _panel.CornerRadius = _edge.CornerRadius = _bdrop.CornerRadius = _fill.CornerRadius = new CornerRadius(r);
+        _dim.CornerRadius = new CornerRadius(0, r, r, 0);
         if (_shadow != null) _shadow.Visibility = dark ? Visibility.Collapsed : Visibility.Visible;   // no outer shadow in dark
         _lip.CornerRadius = new CornerRadius(r - 1);
         // .panel::after over what is behind (the window is see-through; the blurred backdrop picture is part 2):
@@ -329,6 +336,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     /// Returns the window's physical rectangle, the display's, and the scale (null when the display reports no size).
     (Win32.RECT Win, Win32.RECT Screen, double Scale)? Place()
     {
+        if (_lv) return LvPlace();
         var area = DisplayArea.Primary;
         double scale = Win32.GetDpiForWindow(_hwnd) / 96.0;
         int w = (int)Math.Round(WidthDip * scale), h = (int)Math.Round(HeightDip * scale);
@@ -342,13 +350,13 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     /// Before the window shows: the light shadow for this size and the picture of what is behind the pane.
     void Glass((Win32.RECT Win, Win32.RECT Screen, double Scale)? at)
     {
+        if (_lv) { LvGlass(at); return; }
         if (at is not { } p || _look == null) return;
         int ins = (int)Math.Round(InsetDip * p.Scale);
         _look.Shadow(_dark, p.Win.Right - p.Win.Left, p.Win.Bottom - p.Win.Top, p.Scale, InsetDip, _dark ? 18 : 20);
         if (_look.Folding) return;                                          // still on screen from a fold: keep the picture it has
         var pane = new Win32.RECT { Left = p.Win.Left + ins, Top = p.Win.Top + ins, Right = p.Win.Right - ins, Bottom = p.Win.Bottom - ins };
-        if (_glass != null) _glass.Up(_dark);                                // the see-through look: the shared still, sharp and lined up
-        else _look.Picture(pane, p.Screen, p.Scale, _dark);
+        _look.Picture(pane, p.Screen, p.Scale, _dark);
     }
 
     public void Show(string why)
@@ -367,7 +375,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         if (takeKeys) _q.Focus(FocusState.Programmatic);                   // LAU-046
         _q.SelectAll();
         _ctx.Log.Line("shown (" + why + ")");
-        _look?.Unfold(WidthDip - 2 * InsetDip, InsetDip);                  // ui/shared/unfold-live.js open, size 'pop'
+        if (_lv) LvIn();                                                   // the islands look: the pop-over in
+        else _look?.Unfold(WidthDip - 2 * InsetDip, InsetDip);             // ui/shared/unfold-live.js open, size 'pop'
         _ = _ctx.CallAsync("apps.index");                                    // LAU-018: re-checked on every open
         if (!QuickOpening()) RunSearch(_q.Text, 0, opening: true);
     }
@@ -379,13 +388,18 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         FlushSearch();
         QuickHidden();
         _ctx.Log.Line("hidden (" + why + ")");
+        if (_lv)
+        {
+            // the islands look: the pop-over out, then the window goes (an open first cancels it)
+            LvOut(() => { if (_shown) return; _win.AppWindow.Hide(); _lvPanel?.Down(); });
+            return;
+        }
         if (_look == null) { _win.AppWindow.Hide(); return; }
         // main.js: MantleLauncherFold() before the hide; the window goes when the fold has landed (an open first cancels it)
         _look.Fold(WidthDip - 2 * InsetDip, InsetDip, () =>
         {
             if (_shown) return;
             _win.AppWindow.Hide();
-            _glass?.Down();
             _look.Rest();
             _look.ClearPicture();                                            // panelDown: clearBackdrop()
         });
@@ -552,6 +566,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
 
     void ShowLine(string text, bool warn)
     {
+        if (_lv) { _list.Children.Add(LvLine(text, warn)); return; }
         var t = new TextBlock
         {
             Text = text, FontSize = warn ? 13 : 12.5, TextWrapping = TextWrapping.Wrap,
@@ -570,10 +585,10 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         foreach (var g in _view.Groups)
         {
             if (gi == _heads.Count)
-                _heads.Add(new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = _tok.Brush("LgInk", _dark) });
+                _heads.Add(_lv ? LvHead() : new TextBlock { FontSize = 13, FontWeight = FontWeights.SemiBold, Foreground = _tok.Brush("LgInk", _dark) });
             var head = _heads[gi];
             if (head.Text != g.Label) head.Text = g.Label;
-            head.Margin = gi == 0 ? new Thickness(12, 4, 12, 3) : new Thickness(12, 12, 12, 3);           // .grp (+2 after a row)
+            head.Margin = _lv ? LvHeadMargin(gi == 0) : gi == 0 ? new Thickness(12, 4, 12, 3) : new Thickness(12, 12, 12, 3);   // .grp (+2 after a row)
             gi++;
             _want.Add(head);
             foreach (var row in g.Rows)
@@ -601,8 +616,8 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     TextBlock? _empty;
     TextBlock EmptyLine(string text)
     {
-        _empty ??= new TextBlock { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 10, 12, 2) };   // .empty.is-none
-        _empty.Foreground = _tok.Brush("LgInk2", _dark);
+        _empty ??= _lv ? LvLine("", warn: false) : new TextBlock { FontSize = 12.5, TextWrapping = TextWrapping.Wrap, Margin = new Thickness(16, 10, 12, 2) };   // .empty.is-none
+        if (!_lv) _empty.Foreground = _tok.Brush("LgInk2", _dark);
         if (_empty.Text != text) _empty.Text = text;
         return _empty;
     }
@@ -610,10 +625,21 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
     /// One row's elements, made once per theme (LAU-063: icon cell 24, name, subtitle; the wash and the light tick).
     Row NewRow()
     {
+        var r = _lv ? LvRow() : GlassRow();
+        var g = r.Root;
+        g.PointerMoved += (_, _) => { if (_sel != r.Index) Select(r.Index, false); };   // LAU-056: mousemove, not mouseover
+        g.Tapped += (_, _) => { Select(r.Index, false); Activate(); };
+        _pool.Add(r);
+        return r;
+    }
+
+    /// The old glass look's row.
+    Row GlassRow()
+    {
         var t = _tok;
         double radius = _dark ? 10 : 8;                                      // --lg-r
         var wash = new Border { CornerRadius = new CornerRadius(radius), Opacity = 0 };
-        var tick = new Border { Width = 3, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 13, 0, 13), CornerRadius = new CornerRadius(2), Background = t.Brush("LgAcc", _dark), Opacity = 0 };
+        var tick = new Grid { Width = 3, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 13, 0, 13), CornerRadius = new CornerRadius(2), Background = t.Brush("LgAcc", _dark), Opacity = 0 };
         var letter = new TextBlock
         {
             FontSize = 12, FontWeight = FontWeights.SemiBold, Foreground = t.Brush("LgInk2", _dark),
@@ -634,17 +660,13 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         main.Children.Add(tile); main.Children.Add(name); main.Children.Add(sub);
         var g = new LauncherGrid(Microsoft.UI.Xaml.Automation.Peers.AutomationControlType.ListItem) { Height = 44, Background = new SolidColorBrush(LauncherTokens.None) };   // a fill so the whole row takes the pointer
         g.Children.Add(wash); g.Children.Add(tick); g.Children.Add(main);
-        var r = new Row { Root = g, Wash = wash, Tick = tick, Tile = tile, Letter = letter, Name = name, Sub = sub, GlyphBox = glyphs, Pic = pic };
-        g.PointerMoved += (_, _) => { if (_sel != r.Index) Select(r.Index, false); };   // LAU-056: mousemove, not mouseover
-        g.Tapped += (_, _) => { Select(r.Index, false); Activate(); };
-        _pool.Add(r);
-        return r;
+        return new Row { Root = g, Wash = wash, Tick = tick, Tile = tile, Letter = letter, Name = name, Sub = sub, GlyphBox = glyphs, Pic = pic };
     }
 
     void FillRow(Row r, LauncherItem it, int index)
     {
         r.Index = index;
-        r.Root.Margin = index > 0 ? new Thickness(0, 1, 0, 0) : new Thickness(0);
+        r.Root.Margin = index > 0 && !_lv ? new Thickness(0, 1, 0, 0) : new Thickness(0);   // the islands rows touch (launcher.css .lch-row)
         string name = it.Name.Length > 0 ? it.Name : "(unnamed)";
         if (!QuickName(r, it, name) && r.Name.Text != name) r.Name.Text = name;
         if (r.Sub.Text != it.Subtitle) r.Sub.Text = it.Subtitle;
@@ -657,6 +679,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         string tip = it.Name + (it.Subtitle.Length > 0 ? " · " + it.Subtitle : "");
         if (r.Tip != tip) { r.Tip = tip; ToolTipService.SetToolTip(r.Root, tip); }
         Icon(r, it);
+        if (_lv) LvFill(r, it);
     }
 
     /// launcher.js iconCell: the app's own picture, else the row's glyph, else the letter tile. A picture or a glyph
@@ -672,13 +695,13 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         if (showPic) { if (!ReferenceEquals(r.Pic.Source, bmp)) r.Pic.Source = bmp; }
         else if (r.Pic.Source != null) r.Pic.Source = null;
         r.IconUrl = url;
-        if (showGlyph && r.GlyphName != glyph) { LauncherGlyphs.Fill(r.GlyphBox, glyph!, _tok.Brush("LgInk2", _dark), _dark); r.GlyphName = glyph; }
+        if (showGlyph && r.GlyphName != glyph) { LauncherGlyphs.Fill(r.GlyphBox, glyph!, _lv ? Lv("LvBarInk2") : _tok.Brush("LgInk2", _dark), _dark); r.GlyphName = glyph; }
         string letter = it.Name.Trim() is { Length: > 0 } nm ? nm.Substring(0, 1).ToUpperInvariant() : "?";
         if (r.Letter.Text != letter) r.Letter.Text = letter;
         r.Pic.Visibility = showPic ? Visibility.Visible : Visibility.Collapsed;
         r.GlyphBox.Visibility = showGlyph ? Visibility.Visible : Visibility.Collapsed;
         r.Letter.Visibility = showPic || showGlyph ? Visibility.Collapsed : Visibility.Visible;
-        r.Tile.Background = showPic || showGlyph ? null : _tok.Brush(_dark ? "LgTile" : "LgSunk", _dark);
+        r.Tile.Background = _lv ? LvTile(showPic, showGlyph) : showPic || showGlyph ? null : _tok.Brush(_dark ? "LgTile" : "LgSunk", _dark);
     }
 
     /// A data URL into a bitmap, once per distinct picture (the rows that wear it are redrawn when it is ready).
@@ -714,21 +737,28 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         for (int i = 0; i < _rows.Count; i++)
         {
             bool on = i == _sel;
-            var w = _rows[i].Wash;
-            // light: --lg-tile wash + 3 px accent tick (LAU-038); dark: --lg-press wash + hairline ring, no tick (LAU-037)
-            if (on)
-            {
-                w.Background = _tok.Brush(_dark ? "LgPress" : "LgTile", _dark);
-                w.BorderBrush = _dark ? _tok.Brush("LgEdgeOut", true) : null;
-                w.BorderThickness = new Thickness(_dark ? 1 : 0);
-            }
-            w.Opacity = on ? 1 : 0;
-            _rows[i].Tick.Opacity = on && !_dark ? 1 : 0;
+            if (_lv) LvSelect(_rows[i], on);
+            else GlassSelect(_rows[i], on);
             string status = on ? "selected" : "";
             if (AutomationProperties.GetItemStatus(_rows[i].Root) != status) AutomationProperties.SetItemStatus(_rows[i].Root, status);
         }
         if (scroll) _rows[_sel].Root.StartBringIntoView();
         RenderHint();
+    }
+
+    /// The old glass look's selected row.
+    void GlassSelect(Row row, bool on)
+    {
+        var w = row.Wash;
+        // light: --lg-tile wash + 3 px accent tick (LAU-038); dark: --lg-press wash + hairline ring, no tick (LAU-037)
+        if (on)
+        {
+            w.Background = _tok.Brush(_dark ? "LgPress" : "LgTile", _dark);
+            w.BorderBrush = _dark ? _tok.Brush("LgEdgeOut", true) : null;
+            w.BorderThickness = new Thickness(_dark ? 1 : 0);
+        }
+        w.Opacity = on ? 1 : 0;
+        row.Tick.Opacity = on && !_dark ? 1 : 0;
     }
 
     // ------------------------------------------------------------------ the footer's keys (launcher.js renderHint)
@@ -766,6 +796,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
 
     StackPanel Keycap(string key, string word)
     {
+        if (_lv) return LvKeycap(key, word);
         var t = _tok;
         var kbd = new Border
         {
@@ -791,7 +822,7 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         if (QuickKey(e)) return;                                           // Quick links' letters, Esc, Left, Right
         int n = _rows.Count;
         bool shift = Microsoft.UI.Input.InputKeyboardSource.GetKeyStateForCurrentThread(VirtualKey.Shift).HasFlag(Windows.UI.Core.CoreVirtualKeyStates.Down);
-        int page = Math.Max(1, (int)(_scroll.ViewportHeight / 45) - 1);
+        int page = Math.Max(1, (int)(_scroll.ViewportHeight / (_lv ? _spec.RowHeight : 45)) - 1);   // a page = the rows that fit
         // a key that acts on the rows acts on the rows for what is typed: a search the debounce holds runs first
         if (e.Key is VirtualKey.Down or VirtualKey.Up or VirtualKey.PageDown or VirtualKey.PageUp or VirtualKey.Home or VirtualKey.End or VirtualKey.Tab or VirtualKey.Enter)
         {

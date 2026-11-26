@@ -33,7 +33,8 @@ public sealed partial class BarWindow
             TakeKeys: () => keys ? popups.TakeKeyboard("qs")
                 : (false, "a test instance never takes the keyboard from whoever is at the machine, so a password cannot be typed here"),
             GiveKeys: why => popups.GiveBackKeyboard(why),
-            Close: why => { if (popups.OpenKey == "qs") popups.Close(why); }));
+            Close: why => { if (popups.OpenKey == "qs") popups.Close(why); },
+            Reduced: () => ReducedMotion));
         if (Host.Args.Test && keys) Host.Log.Line($"qs: {QsKeysEnv}=1: this test panel may take the keyboard for the password field");
         foreach (var b in new[] { VolumeBtn, NetworkBtn, BatteryBtn }) {
             var anchor = b;
@@ -72,7 +73,7 @@ public sealed partial class BarWindow
         bool closing = Popups.OpenKey == "qs";
         double h = closing ? 0 : _qs.Prepare(Dark);
         var qs = _qs;
-        Popups.Toggle(new PopupKind("qs", "Quick settings", closing ? QsPanel.WidthDip : qs.Width, closing ? 400 : h, Focusable: false, Instant: true, Away: true, () => qs.Root), anchor);
+        Popups.Toggle(new PopupKind("qs", "Quick settings", closing ? QsPanel.WidthDip : qs.Width, closing ? 400 : h, Focusable: false, Instant: true, Away: true, () => qs.Root, Levitate: QsLook.Islands), anchor);   // lane r15-quick-settings: the islands look is levitated (the host draws the island)
         if (Popups.OpenKey == "qs" && !qs.Open) {
             qs.Opened();
             Host.Log.Line($"qs: the panel opened from {Microsoft.UI.Xaml.Automation.AutomationProperties.GetAutomationId(anchor)} ({qs.Width}x{h} DIP)");

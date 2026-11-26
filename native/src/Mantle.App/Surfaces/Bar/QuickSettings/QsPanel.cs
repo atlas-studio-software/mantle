@@ -214,6 +214,7 @@ internal sealed partial class QsPanel
         foot.Children.Add(acts);
         _foot = new Border { Child = foot, BorderThickness = new Thickness(0, 1, 0, 0), Margin = new Thickness(0, 10 - 9, 0, 0), Padding = new Thickness(0, 9, 0, 0) };
         _stack.Children.Add(_foot);
+        BuildIslands();   // the islands look's sizes and frame (QsPanel.Islands.cs); nothing in the Electron look
     }
 
     /// From the host (App.xaml.cs, block QuickSettingsWiring), on the UI thread: the road to the qs.* commands.
@@ -407,7 +408,8 @@ internal sealed partial class QsPanel
     {
         _painting = true;
         try {
-            PaintTile(QsView.Wifi(Part("wifi")), WifiPaths(QsView.Wifi(Part("wifi")).Bars));
+            var wv = QsView.Wifi(WifiPart());   // the bar's offline test switch too (QsPanel.Islands.cs), so tile and button agree
+            PaintTile(wv, WifiPaths(wv.Bars));
             var bt = QsView.Bluetooth(Part("bluetooth"));
             PaintTile(bt, QsParts.IsFalse(Part("bluetooth")?["present"]) ? NoBtPaths : BtPaths);
             PaintTile(QsView.NightLight(Part("nightlight")), MoonPaths);
@@ -440,6 +442,7 @@ internal sealed partial class QsPanel
             Fill(_gearGlyph, GearPaths, "LgInk2");
             _soundMore.Background = B("LgTile");
             PaintChevron(_soundMore, "LgInk");
+            PaintIslands();   // the islands look over the above (QsPanel.Islands.cs)
             PaintFrame();
         } finally { _painting = false; }
     }
@@ -632,7 +635,7 @@ internal sealed partial class QsPanel
 
     Button Btn(string id, string name, double w, double h)
     {
-        var b = new Button { Style = BtnStyle(), FontSize = 12.5 };
+        var b = new Button { Style = _isl ? IslBtnStyle() : BtnStyle(), FontSize = 12.5 };
         if (!double.IsNaN(w)) b.Width = w;
         if (!double.IsNaN(h)) b.Height = h;
         Uia(b, id, name);
@@ -675,6 +678,7 @@ internal sealed partial class QsPanel
     /// The --lg-* token of the panel's theme (Theme/Tokens.xaml), read in code so a repaint follows the bar's theme.
     Brush B(string key)
     {
+        if (_isl && QsLook.Ink(_dark, key, _log) is Brush ib) return ib;   // the islands twin of an Lg* name (QsLook.cs)
         string theme = _dark ? "Dark" : "Light";
         foreach (var d in Application.Current.Resources.MergedDictionaries)
             if (Find(d, key, theme) is Brush b) return b;
@@ -795,6 +799,7 @@ internal sealed partial class QsPanel
 
     Brush Tok(string theme, string key)
     {
+        if (_isl && QsLook.Ink(theme == "Dark", key, _log) is Brush ib) return ib;
         foreach (var d in Application.Current.Resources.MergedDictionaries)
             if (Find(d, key, theme) is Brush b) return b;
         return new SolidColorBrush();
@@ -822,11 +827,12 @@ internal sealed partial class QsPanel
     static void Fill(Canvas c, string[] paths, string inkKey)
     {
         c.Children.Clear();
+        inkKey = QsLook.Key(inkKey);   // the islands look: the LvBar* twin (QsLook.cs)
         foreach (var spec in paths) {
             int bar = spec.IndexOf('|');
             string kind = spec[..bar], data = spec[(bar + 1)..];
             string paint = kind == "F" ? $"Fill='{{ThemeResource {inkKey}}}'"
-                : $"Stroke='{{ThemeResource {inkKey}}}' StrokeThickness='{(kind == "s" ? "1.2" : kind == "g" ? "1.1" : "1.3")}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'" + (kind == "D" ? " Opacity='0.28'" : "");
+                : $"Stroke='{{ThemeResource {inkKey}}}' StrokeThickness='{(kind == "s" ? "1.2" : kind == "g" ? "1.1" : "1.3")}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'" + (kind == "D" ? $" Opacity='{FaintText()}'" : "");
             c.Children.Add((UIElement)XamlReader.Load($"<Path {Ns} Data='{Norm(data)}' {paint}/>"));
         }
     }

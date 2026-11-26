@@ -37,6 +37,9 @@ public class CornersRowTests
         IntPtr h = IntPtr.Zero;
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings")), 3000), "quick settings did not open");
         var w = Host.Uia.FromHandle(h);
+        // lane r15-quick-launcher: the sparse quick settings keep the Hot corners row one level down, under "More settings"
+        ClickEl(El(w, "qs.more.row"));
+        Has(dir, "qs: the More settings view opened", "More settings did not open", 3000);
 
         // the defaults: Task view top left, Show desktop bottom right, the other two Off
         Assert.IsTrue(Host.Until(() => El(w, "qs.corners.sub").Name == "2 on · push the pointer in", 6000), $"the sub-caption says \"{El(w, "qs.corners.sub").Name}\" and the first line \"{w.FindFirstDescendant(cf => cf.ByAutomationId("qs.corners.line.0"))?.Name}\"; log: {string.Join(" / ", FrameProbe.Log(dir).Split((char)10).Where(l => l.Contains("corners")).TakeLast(6))}");
