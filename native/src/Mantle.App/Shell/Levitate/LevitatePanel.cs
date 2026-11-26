@@ -47,7 +47,8 @@ internal sealed class LevitatePanel
     /// The neutral film over the dim: rgba(10, 12, 14, a) in dark, the light lift rgba(244, 247, 248, a) in light (a = the
     /// v2.1 brightness check of the theme in effect; 0 in manual).
     public Border Film { get; }
-    /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size); over the film, under the UI.
+    /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size) in dark, .16 / .12 in light;
+    /// over the film, under the UI.
     public Border Sheen { get; }
     /// "frost light" | "frost soft" while the copy is up, else "fallback: why" (tests and logs).
     public string State { get; private set; } = "not shown yet";
@@ -100,10 +101,15 @@ internal sealed class LevitatePanel
         if (_up && !_released) Paint(_why);
     }
 
-    /// The pointer came over the island (or left it): the hover sheen on or off. No pixel work.
+    /// The pointer came over the island (or left it): the hover sheen on or off. No pixel work. Dark: white .07 (.05 on a
+    /// big panel), LevitateTokens; light (lane r15-bar-light, apps-r3/LIGHT.md section 4): white .16 (.12 big), from Theme/
+    /// Levitate.xaml's light LvBarSheen / LvBarSheenBig (Core has no light sheen constants).
     public void Hover(bool on)
     {
-        _sheen.Color = Rgba(255, 255, 255, Island.IsBig(_w, _h) ? LevitateTokens.SheenHoverBig : LevitateTokens.SheenHover);
+        bool big = Island.IsBig(_w, _h);
+        _sheen.Color = _dark
+            ? Rgba(255, 255, 255, big ? LevitateTokens.SheenHoverBig : LevitateTokens.SheenHover)
+            : IslandsInk.Color(false, big ? "LvBarSheenBig" : "LvBarSheen", Host.Log.Line);
         Sheen.Visibility = on && _up && !_released ? Visibility.Visible : Visibility.Collapsed;
     }
 

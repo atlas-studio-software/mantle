@@ -158,10 +158,12 @@ public partial class StripTests
 
     static long LogLength(string profile) => File.Exists(LogPath(profile)) ? new FileInfo(LogPath(profile)).Length : 0;
 
-    /// The light case of the running-line check below (lane r14-bar-review): the islands' ink in light is today's dark
-    /// LgInk2 (#333A4E; the active line LgAcc), which on the bare flat fallback (#2c5258, a test run shares no wallpaper
-    /// still) was 13 luminance apart; the light lift (apps-r3/LIGHT.md section 4b) now lays the dim and #F4F7F8 at 0.60
-    /// over it (or the lift the picture needs over a frost), so the line reads in the pixels as in dark.
+    /// The light case of the running-line check below (lane r14-bar-review): the islands' run dot in light was LgInk2
+    /// (#333A4E), which on the bare flat fallback (#2c5258, a test run shares no wallpaper still) was 13 luminance apart;
+    /// the light lift (apps-r3/LIGHT.md section 4b) now lays the dim and #F4F7F8 at 0.60 over it (or the lift the picture
+    /// needs over a frost), so the line reads in the pixels as in dark. Lane r15-bar-light: the light run dot is the
+    /// design's text-3 (#0F1E21 at .56, LvBarRun), about 81 luminance under the lifted fallback (LgInk2 was 112), still
+    /// well past this check's 30; the active line is the islands accent #083F49.
     [TestMethod]
     public void Pins_come_first_light_islands_running_line_reads_against_the_frost() =>
         PinsComeFirst("light", "uitest-strip-order-light");

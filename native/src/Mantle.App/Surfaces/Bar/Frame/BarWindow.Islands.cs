@@ -23,14 +23,19 @@ namespace Mantle.App;
 /// <item>One float shadow bitmap (<see cref="LevitateShadow"/>) round the three boxes, in ShadowHost, in both themes.</item>
 /// <item>The dock is centred on the screen; when its right edge + 12 would pass the right island, it sits 12 after the M
 /// (<see cref="BarIslands.Layout"/>). The island is placed by its layout margin (the frost lines up from the layout).</item>
-/// <item>Hover / pressed fills: the Levitate inks in dark (white .07 / .05), today's Lg tokens in light, given to the
-/// bar's buttons through Root's resources (the LgBtn template's LgHover / LgPress).</item>
+/// <item>Inks (lane r15-bar-light): one theme-dependent set, Theme/Levitate.xaml's LvBar* (dark as before, light from
+/// apps-r3/LIGHT.md section 4: text #0F1E21, text-2 / -3 .76 / .56, fills black .05 / .04 pressed, hair black .08). The
+/// hover / pressed fills reach the bar's buttons through Root's resources (the LgBtn template's LgHover / LgPress); the
+/// dock's separator, running dot and letter tile and "+N" through shared brushes; the accent is the islands one
+/// (IslandsInk.Accent).</item>
 /// </list>
 /// </summary>
 public sealed partial class BarWindow
 {
     LevitatePanel? _lvLeft, _lvDock, _lvRight;
     readonly SolidColorBrush _isHover = new(), _isPress = new(), _isAccent = new();
+    // the dock cells' islands inks (IslandCell), shared by every cell and re-coloured by PaintIslandInks
+    readonly SolidColorBrush _isHair = new(), _isRun = new(), _isTile = new(), _isTileInk = new();
     string _islandShadowKey = "", _islandsSaid = "";
     Image? _islandShadow;   // the float shadow bitmap's one Image in ShadowHost (IslandShadow)
 
@@ -144,7 +149,7 @@ public sealed partial class BarWindow
     static string BellInk(bool bad) => BarGeometry.Islands ? "LvBarInk" : bad ? "LgInk3" : "LgInk2";
 
     /// The More pip's dot in the islands look: text-2 for a plain problem, the design's warn only for a "warn" one.
-    Brush IslandPipInk(bool warn) => (Brush)ThemeToken(warn ? "LvBarWarn" : "LvBarInk2");
+    Brush IslandPipInk(bool warn) => IslandsInk.Token(_dark, warn ? "LvBarWarn" : "LvBarInk2", Host.Log.Line);
 
     /// One island's levitated layers under its content, the hover sheen from the pointer.
     static LevitatePanel IslandPanel(string name, Grid island)
@@ -217,32 +222,49 @@ public sealed partial class BarWindow
     void IslandsTheme()
     {
         PaintIslandInks();
+        RenderDlBtn();   // the downloads dot's islands accent follows the theme
         _lvLeft?.Theme(_dark);
         _lvDock?.Theme(_dark);
         _lvRight?.Theme(_dark);
         LayoutIslands("the theme changed");
     }
 
-    /// Dark: the Levitate inks (Theme/Levitate.xaml); light: today's Lg tokens (as the levitated Downloads shelf).
+    /// The islands' inks for the theme the bar shows (Theme/Levitate.xaml's LvBar* set: dark exactly as before lane r15,
+    /// light from apps-r3/LIGHT.md section 4).
     void PaintIslandInks()
     {
-        _isHover.Color = IslandInk("LvCtlFillHover", "LgHover") is SolidColorBrush hb ? hb.Color : default;
-        _isPress.Color = IslandInk("LvCtlFillPressed", "LgPress") is SolidColorBrush pb ? pb.Color : default;
-        // the clock's time is the text ink, its date text-2 (look.css .clock .t / .d; light from LIGHT.md 4)
-        ClockT.Foreground = (Brush)ThemeToken("LvBarInk");
-        ClockD.Foreground = (Brush)ThemeToken("LvBarInk2");
-        RightSep.Fill = IslandInk("LvHair", "LgEdgeOut");
-        DockMore.Foreground = (Brush)ThemeToken("LvBarInk");
-        // the dock's focus underline (look.css .dock-hl .u: var(--accent)), shared by every cell (IslandCell). A local
-        // brush until Core has the islands accent profile (look-sync accent.js 'islands', base hue 185)
-        _isAccent.Color = ThemeToken("LvBarAccent") is SolidColorBrush ab ? ab.Color : default;
+        // look.css .btn:hover / :active: fill-1 / fill-press (dark white .07 / .05, light black .05 / .04)
+        _isHover.Color = IslandsInk.Color(_dark, "LvBarFillHover", Host.Log.Line);
+        _isPress.Color = IslandsInk.Color(_dark, "LvBarFillPressed", Host.Log.Line);
+        // the clock's time is the text ink, its date text-2 (look.css .clock .t / .d)
+        ClockT.Foreground = IslandsInk.Token(_dark, "LvBarInk", Host.Log.Line);
+        ClockD.Foreground = IslandsInk.Token(_dark, "LvBarInk2", Host.Log.Line);
+        // the separators: hair (look.css .b-sep / .dock-sep), the dock's through _isHair (IslandCell)
+        RightSep.Fill = IslandsInk.Token(_dark, "LvBarHair", Host.Log.Line);
+        _isHair.Color = IslandsInk.Color(_dark, "LvBarHair", Host.Log.Line);
+        // the dock's running dot (look.css .cell .run: text-3), a letter tile and its letter (.app-ic: fill-2, text)
+        _isRun.Color = IslandsInk.Color(_dark, "LvBarRun", Host.Log.Line);
+        _isTile.Color = IslandsInk.Color(_dark, "LvBarTile", Host.Log.Line);
+        _isTileInk.Color = IslandsInk.Color(_dark, "LvBarTileInk", Host.Log.Line);
+        DockMore.Foreground = IslandsInk.Token(_dark, "LvBarInk", Host.Log.Line);
+        DockMore.Background = IslandsInk.Token(_dark, "LvBarSunk", Host.Log.Line);
+        // the dock's focus underline (look.css .dock-hl .u: var(--accent)), shared by every cell (IslandCell): the islands
+        // accent, dark from Core's "islands" profile, light the local LvBarAccent until native/r15-accent-v22 merges
+        _isAccent.Color = IslandsInk.Accent(_dark, Host.Log.Line).Acc;
+        // the pip's ink follows the theme too (IslandPipInk, from RenderPip)
+        if (MorePip.Visibility == Visibility.Visible) MorePipDot.Fill = IslandPipInk(_pipNow.Item2);
+        // said once per theme (UI tests read it: IslandsInkTests)
+        var acc = IslandsInk.Accent(_dark, Host.Log.Line);
+        string inks = $"bar islands inks ({(_dark ? "dark" : "light")}): text {Hex(ClockT.Foreground)}, text-2 {Hex(ClockD.Foreground)}, " +
+            $"hover {Hex(_isHover.Color)}, pressed {Hex(_isPress.Color)}, hair {Hex(_isHair.Color)}, run {Hex(_isRun.Color)}, " +
+            $"accent {Hex(acc.Acc)} on {Hex(acc.On)}, sheen {Hex(IslandsInk.Color(_dark, "LvBarSheen", Host.Log.Line))}";
+        if (inks != _islandInksSaid) { _islandInksSaid = inks; Host.Log.Line(inks); }
     }
+    string _islandInksSaid = "";
 
-    Brush IslandInk(string lv, string lg)
-    {
-        if (_dark && Application.Current.Resources.TryGetValue(lv, out var v) && v is Brush b) return b;
-        return (Brush)TokenOr(lg, "LgInk2");
-    }
+    /// A colour as #AARRGGBB (the log's islands inks line).
+    static string Hex(global::Windows.UI.Color c) => $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}";
+    static string Hex(Brush b) => b is SolidColorBrush s ? Hex(s.Color) : b.GetType().Name;
 
     /// A dock cell in the islands look (from Cell_Loaded): 40 x 36 at radius 8, a 20 icon, the run dot 4 x 3 two up,
     /// the separator 1 x 20 with margin 0 4 (plus the 2 gap after it), the dock's gap 2.
@@ -254,6 +276,7 @@ public sealed partial class BarWindow
         if (Dock.ItemsPanelRoot is StackPanel panel && panel.Spacing != BarIslands.DockGap) panel.Spacing = BarIslands.DockGap;
         if (VisualTreeHelper.GetParent(b) is StackPanel row && row.Children.Count > 0 && row.Children[0] is Rectangle sep) {
             sep.Height = BarIslands.SepH;
+            sep.Fill = _isHair;   // hair (PaintIslandInks)
             sep.Margin = new Thickness(BarIslands.SepMarginX, 0, BarIslands.SepMarginX + BarIslands.DockGap, 0);
         }
         if (b.Content is Grid face && face.Children.Count > 0 && face.Children[0] is StackPanel stack) {
@@ -263,11 +286,16 @@ public sealed partial class BarWindow
             if (stack.Children.Count > 0 && stack.Children[0] is Grid icon) {
                 icon.Width = BarIslands.CellIcon;
                 icon.Height = BarIslands.CellIcon;
-                foreach (var c in icon.Children)
+                foreach (var c in icon.Children) {
                     if (c is Image im) { im.Width = BarIslands.CellIcon; im.Height = BarIslands.CellIcon; }
+                    // the letter tile of an app with no icon and its letter (PaintIslandInks)
+                    if (c is Border tile) { tile.Background = _isTile; if (tile.Child is TextBlock letter) letter.Foreground = _isTileInk; }
+                }
             }
-            if (stack.Children.Count > 1 && stack.Children[1] is Grid ind && ind.Children.Count > 0 && ind.Children[0] is Border run)
+            if (stack.Children.Count > 1 && stack.Children[1] is Grid ind && ind.Children.Count > 0 && ind.Children[0] is Border run) {
                 run.Width = BarIslands.RunW;
+                run.Background = _isRun;   // text-3 (PaintIslandInks)
+            }
             if (stack.Children.Count > 1 && stack.Children[1] is Grid ind2 && ind2.Children.Count > 1 && ind2.Children[1] is Border act)
                 act.Background = _isAccent;   // the focus underline in the islands accent (PaintIslandInks)
         }

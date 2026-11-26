@@ -108,7 +108,7 @@ public sealed partial class BarWindow
         bool playing = MediaService.Bool(s["playing"]);
         string? art = MediaService.Str(s["artwork"]);
         string? src = art ?? MediaService.Str(s["app"]?["icon"]);
-        _mart.Background = MTok("LgTile");
+        _mart.Background = MTok(Surfaces.Bar.Frame.BarGeometry.Islands ? "LvBarTile" : "LgTile");   // islands: look.css .app-ic fill-2 (Theme/Levitate.xaml)
         if (src != _martSrc) { _martSrc = src; _ = ChipArt(src, art != null ? 20 : 14); }
         string tip = MediaView.ChipTip(s);
         ToolTipService.SetToolTip(_mchip, tip);
@@ -233,12 +233,22 @@ public sealed partial class BarWindow
         return t;
     }
 
-    /// The bar theme's --lg-* token, read in code.
+    /// The bar theme's --lg-* token (or the islands look's LvBar* one), read in code. Lane r15-bar-light: the search goes
+    /// into nested merged dictionaries (Theme.xaml merges Tokens.xaml and Levitate.xaml), so an LvBar* key is found for the
+    /// BAR's theme, not the app's.
     Brush MTok(string key)
     {
         string theme = Dark ? "Dark" : "Light";
         foreach (var d in Application.Current.Resources.MergedDictionaries)
-            if (d.ThemeDictionaries.TryGetValue(theme, out var td) && td is ResourceDictionary t && t.TryGetValue(key, out var v) && v is Brush b) return b;
+            if (d is not XamlControlsResources && MFind(d, key, theme, 0) is Brush b) return b;
         return (Brush)(Application.Current.Resources.TryGetValue(key, out var x) && x is Brush bb ? bb : new SolidColorBrush());
+    }
+
+    static object? MFind(ResourceDictionary d, string key, string theme, int depth)
+    {
+        if (d.ThemeDictionaries.TryGetValue(theme, out var td) && td is ResourceDictionary t && t.TryGetValue(key, out var v) && v is Brush) return v;
+        if (depth >= 4) return null;
+        foreach (var m in d.MergedDictionaries) if (MFind(m, key, theme, depth + 1) is { } x) return x;
+        return null;
     }
 }
