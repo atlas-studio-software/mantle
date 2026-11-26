@@ -268,10 +268,39 @@ public class BarTests
             "an app process is still running after close + kill");
     }
 
-    /// The islands' case of the theme tint check below (which runs the electron face), kept visible as a SKIP.
+    /// The islands' case of the theme tint check below (which runs the electron face), lane r14-bar-review: the frost is the
+    /// same picture in both themes, but in light the island is lifted toward #F4F7F8 (apps-r3/LIGHT.md section 4b; over the
+    /// flat #2c5258 fallback a test run shows, 0.60 at the seed dim) and in dark it is not (dark film over a pale picture),
+    /// so the dark island is clearly the darker. Probed on the left island above the M, the pointer kept away.
     [TestMethod]
-    public void Dark_theme_islands_tint_follows_the_theme() =>
-        Assert.Inconclusive("SKIP: " + "light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands)" + ": the islands' frost is the same picture in both themes and the light lift (toward #F4F7F8) is not built, so their tint does not follow the theme yet; Dark_theme_draws_a_darker_pill_than_light runs the electron face");
+    public void Dark_theme_islands_tint_follows_the_theme()
+    {
+        string said = "";
+        double Lum(string theme)
+        {
+            using var app = BarApp.Launch("uitest-islands-tint-" + theme, theme);
+            var r = Rect(app.Find("bar.island.left"));
+            double s = r.Height / 44.0;   // the island is 44 DIP tall
+            Mouse.Position = new Point(r.Right + (int)Math.Round(400 * s), Math.Max(0, r.Y - (int)Math.Round(300 * s)));   // no hover sheen
+            string log = Path.Combine(Path.GetTempPath(), "mantle-native-uitest-uitest-islands-tint-" + theme, "mantle-native.log");
+            Host.Until(() => Read(log).Contains("levitate bar left island: "), 8000);
+            Thread.Sleep(1500);   // first frame, and the dim and the lift laid
+            var probe = new Rectangle(r.X + (int)Math.Round(14 * s), r.Y + (int)Math.Round(3 * s), Math.Max(4, (int)Math.Round(16 * s)), Math.Max(2, (int)Math.Round(5 * s)));
+            said += $" {theme}: " + string.Join(" / ", Read(log).Split('\n').Where(l => l.Contains("levitate bar left island: ", StringComparison.Ordinal)).TakeLast(2).Select(l => l.Trim()));
+            return Host.Luminance(probe);
+        }
+        double light = Lum("light"), dark = Lum("dark");
+        Console.WriteLine($"left island luminance: light {light:0.0}, dark {dark:0.0};{said}");
+        Assert.IsTrue(dark + 30 < light, $"the dark island ({dark:0.0}) is not clearly darker than the light one ({light:0.0}): the light lift did not reach the islands?{said}");
+    }
+
+    static string Read(string path)
+    {
+        try {
+            using var f = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite | FileShare.Delete);
+            return new StreamReader(f).ReadToEnd();
+        } catch (IOException) { return ""; }
+    }
 
     [TestMethod]
     public void Dark_theme_draws_a_darker_pill_than_light()
