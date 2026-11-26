@@ -7,20 +7,45 @@ namespace Mantle.Core.Look;
 public sealed record AccentTokens(string Acc, string Strong, string On, string Soft, string Line, string Select, string Glow, byte R, byte G, byte B);
 
 /// <summary>
-/// C# port of lib/accent.js (vendored from the look-sync project, accent.js at 4f82c4b; Look Sync contract
-/// section 3). A custom hue keeps the EXACT saturation and lightness of the authored hexes (dark #9fb4cc /
-/// #b7c8db / #11161c, light #4d6784 / #3c536d / white), so hue 212 gives back the shipped steel blue.
-/// Hue null means "keep Mantle's own accent" (no tokens).
+/// C# port of look-sync accent.js at c29ba47 (Look Sync contract section 3 and "Accent profiles", 2026-11-25; was the
+/// steel-only accent.js at 4f82c4b). A custom hue keeps the EXACT saturation and lightness of the authored hexes, and at a
+/// profile's base hue (per theme) the tokens ARE the authored hexes. Two profiles:
+/// <list type="bullet">
+/// <item>steel (the default, the v1 look): dark #9fb4cc / #b7c8db / #11161c, light #4d6784 / #3c536d / white; base 212.</item>
+/// <item>islands (the v2 islands look): dark #a9e7ed / #c4f0f4 / #052a2f, base 185; its light is steel's light (base 212)
+/// until an app builds its light look, so at 185 light gives steel's light S/L at hue 185 (#4d7f84).</item>
+/// </list>
+/// Any other profile name (absent included) is steel. Hue null means "keep Mantle's own accent" (no tokens).
+/// Pinned by the shared vectors (Mantle.Core.Tests/Look/accent-v2.json, look-sync test/fixtures at c29ba47).
 /// </summary>
 public static class Accent
 {
     public const int DefaultHue = 212;
+    /// accent.js ISLANDS_HUE: ice blue, profile islands' (dark) base hue.
+    public const int IslandsHue = 185;
+    public const string Steel = "steel", Islands = "islands";
 
     /// The reason a bad hue is refused, word for word (lib/look-host.js#setAccent, LOOK-033).
     public const string BadHue = "accent hue must be null or an integer 0..360";
 
-    static readonly (double S, double L) DarkAcc = SlOf(0x9fb4cc), DarkStrong = SlOf(0xb7c8db), DarkOn = SlOf(0x11161c);
-    static readonly (double S, double L) LightAcc = SlOf(0x4d6784), LightStrong = SlOf(0x3c536d);
+    /// accent.js AUTHORED: acc, strong and on (null = white) per profile and theme.
+    sealed record Authored(int Acc, int Strong, int? On, int BaseHue)
+    {
+        public readonly (double S, double L) AccSl = SlOf(Acc), StrongSl = SlOf(Strong);
+        public readonly (double S, double L)? OnSl = On is int o ? SlOf(o) : null;
+    }
+
+    static readonly Authored SteelDark = new(0x9fb4cc, 0xb7c8db, 0x11161c, 212), SteelLight = new(0x4d6784, 0x3c536d, null, 212);
+    static readonly Authored IslandsDark = new(0xa9e7ed, 0xc4f0f4, 0x052a2f, 185), IslandsLight = new(0x4d6784, 0x3c536d, null, 212);
+
+    /// accent.js profileOf: "islands" or "steel" (anything else, null included).
+    public static string ProfileOf(string? profile) => profile == Islands ? Islands : Steel;
+
+    /// accent.js baseHue(profile, theme): where Custom starts, and where the tokens are exactly the authored hexes
+    /// (dark unless <paramref name="theme"/> is "light").
+    public static int BaseHue(string? profile, string? theme = null) => Pick(profile, theme != "light").BaseHue;
+
+    static Authored Pick(string? profile, bool dark) => ProfileOf(profile) == Islands ? (dark ? IslandsDark : IslandsLight) : (dark ? SteelDark : SteelLight);
 
     /// ALPHA in accent.js: soft, line, select, glow per theme.
     public static (double Soft, double Line, double Select, double Glow) Alpha(bool dark)
@@ -55,15 +80,20 @@ public static class Accent
     static string Rgba((byte R, byte G, byte B) c, double a)
         => "rgba(" + c.R + ", " + c.G + ", " + c.B + ", " + Data.JsJson.Number(a) + ")";
 
-    /// <summary>accent.js tokens(hue, theme): null for a null hue; throws for a bad one (callers check <see cref="ValidHue"/>).</summary>
-    public static AccentTokens? Tokens(int? hue, string theme)
+    static (byte R, byte G, byte B) RgbOf(int n) => ((byte)(n >> 16 & 255), (byte)(n >> 8 & 255), (byte)(n & 255));
+
+    /// <summary>accent.js tokens(hue, theme, profile): null for a null hue; throws for a bad one (callers check
+    /// <see cref="ValidHue"/>). <paramref name="profile"/>: "islands", anything else (null included) is steel.</summary>
+    public static AccentTokens? Tokens(int? hue, string theme, string? profile = null)
     {
         if (hue == null) return null;
         if (!ValidHue(hue.Value)) throw new ArgumentOutOfRangeException(nameof(hue), "accent hue must be an integer 0..360, got " + hue);
         bool dark = theme != "light";
-        var acc = HslToRgb(hue.Value, dark ? DarkAcc.S : LightAcc.S, dark ? DarkAcc.L : LightAcc.L);
-        var strong = HslToRgb(hue.Value, dark ? DarkStrong.S : LightStrong.S, dark ? DarkStrong.L : LightStrong.L);
-        var on = dark ? HslToRgb(hue.Value, DarkOn.S, DarkOn.L) : ((byte)255, (byte)255, (byte)255);
+        var au = Pick(profile, dark);
+        bool exact = hue.Value == au.BaseHue;   // the base hue IS the authored colour, to the last digit
+        var acc = exact ? RgbOf(au.Acc) : HslToRgb(hue.Value, au.AccSl.S, au.AccSl.L);
+        var strong = exact ? RgbOf(au.Strong) : HslToRgb(hue.Value, au.StrongSl.S, au.StrongSl.L);
+        var on = au.On is int o ? (exact ? RgbOf(o) : HslToRgb(hue.Value, au.OnSl!.Value.S, au.OnSl!.Value.L)) : ((byte)255, (byte)255, (byte)255);
         var al = Alpha(dark);
         return new AccentTokens(Hex(acc), Hex(strong), Hex(on), Rgba(acc, al.Soft), Rgba(acc, al.Line), Rgba(acc, al.Select), Rgba(acc, al.Glow), acc.R, acc.G, acc.B);
     }
