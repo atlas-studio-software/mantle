@@ -158,23 +158,27 @@ public partial class StripTests
 
     static long LogLength(string profile) => File.Exists(LogPath(profile)) ? new FileInfo(LogPath(profile)).Length : 0;
 
-    /// The light case of the running-line check below, kept visible as a SKIP until the light islands look exists.
+    /// The light case of the running-line check below (lane r14-bar-review): the islands' ink in light is today's dark
+    /// LgInk2 (#333A4E; the active line LgAcc), which on the bare flat fallback (#2c5258, a test run shares no wallpaper
+    /// still) was 13 luminance apart; the light lift (apps-r3/LIGHT.md section 4b) now lays the dim and #F4F7F8 at 0.60
+    /// over it (or the lift the picture needs over a frost), so the line reads in the pixels as in dark.
     [TestMethod]
     public void Pins_come_first_light_islands_running_line_reads_against_the_frost() =>
-        Assert.Inconclusive("SKIP: " + "light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands)" + ": in light the run dot (#333A4E) on the islands' flat fallback (#2c5258) is about 13 luminance apart, below this test's 30; the check runs in dark (Pins_come_first_...) until the light lift lands");
+        PinsComeFirst("light", "uitest-strip-order-light");
 
+    // dark: the prototype's theme (apps-r3/mantle-bar is dark only; light lives in ../light-mantle). Its run dot is text-3,
+    // light on the frost
     [TestMethod]
-    public void Pins_come_first_in_order_with_the_running_line_and_running_apps_follow_the_divider()
+    public void Pins_come_first_in_order_with_the_running_line_and_running_apps_follow_the_divider() =>
+        PinsComeFirst("dark", "uitest-strip-order");
+
+    void PinsComeFirst(string theme, string profile)
     {
         string tag = Guid.NewGuid().ToString("N")[..6];
         // made out of order on purpose: with no Favorites value the pins fall back to alphabetical order (lib/pinned.js)
         var pins = PinFolder("order-" + tag, ("Gamma Reg", RegeditExe), ("Alpha Shell", PowerShellExe), ("Beta Map", CharmapExe));
-        const string profile = "uitest-strip-order";
         _profile = profile;
-        // dark: the prototype's theme (apps-r3/mantle-bar is dark only; light lives in ../light-mantle). Its run dot is
-        // text-3, light on the frost; in light the islands' ink is today's dark LgInk2, which on the frost's flat fallback
-        // (#2c5258, a test run shares no wallpaper still) is 13 luminance apart, so no line reads in the pixels
-        using var app = BarApp.Launch(profile, "dark", env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
+        using var app = BarApp.Launch(profile, theme, env: new Dictionary<string, string> { ["MANTLE_TEST_PINS_DIR"] = pins });
         using var a = new Host.Fixture($"Strip pinned {tag}", 60, 60);                 // powershell.exe: Alpha Shell's app
         using var b = new Host.Fixture($"Strip running {tag}", 520, 60, "pwsh.exe");   // pinned by nobody: after the divider
 
@@ -214,7 +218,7 @@ public partial class StripTests
         Thread.Sleep(600);
         cs = Cells(app);
         int onAlpha = LinePixels(Named(cs, a.Title)!), onBeta = LinePixels(Named(cs, "Beta Map")!);
-        Assert.IsTrue(onAlpha >= 8, $"no running line drawn under the open pin ({onAlpha} px off the band's median; Beta Map {onBeta}); cells: {Describe(cs)}");
+        Assert.IsTrue(onAlpha >= 8, $"no running line drawn under the open pin in {theme} ({onAlpha} px off the band's median; Beta Map {onBeta}); cells: {Describe(cs)}");
         Assert.IsTrue(onBeta <= 3, $"a line is drawn under a pin that is not running ({onBeta} px; the open pin {onAlpha})");
 
         // the active line follows the window in front. B opened last, so it may be in front, and a click on the app in

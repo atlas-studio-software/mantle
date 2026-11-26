@@ -42,8 +42,8 @@ public class ThemeTests
         if (theme != null) psi.ArgumentList.Add("--theme=" + theme);
         psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
         // lane r13-bar-islands: these tests time the THEME plumbing by the bar's tint. The islands' frost is the same
-        // picture in both themes (apps-r3/LIGHT.md section 1; the light lift is not built yet), so they read the
-        // electron face, whose pill tint follows the theme. A caller's own MANTLE_TEST_GLASS wins.
+        // picture in both themes (apps-r3/LIGHT.md section 1), so they read the electron face, whose pill tint follows the
+        // theme. A caller's own MANTLE_TEST_GLASS wins (Islands_theme_change_... times the islands' light lift itself).
         psi.Environment["MANTLE_TEST_GLASS"] = "electron";
         if (env != null) foreach (var kv in env) psi.Environment[kv.Key] = kv.Value;
         var app = new App { Proc = Host.Track(Process.Start(psi)!), Ud = ud };
@@ -102,10 +102,47 @@ public class ThemeTests
         return -1;
     }
 
-    /// The islands' case of the three theme-timing tests below (they read the electron face's tint), kept visible as a SKIP.
+    /// The islands' case of the three theme-timing tests below (they read the electron face's tint), on the islands look
+    /// itself (lane r14-bar-review): in light an island is lifted toward #F4F7F8 (apps-r3/LIGHT.md section 4b; over the flat
+    /// #2c5258 fallback a test run shows, 0.60 at the seed dim), in dark it is not, so its luminance follows the theme.
+    /// Probed on the left island above the M (the 36 start button's clear top, under the 22 mark), the pointer kept away.
     [TestMethod]
-    public void Islands_theme_change_reaches_the_islands_within_1_s() =>
-        Assert.Inconclusive("SKIP: light lift not built (apps-r3/LIGHT.md section 1 / section 4b; lane r13-bar-islands): the islands have no theme tint to time until the light lift lands; Another_apps_theme..., Match_Windows_flips... and Theme_set_switches... run the electron face");
+    public void Islands_theme_change_reaches_the_islands_within_1_s()
+    {
+        const string profile = "uitest-islands-theme";
+        using var app = Launch(profile, null, ud => File.WriteAllText(Path.Combine(ud, "theme.json"), "{\n  \"mode\": \"light\"\n}\n"),
+            new Dictionary<string, string> { [DesktopGlassEnv] = "islands" });
+        var island = Host.Until(() => app.Window.FindFirstDescendant(cf => cf.ByAutomationId("bar.island.left")), 8000) ?? throw new AssertFailedException("no bar.island.left: the islands look is not up");
+        var r = island.BoundingRectangle;
+        double s = r.Height / 44.0;   // the island is 44 DIP tall
+        var probe = new Rectangle(r.X + (int)Math.Round(14 * s), r.Y + (int)Math.Round(3 * s), Math.Max(4, (int)Math.Round(16 * s)), Math.Max(2, (int)Math.Round(5 * s)));
+        FlaUI.Core.Input.Mouse.Position = new Point(r.Right + (int)Math.Round(400 * s), Math.Max(0, r.Y - (int)Math.Round(300 * s)));   // no hover sheen
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("theme: Mantle is light"), 8000), "the host never said its theme:\n" + Tail(app.Log));
+        Assert.IsTrue(Host.Until(() => app.Log.Contains("levitate bar left island: ") && app.Log.Contains("light lift"), 8000),
+            "the left island never said its light lift:\n" + Tail(app.Log));
+        Thread.Sleep(1500);   // first frame, and the lift laid
+        Uncover(app, probe); double light = Host.Luminance(probe);
+        var psi = new ProcessStartInfo(Host.ExePath) { UseShellExecute = false };
+        foreach (var a in new[] { "--test", $"--profile-name={profile}", $"--user-data={app.Ud}", "--test-theme=dark" }) psi.ArgumentList.Add(a);
+        psi.Environment["MANTLE_TEST_VISIBLE"] = "1";
+        var sw = Stopwatch.StartNew();
+        using var second = Process.Start(psi)!;
+        long handed = -1, dark = -1;
+        double last = light;
+        while (sw.ElapsedMilliseconds < 8000 && (handed < 0 || dark < 0)) {
+            if (handed < 0 && app.Log.Contains("a second launch handed off: --test --profile-name=" + profile)) handed = sw.ElapsedMilliseconds;
+            if (dark < 0 && (last = Host.Luminance(probe)) + 30 < light) dark = sw.ElapsedMilliseconds;
+            Thread.Sleep(20);
+        }
+        second.WaitForExit(10000);
+        Console.WriteLine($"islands theme: hand-off at {handed} ms, the left island went dark at {dark} ms (luminance {light:0.0} -> {last:0.0})");
+        Assert.IsTrue(handed >= 0, "the running Mantle never logged the hand-off:\n" + Tail(app.Log));
+        Assert.IsTrue(dark >= 0, $"the left island never went clearly darker within 8 s of the theme change (luminance {light:0.0} -> {last:0.0}; over the probe now: {Covering(app, probe) ?? "the bar"}):\n" + Tail(app.Log));
+        Assert.IsTrue(dark - handed < 1000, $"the left island went dark {dark - handed} ms after the change reached Mantle; the target is under 1 s");
+    }
+
+    /// The app's MANTLE_TEST_GLASS (Shell/Glass/DesktopGlass.TestEnv): anything but "electron" is the islands look.
+    const string DesktopGlassEnv = "MANTLE_TEST_GLASS";
 
     [TestMethod]
     public void Another_apps_theme_in_look_json_reaches_the_bar_within_1_s()

@@ -45,7 +45,9 @@ internal sealed class Chips
                 : new Chip("sidecar", "Windows link lost", "Mantle cannot reach Windows right now, so apps, sound and network may not update. If it does not come back, restart Mantle from this menu", "warn"));
         if (s.Mode == ShellMode.Live && !s.Taskbar.Hidden)
             o.Add(new Chip("taskbar", "Windows taskbar showing", "Windows would not let Mantle hide its taskbar. Restarting Mantle usually fixes this", ""));
-        if (!s.Desktop.Attached && s.Desktop.Reason != ShellState.NotStartedYet)   // not started yet is not known to be detached
+        // not started yet is not known to be detached; a test run never attaches the layer on purpose (DesktopLayer.TestNeverAttached),
+        // so there it is not a problem (lane r14-bar-review: every --test capture wore this pip), as the hotkey chip below
+        if (!s.Desktop.Attached && s.Desktop.Reason != ShellState.NotStartedYet && s.Mode != ShellMode.Test)
             o.Add(new Chip("desktop", "Desktop not attached", "Mantle's desktop could not sit on the wallpaper, so desktop icons may not show. Restarting Mantle usually fixes this", ""));
         if (!s.Hotkey.WinTap && s.Mode != ShellMode.Test)
             o.Add(new Chip("hotkey", "Windows key not taken", "Tapping the Windows key opens Windows' Start, not Mantle's launcher. Restarting Mantle usually fixes this", ""));

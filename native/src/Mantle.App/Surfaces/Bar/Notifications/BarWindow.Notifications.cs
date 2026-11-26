@@ -149,7 +149,7 @@ public sealed partial class BarWindow
         if (sig == _bellSig) return;
         _bellSig = sig;
         NotifsHost.Children.Clear();
-        NotifsHost.Children.Add(BarLook.Glyph(new[] { "M8 2.2a3.9 3.9 0 0 0-3.9 3.9v2.6L2.9 11h10.2l-1.2-2.3V6.1A3.9 3.9 0 0 0 8 2.2Z", "M6.4 12.9a1.7 1.7 0 0 0 3.2 0" }, 16, 1.25, bad ? "LgInk3" : "LgInk2"));
+        NotifsHost.Children.Add(BarLook.Glyph(new[] { "M8 2.2a3.9 3.9 0 0 0-3.9 3.9v2.6L2.9 11h10.2l-1.2-2.3V6.1A3.9 3.9 0 0 0 8 2.2Z", "M6.4 12.9a1.7 1.7 0 0 0 3.2 0" }, 16, 1.25, BellInk(bad)));
         _badge.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
         _badgeText.Text = NotificationWords.Badge(unread);
         _badgeText.FontSize = _dark ? 11 : 10.5;

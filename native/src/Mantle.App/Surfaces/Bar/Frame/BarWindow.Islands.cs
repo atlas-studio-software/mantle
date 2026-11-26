@@ -18,7 +18,7 @@ namespace Mantle.App;
 /// (<see cref="BarGeometry.Islands"/>); there the pill stays exactly as before and nothing here runs.
 /// <list type="bullet">
 /// <item>The pill's own layers (Glass, Tint, Lip, Edge) are collapsed: no hairline, lip, tint or sheen at rest. Each
-/// island wears a <see cref="LevitatePanel"/> (frost by size, dim, the v2.1 dark film, none in light; the sheen on hover
+/// island wears a <see cref="LevitatePanel"/> (frost by size, dim, the v2.1 dark film or, in light, the lift toward #F4F7F8; the sheen on hover
 /// only), placed from the geometry on every layout, geometry or theme change.</item>
 /// <item>One float shadow bitmap (<see cref="LevitateShadow"/>) round the three boxes, in ShadowHost, in both themes.</item>
 /// <item>The dock is centred on the screen; when its right edge + 12 would pass the right island, it sits 12 after the M
@@ -30,7 +30,7 @@ namespace Mantle.App;
 public sealed partial class BarWindow
 {
     LevitatePanel? _lvLeft, _lvDock, _lvRight;
-    readonly SolidColorBrush _isHover = new(), _isPress = new();
+    readonly SolidColorBrush _isHover = new(), _isPress = new(), _isAccent = new();
     string _islandShadowKey = "", _islandsSaid = "";
 
     /// The islands' sizes and layers, once, from the constructor (before the first layout).
@@ -72,14 +72,22 @@ public sealed partial class BarWindow
         RightCluster.Spacing = BarIslands.RightGap;
         RightSep.Height = BarIslands.SepH;
         RightSep.Margin = new Thickness(BarIslands.SepMarginX, 0, BarIslands.SepMarginX, 0);
+        IslandSep();
         foreach (var b in new[] { DownloadsBtn, VolumeBtn, NetworkBtn, NotifsBtn, MoreBtn }) {
             b.Width = BarIslands.GlyphW;
             b.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
         }
         if (MoreBtn.Content is Grid more) more.Width = BarIslands.GlyphW;
+        // the pip on More (barhide.js #more .bh-pip): a 6 px dot at top 8 / right 8, no ring; its ink is IslandPipInk
+        MorePip.Width = MorePip.Height = 6;
+        MorePip.Margin = new Thickness(0, 8, 8, 0);
+        MorePipRing.Visibility = Visibility.Collapsed;
         IslandBattery();
+        // the clock (look.css .clock): padding 0 8, as wide as its text (no min-width), time over date, both on the right
+        // (the XAML's StackPanel and TextBlocks are right-aligned; the button sizes to them)
         ClockBtn.Padding = new Thickness(BarIslands.ClockPadX, 0, BarIslands.ClockPadX, 0);
         ClockBtn.MinWidth = 0;
+        ClockT.MinWidth = 0;
         ClockBtn.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
         ClockT.FontSize = BarIslands.ClockTime;
         ClockT.FontWeight = FontWeights.Medium;
@@ -96,24 +104,46 @@ public sealed partial class BarWindow
     }
 
     /// The battery button in the status island: a 32 x 36 glyph button between network and clock (shell.js #battery,
-    /// look.css .glyph), opening quick settings like volume and network. Electron hides it when the machine has no
-    /// battery, yet its `.btn { display: flex }` beats `[hidden]`, so the empty button keeps its place and its click;
-    /// so here: with no battery the box stays (in UIA, clickable, the same 32 x 36) and only the glyph is left out. Never
-    /// Collapsed. The glyph is the prototype's (data.js `battery`, its 24 box drawn in 16). The level is not read yet.
+    /// look.css .glyph), opening quick settings like volume and network. With no battery it is Collapsed: it takes no room
+    /// and is not in UIA (lane r14-bar-review: the empty box left a gap between network and the clock). Electron's
+    /// hidden-but-flex 14 px slot is the electron face's alone (BarWindow.xaml). The glyph is the prototype's (data.js
+    /// `battery`, its 24 box drawn in 16). The level is not read yet.
     void IslandBattery()
     {
         BatteryBtn.Width = BarIslands.GlyphW;
         BatteryBtn.CornerRadius = new CornerRadius(BarIslands.GlyphRadius);
-        BatteryBtn.Visibility = Visibility.Visible;
         var (has, why) = IslandPower.HasBattery();
+        BatteryBtn.Visibility = has ? Visibility.Visible : Visibility.Collapsed;
         if (has) {
             var host = new Canvas { Width = BarIslands.GlyphIcon, Height = BarIslands.GlyphIcon };
             host.Children.Add(PathEl(RoundRect(2, 5, 10.67, 6, 1.47), false, 1.2));
             foreach (var d in new[] { "M14 7v2", "M4 7v2", "M6 7v2", "M8 7v2" }) host.Children.Add(PathEl(d, false, 1.2));
             BatteryBtn.Content = host;
         } else BatteryBtn.Content = null;
-        Host.Log.Line($"bar battery: {(has ? "the glyph is drawn" : "no glyph (" + why + "); the 32 x 36 button keeps its place and opens quick settings, as Electron's hidden one does")}");
+        Host.Log.Line($"bar battery: {(has ? "the glyph is drawn" : "none (" + why + "); the button is collapsed and takes no room")}");
     }
+
+    /// The status island's divider (shell.js: .b-sep after the now-playing chip group) shows only when something sits
+    /// before it: now playing, or the tray strip (Electron's #tray, then .sep). With neither, no lone divider. Called
+    /// from the start and whenever either one shows or hides; the electron face keeps its divider always.
+    void IslandSep()
+    {
+        if (!BarGeometry.Islands) return;
+        bool before = _media?.Visibility == Visibility.Visible || _tray?.Visibility == Visibility.Visible;
+        var v = before ? Visibility.Visible : Visibility.Collapsed;
+        if (RightSep.Visibility != v) RightSep.Visibility = v;
+    }
+
+    /// The islands look's ink for a bar glyph drawn from an Lg key: the design's icon ink (LvBarInk, look.css
+    /// .btn { color: var(--text) }) in the islands look, the key itself on the electron face.
+    static string IslandIconKey(string lg) => BarGeometry.Islands ? "LvBarInk" : lg;
+
+    /// The bell's ink: the icon ink in the islands look, also when notifications cannot be read (the More pip and the
+    /// bell's tooltip say that; LgInk3 put the bell at 1.89:1); the electron face keeps LgInk3 / LgInk2.
+    static string BellInk(bool bad) => BarGeometry.Islands ? "LvBarInk" : bad ? "LgInk3" : "LgInk2";
+
+    /// The More pip's dot in the islands look: text-2 for a plain problem, the design's warn only for a "warn" one.
+    Brush IslandPipInk(bool warn) => (Brush)ThemeToken(warn ? "LvBarWarn" : "LvBarInk2");
 
     /// One island's levitated layers under its content, the hover sheen from the pointer.
     static LevitatePanel IslandPanel(string name, Grid island)
@@ -192,9 +222,14 @@ public sealed partial class BarWindow
     {
         _isHover.Color = IslandInk("LvCtlFillHover", "LgHover") is SolidColorBrush hb ? hb.Color : default;
         _isPress.Color = IslandInk("LvCtlFillPressed", "LgPress") is SolidColorBrush pb ? pb.Color : default;
-        ClockT.Foreground = IslandInk("LvText", "LgInk");
-        ClockD.Foreground = IslandInk("LvText2", "LgInk2");
+        // the clock's time is the text ink, its date text-2 (look.css .clock .t / .d; light from LIGHT.md 4)
+        ClockT.Foreground = (Brush)ThemeToken("LvBarInk");
+        ClockD.Foreground = (Brush)ThemeToken("LvBarInk2");
         RightSep.Fill = IslandInk("LvHair", "LgEdgeOut");
+        DockMore.Foreground = (Brush)ThemeToken("LvBarInk");
+        // the dock's focus underline (look.css .dock-hl .u: var(--accent)), shared by every cell (IslandCell). A local
+        // brush until Core has the islands accent profile (look-sync accent.js 'islands', base hue 185)
+        _isAccent.Color = ThemeToken("LvBarAccent") is SolidColorBrush ab ? ab.Color : default;
     }
 
     Brush IslandInk(string lv, string lg)
@@ -227,6 +262,8 @@ public sealed partial class BarWindow
             }
             if (stack.Children.Count > 1 && stack.Children[1] is Grid ind && ind.Children.Count > 0 && ind.Children[0] is Border run)
                 run.Width = BarIslands.RunW;
+            if (stack.Children.Count > 1 && stack.Children[1] is Grid ind2 && ind2.Children.Count > 1 && ind2.Children[1] is Border act)
+                act.Background = _isAccent;   // the focus underline in the islands accent (PaintIslandInks)
         }
     }
 

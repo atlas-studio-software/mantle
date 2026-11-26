@@ -43,6 +43,8 @@ NOT built:
   - BarTests Dark_theme_draws_a_darker_pill_than_light: moved to the electron face; SKIP Dark_theme_islands_tint_follows_the_theme.
   - ThemeTests Another_apps_theme..., Match_Windows_flips..., Theme_set_switches... (and Resume_and_unlock, same Launch):
     moved to the electron face by default; SKIP Islands_theme_change_reaches_the_islands_within_1_s.
+  - Lane r14-bar-review built the light lift (LevitatePanel) and turned these three SKIPs into real tests
+    (docs/lanes/r14-bar-review.md).
   - Not moved but widened: the idle-CPU test measures islands light, islands dark AND the electron light face.
 - The dock's sliding focus underline (16 x 3, 320 ms ease-lift): the per-cell run / active marks are kept, resized.
 - Glyph ink in dark: the paths keep {ThemeResource LgInk2}; only the clock and the status separator take the Lv inks.

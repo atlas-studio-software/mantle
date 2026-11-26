@@ -8,8 +8,9 @@
 //
 // Geometry (Mantle.Core Island): the blurred copy is laid out "cover" over the monitor (DIP) and the panel draws it at
 // (ox - panel.left, oy - panel.top), size (cw, ch); a BIG panel (Island.IsBig on its layout size) shows the soft copy, a
-// small one the light copy. The film is Legibility's v2 check over the copy this panel shows. Until the copies are ready
-// (or when they fail) the panel is the flat #2c5258 with no dim and no film.
+// small one the light copy. The film is Legibility's v2.1 check over the copy this panel shows: the dark film in dark, the
+// light lift toward #F4F7F8 in light (lane r14-bar-review, apps-r3/LIGHT.md section 4b). Until the copies are ready (or when
+// they fail) the panel is the flat #2c5258: in dark with no dim and no film, in light with the dim and the lift over it.
 using System;
 using System.Threading.Tasks;
 using Mantle.App.Native;
@@ -35,6 +36,7 @@ internal sealed class LevitatePanel
     string _why = "placed";
     int _seq;
     string? _said;
+    bool? _saidDark;
     double _vw, _vh, _x, _y, _w, _h;
     (double Dim, bool Auto)? _look;
 
@@ -42,13 +44,14 @@ internal sealed class LevitatePanel
     public Border Picture { get; }
     /// The black wash at alpha dim over it.
     public Border Dim { get; }
-    /// The neutral film rgba(10, 12, 14, a) over the dim (a = the v2.1 brightness check; 0 in manual; 0 in light, always).
+    /// The neutral film over the dim: rgba(10, 12, 14, a) in dark, the light lift rgba(244, 247, 248, a) in light (a = the
+    /// v2.1 brightness check of the theme in effect; 0 in manual).
     public Border Film { get; }
     /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size); over the film, under the UI.
     public Border Sheen { get; }
     /// "frost light" | "frost soft" while the copy is up, else "fallback: why" (tests and logs).
     public string State { get; private set; } = "not shown yet";
-    /// The film alpha now (an exact 2-decimal v2.1 step: 0, 0.04 .. 0.72; always 0 in light).
+    /// The film (dark) or lift (light) alpha now (an exact 2-decimal v2.1 step: 0, 0.04 .. 0.72).
     public double FilmAlpha { get; private set; }
 
     public LevitatePanel(string name, CornerRadius radius)
@@ -170,22 +173,35 @@ internal sealed class LevitatePanel
         if (!ReferenceEquals(_brush.ImageSource, bmp)) _brush.ImageSource = bmp;
         Picture.Background = _brush;
         var (dim, auto) = _look ?? FromGlass(_dark);
-        // Dark only (lane r11-lift21): this layer lays the DARK film rgb(10, 12, 14), and the dark film must never be laid in
-        // light. The light Levitate look (look-sync v2.1's lift toward #F4F7F8, Legibility.LiftAlpha(samples, dim, "light"))
-        // is not built yet; until it is, a light panel gets no film. Wiring it is a later job (lane note r11-lift21).
-        double film = _dark ? Legibility.ForPanel(p.LightPx, p.SoftPx, _vw, _vh, _x, _y, _w, _h, dim, auto) : 0;
-        _dim.Color = Rgba(0, 0, 0, dim);
-        _film.Color = Rgba(LevitateTokens.FilmR, LevitateTokens.FilmG, LevitateTokens.FilmB, film);
-        Dim.Visibility = Visibility.Visible;
-        Film.Visibility = film > 0 ? Visibility.Visible : Visibility.Collapsed;
+        // Dark: the v2.1 dark film rgb(10, 12, 14) (LOOK.md section 4). Light (lane r14-bar-review, apps-r3/LIGHT.md section
+        // 4b): the light lift toward #F4F7F8 over the SAME copy this panel shows (its 8 x 5 samples after the dim, the darkest
+        // tenth, the smallest step to L >= 0.386, cap .72). Only one of the two runs; the check off (dimAuto false) = none.
+        double film = _dark
+            ? Legibility.ForPanel(p.LightPx, p.SoftPx, _vw, _vh, _x, _y, _w, _h, dim, auto)
+            : Legibility.Film(auto, Legibility.Samples(px, Island.Cover(px.W, px.H, _vw, _vh), _x, _y, _w, _h), dim, "light");
+        Layers(dim, film);
         string state = "frost " + (big ? "soft" : "light");
-        bool said = State == state && Math.Abs(FilmAlpha - film) < 1e-9;
+        bool said = State == state && Math.Abs(FilmAlpha - film) < 1e-9 && _saidDark == _dark;
         State = state;
         FilmAlpha = film;
         _said = null;
+        _saidDark = _dark;
         if (!said) Host.Log.Line(FormattableString.Invariant(
-            $"levitate {_name}: {state} ({why}): {_w:0}x{_h:0} DIP at ({_x:0}, {_y:0}) on {_vw:0}x{_vh:0}; copy at ({dx:0.#}, {dy:0.#}) size {cw:0.#}x{ch:0.#}; dim {dim:0.00}, {(auto ? "automatic" : "manual")}, film {Legibility.Show(film):0.00}"));
+            $"levitate {_name}: {state} ({why}): {_w:0}x{_h:0} DIP at ({_x:0}, {_y:0}) on {_vw:0}x{_vh:0}; copy at ({dx:0.#}, {dy:0.#}) size {cw:0.#}x{ch:0.#}; dim {dim:0.00}, {(auto ? "automatic" : "manual")}, {FilmWords(film)}"));
     }
+
+    /// The dim and this theme's film over the picture (or the flat fallback): the black wash at <paramref name="dim"/>, then
+    /// rgb(10, 12, 14) in dark or #F4F7F8 in light at <paramref name="film"/> (Legibility.FilmRgb).
+    void Layers(double dim, double film)
+    {
+        var rgb = Legibility.FilmRgb(_dark ? "dark" : "light");
+        _dim.Color = Rgba(0, 0, 0, dim);
+        _film.Color = Rgba(rgb.R, rgb.G, rgb.B, film);
+        Dim.Visibility = Visibility.Visible;
+        Film.Visibility = film > 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
+
+    string FilmWords(double film) => FormattableString.Invariant($"{(_dark ? "film" : "light lift")} {Legibility.Show(film):0.00}");
 
     /// The dim and the mode from the look DesktopGlass follows: the look host's saved <c>glass.&lt;theme&gt;.dim</c> and
     /// <c>dimAuto</c>, read by <see cref="LevitateDim.Read"/> (look-sync v2.1: seed 0.20; a stored value in 0.20..0.90 wins,
@@ -193,13 +209,33 @@ internal sealed class LevitatePanel
     /// before it this went through Wash's answer, not the saved value).
     static (double Dim, bool Auto) FromGlass(bool dark) => LevitateDim.Read(DesktopGlass.Look?.Values, dark ? "dark" : "light");
 
+    /// The flat #2c5258 until the copies are ready (or when they fail). Dark: no dim and no film, as before. Light (lane
+    /// r14-bar-review, apps-r3/LIGHT.md 4.2 "the light check reads that colour too"): the dim and the light lift over the
+    /// flat colour, so dark ink never sits on unlifted dark teal (at the seed dim 0.20 the v2.1 lift is 0.60; LIGHT.md's
+    /// ".40" is the v2.0 target 0.226's answer).
     void Fallback(string why)
     {
         _brush.ImageSource = null;
         Picture.Background = _fallback;
-        Dim.Visibility = Film.Visibility = Visibility.Collapsed;
-        FilmAlpha = 0;
+        double film = 0;
+        if (_dark) Dim.Visibility = Film.Visibility = Visibility.Collapsed;
+        else {
+            var (dim, auto) = _look ?? FromGlass(false);
+            film = Legibility.Film(auto, FlatSamples, dim, "light");
+            Layers(dim, film);
+        }
+        FilmAlpha = film;
         State = "fallback: " + why;
-        if (why != _said) { _said = why; Host.Log.Line($"levitate {_name}: the flat fallback colour: {why}"); }
+        string said = why + (_dark ? "" : FormattableString.Invariant($" (in light: the {FilmWords(film)} over it)"));
+        if (said != _said) { _said = said; Host.Log.Line($"levitate {_name}: the flat fallback colour: {said}"); }
+    }
+
+    /// The flat fallback as the check's 40 samples (the island shows that colour everywhere).
+    static readonly Rgb[] FlatSamples = Flat();
+    static Rgb[] Flat()
+    {
+        var s = new Rgb[Legibility.Cols * Legibility.Rows];
+        Array.Fill(s, new Rgb(LevitateTokens.FallbackR, LevitateTokens.FallbackG, LevitateTokens.FallbackB));
+        return s;
     }
 }

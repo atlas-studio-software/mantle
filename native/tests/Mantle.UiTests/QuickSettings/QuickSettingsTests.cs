@@ -119,6 +119,14 @@ public class QuickSettingsTests
             Assert.IsTrue(Host.Until(() => Help(El(w, id)).Length > 0, 3000), id + " has no words");
         Assert.IsTrue(El(w, "qs.power").Name.Length > 0, "the footer has no battery line");
         Host.Screenshot("qs-open-dark-runner");
+        // lane r14-bar-review: with no battery the bar has no battery button (it takes no room), so the battery click is
+        // only made on a machine with one; on the runner the test says so instead of passing quietly
+        var (hasBattery, noBattery) = Win32.Battery();
+        if (!hasBattery) {
+            Assert.IsNull(app.TryFind("bar.battery", 500), $"this machine has no battery ({noBattery}), yet the bar shows a battery button");
+            Assert.IsFalse(FrameProbe.Log(dir).Contains("qs.set"), "a set was made without a click");
+            Assert.Inconclusive($"the battery button was not clicked: {noBattery}, so the bar draws no battery button (the network part ran)");
+        }
         ClickEl(app.Find("bar.battery"));   // another anchor of the same pop-up: closes it (one toggle per key)
         IntPtr h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings");
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), "the battery button did not close it");
