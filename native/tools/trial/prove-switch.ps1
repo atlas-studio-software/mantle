@@ -109,8 +109,9 @@ function Run51Limited([string]$script, [string[]]$argv, [string]$tag) {
   Set-Content -LiteralPath $cmd -Encoding ascii -Value @(
     '@echo off',
     ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $script + '" ' + $q + ' > "' + $txt + '" 2>&1'),
-    ('echo exit %ERRORLEVEL%>> "' + $txt + '"'),
-    ('echo done> "' + $flag + '"'))
+    # the redirect goes FIRST: "echo exit 0>> file" would read "0>>" as a stdin redirect and lose the line (run 45786489804)
+    ('>> "' + $txt + '" echo exit %ERRORLEVEL%'),
+    ('> "' + $flag + '" echo done'))
   $null = & schtasks.exe /Create /TN 'MantleTrialStep' /TR ('"' + $cmd + '"') /SC ONCE /ST 23:59 /RL LIMITED /F 2>&1
   $null = & schtasks.exe /Run /TN 'MantleTrialStep' 2>&1
   for ($i = 0; $i -lt 240 -and -not (Test-Path -LiteralPath $flag); $i++) { Start-Sleep -Milliseconds 500 }
