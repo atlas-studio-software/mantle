@@ -39,11 +39,9 @@
        LvBarTile / LvBarTileInk: a dock cell's letter tile and its letter, the media chip's art tile (look.css .app-ic:
          fill-2, the text ink): dark keeps LgTile / LgInk, light black .08 / #0F1E21.
        LvBarSunk: the dock's "+N" button at rest: dark keeps LgSunk, light black .05 (fill-1).
-       LvBarAccent / LvBarAccentHover / LvBarAccentInk: the islands accent (the dock's focus underline, the downloads
-         dot, the bell's count badge): dark #A9E7ED / #C4F0F4 / #052A2F, which the code takes from Mantle.Core Accent's
-         "islands" profile (these Dark values are its mirror, BarLightTokensTests holds them equal); light #083F49 /
-         hover #05313A / ink #F4F7F8 (LIGHT.md 4 and 4.2), a local brush until Core's islands light (look-sync v2.2) is
-         ported. Not drawn: the island text shadow (light 0 1px 1px rgba(255,255,255,.28)); native draws no text shadows
+       The islands accent (the dock's focus underline, the downloads dot, the bell's count badge) is NOT here: the code
+         reads Mantle.Core Accent's "islands" profile in both themes (Shell/Levitate/IslandsInk.Accent; dark #A9E7ED /
+         #C4F0F4 / #052A2F, light #083F49 / #05313A / #F4F7F8, LIGHT.md 4 and 4.2). Not drawn: the island text shadow (light 0 1px 1px rgba(255,255,255,.28)); native draws no text shadows
          on the islands in either theme. -->
   <ResourceDictionary.ThemeDictionaries>
     <ResourceDictionary x:Key="Dark">
@@ -65,9 +63,6 @@
       <SolidColorBrush x:Key="LvBarTile" Color="#9E28292B"/>
       <SolidColorBrush x:Key="LvBarTileInk" Color="#FFECECEA"/>
       <SolidColorBrush x:Key="LvBarSunk" Color="#750A0B0C"/>
-      <SolidColorBrush x:Key="LvBarAccent" Color="#FFA9E7ED"/>
-      <SolidColorBrush x:Key="LvBarAccentHover" Color="#FFC4F0F4"/>
-      <SolidColorBrush x:Key="LvBarAccentInk" Color="#FF052A2F"/>
     </ResourceDictionary>
     <ResourceDictionary x:Key="Light">
       <SolidColorBrush x:Key="LvBarInk" Color="#FF0F1E21"/>
@@ -88,11 +83,6 @@
       <SolidColorBrush x:Key="LvBarTile" Color="#14000000"/>
       <SolidColorBrush x:Key="LvBarTileInk" Color="#FF0F1E21"/>
       <SolidColorBrush x:Key="LvBarSunk" Color="#0D000000"/>
-      <!-- the light accent: switches to Core's islands light (Accent.Tokens(hue, "light", "islands")) when
-           native/r15-accent-v22 (look-sync v2.2's port) merges -->
-      <SolidColorBrush x:Key="LvBarAccent" Color="#FF083F49"/>
-      <SolidColorBrush x:Key="LvBarAccentHover" Color="#FF05313A"/>
-      <SolidColorBrush x:Key="LvBarAccentInk" Color="#FFF4F7F8"/>
     </ResourceDictionary>
   </ResourceDictionary.ThemeDictionaries>
 
