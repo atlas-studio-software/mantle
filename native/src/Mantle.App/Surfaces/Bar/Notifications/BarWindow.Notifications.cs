@@ -153,8 +153,11 @@ public sealed partial class BarWindow
         _badge.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
         _badgeText.Text = NotificationWords.Badge(unread);
         _badgeText.FontSize = _dark ? 11 : 10.5;
-        _badgeText.Foreground = BarLook.B(_dark, "LgAccOn", Host.Log.Line);
-        _badge.Background = BarLook.B(_dark, "LgAcc", Host.Log.Line);
+        // the count (look.css .nbadge: the accent, the accent ink on it): the islands accent in the islands look
+        // (Shell/Levitate/IslandsInk), steel's on the electron face
+        bool islands = Surfaces.Bar.Frame.BarGeometry.Islands;
+        _badgeText.Foreground = islands ? Mantle.App.Shell.Levitate.IslandsInk.AccentInkBrush(_dark, Host.Log.Line) : BarLook.B(_dark, "LgAccOn", Host.Log.Line);
+        _badge.Background = islands ? Mantle.App.Shell.Levitate.IslandsInk.AccentBrush(_dark, Host.Log.Line) : BarLook.B(_dark, "LgAcc", Host.Log.Line);
         _badge.CornerRadius = new CornerRadius(_dark ? 6 : 8);   // --lg-r-chip (dark) / --lg-r-pill
         if (fresh) { _bell.ClearValue(FrameworkElement.WidthProperty); _bell.Padding = new Thickness(9, 0, 8, 0); }
         else { _bell.Width = 36; _bell.Padding = new Thickness(0); }

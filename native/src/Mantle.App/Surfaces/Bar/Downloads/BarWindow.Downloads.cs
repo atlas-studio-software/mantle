@@ -115,7 +115,8 @@ public sealed partial class BarWindow
         bool bad = DlBad(s), resting = Str(s, "state") is "resting" or "stopped";
         int fresh = !bad && !resting && has && s.TryGetProperty("newCount", out var nc) && nc.TryGetInt32(out var n) ? n : 0;
         _dlDot.Visibility = fresh > 0 ? Visibility.Visible : Visibility.Collapsed;
-        _dlDot.Fill = MTok("LgAcc");
+        // the dot (look.css .dot: the accent): the islands accent in the islands look (Shell/Levitate/IslandsInk), else steel
+        _dlDot.Fill = Surfaces.Bar.Frame.BarGeometry.Islands ? Mantle.App.Shell.Levitate.IslandsInk.AccentBrush(_dark, Host.Log.Line) : MTok("LgAcc");
         DownloadsHost.Opacity = bad || resting ? .5 : 1;
         string tip = !has ? "Downloads — reading…"
             : bad ? "Downloads unavailable — " + (Str(s, "reason") ?? "no reason was given")

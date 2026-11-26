@@ -36,7 +36,7 @@ internal sealed class DownloadsShelf
 
     public readonly Grid Root = new();
     readonly StackPanel _stack = new();
-    readonly TextBlock _sub = T(11), _note = T(12), _detail = T(11);
+    readonly TextBlock _sub = T(11), _note = T(12), _detail = T(11), _title = T(PopupLevitate.TitleSize);
     readonly StackPanel _list = new() { Spacing = 1 };
     readonly ScrollViewer _scroll = new() { MaxHeight = 366, HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled, VerticalScrollBarVisibility = ScrollBarVisibility.Auto };
     // the foot's one text button (look.css .link): 28 tall, padding 0 12, radius 8, 12 / 500, text-2, fill-1 on hover
@@ -72,7 +72,7 @@ internal sealed class DownloadsShelf
         Root.Padding = new Thickness(0);
         Root.Children.Add(_stack);
         var head = new Grid { Height = PopupLevitate.HeadHeight, Padding = new Thickness(PopupLevitate.HeadPadLeft, 0, PopupLevitate.HeadPadRight, 0) };
-        var h = T(PopupLevitate.TitleSize); h.Text = "Downloads"; h.FontWeight = FontWeights.SemiBold; h.VerticalAlignment = VerticalAlignment.Center;
+        var h = _title; h.Text = "Downloads"; h.FontWeight = FontWeights.SemiBold; h.VerticalAlignment = VerticalAlignment.Center;
         Uia(h, "dl.title", "Downloads");
         _sub.HorizontalAlignment = HorizontalAlignment.Right; _sub.VerticalAlignment = VerticalAlignment.Center; _sub.Margin = new Thickness(0, 0, 8, 0);
         Uia(_sub, "dl.sub", "");
@@ -116,11 +116,14 @@ internal sealed class DownloadsShelf
     public void Paint(bool dark, long nowMs)
     {
         _dark = dark;
-        // fill-1 (hover), fill-2 (the reveal's hover), fill-press; in light today's --lg-hover / --lg-press
+        // fill-1 (hover), fill-2 (the reveal's hover), fill-press (Ink: the islands look's LvBar* set in both themes)
         _fill1.Color = Color(Ink("LvCtlFillHover", "LgHover"));
         _fill2.Color = Color(Ink("LvCtlFillOn", "LgHover"));
         _press.Color = Color(Ink("LvCtlFillPressed", "LgPress"));
         _hoverInk.Color = Color(Ink("LvText", "LgInk"));
+        // the title: the theme's default text in dark (as before); the islands look's light text ink (#0F1E21) in light
+        if (Mantle.App.Surfaces.Bar.Frame.BarGeometry.Islands && !_dark) _title.Foreground = Ink("LvText", "LgInk");
+        else _title.ClearValue(TextBlock.ForegroundProperty);
         var v = View;
         bool has = v.ValueKind == JsonValueKind.Object;
         var items = has && v.TryGetProperty("items", out var it) && it.ValueKind == JsonValueKind.Array ? it.EnumerateArray().ToList() : new List<JsonElement>();
@@ -213,7 +216,7 @@ internal sealed class DownloadsShelf
                 Child = new FontIcon { Glyph = "", FontSize = 20, Foreground = Ink("LvText2", "LgInk2") },
             });
         var b = T(PopupLevitate.TitleSize); b.FontWeight = FontWeights.SemiBold; b.Text = big; b.TextWrapping = TextWrapping.Wrap; b.HorizontalAlignment = HorizontalAlignment.Center; b.TextAlignment = TextAlignment.Center;
-        b.Foreground = status == "bad" ? B("LgWarn") : Ink("LvText", "LgInk");
+        b.Foreground = status == "bad" ? Warn() : Ink("LvText", "LgInk");
         Uia(b, "dl.empty.big", big);
         u.Children.Add(b);
         if (sub != null) {
@@ -317,7 +320,7 @@ internal sealed class DownloadsShelf
         p.Glyph.Glyph = KindGlyph[kind]; p.Glyph.Foreground = Ink("LvText2", "LgInk2");
         p.NameT.Text = nm; p.NameT.Foreground = Ink("LvText", "LgInk");
         p.MetaT.Text = meta; p.MetaT.Foreground = Ink("LvText2", "LgInk3");
-        p.Dot.Fill = B("LgAcc"); p.Dot.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
+        p.Dot.Fill = Dot(); p.Dot.Visibility = fresh ? Visibility.Visible : Visibility.Collapsed;
         string label = $"{nm}, {(fresh ? "new, " : "")}{KindWord[kind]}, {meta}";
         string tip = nm + "\n" + (dir ? "Click to open the folder" : "Click to open") + ", or drag it into an app or onto the desktop";
         Uia(row, $"dl.row.{n}", label);
@@ -370,16 +373,40 @@ internal sealed class DownloadsShelf
     static int? Int(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt32(out var i) ? i : null;
     static long Long(JsonElement e, string k) => e.ValueKind == JsonValueKind.Object && e.TryGetProperty(k, out var v) && v.ValueKind == JsonValueKind.Number && v.TryGetInt64(out var i) ? i : 0;
 
-    /// The levitated look's ink (Theme/Levitate.xaml: the look is dark, one neutral family) in dark; in light today's --lg-*
-    /// token, since the light Levitate look is not built yet (the host lays no film in light either). The accent stays the
-    /// steel --lg-acc in both (the "islands" accent profile is a later job).
+    /// The levitated look's ink. The islands look (the shelf is a levitated pop-up, BarGeometry.Islands; lane r15-bar-light):
+    /// Theme/Levitate.xaml's theme-dependent LvBar* twin of the LOOK.md token <paramref name="lv"/> (its Dark value is
+    /// <paramref name="lv"/>'s own, its Light one apps-r3/LIGHT.md section 4's). The electron face, as before: the LOOK.md
+    /// token in dark, today's --lg-* token <paramref name="lg"/> in light.
     Brush Ink(string lv, string lg)
     {
+        if (Mantle.App.Surfaces.Bar.Frame.BarGeometry.Islands && BarTwin.TryGetValue(lv, out var twin)) {
+            if (Mantle.App.Shell.Levitate.IslandsInk.Find(_dark, twin) is Brush t) return t;
+            if (_missing.Add(twin)) _log($"downloads: the islands token {twin} is missing from Theme/Levitate.xaml, so {(_dark ? lv : lg)} is used");
+        }
         if (!_dark) return B(lg);
         if (Application.Current.Resources.TryGetValue(lv, out var v) && v is Brush b) return b;
         if (_missing.Add(lv)) _log($"downloads: the levitated token {lv} is missing from Theme/Levitate.xaml, so {lg} is used");
         return B(lg);
     }
+
+    /// The LOOK.md tokens the shelf uses and their theme-dependent islands twins (Theme/Levitate.xaml's LvBar* block).
+    static readonly Dictionary<string, string> BarTwin = new(StringComparer.Ordinal) {
+        ["LvText"] = "LvBarInk", ["LvText2"] = "LvBarInk2", ["LvText3"] = "LvBarInk3", ["LvText4"] = "LvBarInk4",
+        ["LvCtlFillHover"] = "LvBarFillHover", ["LvCtlFillOn"] = "LvBarFillOn", ["LvCtlFillPressed"] = "LvBarFillPressed",
+        ["LvHair"] = "LvBarHair",
+    };
+
+    /// The "could not read" line's warn: the islands look's light warn (#4C3300, LIGHT.md 4.1) in light; --lg-warn otherwise
+    /// (dark as before).
+    Brush Warn() => Mantle.App.Surfaces.Bar.Frame.BarGeometry.Islands && !_dark
+        ? Mantle.App.Shell.Levitate.IslandsInk.Token(false, "LvBarWarn", _log)
+        : B("LgWarn");
+
+    /// A new row's dot (look.css .dot: the accent): the islands accent in the islands look (Shell/Levitate/IslandsInk:
+    /// dark Core's islands profile, light the local #083F49 brush), steel's --lg-acc on the electron face.
+    Brush Dot() => Mantle.App.Surfaces.Bar.Frame.BarGeometry.Islands
+        ? Mantle.App.Shell.Levitate.IslandsInk.AccentBrush(_dark, _log)
+        : B("LgAcc");
 
     static global::Windows.UI.Color Color(Brush b) => b is SolidColorBrush s ? s.Color : default;
 
