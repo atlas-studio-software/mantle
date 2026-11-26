@@ -94,7 +94,38 @@ function Run51([string]$script, [string[]]$argv, [string]$tag) {
   return @{ Code = $code; Lines = $got }
 }
 
-Say "prove-switch: exe $Exe; Electron clone $Repo; session $([System.Diagnostics.Process]::GetCurrentProcess().SessionId); user $env:USERNAME"
+function Elevated() {
+  $id = [System.Security.Principal.WindowsIdentity]::GetCurrent()
+  return ([System.Security.Principal.WindowsPrincipal]::new($id)).IsInRole([System.Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+function Run51Limited([string]$script, [string[]]$argv, [string]$tag) {
+  # What a normal (not "Run as administrator") terminal does: the logon task starts native with a limited token
+  # (RunLevel LeastPrivilege), and native's single-instance pipe accepts only the same user's token. So when this
+  # job is elevated, the script runs through a one-shot LIMITED task, like the owner's own terminal would.
+  $dir = $Out; if (-not $dir) { $dir = $env:TEMP }
+  $txt = Join-Path $dir "$tag.txt"; $flag = Join-Path $dir "$tag.done"; $cmd = Join-Path $dir "$tag.cmd"
+  Remove-Item -Force -ErrorAction SilentlyContinue $txt, $flag
+  $q = ($argv | ForEach-Object { if ($_ -match '\s') { '"' + $_ + '"' } else { $_ } }) -join ' '
+  Set-Content -LiteralPath $cmd -Encoding ascii -Value @(
+    '@echo off',
+    ('powershell.exe -NoProfile -ExecutionPolicy Bypass -File "' + $script + '" ' + $q + ' > "' + $txt + '" 2>&1'),
+    ('echo exit %ERRORLEVEL%>> "' + $txt + '"'),
+    ('echo done> "' + $flag + '"'))
+  $null = & schtasks.exe /Create /TN 'MantleTrialStep' /TR ('"' + $cmd + '"') /SC ONCE /ST 23:59 /RL LIMITED /F 2>&1
+  $null = & schtasks.exe /Run /TN 'MantleTrialStep' 2>&1
+  for ($i = 0; $i -lt 240 -and -not (Test-Path -LiteralPath $flag); $i++) { Start-Sleep -Milliseconds 500 }
+  & schtasks.exe /Delete /TN 'MantleTrialStep' /F 2>$null | Out-Null
+  $got = @(); if (Test-Path -LiteralPath $txt) { $got = @(Get-Content -LiteralPath $txt) }
+  $code = -1
+  $last = @($got | Where-Object { $_ -match '^exit -?\d+' } | Select-Object -Last 1)
+  if ($last) { $code = [int](($last[0] -replace '^exit ', '').Trim()) }
+  $got = @($got | Where-Object { $_ -notmatch '^exit -?\d+' })
+  foreach ($l in $got) { Say "    $tag | $l" }
+  if (-not (Test-Path -LiteralPath $flag)) { Say "    $tag | (the limited task did not finish in 120 s)" }
+  return @{ Code = $code; Lines = $got }
+}
+
+Say "prove-switch: exe $Exe; Electron clone $Repo; session $([System.Diagnostics.Process]::GetCurrentProcess().SessionId); user $env:USERNAME; elevated $(Elevated)"
 
 # ---- the stand-in Electron task
 & schtasks.exe /Delete /TN 'Mantle Native' /F 2>$null | Out-Null
@@ -139,7 +170,13 @@ Start-Sleep -Seconds 8   # let the live start settle (the taskbar, the app bar, 
 
 # ---- 3 switch back
 Say 'switch-back:'
-$b = Run51 $back @('-Exe', $Exe, '-StartElectron') 'back'
+if (Elevated) {
+  Note 'this job is elevated, so switch-back runs through a one-shot LIMITED task (a normal terminal, the token the logon task gives native)'
+  $b = Run51Limited $back @('-Exe', $Exe, '-StartElectron') 'back'
+} else { $b = Run51 $back @('-Exe', $Exe, '-StartElectron') 'back' }
+if (Test-Path -LiteralPath $nlog) {
+  foreach ($l in @(Get-Content -LiteralPath $nlog -Tail 400 | Where-Object { $_ -match 'single instance|quit|stand|restore|exit:' } | Select-Object -Last 14)) { Say "    native-log | $l" }
+}
 Check ($b.Code -eq 0) "switch-back.ps1 exit 0 (was $($b.Code))"
 Check (@($b.Lines | Where-Object { $_ -cmatch '^\s*\| verified:' }).Count -gt 0) "switch-back: restore-windows.ps1 printed verified: after the native run"
 Check (@($b.Lines | Where-Object { $_ -like 'switch-back: done*' }).Count -gt 0) 'switch-back printed its done line'

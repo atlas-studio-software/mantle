@@ -36,6 +36,10 @@ Expand-Archive -LiteralPath <path>\MantleNative-win-x64.zip -DestinationPath $di
 
 The logon task points at this exact folder. Keep the folder; a new build goes into a new folder.
 
+Run sections 3 and 4 from a NORMAL PowerShell window, not "Run as administrator". The logon task starts native with
+a limited token, and native's single-instance pipe answers only the same token, so an elevated `--quit` cannot reach
+it. Switch-back then stops safely with "did not quit". This was found on the CI runner, whose job is elevated.
+
 ## 3. Switch to native (one command)
 
 Electron Mantle is the clone its `Mantle` logon task starts. Its folder is the `<WorkingDirectory>` in
