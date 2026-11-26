@@ -197,6 +197,11 @@ public sealed partial class BarWindow
 
     /// act(): one press per row at a time (a double-click or held Enter opens once); a dry run or a note stays in the
     /// panel; success closes it; a failure is a sentence in the note, and a stale row re-reads.
+    /// The press itself never changes the panel's height: the pop-up stands on the bar (its bottom edge fixed), so a
+    /// shorter panel moves every row down under a still pointer. Clearing the last note on the press did that: a double
+    /// click's first press opened a row and took the note's line away, the rows dropped by more than half a row, and the
+    /// second press landed on the row above and opened that one too (stage 11 run 3: "expected 2, got 3"). The old note
+    /// stays until the answer, which always sets its own (or closes the panel).
     async System.Threading.Tasks.Task DlAct(string verb, string? item, string what)
     {
         if (_dl == null || _dlLink == null) return;
@@ -205,19 +210,20 @@ public sealed partial class BarWindow
         if (!Mantle.Core.Features.Downloads.DownloadsKeys.Takes(_dl.Busy.Contains(k), _dlLastRow, _dlLastAt, k + "|" + verb, now) || !_dl.Busy.Add(k))
         { Host.Log.Line($"downloads: a second {verb} on the same row was ignored (one decision)"); return; }
         _dlLastRow = k + "|" + verb; _dlLastAt = now;
-        _dl.Note = "";
+        int at = item == null ? -1 : _dl.Rows.ToList().FindIndex(b => (b.Tag as string) == item);
+        string onRow = at >= 0 ? $" (row {at + 1} of {_dl.Rows.Count})" : "";
         PaintDl();
         var r = await _dlLink.CallAsync("downloads." + verb, item != null ? new JsonObject { ["item"] = item } : new JsonObject());
         _dl.Busy.Remove(k);
         if (r.Ok) {
             bool dry = r.Result.ValueKind == JsonValueKind.Object && r.Result.TryGetProperty("dryRun", out var d) && d.ValueKind == JsonValueKind.True;
-            Host.Log.Line($"downloads: {verb} {(dry ? "was a dry run" : "done")}");
+            Host.Log.Line($"downloads: {verb} {(dry ? "was a dry run" : "done")}{onRow}");
             if (dry) _dl.Note = Str(r.Result, "reason") ?? "test run: nothing was opened";
             else if (Str(r.Result, "note") is { } note) _dl.Note = note;
             else { if (Popups?.OpenKey == DlKey) Popups.Close(verb + " done"); return; }
         } else {
             _dl.Note = what + ": " + r.Error;
-            Host.Log.Line($"downloads: {verb} did not happen");
+            Host.Log.Line($"downloads: {verb} did not happen{onRow}");
             if (r.Error is { } e && (e.Contains("out of date", StringComparison.Ordinal) || e.Contains("no longer in Downloads", StringComparison.Ordinal))) { _ = DlRefresh(true); return; }
         }
         if (Popups?.OpenKey == DlKey) PaintDl();

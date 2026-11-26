@@ -90,10 +90,15 @@ public class DownloadsKeysTests
             var r = row.BoundingRectangle;
             Mouse.DoubleClick(new System.Drawing.Point(r.Left + r.Width / 2, r.Top + r.Height / 2));
             // the first press repaints the rows (busy), so the second press often never becomes a click at all (run
-            // 43822746706); either way it is one open
+            // 43822746706); either way it is one open. The press keeps the Enter's note, so the panel (standing on the bar)
+            // keeps its height and the rows stay under the pointer: when the press took the note away, the rows dropped
+            // and the second press opened the row above as well (stage 11 run 3: "expected 2, got 3")
             Assert.IsTrue(Host.Until(() => Count(FrameProbe.Log(dir), "downloads: open was a dry run") == before + 1, 5000), "the double click did not open the row");
             Thread.Sleep(600);
-            Assert.AreEqual(before + 1, Count(FrameProbe.Log(dir), "downloads: open was a dry run"), "a double click opened more than once");
+            string dbl = FrameProbe.Log(dir);
+            string tail = string.Join("\n", dbl.Split('\n').TakeLast(25));
+            Assert.AreEqual(before + 1, Count(dbl, "downloads: open was a dry run"), "a double click opened more than once; the log's end:\n" + tail);
+            Assert.AreEqual(1, Count(dbl, "downloads: open was a dry run (row 2 of 3)"), "the double click did not open the row it was on (row 2 of 3); the log's end:\n" + tail);
 
             // BAR-882: two Enters on the focused row within 0.5 s are one decision: the second is held back and said
             // the double click's presses repaint the rows under the pointer, so the keyboard is first put back on a row
