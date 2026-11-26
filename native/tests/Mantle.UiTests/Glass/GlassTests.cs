@@ -325,13 +325,14 @@ public sealed partial class GlassTests
         // the rows just inside the pill's top and bottom edges, clear of its rounded ends (its glyph and level sit between)
         PaneLined(dir, "osd", osd, () => { var r = OsdPane(osd); int e = (r.Bottom - r.Top) / 2; return new[] { (r.Left + e, r.Right - e, r.Top + 3, r.Top + 7), (r.Left + e, r.Right - e, r.Bottom - 7, r.Bottom - 3) }; }, true, "dark-osd");
 
-        // the launcher (SEE-010): its rounded pane, inset in a bigger window; the empty results area under the search line
+        // the launcher (SEE-010): since lane r15-quick-launcher it wears the levitated island (LauncherSurface.Islands.cs),
+        // not the tinted glass layer, so the tint-lined check no longer applies to it (its island: Launcher/LauncherLookTests)
         Second(app, env, "--test-surface=show:launcher");
         IntPtr lau = Host.Until(() => FrameProbe.Find(pid, "Mantle launcher") is var h && h != IntPtr.Zero && FrameProbe.Showing(h) ? (object)h : null, 5000) is IntPtr l ? l : IntPtr.Zero;
         Assert.AreNotEqual(IntPtr.Zero, lau, "the launcher did not show:\n" + Tail(dir));
-        Host.LogContains(() => FrameProbe.Log(dir), "glass launcher: painted the desktop still", "the launcher painted the still", 8000);
+        Host.LogContains(() => FrameProbe.Log(dir), "islands look: one island", "the launcher did not build its levitated island", 8000);
         Thread.Sleep(500);   // its unfold has landed
-        PaneLined(dir, "launcher", lau, () => { var r = PaneRect(lau, "panel"); int hh = r.Bottom - r.Top; return new[] { (r.Left + 24, r.Right - 24, r.Top + hh * 40 / 100, r.Top + hh * 75 / 100) }; }, true, "dark-launcher");
+        StringAssert.DoesNotMatch(FrameProbe.Log(dir), new Regex("glass launcher: "), "the launcher still drew the old glass layer");
         Assert.AreEqual(1, Count(FrameProbe.Log(dir), "glass: the desktop still 1600x900 cover-fit"), "a window decoded the still again (it is shared):\n" + Tail(dir));
     }
 
