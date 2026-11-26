@@ -3,8 +3,87 @@
   LvLauncher.xaml (lane r15-quick-launcher): the restyled launcher surface's prototype numbers and theme inks (apps-r3/mantle-bar
   panels/launcher.css, apps-r3/light-mantle, LIGHT.md). Merged by Theme.xaml; pinned by the unit tests in
   Mantle.Core.Tests/Look (plan v0.2: prototype-spec numeric checks in unit, no pixel compare against the prototype).
+
+  Read in code by Surfaces/Launcher/LauncherSpec.cs, only in the islands look (BarGeometry.Islands); the old glass look keeps
+  its own numbers. Every ink comes from Levitate.xaml's LvBar* ThemeDictionaries (both themes) and IslandsInk.Accent, so
+  nothing here differs by theme: the launcher's light and dark are the same sizes (light-mantle copies launcher.css as is).
+  Line numbers below are launcher.css's (L3 = line 3) and look.css's (look L36).
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+  <!-- the island (L3): min(600px, 100vw minus 24), min(520px, 100vh minus 80); a pop-over, radius 14 (look L36 r-pop, look L175) -->
+  <x:Double x:Key="LvLauncherWidth">600</x:Double>
+  <x:Double x:Key="LvLauncherHeight">520</x:Double>
+  <x:Double x:Key="LvLauncherScreenSideMargin">24</x:Double>
+  <x:Double x:Key="LvLauncherScreenCapMargin">80</x:Double>
+  <x:Double x:Key="LvLauncherRadius">14</x:Double>
+  <!-- room round the island inside its window for the float-hi shadow (look L39: 0 44px 72px minus 28px reaches 88 below,
+       44 to the sides, the 0 14px 26px minus 8px layer 4 above) -->
+  <Thickness x:Key="LvLauncherShadowRoom">44,12,44,88</Thickness>
+
+  <!-- the field (L7 to L13): 56 tall, padding 0 16, gap 12, an 18 search glyph, the query at fs-l 16; one 1 px hair under the
+       whole width (L8), the accent line 16 in from each side over it while the query has the keyboard (L9, L10) -->
+  <x:Double x:Key="LvLauncherFieldHeight">56</x:Double>
+  <Thickness x:Key="LvLauncherFieldPadding">16,0,16,0</Thickness>
+  <x:Double x:Key="LvLauncherFieldGap">12</x:Double>
+  <x:Double x:Key="LvLauncherFieldIcon">18</x:Double>
+  <x:Double x:Key="LvLauncherFieldFont">16</x:Double>
+  <x:Double x:Key="LvLauncherFieldLine">1</x:Double>
+  <Thickness x:Key="LvLauncherFieldLineInset">16,0,16,0</Thickness>
+  <x:Double x:Key="LvLauncherFieldLineFadeMs">160</x:Double>
+
+  <!-- the list (L18): padding 4 8 8 -->
+  <Thickness x:Key="LvLauncherBodyPadding">8,4,8,8</Thickness>
+
+  <!-- a group heading (L23, L24): padding 12 8 4 (the first 4 8 4), fs-xs 12, weight 600, the text ink -->
+  <Thickness x:Key="LvLauncherGroupPadding">8,12,8,4</Thickness>
+  <Thickness x:Key="LvLauncherGroupPaddingFirst">8,4,8,4</Thickness>
+  <x:Double x:Key="LvLauncherGroupFont">12</x:Double>
+  <!-- the no-match line (L26): padding 8 8 0, fs-s 13, text-2 -->
+  <Thickness x:Key="LvLauncherNonePadding">8,8,8,0</Thickness>
+  <x:Double x:Key="LvLauncherNoneFont">13</x:Double>
+
+  <!-- a row (L30, L37): 36 tall, padding 0 12 0 8, gap 12, radius 8 (r-m); a Quick links row (bare) 32 tall, padding 0 12 -->
+  <x:Double x:Key="LvLauncherRowHeight">36</x:Double>
+  <x:Double x:Key="LvLauncherRowHeightBare">32</x:Double>
+  <Thickness x:Key="LvLauncherRowPadding">8,0,12,0</Thickness>
+  <Thickness x:Key="LvLauncherRowPaddingBare">12,0,12,0</Thickness>
+  <x:Double x:Key="LvLauncherRowGap">12</x:Double>
+  <x:Double x:Key="LvLauncherRowRadius">8</x:Double>
+  <!-- its icon tile (look L119 .app-ic): 24, radius 6, the glyph 16 -->
+  <x:Double x:Key="LvLauncherIcon">24</x:Double>
+  <CornerRadius x:Key="LvLauncherIconCorner">6</CornerRadius>
+  <!-- the name fs-m 14, the kind or folder fs-xs 12 at most 44 percent of the row (L40, L42) -->
+  <x:Double x:Key="LvLauncherNameFont">14</x:Double>
+  <x:Double x:Key="LvLauncherSubFont">12</x:Double>
+  <x:Double x:Key="LvLauncherSubShare">0.44</x:Double>
+  <!-- the keyboard-selected row's accent tick (L34, L38): 3 wide at the left edge, 11 in from top and bottom (9 on a bare
+       row), a pill (999) -->
+  <x:Double x:Key="LvLauncherTickWidth">3</x:Double>
+  <x:Double x:Key="LvLauncherTickInset">11</x:Double>
+  <x:Double x:Key="LvLauncherTickInsetBare">9</x:Double>
+  <x:Double x:Key="LvLauncherTickRadius">999</x:Double>
+
+  <!-- the foot (L59 to L65): 40 tall, padding 0 16, a 1 px hair on top; the hint fs-xs 12 text-2, 16 between keys, 8 between
+       a keycap and its word; a keycap (look L116 .kbd) fs-2xs 11, padding 1 6, radius 4 (r-xs), fill-1 -->
+  <x:Double x:Key="LvLauncherFootHeight">40</x:Double>
+  <Thickness x:Key="LvLauncherFootPadding">16,0,16,0</Thickness>
+  <x:Double x:Key="LvLauncherFootLine">1</x:Double>
+  <x:Double x:Key="LvLauncherHintFont">12</x:Double>
+  <x:Double x:Key="LvLauncherHintGap">16</x:Double>
+  <x:Double x:Key="LvLauncherKeyGap">8</x:Double>
+  <x:Double x:Key="LvLauncherKbdFont">11</x:Double>
+  <Thickness x:Key="LvLauncherKbdPadding">6,1,6,1</Thickness>
+  <CornerRadius x:Key="LvLauncherKbdCorner">4</CornerRadius>
+
+  <!-- the pop-over in and out (look L169 to L173, .panel.center): in, opacity 160 ms on ease and translateY from minus 6 with
+       scale from 0.97 over 260 ms on ease-lift; out, opacity 120 ms and the transform 160 ms on ease; about the centre -->
+  <x:Double x:Key="LvLauncherInFadeMs">160</x:Double>
+  <x:Double x:Key="LvLauncherInMoveMs">260</x:Double>
+  <x:Double x:Key="LvLauncherOutFadeMs">120</x:Double>
+  <x:Double x:Key="LvLauncherOutMoveMs">160</x:Double>
+  <x:Double x:Key="LvLauncherRise">6</x:Double>
+  <x:Double x:Key="LvLauncherScaleFrom">0.97</x:Double>
 </ResourceDictionary>
