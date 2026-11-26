@@ -20,9 +20,9 @@
   <!-- lane r14-bar-review: the bar's islands inks, the one part of this file that differs by theme (apps-r3/mantle-bar
        look.css; light from apps-r3/LIGHT.md 4 / 4.1). Only the islands look uses them (BarGeometry.Islands); the
        MANTLE_TEST_GLASS=electron face keeps Tokens.xaml's Lg* inks.
-       LvBarInk: every glyph on the bar (look.css .btn { color: var(--text) }): dark text #EEF6F7, light #0F1E21.
+       LvBarInk: every glyph on the bar (look.css .btn { color: the text token }): dark text #EEF6F7, light #0F1E21.
        LvBarInk2: text-2 (the date, the More pip for a plain problem): dark rgba(230,242,244,.76), light #0F1E21 at .76.
-       LvBarWarn: --warn, only for a "warn" problem's pip: dark #E3C47E, light #4C3300.
+       LvBarWarn: the warn token, only for a "warn" problem's pip: dark #E3C47E, light #4C3300.
        LvBarAccent: the dock's focus underline (look.css .dock-hl .u): dark #A9E7ED, light #083F49. It moves to Core's
        islands accent profile (look-sync accent.js 'islands', base hue 185) when that port lands. -->
   <ResourceDictionary.ThemeDictionaries>
