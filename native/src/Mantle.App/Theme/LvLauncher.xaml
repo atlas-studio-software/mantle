@@ -1,0 +1,10 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  LvLauncher.xaml (lane r15-quick-launcher): the restyled launcher surface's prototype numbers and theme inks (apps-r3/mantle-bar
+  panels/launcher.css, apps-r3/light-mantle, LIGHT.md). Merged by Theme.xaml; pinned by the unit tests in
+  Mantle.Core.Tests/Look (plan v0.2: prototype-spec numeric checks in unit, no pixel compare against the prototype).
+-->
+<ResourceDictionary
+    xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+</ResourceDictionary>
