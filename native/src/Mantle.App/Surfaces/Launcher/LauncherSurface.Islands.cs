@@ -68,7 +68,7 @@ internal sealed partial class LauncherSurface
         _panelGrid.PointerExited += (_, _) => lev.Hover(false);
         _panel.HorizontalAlignment = HorizontalAlignment.Left; _panel.VerticalAlignment = VerticalAlignment.Top;
         _shadow.HorizontalAlignment = HorizontalAlignment.Left; _shadow.VerticalAlignment = VerticalAlignment.Top;
-        if (LvPlace() is { } at) LvShadow(at.Win.Right - at.Win.Left, at.Win.Bottom - at.Win.Top, at.Scale);   // made once now, not on the first open
+        if (LvPlace() is { } at) LvShadow(at.Win.Right - at.Win.Left, at.Win.Bottom - at.Win.Top, at.Scale);   // made once now (off the UI thread), not on the first open
         _ctx.Log.Line(FormattableString.Invariant($"islands look: one island {_paneW:0}x{_paneH:0} DIP at radius {_spec.Radius:0}, rows {_spec.RowHeight:0} (Quick links {_spec.RowHeightBare:0}), the float-hi shadow round it"));
     }
 
@@ -112,8 +112,21 @@ internal sealed partial class LauncherSurface
         if (key == _lvShadowKey) return;
         _lvShadowKey = key;
         var box = new CssShadow.Box(room.Left, room.Top, _paneW, _paneH, _spec.Radius);
-        _shadow.Source = LevitateShadow.Bitmap(wp, hp, s, new[] { box }, hi: true);
-        _shadow.Width = wp / s; _shadow.Height = hp / s;
+        // the blur runs off the UI thread (CssShadow.Into, as the OSD's shadow does since lane native-r8-startup): made on
+        // the UI thread at start it held it ~280 ms (StartupStallTests' limit is 250); the bitmap is one copy on the UI thread
+        var dq = Microsoft.UI.Dispatching.DispatcherQueue.GetForCurrentThread();
+        var boxes = new[] { box };
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            var px = new byte[Math.Max(1, wp) * Math.Max(1, hp) * 4];
+            CssShadow.Into(px, wp, hp, s, boxes, LevitateShadow.FloatHi);
+            dq?.TryEnqueue(() =>
+            {
+                if (key != _lvShadowKey) return;   // a newer size asked for its own
+                _shadow.Source = CssShadow.FromPixels(px, wp, hp);
+                _shadow.Width = wp / s; _shadow.Height = hp / s;
+            });
+        });
     }
 
     /// The pop-over in (look.css .panel.center / .panel.open), about the island's centre; a pending out is cancelled.

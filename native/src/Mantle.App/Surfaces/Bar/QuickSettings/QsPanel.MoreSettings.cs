@@ -112,7 +112,7 @@ internal sealed partial class QsPanel
     {
         if (_moreRow == null || _moreName == null || _moreSubT == null || _moreChev == null) return;
         if (_moreHair != null) _moreHair.Background = B("LvBarHair");
-        _moreRow.Background = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        _moreRow.Background = new SolidColorBrush();
         Line(_moreName, L("LvQsLblFs", 13), L("LvQsLblLh", 18));
         Line(_moreSubT, L("LvQsSubFs", 11), L("LvQsSubLh", 15));
         _moreName.Foreground = B("LgInk");

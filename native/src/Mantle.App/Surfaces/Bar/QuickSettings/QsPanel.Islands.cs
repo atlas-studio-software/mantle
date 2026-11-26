@@ -199,7 +199,7 @@ internal sealed partial class QsPanel
         double dead = L("LvQsDeadOpacity", 0.45);
         double lblFs = L("LvQsLblFs", 13), lblLh = L("LvQsLblLh", 18), subFs = L("LvQsSubFs", 11), subLh = L("LvQsSubLh", 15);
         double headFs = L("LvQsHeadFs", 13), valFs = L("LvQsValFs", 12), footFs = L("LvQsFootFs", 12);
-        var clear = new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        var clear = new SolidColorBrush();
 
         // tiles: fill-1 at rest, the accent when on (its second line accent-ink-2), never the old card / sunk faces
         foreach (var t in _tiles.Values) {

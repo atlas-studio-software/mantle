@@ -73,7 +73,7 @@ internal static class QsLook
     /// The islands brush for an Lg* name, or null when the name has no twin (the caller keeps its Lg* token).
     public static Brush? Ink(bool dark, string lg, Action<string>? log)
     {
-        if (lg == "LgFill0") return new SolidColorBrush(Microsoft.UI.Colors.Transparent);
+        if (lg == "LgFill0") return new SolidColorBrush();
         if (lg is "LgAcc" or "LgAccLine") return global::Mantle.App.Shell.Levitate.IslandsInk.AccentBrush(dark, log);
         if (lg == "LgAccOn") return global::Mantle.App.Shell.Levitate.IslandsInk.AccentInkBrush(dark, log);
         if (lg == "LgAccSoft") { var a = global::Mantle.App.Shell.Levitate.IslandsInk.Accent(dark, log).Acc; a.A = (byte)(dark ? 41 : 31); return new SolidColorBrush(a); }   // look.css 23 / light.css 23: .16 / .12
