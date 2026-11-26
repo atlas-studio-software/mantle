@@ -16,7 +16,10 @@
 param(
   [Parameter(Mandatory = $true)][ValidateSet('sc', 'fd', 'aot')][string]$Mode,
   [Parameter(Mandatory = $true)][string]$Out,
-  [string]$Configuration = 'Release'
+  [string]$Configuration = 'Release',
+  # -Zip (the early trial, docs/trial-early.md): also put the switch scripts in tools\ next to the exe and pack the
+  # folder as <Out>-win-x64.zip with a .sha256 beside it. Off by default: the published folder is then unchanged.
+  [switch]$Zip
 )
 $ErrorActionPreference = 'Stop'
 $native = Split-Path -Parent $PSScriptRoot
@@ -64,4 +67,29 @@ $files = @(Get-ChildItem -Recurse -File $Out)
 $mb = [math]::Round((($files | Measure-Object -Sum Length).Sum) / 1MB, 1)
 $exeMb = [math]::Round((Get-Item $exe).Length / 1MB, 1)
 Write-Host "PUBLISH ${Mode}: ok (MantleNative.exe $exeMb MB; folder $mb MB, $($files.Count) files; ${secs}s)"
+if ($Zip) {
+  # the switch scripts look for MantleNative.exe one folder up and for install-autostart.ps1 beside themselves
+  foreach ($s in @('switch-to-native.ps1', 'switch-back.ps1', 'install-autostart.ps1')) {
+    Copy-Item -LiteralPath (Join-Path $PSScriptRoot $s) -Destination (Join-Path $Out "tools\$s") -Force
+  }
+  # Platform/SidecarLocator: the Mantle.Sidecar.exe next to MantleNative.exe, else a checkout's sidecar\bin. An
+  # unpacked zip is no checkout, so without this copy the platform calls and the crash supervisor have no exe.
+  $sidecar = Join-Path (Split-Path -Parent $native) 'sidecar\bin\Mantle.Sidecar.exe'
+  if (-not (Test-Path -LiteralPath $sidecar -PathType Leaf)) {
+    Write-Host "ZIP: FAILED (no $sidecar to put next to MantleNative.exe: build it first, sidecar/build.ps1)"
+    exit 1
+  }
+  Copy-Item -LiteralPath $sidecar -Destination (Join-Path $Out 'Mantle.Sidecar.exe') -Force
+  $head = ''
+  try { $head = (& git -C $native rev-parse HEAD 2>$null) } catch { }
+  $stamp = [DateTime]::UtcNow.ToString('yyyy-MM-ddTHH:mm:ssZ', [Globalization.CultureInfo]::InvariantCulture)
+  Set-Content -LiteralPath (Join-Path $Out 'BUILD.txt') -Encoding utf8 -Value @("MantleNative win-x64 ($Mode), published $stamp", "git HEAD of the publishing tree: $head (a cloudtest run's snapshot commit; its run.json names the base)")
+  $zipFile = $Out.TrimEnd('\', '/') + '-win-x64.zip'
+  if (Test-Path -LiteralPath $zipFile) { Remove-Item -Force -LiteralPath $zipFile }
+  Compress-Archive -Path (Join-Path $Out '*') -DestinationPath $zipFile -CompressionLevel Optimal
+  $hash = (Get-FileHash -Algorithm SHA256 -LiteralPath $zipFile).Hash.ToLowerInvariant()
+  Set-Content -LiteralPath ($zipFile + '.sha256') -Encoding ascii -Value ($hash + '  ' + (Split-Path -Leaf $zipFile))
+  $zmb = [math]::Round((Get-Item -LiteralPath $zipFile).Length / 1MB, 1)
+  Write-Host "ZIP: ok ($(Split-Path -Leaf $zipFile) $zmb MB, sha256 $hash)"
+}
 exit 0
