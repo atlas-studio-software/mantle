@@ -36,6 +36,9 @@
     sidecar  if src/Mantle.Sidecar/*.csproj exists: its check.ps1 (3 linked build variants + its tests), else dotnet build it
     topbar   tools/parity/topbar/run-topbar-parity.ps1 (the top bar strip, light and dark at 100 % and 150 %), gated on
              "TOPBAR-PARITY summary: 4 scored of 4" and its floors (lane native-r7-topbar)
+    switch   NOT in the default list; runner only (lane r16-trial, docs/trial-early.md): tools/trial/prove-switch.ps1 runs
+             switch-to-native.ps1 then switch-back.ps1 against the published exe with a stand-in "Mantle" logon task,
+             gated on "SWITCH: ok". -Zip (with build): publish.ps1 -Zip also packs <Out>/bin/MantleNative-win-x64.zip.
   A stage whose project or script does not exist is skipped, not failed.
 
   The runner desktop between the GUI stages (smoke, ui, bench, parity): tools/desk/desk.ps1 -Reset runs
@@ -52,7 +55,8 @@ param(
   [string[]]$Stages = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop'),
   [string]$Out = 'native/out',
   [ValidateSet('aot', 'sc', '')] [string]$BuildMode = '',
-  [string]$UiFilter = ''   # the ui stage runs only the tests this dotnet test --filter picks (a flake loop: -Stages ui, run again and again)
+  [string]$UiFilter = '',   # the ui stage runs only the tests this dotnet test --filter picks (a flake loop: -Stages ui, run again and again)
+  [switch]$Zip              # the build stage also packs the trial zip (publish.ps1 -Zip); off by default
 )
 $ErrorActionPreference = 'Stop'
 $ProgressPreference = 'SilentlyContinue'
@@ -60,7 +64,7 @@ $native = Split-Path -Parent $PSScriptRoot
 $repo = Split-Path -Parent $native
 # "-Stages build,unit" through pwsh -File arrives as one string: split on commas either way
 $Stages = @($Stages | ForEach-Object { $_ -split ',' } | ForEach-Object { $_.Trim().ToLowerInvariant() } | Where-Object { $_ })
-$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop')
+$known = @('build', 'unit', 'smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'sidecar', 'cal', 'notifs', 'media', 'topbar', 'desktop', 'switch')   # 'switch': asked for only (not in the default -Stages)
 $bad = @($Stages | Where-Object { $known -notcontains $_ })
 if ($bad.Count -gt 0) { Write-Host "NATIVE-CI: FAILED (unknown stage(s): $($bad -join ', '); known: $($known -join ', '))"; exit 1 }
 $Stages = @($known | Where-Object { $Stages -contains $_ })   # always in the documented order
@@ -102,7 +106,10 @@ function Trx([string]$path) {
 function Stage-build {
   $bin = Join-Path $Out 'bin\MantleNative'
   $pub = Join-Path $logs "publish-$BuildMode.txt"
-  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'publish.ps1') -Mode $BuildMode -Out $bin *> $pub
+  $zipArg = @(); if ($Zip) { $zipArg = @('-Zip') }
+  & pwsh -NoProfile -File (Join-Path $PSScriptRoot 'publish.ps1') -Mode $BuildMode -Out $bin @zipArg *> $pub
+  $zipLine = (Get-Content $pub | Where-Object { $_ -like 'ZIP: *' } | Select-Object -Last 1)
+  if ($zipLine) { Say ("  " + $zipLine) }
   $pubCode = $LASTEXITCODE
   $pubLine = (Get-Content $pub | Where-Object { $_ -like 'PUBLISH *' } | Select-Object -Last 1)
   Say ("  " + (Short $pubLine))
@@ -729,10 +736,31 @@ function Stage-desktop {
 }
 # ---- end lane native-r7-desktop-2
 
+# ---------------------------------------------------------------------------------------------- switch (lane r16-trial)
+# The early trial's way in and out, proven on the runner: tools/trial/prove-switch.ps1 (runner only; it refuses
+# elsewhere) registers a stand-in "Mantle" logon task, runs switch-to-native.ps1 -StartNative against the published
+# exe (Electron is the repo clone the parity stages use), then switch-back.ps1 -StartElectron, and checks the tasks,
+# the processes, restore-windows' "verified:" line, the one-shell lock and Electron's lockfile.
+function Stage-switch {
+  if (-not $onRunner) { return 'skipped (runner only: it changes logon tasks and starts native --live)' }
+  if (-not (Test-Path $exe)) { return 'FAILED (the published exe is missing; the build stage makes it)' }
+  $script = Join-Path $PSScriptRoot 'trial\prove-switch.ps1'
+  $log = Join-Path $logs 'switch.log'
+  $zipFile = Join-Path $Out 'bin\MantleNative-win-x64.zip'
+  $zipArg = @(); if (Test-Path $zipFile) { $zipArg = @('-Zip', $zipFile) }   # built with -Zip: prove the unpacked zip
+  & pwsh -NoProfile -File $script -Exe $exe -Repo $repo -Out (Join-Path $Out 'switch') @zipArg *> $log
+  $code = $LASTEXITCODE
+  Get-Content $log | Where-Object { $_ -match '^(SWITCH:|  (ok|FAIL|note) )' } | ForEach-Object { Say ('  ' + (Short $_)) }
+  $line = (Get-Content $log | Where-Object { $_ -like 'SWITCH: *' } | Select-Object -Last 1)
+  if (-not $line) { return "FAILED (exit $code; no SWITCH line, see logs/switch.log)" }
+  if ($code -ne 0 -or $line -notlike 'SWITCH: ok*') { return "FAILED (exit $code; $(Short $line))" }
+  return "ok ($(Short $line))"
+}
+
 # ---------------------------------------------------------------------------------------------- the runner desktop
 # Before each GUI stage the desktop is put back (desk.ps1 -Reset); a watcher logs taskbar attention requests
 # and taskbar moves for the whole run, summarized per stage. Runner only (desk.ps1 refuses elsewhere).
-$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media', 'topbar', 'desktop')
+$guiStages = @('smoke', 'ui', 'bench', 'parity', 'launcher', 'osd', 'strip', 'qs', 'previews', 'cal', 'notifs', 'media', 'topbar', 'desktop', 'switch')
 $deskPs = Join-Path $PSScriptRoot 'desk\desk.ps1'
 $onRunner = [bool]($env:CI -or $env:GITHUB_ACTIONS)
 $watchLog = Join-Path $Out 'desk-watch.log'
@@ -787,6 +815,7 @@ foreach ($s in $Stages) {
       'media'   { Stage-media }    # lane native-r7-media
       'topbar'  { Stage-topbar }   # lane native-r7-topbar
       'desktop' { Stage-desktop }   # lane native-r7-desktop-2
+      'switch'  { Stage-switch }    # lane r16-trial: switch-to-native then switch-back, runner only
     }
     $r = @($r)[-1]   # a stage's own stray output never becomes its result
   } catch {
