@@ -85,8 +85,33 @@ internal sealed class BarApp : IDisposable
         return e!;
     }
 
-    public IEnumerable<string> SeenIds() =>
-        Window.FindAllDescendants().Select(x => x.Properties.AutomationId.ValueOrDefault ?? "").Where(s => s.Length > 0).Distinct();
+    /// <summary>
+    /// The AutomationIds in the window's tree now, for a failure message. The list is a snapshot: an element the app
+    /// removes after FindAllDescendants (a dock cell whose window closed, a collapsed pip, a rebuilt tray strip) has no
+    /// id left to read, and UIA says so with UIA_E_ELEMENTNOTAVAILABLE (0x80040201, which COM words as "an event was
+    /// unable to invoke any of the subscribers"). Such an element is not in the tree, so it is counted as gone, not
+    /// listed; any other failure still throws (run 45751506798: this walk threw out of a passing contract check).
+    /// </summary>
+    public IEnumerable<string> SeenIds()
+    {
+        var ids = new List<string>();
+        int gone = 0;
+        foreach (var x in Window.FindAllDescendants())
+        {
+            string id;
+            try { id = x.Properties.AutomationId.ValueOrDefault ?? ""; }
+            catch (Exception e) when (Gone(e)) { gone++; continue; }
+            if (id.Length > 0 && !ids.Contains(id)) ids.Add(id);
+        }
+        if (gone > 0) ids.Add($"({gone} element{(gone == 1 ? "" : "s")} left the tree while it was read)");
+        return ids;
+    }
+
+    /// UIA's "that element is no longer there": FlaUI's own exception, or the raw HRESULT it lets through on a property read.
+    public static bool Gone(Exception e) =>
+        e is FlaUI.Core.Exceptions.ElementNotAvailableException || e is System.Runtime.InteropServices.COMException { HResult: UiaElementNotAvailable };
+
+    const int UiaElementNotAvailable = unchecked((int)0x80040201);
 
     public void Dispose() => Host.Kill(Proc);
 }
@@ -118,8 +143,10 @@ public class BarTests
     {
         using var app = BarApp.Launch("uitest-ids");
         Assert.AreEqual(BarApp.WindowTitle, Win32.Title(app.Hwnd));
+        // Each id is its own fresh query of the live tree (TryFind). The whole-tree listing is only for the failure
+        // message, so it runs only on a failure: MSTest 3.6 builds an Assert's message before the check.
         var missing = ContractIds.Where(id => app.TryFind(id, id == ContractIds[0] ? 8000 : 500) == null).ToList();
-        Assert.AreEqual(0, missing.Count, $"missing ids: {string.Join(", ", missing)}; present: [{string.Join(", ", app.SeenIds())}]");
+        if (missing.Count > 0) Assert.Fail($"missing ids: {string.Join(", ", missing)}; present: [{string.Join(", ", app.SeenIds())}]");
     }
 
     [TestMethod]

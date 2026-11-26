@@ -32,6 +32,7 @@ public sealed partial class BarWindow
     LevitatePanel? _lvLeft, _lvDock, _lvRight;
     readonly SolidColorBrush _isHover = new(), _isPress = new();
     string _islandShadowKey = "", _islandsSaid = "";
+    Image? _islandShadow;   // the float shadow bitmap's one Image in ShadowHost (IslandShadow)
 
     /// The islands' sizes and layers, once, from the constructor (before the first layout).
     void SetUpIslands()
@@ -169,12 +170,17 @@ public sealed partial class BarWindow
         string key = FormattableString.Invariant($"{wp}x{hp}@{s}:{boxes[0]}:{boxes[1]}:{boxes[2]}");
         if (key == _islandShadowKey) return;
         _islandShadowKey = key;
-        var img = new Image {
-            Source = LevitateShadow.Bitmap(wp, hp, s, boxes),
-            Width = wp / s, Height = hp / s, Stretch = Stretch.Fill, IsHitTestVisible = false,
-        };
-        ShadowHost.Children.Clear();
-        ShadowHost.Children.Add(img);
+        // One Image, made once and given each new bitmap in place. A new Image on every dock-width change (several
+        // times while the dock fills at start-up) took a live automation peer out of the tree each time, under any
+        // UI Automation client that had just listed it (its next read: UIA_E_ELEMENTNOTAVAILABLE, 0x80040201).
+        if (_islandShadow == null) {
+            _islandShadow = new Image { Stretch = Stretch.Fill, IsHitTestVisible = false };
+            ShadowHost.Children.Clear();
+            ShadowHost.Children.Add(_islandShadow);
+        }
+        _islandShadow.Source = LevitateShadow.Bitmap(wp, hp, s, boxes);
+        _islandShadow.Width = wp / s;
+        _islandShadow.Height = hp / s;
     }
 
     /// The theme changed: the inks, the frost's dim and film.
