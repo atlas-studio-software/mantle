@@ -138,6 +138,12 @@ if (-not $Exe -or -not (Test-Path $Exe)) { Write-Host "PARITY: FAILED (no native
 Say "native exe $Exe"
 $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'
 if ($golden) { Remove-Item Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue; Say "reference native-golden: native on its own look, no Electron run" }
+# native-golden (lane r14-ci-look): a --test run never reads Windows' wallpaper, so without this it publishes no desktop
+# record into its own (temp profile) look-sync folder, has no still, and every island paints the flat fallback colour
+# ("levitate bar ... island: the flat fallback colour: Mantle hasn't shared a desktop wallpaper yet"). The runner's
+# wallpaper (set above) is published as the test run's desktop picture, so the islands frost from the same picture that is
+# on the screen. MANTLE_TEST_WALLPAPER is DesktopPublish.TestEnv; the record goes to the run's own look-sync folder only.
+if ($golden) { $env:MANTLE_TEST_WALLPAPER = $wall; Say "reference native-golden: MANTLE_TEST_WALLPAPER=$wall (the runner's wallpaper), so the islands frost from it" }
 
 
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the
@@ -294,6 +300,16 @@ foreach ($pct in $scaleList) {
     $ePx = $null; $nPx = $null
     # native-golden: the pill-relative masks do not fit the islands; the clock is masked from UI Automation below
     if ($golden) { $r.masks = @(); $r.reference = 'native-golden' }
+    # native-golden (lane r14-ci-look): the runner's desktop text ("Windows Server ... Build 26100...") sits right of the
+    # islands band and below it, and shows in the crop where no island covers it. MASKED, not cropped: everything right of
+    # the band and below it, in screen px (the diff pads each mask by 4 px, which also covers the islands' rounded right
+    # corners where the text peeks through). Measured on run 20261126-025458-52914a: 0 text pixels left open at 100 and 150 %.
+    if ($golden) {
+      $wmRight = @(($bandX + $bandW), $crop.y, ($W - $bandX - $bandW), $crop.h)
+      $wmBelow = @(0, ($bandY + $bandH), $W, ($H - $bandY - $bandH))
+      $r.masks += , $wmRight; $r.masks += , $wmBelow; $r.watermarkMasks = @(, $wmRight) + @(, $wmBelow)
+      Say ("native {0}: desktop text masked: right of the band {1}, below it {2} (screen px, padded 4 by the diff)" -f $tag, ($wmRight -join ','), ($wmBelow -join ','))
+    }
 
     # Electron Mantle (--test instance, made visible). ---- reference 'electron' only (body left unindented on purpose)
     if (-not $golden) {
