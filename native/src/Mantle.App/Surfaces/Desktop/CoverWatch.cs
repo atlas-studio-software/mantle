@@ -12,7 +12,10 @@ namespace Mantle.App.Surfaces.Desktop;
 /// list's WinEvent hooks through a 250 ms timer plus a 2 s safety poll. Here the hooks run on a thread of their own (so a
 /// cursor or caret move, which Windows reports as a location change too, is dropped there and never wakes the UI thread),
 /// and the only timers are the throttle's: one decision 100 ms after the first window event of a burst (every 100 ms while
-/// a window is dragged), one settle check a second later, then none. No window event, no work: no poll at all.
+/// a window is dragged), one settle check a second later, then none. No window event, no work: no poll at all. And only an
+/// event that can change the answer counts: a window the last check saw over a widget, or one that could be over one now.
+/// A hidden window being made or closed (a background RunDLL), the desktop's own WorkerW resizing, a window far from the
+/// widgets moving: none can, so none wakes a check (a resting desktop with busy background processes stays at rest).
 /// </summary>
 /// <remarks>
 /// Read only: it never changes a window. The decision is WidgetCover.Decide (pure, unit-tested) over the live z-order, top
@@ -48,6 +51,8 @@ internal sealed partial class CoverWatch : IDisposable
     List<CoverWin>? _list;
     IntPtr _progman;
     int _decisions;
+    /// The windows the last check saw over a widget (it may have just left, so its every event counts). Hook thread only.
+    readonly HashSet<IntPtr> _over = new();
 
     /// <summary>Decisions made so far (for the log and the tests: nothing moves, nothing is decided).</summary>
     public int Decisions => Volatile.Read(ref _decisions);
@@ -112,6 +117,8 @@ internal sealed partial class CoverWatch : IDisposable
         // the window itself (OBJID_WINDOW): the cursor, the caret and every sub-object are dropped here, on this thread
         if (idObject != 0 || idChild != 0 || hwnd == IntPtr.Zero || _closed) return;
         if (ev != EVENT_SYSTEM_FOREGROUND && GetAncestor(hwnd, 2 /* GA_ROOT */) != hwnd) return;   // top-level windows only
+        // a change of foreground reorders windows (an app's owned windows rise with it), so it always counts
+        if (ev != EVENT_SYSTEM_FOREGROUND && !CanMatter(hwnd)) return;
         _lastEv = ev; _lastHwnd = hwnd;   // what started the check, said in its words (a test reads them)
         if (_throttle.Event() == CoverThrottle.Next.Throttle) {
             Kill(ref _settleId);
@@ -147,10 +154,39 @@ internal sealed partial class CoverWatch : IDisposable
         } catch (Exception e) { return "the window could not be read: " + e.Message; }
     }
 
+    /// Can an event on this window change the answer? Yes if the last check saw it over a widget (it may be leaving: moved,
+    /// hidden, minimised, cloaked, closed), or if it could be over one now. Read on the hook thread, a little after the
+    /// event: a window that turns visible again sends an event of its own (show, restore, uncloak) and is read then.
+    bool CanMatter(IntPtr hwnd)
+    {
+        try {
+            if (_over.Contains(hwnd)) return true;
+            if (!IsWindowVisible(hwnd)) return false;   // a hidden window being made, or a window gone: over nothing
+            return CouldCover(Read(hwnd));
+        } catch (Exception) { return true; }   // unreadable: check, as before
+    }
+
+    /// The cover rules (WidgetCover.Ignored) and the widgets' areas, alpha aside: a window that fades in shows at alpha 0
+    /// with no event for the fade, and the settle check after its show event is what sees it, so its show must count.
+    bool CouldCover(CoverWin w)
+    {
+        int alpha = w.Alpha;
+        w.Alpha = -1;
+        try { if (WidgetCover.Ignored(w, _ownPid) != null) return false; } finally { w.Alpha = alpha; }
+        foreach (var a in _areas) {
+            int ow = Math.Min(w.R, a.R) - Math.Max(w.L, a.L), oh = Math.Min(w.B, a.B) - Math.Max(w.T, a.T);
+            if (ow >= WidgetCover.MinOverlap && oh >= WidgetCover.MinOverlap) return true;
+        }
+        return false;
+    }
+
     void Decide(string why)
     {
         try {
-            var a = WidgetCover.Decide(_areas, Live(), _ownPid);
+            var wins = Live();
+            var a = WidgetCover.Decide(_areas, wins, _ownPid);
+            _over.Clear();
+            foreach (var w in wins) if (!w.Desktop && CouldCover(w)) _over.Add(new IntPtr(w.Hwnd));
             int n = Interlocked.Increment(ref _decisions);
             _decided?.Invoke(n, why);
             _lastErr = null;
@@ -177,6 +213,13 @@ internal sealed partial class CoverWatch : IDisposable
         var list = _list!;
         if (hwnd == _progman || hwnd == _layer) { list.Add(new CoverWin { Hwnd = hwnd.ToInt64(), Cls = ClassOf(hwnd), Desktop = true }); return false; }
         if (!IsWindowVisible(hwnd)) return true;   // the bulk of the list: not worth reading further
+        list.Add(Read(hwnd));
+        return true;
+    }
+
+    /// A visible top-level window as the cover check reads it.
+    CoverWin Read(IntPtr hwnd)
+    {
         var w = new CoverWin { Hwnd = hwnd.ToInt64(), Cls = ClassOf(hwnd), Title = TitleOf(hwnd), Iconic = IsIconic(hwnd) };
         w.Cloaked = DwmGetWindowAttribute(hwnd, DWMWA_CLOAKED, out int c, 4) == 0 && c != 0;
         w.ExStyle = GetWindowLongPtrW(hwnd, GWL_EXSTYLE).ToInt64();
@@ -185,8 +228,7 @@ internal sealed partial class CoverWatch : IDisposable
         if ((w.ExStyle & WS_EX_LAYERED) != 0 && GetLayeredWindowAttributes(hwnd, out _, out byte alpha, out uint lf) && (lf & LWA_ALPHA) != 0) w.Alpha = alpha;
         if (DwmGetWindowAttribute(hwnd, DWMWA_EXTENDED_FRAME_BOUNDS, out RECT r, Marshal.SizeOf<RECT>()) != 0) GetWindowRect(hwnd, out r);
         w.L = r.Left; w.T = r.Top; w.R = r.Right; w.B = r.Bottom;
-        list.Add(w);
-        return true;
+        return w;
     }
 
     static string ClassOf(IntPtr h) { var sb = new StringBuilder(256); GetClassNameW(h, sb, sb.Capacity); return sb.ToString(); }
