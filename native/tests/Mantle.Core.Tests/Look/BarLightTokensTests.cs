@@ -52,8 +52,8 @@ public class BarLightTokensTests
     public void Both_themes_have_the_same_keys_and_nothing_else()
     {
         foreach (var theme in new[] { "Dark", "Light" }) {
-            var keys = Theme(Root.Value, theme).Elements(P + "SolidColorBrush").Select(e => e.Attribute(X + "Key")!.Value).OrderBy(k => k, StringComparer.Ordinal);
-            Assert.Equal(Keys.OrderBy(k => k, StringComparer.Ordinal), keys);
+            var keys = Theme(Root.Value, theme).Elements(P + "SolidColorBrush").Select(e => e.Attribute(X + "Key")!.Value).OrderBy(k => k, StringComparer.Ordinal).ToArray();
+            Assert.Equal(Keys.OrderBy(k => k, StringComparer.Ordinal).ToArray(), keys);
         }
     }
 
