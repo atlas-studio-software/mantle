@@ -86,11 +86,12 @@ function LockHeld([string]$file) {
 function Run51([string]$script, [string[]]$argv, [string]$tag) {
   # the switch scripts are Windows PowerShell 5.1 scripts: run them the way the trial doc does
   $all = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', $script) + $argv
-  $out = @(& powershell.exe @all 2>&1 | ForEach-Object { [string]$_ })
+  # (not $out: PowerShell names are case-insensitive, and $Out is this script's output folder)
+  $got = @(& powershell.exe @all 2>&1 | ForEach-Object { [string]$_ })
   $code = $LASTEXITCODE
-  foreach ($l in $out) { Say "    $tag | $l" }
-  if ($Out) { $out | Set-Content -Encoding utf8 (Join-Path $Out "$tag.txt") }
-  return @{ Code = $code; Lines = $out }
+  foreach ($l in $got) { Say "    $tag | $l" }
+  if ($Out) { $got | Set-Content -Encoding utf8 (Join-Path $Out "$tag.txt") }
+  return @{ Code = $code; Lines = $got }
 }
 
 Say "prove-switch: exe $Exe; Electron clone $Repo; session $([System.Diagnostics.Process]::GetCurrentProcess().SessionId); user $env:USERNAME"
