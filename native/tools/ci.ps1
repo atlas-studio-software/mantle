@@ -453,10 +453,14 @@ function Stage-launcher {
   Select-String -Path $log -Pattern '^LAUNCHER-(PARITY|LATENCY) |^LAUNCHER: |launcher PROBLEM: ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
   $sum = @(Select-String -Path $log -Pattern '^LAUNCHER: ' -ErrorAction SilentlyContinue | Select-Object -Last 1)
   $bad = @(); $got = @()
+  # the script's image verdict first (lane r16-parity-surfaces): a references.psd1 refusal, or (native-golden) "launcher
+  # golden pending review: ..."; the behaviour checks below still run and still fail the stage on their own
+  $verdict = @(Select-String -Path $log -Pattern '^LAUNCHER-PARITY: FAILED \((.*)\)\s*$' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if ($verdict.Count) { $bad += (Short $verdict[0].Matches[0].Groups[1].Value) }
   if (-not $sum.Count) { $bad += "no LAUNCHER: line (exit $code)" }
   foreach ($t in 'light', 'dark') {
     $r = @($rows | Where-Object { $_.Tag -eq $t } | Select-Object -Last 1); $f = $Floors["launcher $t"]
-    if (-not $r.Count) { $bad += "$t not scored" }
+    if (-not $r.Count) { if (-not $verdict.Count) { $bad += "$t not scored" } }
     elseif ($r[0].Ssim -lt $f) { $bad += ("{0} ssim {1:N4} under its floor {2}" -f $t, $r[0].Ssim, $f) }
     else { $got += ("{0} {1:N4} >= {2}" -f $t, $r[0].Ssim, $f) }
   }
@@ -517,6 +521,14 @@ function Stage-qs {
   $log = Join-Path $logs 'qs.log'
   $rows = Scores $log '^QS-PARITY qs-(\w+) \(\w+\): ssim=([\d.]+)'
   Select-String -Path $log -Pattern '^QS-PARITY ' -ErrorAction SilentlyContinue | ForEach-Object { Say ('    ' + (Short $_.Line)) }
+  # the script's own verdict first (lane r16-parity-surfaces): a references.psd1 refusal, or (native-golden)
+  # "qs golden pending review: ...", as the strip stage does; the floors below stay for the golden scores
+  $verdict = @(Select-String -Path $log -Pattern '^QS-PARITY: FAILED \((.*)\)\s*$' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+  if ($verdict.Count) {
+    $vs = @(Select-String -Path $log -Pattern '^QS-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
+    $n = if ($vs.Count) { "$($vs[0].Matches[0].Groups[1].Value) of $($vs[0].Matches[0].Groups[2].Value) pop-ups scored" } else { 'none scored' }
+    return "FAILED ($(Short $verdict[0].Matches[0].Groups[1].Value); $n (exit $code))"
+  }
   $sum = @(Select-String -Path $log -Pattern '^QS-PARITY summary: (\d+) scored of (\d+)' -ErrorAction SilentlyContinue | Select-Object -Last 1)
   if (-not $sum.Count) { return "FAILED (no QS-PARITY summary line; exit $code; $(Short (Get-Content $log -Tail 1)))" }
   $bad = @(); $got = @()

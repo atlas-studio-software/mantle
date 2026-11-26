@@ -11,7 +11,12 @@
 # bar:   read by run-parity.ps1.
 # strip: read by the strip stage (bar-tasks/run-strip-parity.ps1, lane r13-strip-golden): the same rule with
 #        goldens/strip/; it must name the same reference as bar (the strip is cropped from the bar's run).
+# qs:    read by quick-settings/run-qs-parity.ps1 (lane r16-parity-surfaces): goldens/qs/<theme>.png.
+# launcher: read by launcher/run-launcher.ps1 (lane r16-parity-surfaces): goldens/launcher/<theme>-100.png; the
+#        launcher's behaviour checks and LAUNCHER-LATENCY lines run the same in both modes.
 @{
-  bar   = 'native-golden'
-  strip = 'native-golden'
+  bar      = 'native-golden'
+  strip    = 'native-golden'
+  qs       = 'native-golden'
+  launcher = 'native-golden'
 }
