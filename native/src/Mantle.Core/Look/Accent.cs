@@ -7,21 +7,23 @@ namespace Mantle.Core.Look;
 public sealed record AccentTokens(string Acc, string Strong, string On, string Soft, string Line, string Select, string Glow, byte R, byte G, byte B);
 
 /// <summary>
-/// C# port of look-sync accent.js at c29ba47 (Look Sync contract section 3 and "Accent profiles", 2026-11-25; was the
-/// steel-only accent.js at 4f82c4b). A custom hue keeps the EXACT saturation and lightness of the authored hexes, and at a
+/// C# port of look-sync accent.js at 6e7e729 (v2.2; Look Sync contract section 3 and "Accent profiles", 2026-11-25; before
+/// it c29ba47, and the steel-only accent.js at 4f82c4b). A custom hue keeps the EXACT saturation and lightness of the authored hexes, and at a
 /// profile's base hue (per theme) the tokens ARE the authored hexes. Two profiles:
 /// <list type="bullet">
 /// <item>steel (the default, the v1 look): dark #9fb4cc / #b7c8db / #11161c, light #4d6784 / #3c536d / white; base 212.</item>
-/// <item>islands (the v2 islands look): dark #a9e7ed / #c4f0f4 / #052a2f, base 185; its light is steel's light (base 212)
-/// until an app builds its light look, so at 185 light gives steel's light S/L at hue 185 (#4d7f84).</item>
+/// <item>islands (the v2 islands look): dark ice blue #a9e7ed / #c4f0f4 / #052a2f, base 185; light (v2.2) LIGHT.md's deep
+/// teal #083f49 / #05313a / #f4f7f8, base 189.</item>
 /// </list>
 /// Any other profile name (absent included) is steel. Hue null means "keep Mantle's own accent" (no tokens).
-/// Pinned by the shared vectors (Mantle.Core.Tests/Look/accent-v2.json, look-sync test/fixtures at c29ba47).
+/// The per-theme rule (CONTRACT v2.2): a caller passes "islands" only in a theme whose islands look it has built, and steel
+/// (or nothing) in the other, so nobody's light changes until that light look is built. LookHost passes no profile.
+/// Pinned by the shared vectors (Mantle.Core.Tests/Look/accent-v2.json, look-sync test/fixtures at 6e7e729, rev 2).
 /// </summary>
 public static class Accent
 {
     public const int DefaultHue = 212;
-    /// accent.js ISLANDS_HUE: ice blue, profile islands' (dark) base hue.
+    /// accent.js ISLANDS_HUE: ice blue, profile islands' dark base hue (light is 189: <see cref="BaseHue"/>).
     public const int IslandsHue = 185;
     public const string Steel = "steel", Islands = "islands";
 
@@ -36,7 +38,9 @@ public static class Accent
     }
 
     static readonly Authored SteelDark = new(0x9fb4cc, 0xb7c8db, 0x11161c, 212), SteelLight = new(0x4d6784, 0x3c536d, null, 212);
-    static readonly Authored IslandsDark = new(0xa9e7ed, 0xc4f0f4, 0x052a2f, 185), IslandsLight = new(0x4d6784, 0x3c536d, null, 212);
+    // islands light (v2.2): LIGHT.md section 4's deep teal, strong = its hover/pressed; base 189 = #083f49's own hue (189.23,
+    // rounded to the whole degree accent.hue holds)
+    static readonly Authored IslandsDark = new(0xa9e7ed, 0xc4f0f4, 0x052a2f, 185), IslandsLight = new(0x083f49, 0x05313a, 0xf4f7f8, 189);
 
     /// accent.js profileOf: "islands" or "steel" (anything else, null included).
     public static string ProfileOf(string? profile) => profile == Islands ? Islands : Steel;
