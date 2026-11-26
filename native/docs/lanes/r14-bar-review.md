@@ -105,3 +105,9 @@ shows today, and on a real frost (the lift brings the darkest tenth to L >= 0.38
    ThemeDictionaries (TokensTests' lint allows colour literals there only). **Core: needs the islands accent profile**
    (look-sync accent.js 'islands', base hue 185); LvBarAccent moves to it when the port lands. The downloads dot and the
    bell's count still use LgAcc.
+
+## Later
+
+Lane r15-bar-light (docs/lanes/r15-bar-light.md) finished the light inks (LIGHT.md section 4) for the islands and the
+levitated Downloads shelf, and gave the dock underline, the downloads dot and the bell's count the islands accent (dark from
+Core's islands profile, light the local #083F49 until native/r15-accent-v22 merges).
