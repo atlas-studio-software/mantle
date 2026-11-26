@@ -11,6 +11,12 @@
 // small one the light copy. The film is Legibility's v2.1 check over the copy this panel shows: the dark film in dark, the
 // light lift toward #F4F7F8 in light (lane r14-bar-review, apps-r3/LIGHT.md section 4b). Until the copies are ready (or when
 // they fail) the panel is the flat #2c5258: in dark with no dim and no film, in light with the dim and the lift over it.
+//
+// Separation (lane r16-sep-wiring, look-sync v2.3, apps-r3/SEPARATION.md): the film and a separation layer over it (white
+// in dark, #0A0C0E in light, 0..0.16) both come from Mantle.Core Legibility.PanelLift(.., separate: true) through
+// LevitateLift, in both themes, at the same moments the check ran before (a Place that moved, the theme, the still, the
+// look; never per frame at rest). The brightness check off = film 0 and sep 0. Layers, bottom to top: Picture, Dim, Film,
+// Sep, Sheen (LevitateLift.Order; hosts add <see cref="Layers"/> as it is).
 using System;
 using System.Threading.Tasks;
 using Mantle.App.Native;
@@ -31,6 +37,7 @@ internal sealed class LevitatePanel
     readonly SolidColorBrush _fallback = new(Rgba(LevitateTokens.FallbackR, LevitateTokens.FallbackG, LevitateTokens.FallbackB, 1));
     readonly SolidColorBrush _dim = new();
     readonly SolidColorBrush _film = new();
+    readonly SolidColorBrush _sep = new();
     readonly SolidColorBrush _sheen = new();
     bool _up, _dark, _released, _queued;
     string _why = "placed";
@@ -47,6 +54,10 @@ internal sealed class LevitatePanel
     /// The neutral film over the dim: rgba(10, 12, 14, a) in dark, the light lift rgba(244, 247, 248, a) in light (a = the
     /// v2.1 brightness check of the theme in effect; 0 in manual).
     public Border Film { get; }
+    /// The separation layer over the film (look-sync v2.3): white in dark, #0A0C0E in light, at Core's Sep (0 = hidden).
+    public Border Sep { get; }
+    /// Every layer, bottom to top (LevitateLift.Order): a host inserts these under its own UI in this order.
+    public Border[] Layers => new[] { Picture, Dim, Film, Sep, Sheen };
     /// The white sheen on HOVER only (none at rest): .07, .05 on a big panel (its layout size) in dark, .16 / .12 in light;
     /// over the film, under the UI.
     public Border Sheen { get; }
@@ -54,6 +65,9 @@ internal sealed class LevitatePanel
     public string State { get; private set; } = "not shown yet";
     /// The film (dark) or lift (light) alpha now (an exact 2-decimal v2.1 step: 0, 0.04 .. 0.72).
     public double FilmAlpha { get; private set; }
+    /// The separation layer's alpha now (Core's Sep: 0, or a 2-decimal step of 0.02 up to 0.16) and its colour.
+    public double SepAlpha { get; private set; }
+    public (byte R, byte G, byte B) SepRgb { get; private set; }
 
     public LevitatePanel(string name, CornerRadius radius)
     {
@@ -62,6 +76,7 @@ internal sealed class LevitatePanel
         Picture = new Border { Background = _fallback, CornerRadius = radius, IsHitTestVisible = false };
         Dim = new Border { Background = _dim, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         Film = new Border { Background = _film, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
+        Sep = new Border { Background = _sep, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         Sheen = new Border { Background = _sheen, CornerRadius = radius, IsHitTestVisible = false, Visibility = Visibility.Collapsed };
         LevitateStill.Changed += OnChanged;
     }
@@ -70,7 +85,7 @@ internal sealed class LevitatePanel
         new() { A = (byte)Math.Round(Math.Clamp(a, 0, 1) * 255), R = r, G = g, B = b };
 
     /// The panel's shape changed.
-    public void Radius(CornerRadius r) { Picture.CornerRadius = r; Dim.CornerRadius = r; Film.CornerRadius = r; Sheen.CornerRadius = r; }
+    public void Radius(CornerRadius r) { foreach (var b in Layers) b.CornerRadius = r; }
 
     /// Override the dim and the mode (default: the look's, LevitateDim over DesktopGlass.Look; see the lane note).
     public void Look(double dim, bool auto) { _look = (LevitateDim.Resolve(dim), auto); if (_up) Paint("the look was set"); }
@@ -179,33 +194,35 @@ internal sealed class LevitatePanel
         if (!ReferenceEquals(_brush.ImageSource, bmp)) _brush.ImageSource = bmp;
         Picture.Background = _brush;
         var (dim, auto) = _look ?? FromGlass(_dark);
-        // Dark: the v2.1 dark film rgb(10, 12, 14) (LOOK.md section 4). Light (lane r14-bar-review, apps-r3/LIGHT.md section
-        // 4b): the light lift toward #F4F7F8 over the SAME copy this panel shows (its 8 x 5 samples after the dim, the darkest
-        // tenth, the smallest step to L >= 0.386, cap .72). Only one of the two runs; the check off (dimAuto false) = none.
-        double film = _dark
-            ? Legibility.ForPanel(p.LightPx, p.SoftPx, _vw, _vh, _x, _y, _w, _h, dim, auto)
-            : Legibility.Film(auto, Legibility.Samples(px, Island.Cover(px.W, px.H, _vw, _vh), _x, _y, _w, _h), dim, "light");
-        Layers(dim, film);
+        // The 8 x 5 samples of the SAME copy this panel shows; Core's PanelLift (separate: true) gives the film (dark rgb(10,
+        // 12, 14), light #F4F7F8) and the separation layer over it (LevitateLift). The check off (dimAuto false) = none.
+        var lift = LevitateLift.For(_dark, dim, auto, Legibility.Samples(px, fit, _x, _y, _w, _h));
+        double film = lift.Film;
+        Lay(dim, lift);
         string state = "frost " + (big ? "soft" : "light");
-        bool said = State == state && Math.Abs(FilmAlpha - film) < 1e-9 && _saidDark == _dark;
+        bool said = State == state && Math.Abs(FilmAlpha - film) < 1e-9 && Math.Abs(SepAlpha - lift.Sep) < 1e-9 && _saidDark == _dark;
         State = state;
         FilmAlpha = film;
+        SepAlpha = lift.Sep; SepRgb = lift.SepRgb;
         _said = null;
         _saidDark = _dark;
         if (!said) Host.Log.Line(FormattableString.Invariant(
-            $"levitate {_name}: {state} ({why}): {_w:0}x{_h:0} DIP at ({_x:0}, {_y:0}) on {_vw:0}x{_vh:0}; copy at ({dx:0.#}, {dy:0.#}) size {cw:0.#}x{ch:0.#}; dim {dim:0.00}, {(auto ? "automatic" : "manual")}, {FilmWords(film)}"));
+            $"levitate {_name}: {state} ({why}): {_w:0}x{_h:0} DIP at ({_x:0}, {_y:0}) on {_vw:0}x{_vh:0}; copy at ({dx:0.#}, {dy:0.#}) size {cw:0.#}x{ch:0.#}; dim {dim:0.00}, {(auto ? "automatic" : "manual")}, {FilmWords(film)}, {SepWords(lift)}"));
     }
 
-    /// The dim and this theme's film over the picture (or the flat fallback): the black wash at <paramref name="dim"/>, then
-    /// rgb(10, 12, 14) in dark or #F4F7F8 in light at <paramref name="film"/> (Legibility.FilmRgb).
-    void Layers(double dim, double film)
+    /// The dim and Core's answer over the picture (or the flat fallback): the black wash at <paramref name="dim"/>, then the
+    /// film in Core's colour at its alpha, then the separation layer in Core's colour at its alpha (no app-side maths).
+    void Lay(double dim, LevitateLift.Answer a)
     {
-        var rgb = Legibility.FilmRgb(_dark ? "dark" : "light");
         _dim.Color = Rgba(0, 0, 0, dim);
-        _film.Color = Rgba(rgb.R, rgb.G, rgb.B, film);
+        _film.Color = Rgba(a.FilmRgb.R, a.FilmRgb.G, a.FilmRgb.B, a.Film);
+        _sep.Color = Rgba(a.SepRgb.R, a.SepRgb.G, a.SepRgb.B, a.Sep);
         Dim.Visibility = Visibility.Visible;
-        Film.Visibility = film > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Film.Visibility = a.Film > 0 ? Visibility.Visible : Visibility.Collapsed;
+        Sep.Visibility = a.Sep > 0 ? Visibility.Visible : Visibility.Collapsed;
     }
+
+    static string SepWords(LevitateLift.Answer a) => FormattableString.Invariant($"sep {Legibility.Show(a.Sep):0.00} #{a.SepRgb.R:x2}{a.SepRgb.G:x2}{a.SepRgb.B:x2}");
 
     string FilmWords(double film) => FormattableString.Invariant($"{(_dark ? "film" : "light lift")} {Legibility.Show(film):0.00}");
 
@@ -223,16 +240,20 @@ internal sealed class LevitatePanel
     {
         _brush.ImageSource = null;
         Picture.Background = _fallback;
-        double film = 0;
-        if (_dark) Dim.Visibility = Film.Visibility = Visibility.Collapsed;
+        double film = 0, sep = 0;
+        string sepSaid = "";
+        if (_dark) Dim.Visibility = Film.Visibility = Sep.Visibility = Visibility.Collapsed;   // dark: the flat colour alone, as before
         else {
             var (dim, auto) = _look ?? FromGlass(false);
-            film = Legibility.Film(auto, FlatSamples, dim, "light");
-            Layers(dim, film);
+            var lift = LevitateLift.For(false, dim, auto, FlatSamples);
+            film = lift.Film; sep = lift.Sep; SepRgb = lift.SepRgb;
+            sepSaid = ", " + SepWords(lift);
+            Lay(dim, lift);
         }
         FilmAlpha = film;
+        SepAlpha = sep;
         State = "fallback: " + why;
-        string said = why + (_dark ? "" : FormattableString.Invariant($" (in light: the {FilmWords(film)} over it)"));
+        string said = why + (_dark ? "" : FormattableString.Invariant($" (in light: the {FilmWords(film)}{sepSaid} over it)"));
         if (said != _said) { _said = said; Host.Log.Line($"levitate {_name}: the flat fallback colour: {said}"); }
     }
 
