@@ -144,6 +144,11 @@ if ($golden) { Remove-Item Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue; 
 # wallpaper (set above) is published as the test run's desktop picture, so the islands frost from the same picture that is
 # on the screen. MANTLE_TEST_WALLPAPER is DesktopPublish.TestEnv; the record goes to the run's own look-sync folder only.
 if ($golden) { $env:MANTLE_TEST_WALLPAPER = $wall; Say "reference native-golden: MANTLE_TEST_WALLPAPER=$wall (the runner's wallpaper), so the islands frost from it" }
+# native-golden (stage 12): the runner image denies notification access, so without a list every golden shot wears the
+# "notifications off" warn pip on More. An empty MANTLE_TEST_NOTIFS fixture is the list instead (NotificationCentre: a
+# --test run with a fixture never asks Windows), and the centre's ok answer clears the chip. Nothing in parity reads real
+# notifications.
+if ($golden) { $env:MANTLE_TEST_NOTIFS = '[]'; Say "reference native-golden: MANTLE_TEST_NOTIFS=[] (an empty test list), so the bar shows no notifications-off pip" }
 
 
 # KNOWN GAPS: real differences of the native bar that a later bar lane owns. Each is masked from the score (the
