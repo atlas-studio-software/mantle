@@ -11,13 +11,53 @@ public readonly record struct Rgb(double R, double G, double B)
     public Rgb Times(double k) => new(R * k, G * k, B * k);
 }
 
-/// <summary>panelLift's answer (look-sync.js): <c>{ alpha, check, dim, film, text }</c>.</summary>
+/// <summary>panelLift's answer (look-sync.js): <c>{ alpha, check, dim, film, text[, sep, sepRgb] }</c>. Sep and SepRgb are set
+/// only with the v2.3 opt-in (<see cref="Legibility.PanelLift"/> separate: true); without it they are null and the answer is
+/// exactly v2.1's.</summary>
 /// <param name="Alpha">the film alpha: 0, or a 2-decimal step of 0.04 up to 0.72</param>
 /// <param name="Check">"on" | "off" (<c>glass.&lt;theme&gt;.dimAuto</c> false)</param>
 /// <param name="Dim">the Dim in effect: the saved one if it is a number in 0.20..0.90, else the seed 0.20</param>
 /// <param name="Film">the neutral to lay at Alpha: rgb(10, 12, 14) in dark, #F4F7F8 (244, 247, 248) in light</param>
 /// <param name="Text">the Settings row, e.g. "Brightness check on: Dim 0.20, darkened 0.72 where the picture is bright"</param>
-public sealed record PanelLiftResult(double Alpha, string Check, double Dim, (byte R, byte G, byte B) Film, string Text);
+public sealed record PanelLiftResult(double Alpha, string Check, double Dim, (byte R, byte G, byte B) Film, string Text)
+{
+    /// v2.3 (opt-in): the alpha of <see cref="SepRgb"/> laid over the film, 0 = none; null without the opt-in.
+    public double? Sep { get; init; }
+    /// v2.3 (opt-in): the separation layer's colour, white in dark, #0A0C0E in light; null without the opt-in.
+    public (byte R, byte G, byte B)? SepRgb { get; init; }
+}
+
+/// <summary>look-sync v2.3's <c>separation(samples, dim, theme)</c> answer: <c>{ alpha, sep, sepRgb, LP, LI, S }</c>.</summary>
+/// <param name="Alpha">the film to lay instead of LiftAlpha's (equal to it, or more): dark rgb(10, 12, 14), light #F4F7F8</param>
+/// <param name="Sep">the alpha of SepRgb laid over that film: 0 (none), or a 2-decimal step of 0.02 up to 0.16</param>
+/// <param name="SepRgb">the layer's colour: white (255, 255, 255) in dark (a lift), #0A0C0E (10, 12, 14) in light (a shade)</param>
+/// <param name="LP">the luminance of P, the median sample after the dim; null when no sample is usable</param>
+/// <param name="LI">the luminance of P under the finished island (the film, then the layer); null when no sample is usable</param>
+/// <param name="S">the contrast ratio of LI and LP, (max + 0.05) / (min + 0.05); null when no sample is usable</param>
+public sealed record SeparationResult(double Alpha, double Sep, (byte R, byte G, byte B) SepRgb, double? LP, double? LI, double? S);
+
+/// <summary>
+/// look-sync v2.3's <c>SEPARATE</c> (CONTRACT "2026-11-26: v2.3: separation", proto/designs apps-r3/SEPARATION.md 6051417,
+/// FROZEN; look-sync f4356d6): the constants of <see cref="Legibility.Separation"/>. The film's own step, cap and text targets
+/// stay LIFT's (<see cref="LevitateTokens.FilmStep"/>, <see cref="LevitateTokens.FilmCap"/>, <see cref="LevitateTokens.FilmTarget"/>,
+/// <see cref="LevitateTokens.LightFilmTarget"/>).
+/// </summary>
+public static class Separate
+{
+    /// The contrast ratio an island aims for against the picture under it: S = ratio(L(I), L(P)).
+    public const double Target = 1.30;
+    /// Dark: the white lift runs only where the check left the film at 0 and L(P) &lt;= SplitDark; otherwise the film goes on.
+    public const double SplitDark = 0.039;
+    /// Light: the #0A0C0E shade runs only where the check left the lift at 0 and L(P) &gt; SplitLight; otherwise the lift goes on.
+    public const double SplitLight = 0.55;
+    /// The lift or shade grows by Step (rounded to 2 decimals each time) and never goes above Max.
+    public const double Step = 0.02, Max = 0.16;
+    /// The dark lift's colour (white) and the light shade's (#0A0C0E).
+    public const byte WhiteR = 255, WhiteG = 255, WhiteB = 255, ShadeR = 10, ShadeG = 12, ShadeB = 14;
+
+    /// The layer's colour in this theme: "light" = the shade, anything else = the white lift.
+    public static (byte R, byte G, byte B) RgbFor(string? theme) => Legibility.IsLight(theme) ? (ShadeR, ShadeG, ShadeB) : (WhiteR, WhiteG, WhiteB);
+}
 
 /// <summary>
 /// The v2.1 brightness check (the legibility floor) of the levitated look, pure: what this panel shows behind its text, and
@@ -145,6 +185,93 @@ public static class Legibility
         return Math.Min(LevitateTokens.FilmCap, Step(k));
     }
 
+    /// round2 as look-sync writes it: Math.round(v * 100) / 100 (a half rounds up).
+    static double R2(double v) => Math.Floor(v * 100 + 0.5) / 100;
+
+    /// look-sync's lumRatio: (max + 0.05) / (min + 0.05).
+    static double Ratio(double a, double b) => (Math.Max(a, b) + 0.05) / (Math.Min(a, b) + 0.05);
+
+    /// look-sync's filmOver(rgb, a, film): rgb * (1 - a) + film * a per channel.
+    static Rgb Over(Rgb c, double a, (byte R, byte G, byte B) f) => new(c.R * (1 - a) + f.R * a, c.G * (1 - a) + f.G * a, c.B * (1 - a) + f.B * a);
+
+    /// <summary>
+    /// look-sync v2.3's <c>separation(samples, dim, theme)</c> one to one (f4356d6; CONTRACT "2026-11-26: v2.3: separation",
+    /// SEPARATION.md 6051417, FROZEN): an island also stands out from the picture under it. Samples, dim and theme as
+    /// <see cref="LiftAlpha(double[][], double, string)"/>. P = the median sample (index n/2, darkest first, after the dim);
+    /// I = P under the film; S = ratio(L(I), L(P)), target <see cref="Separate.Target"/>. If S is short, the island moves AWAY
+    /// from the picture: in dark a white lift (only where the check left the film at 0 and L(P) &lt;= 0.039), else the film
+    /// goes on past its stop; in light the #F4F7F8 lift goes on (where it already lifted, or L(P) &lt;= 0.55), else a #0A0C0E
+    /// shade. The lift or shade never lets the check's own guard sample cross the check's text target (it stops one step
+    /// before). Steps: (a) the check's film alone, stop at S &gt;= target; (b) the lift / shade row where it applies; (c) if (b)
+    /// did not apply or ended short, more film; (d) if (c) ends at the .72 cap still short, the lift / shade on top of the .72
+    /// film (steps .02, cap .16, the guard under both layers), keeping its step with the highest S. Overall the highest S
+    /// wins; a tie keeps the earlier result. Every
+    /// step is rounded to 2 decimals, as look-sync does. Sorts break ties by index (JS's sort is stable, C#'s is not).
+    /// No usable sample: alpha 0, sep 0, LP / LI / S null. Pure, never throws.
+    /// </summary>
+    public static SeparationResult Separation(double[]?[]? samples, double dim, string? theme = null)
+    {
+        bool light = IsLight(theme);
+        string t = light ? "light" : "dark";
+        double d = CheckDim(dim);
+        var sepRgb = Separate.RgbFor(t);
+        var seen = new List<Rgb>();
+        if (samples != null)
+            foreach (var x in samples) {
+                if (x == null || x.Length < 3 || !double.IsFinite(x[0]) || !double.IsFinite(x[1]) || !double.IsFinite(x[2])) continue;
+                seen.Add(new Rgb(Ch(x[0]), Ch(x[1]), Ch(x[2])));
+            }
+        int n = seen.Count;
+        if (n == 0) return new SeparationResult(0, 0, sepRgb, null, null, null);
+        var s = new Rgb[n];
+        var l = new double[n];
+        var asc = new int[n];
+        var desc = new int[n];
+        for (int i = 0; i < n; i++) { s[i] = seen[i].Times(1 - d); l[i] = L(s[i]); asc[i] = desc[i] = i; }
+        Array.Sort(asc, (p, q) => l[p] != l[q] ? l[p].CompareTo(l[q]) : p.CompareTo(q));
+        Array.Sort(desc, (p, q) => l[q] != l[p] ? l[q].CompareTo(l[p]) : p.CompareTo(q));
+        Rgb P = s[asc[n / 2]];
+        Rgb guard = s[(light ? asc : desc)[(int)Math.Floor(n * BrightRank)]];
+        var film = FilmRgb(t);
+        Rgb Island(Rgb c, double a, double k) => Over(Over(c, a, film), k, sepRgb);
+        double LP = L(P);
+        double T = Separate.Target;
+        SepTry Make(double a, double k) { double li = L(Island(P, a, k)); return new SepTry(a, k, li, Ratio(li, LP)); }
+        bool GuardOk(double a, double k) { double g = L(Island(guard, a, k)); return light ? g >= LevitateTokens.LightFilmTarget : g <= LevitateTokens.FilmTarget; }
+        double a0 = Alpha(seen, d, light);
+        SepTry best = Make(a0, 0);                                            // (a) the brightness check alone
+        void Consider(SepTry r) { if (r.S > best.S) best = r; }               // the highest S; a tie keeps the earlier
+        // the lift (dark white) or shade (light) over film a: its best step or its last one, text contrast first
+        SepTry? Layer(double a, bool keepBest)
+        {
+            double k = 0; SepTry r = Make(a, 0); SepTry? top = null;
+            while (r.S < T && k < Separate.Max - 1e-9) {
+                double next = R2(k + Separate.Step);
+                if (!GuardOk(a, next)) break;                              // stop one step before the guard would cross
+                k = next; r = Make(a, k);
+                if (top == null || r.S > top.S) top = r;
+            }
+            return keepBest ? top : r;
+        }
+        if (best.S < T) {
+            bool row1 = a0 == 0 && (light ? LP > Separate.SplitLight : LP <= Separate.SplitDark);
+            if (row1) Consider(Layer(a0, false)!);                         // (b) dark white lift / light shade
+            if (!row1 || best.S < T) {                                     // (c) the film goes on past its stop
+                double a = a0; SepTry r = Make(a, 0);
+                while (r.S < T && a < LevitateTokens.FilmCap - 1e-9) { a = Math.Min(LevitateTokens.FilmCap, R2(a + LevitateTokens.FilmStep)); r = Make(a, 0); }
+                Consider(r);
+                if (r.S < T && a >= LevitateTokens.FilmCap - 1e-9) {       // (d) at the cap still short: the layer on top (f4356d6)
+                    SepTry? top = Layer(a, true);
+                    if (top != null) Consider(top);
+                }
+            }
+        }
+        return new SeparationResult(best.Alpha, best.K, sepRgb, LP, best.LI, best.S);
+    }
+
+    /// One candidate of <see cref="Separation"/>: film alpha, layer step, L(I), S.
+    sealed record SepTry(double Alpha, double K, double LI, double S);
+
     static bool Num(JsonNode? v, double lo, double hi, out double d) => LookSyncCore.IsFinite(v, out d) && d >= lo && d <= hi;
 
     /// a2: n.toFixed(2) (the values here are finite).
@@ -158,7 +285,10 @@ public static class Legibility
     /// LiftAlpha(samples, dim, theme); off (<c>dimAuto</c> false): alpha 0, the panel is pure blur over the dimmed picture.
     /// Film: rgb(10, 12, 14) in dark, #F4F7F8 in light. A surface that has not built its light look does not call this in
     /// light. Never throws.
-    public static PanelLiftResult PanelLift(JsonNode? look, string? theme, double[]?[]? samples)
+    /// <paramref name="separate"/> true (look-sync v2.3 panelLift opts.separate, opt-in): alpha comes from
+    /// <see cref="Separation"/> and the answer adds Sep / SepRgb (check off: Sep 0 and the theme's colour). False (the
+    /// default): exactly v2.1's answer, Sep and SepRgb null.
+    public static PanelLiftResult PanelLift(JsonNode? look, string? theme, double[]?[]? samples, bool separate = false)
     {
         string t = IsLight(theme) ? "light" : "dark";
         JsonObject? glass = look is JsonObject lo ? lo["glass"] as JsonObject : null;
@@ -166,14 +296,18 @@ public static class Legibility
         var g = glass?[t] as JsonObject;
         double dim = g != null && Num(g["dim"], LevitateTokens.DimMin, LevitateTokens.DimMax, out var gd) ? gd : LevitateTokens.DimDefault;
         var film = FilmRgb(t);
-        if (g != null && LookSyncCore.IsBool(g["dimAuto"], out var auto) && !auto)
-            return new PanelLiftResult(0, "off", dim, film, "Brightness check off: Dim " + A2(dim) + " only");
-        double alpha = LiftAlpha(samples, dim, t);
+        if (g != null && LookSyncCore.IsBool(g["dimAuto"], out var auto) && !auto) {
+            var off = new PanelLiftResult(0, "off", dim, film, "Brightness check off: Dim " + A2(dim) + " only");
+            return separate ? off with { Sep = 0, SepRgb = Separate.RgbFor(t) } : off;
+        }
+        SeparationResult? sp = separate ? Separation(samples, dim, t) : null;
+        double alpha = sp != null ? sp.Alpha : LiftAlpha(samples, dim, t);
         bool light = t == "light";
         string did = light ? "lightened" : "darkened", where = light ? "dark" : "bright", verb = light ? "lighten" : "darken";
-        return new PanelLiftResult(alpha, "on", dim, film, alpha > 0
+        var res = new PanelLiftResult(alpha, "on", dim, film, alpha > 0
             ? "Brightness check on: Dim " + A2(dim) + ", " + did + " " + A2(alpha) + " where the picture is " + where
             : "Brightness check on: Dim " + A2(dim) + ", nothing to " + verb + " here");
+        return sp != null ? res with { Sep = sp.Sep, SepRgb = sp.SepRgb } : res;
     }
 
     /// The film alpha for display: Math.round(a * 100) / 100 (JS rounds a half up). The check's answers are already exact
