@@ -18,7 +18,7 @@ namespace Mantle.App;
 /// (<see cref="BarGeometry.Islands"/>); there the pill stays exactly as before and nothing here runs.
 /// <list type="bullet">
 /// <item>The pill's own layers (Glass, Tint, Lip, Edge) are collapsed: no hairline, lip, tint or sheen at rest. Each
-/// island wears a <see cref="LevitatePanel"/> (frost by size, dim, the v2.1 dark film, none in light; the sheen on hover
+/// island wears a <see cref="LevitatePanel"/> (frost by size, dim, the v2.1 dark film or, in light, the lift toward #F4F7F8; the sheen on hover
 /// only), placed from the geometry on every layout, geometry or theme change.</item>
 /// <item>One float shadow bitmap (<see cref="LevitateShadow"/>) round the three boxes, in ShadowHost, in both themes.</item>
 /// <item>The dock is centred on the screen; when its right edge + 12 would pass the right island, it sits 12 after the M
