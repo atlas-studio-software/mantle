@@ -36,6 +36,8 @@ public class GameModeDetailsTests
         Has(dir, "qs: the panel opened from bar.volume", "no opened line");
         // lane r15-quick-launcher: the sparse quick settings keep the Game mode row one level down, under "More settings"
         var more = Host.Uia.FromHandle(h);
+        // the row takes a press only once the pop-up is on screen (a press before "shown at" can be lost)
+        Has(dir, "pop-up Quick settings: shown at", "quick settings never said it was on screen");
         ClickEl(El(more, "qs.more.row"));
         Has(dir, "qs: the More settings view opened", "More settings did not open", 3000);
         return (h, more);

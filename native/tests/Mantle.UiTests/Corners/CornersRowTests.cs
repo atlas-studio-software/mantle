@@ -38,6 +38,8 @@ public class CornersRowTests
         Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings")), 3000), "quick settings did not open");
         var w = Host.Uia.FromHandle(h);
         // lane r15-quick-launcher: the sparse quick settings keep the Hot corners row one level down, under "More settings"
+        // the row takes a press only once the pop-up is on screen (a press before "shown at" can be lost)
+        Has(dir, "pop-up Quick settings: shown at", "quick settings never said it was on screen");
         ClickEl(El(w, "qs.more.row"));
         Has(dir, "qs: the More settings view opened", "More settings did not open", 3000);
 
