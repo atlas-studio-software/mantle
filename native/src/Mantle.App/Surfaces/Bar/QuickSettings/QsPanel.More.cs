@@ -154,6 +154,7 @@ internal sealed partial class QsPanel
         }
         _gen++;
         _view = kind;
+        if (kind == "more") { EnterMore(); return; }   // the sparse layout's more-settings view (QsPanel.MoreSettings.cs)
         _vNote.Clear();
         Swap(MainView, _sub);   // the islands look: sink and lift (QsPanel.Islands.cs)
         (_vTitle.Text, _moreTarget, _moreWhat, string more) = kind switch {
@@ -192,6 +193,7 @@ internal sealed partial class QsPanel
         if (_view == null) return;
         _gen++;
         if (_kbd) ReleaseKeys(closing ? "the panel closed" : "the view was left");
+        if (_view == "more") { BackMore(why, closing); return; }
         if (_view == "bt") _ = Call("qs.bt.watch", new JsonObject { ["on"] = false });   // always sent: a stop is idempotent
         _log($"qs: the {_vTitle.Text} view closed ({why})");
         _view = null; _wPwFor = null; _pw = null; _pwProblem = null; _wSig = ""; _bSig = ""; _aDevSig = ""; _aKeys = "";

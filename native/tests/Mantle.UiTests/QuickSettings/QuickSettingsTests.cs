@@ -75,7 +75,6 @@ public class QuickSettingsTests
         Assert.AreEqual("62%", El(w, "qs.volume.value").Name);
         Assert.AreEqual("70%", El(w, "qs.brightness.value").Name);
         Assert.AreEqual("72% · charging", El(w, "qs.power").Name);
-        Assert.AreEqual("chosen", Status(El(w, "qs.powermode.balanced")));
         Host.Screenshot("qs-open-light");
 
         // Wi-Fi off: the tile flips, and nothing is sent to Windows
@@ -90,7 +89,11 @@ public class QuickSettingsTests
         Assert.IsTrue(FrameProbe.LogHas(dir, "qs: dry run (--test): mute=true would ask the sidecar volume {\"muted\":true}", 3000), "no mute dry run. Log:\n" + Tail(dir));
         Assert.IsTrue(Host.Until(() => Status(El(w, "qs.mute")) == "muted", 2000), "mute did not show muted");
 
-        // power mode: a change in a test run is refused with Electron's words, and the row says so
+        // power mode: one level down since lane r15-quick-settings (the sparse layout), so More settings first
+        ClickEl(El(w, "qs.more.row"));
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the More settings view opened", 2000), "More settings did not open. Log:\n" + Tail(dir));
+        Assert.AreEqual("chosen", Status(El(w, "qs.powermode.balanced")));
+        // a change in a test run is refused with Electron's words, and the row says so
         ClickEl(El(w, "qs.powermode.performance"));
         Assert.IsTrue(FrameProbe.LogHas(dir, "powermode: set performance (dry run): refused (this is a test run, so Windows was not changed)", 3000), "no power mode line. Log:\n" + Tail(dir));
         // the refusal is the row's note (powermode.js .pmnote), as Electron words it
@@ -103,6 +106,53 @@ public class QuickSettingsTests
         Assert.IsTrue(Host.Until(() => !FrameProbe.Showing(h), 2000), "quick settings did not close on its own button");
         Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the panel closed (its button was clicked again); its watch is let go", 2000), "no closed line. Log:\n" + Tail(dir));
         Assert.IsFalse(FrameProbe.Log(dir).Contains("NOT DONE"), "a set failed:\n" + Tail(dir));
+    }
+
+    /// Lane r15-quick-settings, the sparse layout (apps-r3/mantle-bar panels/quick.js): the main view has the tiles, the
+    /// two sliders, ONE row "More settings" and the footer, and no power mode, game mode or hot corners row; that row goes
+    /// one level down to a view with a back arrow, the title "More settings" and those rows, and no footer.
+    [TestMethod]
+    public void Sparse_main_view_has_the_more_settings_row_and_its_view_holds_the_rows()
+    {
+        var (app, dir) = Launch("qs-sparse");
+        using var _ = app;
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: a --test run with MANTLE_TEST_QS", 15000), "the fixture was not taken. Log:\n" + Tail(dir));
+        ClickEl(app.Find("bar.volume"));
+        var w = Panel(app, dir);
+        var row = El(w, "qs.more.row");
+        Assert.AreEqual("More settings", row.Name);
+        Assert.AreEqual("Power mode, game mode, hot corners", Help(row));
+        foreach (var id in new[] { "qs.tile.wifi", "qs.more.wifi", "qs.more.bluetooth", "qs.brightness", "qs.volume", "qs.mute", "qs.more.sound", "qs.power", "qs.windows", "qs.gear" })
+            El(w, id);
+        foreach (var id in new[] { "qs.powermode.balanced", "qs.gamemode.switch", "qs.corners.grid", "qs.view.more-settings" })
+            Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId(id)), id + " is drawn on the main view; the sparse layout keeps it one level down");
+        Host.Screenshot("qs-sparse-light");
+
+        ClickEl(row);
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the More settings view opened", 2000), "More settings did not open. Log:\n" + Tail(dir));
+        Assert.IsNotNull(El(w, "qs.view.more-settings"));
+        Assert.AreEqual("More settings", El(w, "qs.more.title").Name);
+        var back = El(w, "qs.more.back");
+        Assert.AreEqual("Back to quick settings", back.Name);
+        foreach (var id in new[] { "qs.powermode.balanced", "qs.powermode.performance", "qs.gamemode.switch", "qs.corners.grid" })
+            El(w, id);
+        // no footer one level down: the main view (and its footer) is gone once its sink ends
+        Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.power")) == null && w.FindFirstDescendant(cf => cf.ByAutomationId("qs.more.row")) == null, 2000),
+            "the main view (its footer, the More settings row) is still drawn under the More settings view");
+        Host.Screenshot("qs-more-settings-light");
+
+        ClickEl(back);
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: the More settings view closed (the back arrow)", 2000), "the back arrow did not leave the view. Log:\n" + Tail(dir));
+        Assert.IsNotNull(El(w, "qs.more.row"));
+        Assert.IsTrue(Host.Until(() => w.FindFirstDescendant(cf => cf.ByAutomationId("qs.view.more-settings")) == null, 2000), "the More settings view is still drawn after the back arrow");
+    }
+
+    /// The prototype's More settings view holds four rows; native quick settings has no Top bar row to put there (the
+    /// other three are checked above), so this check is a visible skip until one is built.
+    [TestMethod]
+    public void More_settings_view_has_a_top_bar_row()
+    {
+        Assert.Inconclusive("not built: native quick settings has no Top bar row (the prototype's quick.js sysHTML has one); power mode, game mode and hot corners are checked by Sparse_main_view_has_the_more_settings_row_and_its_view_holds_the_rows");
     }
 
     /// Lane r15-quick-settings, the offline state (the prototype's ?net=off): MANTLE_TEST_NET=off draws the bar's network
