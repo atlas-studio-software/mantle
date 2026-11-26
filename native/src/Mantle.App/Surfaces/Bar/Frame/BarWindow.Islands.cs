@@ -253,7 +253,18 @@ public sealed partial class BarWindow
         _isAccent.Color = IslandsInk.Accent(_dark, Host.Log.Line).Acc;
         // the pip's ink follows the theme too (IslandPipInk, from RenderPip)
         if (MorePip.Visibility == Visibility.Visible) MorePipDot.Fill = IslandPipInk(_pipNow.Item2);
+        // said once per theme (UI tests read it: IslandsInkTests)
+        var acc = IslandsInk.Accent(_dark, Host.Log.Line);
+        string inks = $"bar islands inks ({(_dark ? "dark" : "light")}): text {Hex(ClockT.Foreground)}, text-2 {Hex(ClockD.Foreground)}, " +
+            $"hover {Hex(_isHover.Color)}, pressed {Hex(_isPress.Color)}, hair {Hex(_isHair.Color)}, run {Hex(_isRun.Color)}, " +
+            $"accent {Hex(acc.Acc)} on {Hex(acc.On)}, sheen {Hex(IslandsInk.Color(_dark, "LvBarSheen", Host.Log.Line))}";
+        if (inks != _islandInksSaid) { _islandInksSaid = inks; Host.Log.Line(inks); }
     }
+    string _islandInksSaid = "";
+
+    /// A colour as #AARRGGBB (the log's islands inks line).
+    static string Hex(global::Windows.UI.Color c) => $"#{c.A:X2}{c.R:X2}{c.G:X2}{c.B:X2}";
+    static string Hex(Brush b) => b is SolidColorBrush s ? Hex(s.Color) : b.GetType().Name;
 
     /// A dock cell in the islands look (from Cell_Loaded): 40 x 36 at radius 8, a 20 icon, the run dot 4 x 3 two up,
     /// the separator 1 x 20 with margin 0 4 (plus the 2 gap after it), the dock's gap 2.
