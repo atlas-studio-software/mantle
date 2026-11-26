@@ -40,6 +40,29 @@ Add-Type -AssemblyName System.Drawing
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 [void][ParityNative]::DpiAware()
 
+# ---- the reference (plan v0.2, references.psd1; lane r16-parity-surfaces, the same reader as run-parity.ps1)
+# 'electron' (no file, no entry): Electron's page vs native's electron face, as below. 'native-golden': the pop-up has the
+# new look, so native is shot on its own look (no MANTLE_TEST_GLASS=electron, the islands frost from MANTLE_TEST_WALLPAPER)
+# and scored against goldens/qs/<theme>.png at the same floors, which count only once goldens/qs/REVIEW.md has non-empty
+# reviewer:, run: and sha: lines. Without them every theme is "golden pending review" and the stage fails. Electron's page
+# still runs in golden mode, ONLY for the mock's readings (qs-state.json), so both modes draw the same numbers; it is not
+# scored. This script never writes into goldens/.
+$reference = 'electron'
+$refFile = Join-Path $root 'native\tools\parity\references.psd1'
+if (Test-Path $refFile) { $refs = Import-PowerShellDataFile $refFile; if ($refs.ContainsKey('qs') -and $refs['qs']) { $reference = [string]$refs['qs'] } }
+if ($reference -notin 'electron', 'native-golden') { Write-Host "QS-PARITY: FAILED (references.psd1: qs = '$reference'; it must be 'electron' or 'native-golden')"; exit 4 }
+$golden = $reference -eq 'native-golden'
+$goldenDir = Join-Path $root 'native\tools\parity\goldens\qs'
+$reviewFile = Join-Path $goldenDir 'REVIEW.md'
+$reviewed = $false
+if ($golden -and (Test-Path $reviewFile)) {
+  $rv = Get-Content $reviewFile -Raw
+  $reviewed = ($rv -match '(?im)^[ \t]*reviewer:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*run:[ \t]*\S') -and ($rv -match '(?im)^[ \t]*sha:[ \t]*\S')
+}
+$pending = [System.Collections.Generic.List[string]]::new()
+$wall = Join-Path $root 'assets\backgrounds\snow-peak.jpg'
+Say ("reference {0}{1}" -f $reference, $(if ($golden) { "; goldens/qs reviewed: $reviewed; MANTLE_TEST_WALLPAPER=$wall" } else { '' }))
+
 # ---- Electron (both themes, and the readings the native side takes)
 $electron = Join-Path $root 'node_modules/electron/dist/electron.exe'
 if (-not (Test-Path $electron)) { throw "no Electron at $electron (npm ci first; the recipe's setup does)" }
@@ -78,9 +101,16 @@ try {
     $tag = "qs-$theme"
     $ud = Join-Path ([IO.Path]::GetTempPath()) ("mantle-qspar-" + [Guid]::NewGuid().ToString('N').Substring(0, 6))
     New-Item -ItemType Directory -Force $ud | Out-Null
-    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_GLASS = 'electron'; $env:MANTLE_TEST_QS = $state
-    # part1 takes Electron's Game mode row (.gmrow) out with the other rows (electron-qs.cjs PART2_OUT); native leaves it out too
-    if ($Mode -eq 'part1') { $env:MANTLE_TEST_QS_NO_GAMEMODE = '1' } else { Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue }
+    $env:MANTLE_TEST_VISIBLE = '1'; $env:MANTLE_TEST_QS = $state
+    if ($golden) {
+      # native-golden: native's own (islands) look, the whole panel as users see it, frosted from the repo's wallpaper still
+      Remove-Item Env:MANTLE_TEST_GLASS -ErrorAction SilentlyContinue; Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue
+      $env:MANTLE_TEST_WALLPAPER = $wall
+    } else {
+      $env:MANTLE_TEST_GLASS = 'electron'
+      # part1 takes Electron's Game mode row (.gmrow) out with the other rows (electron-qs.cjs PART2_OUT); native leaves it out too
+      if ($Mode -eq 'part1') { $env:MANTLE_TEST_QS_NO_GAMEMODE = '1' } else { Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue }
+    }
     $prof = "qspar-$theme"
     $p = Start-Process $Exe -PassThru -ArgumentList @('--test', "--profile-name=$prof", "--user-data=$ud", "--theme=$theme")
     $log = Join-Path $ud 'mantle-native.log'
@@ -100,6 +130,31 @@ try {
     if (-not $m) { $rows += "$tag no score: the native pop-up did not show"; Copy-Item $log (Join-Path $Out "native-$tag-log.txt"); Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     Start-Sleep -Milliseconds 900   # the entrance
     $x = [int]$m.Groups[1].Value - 12; $y = [int]$m.Groups[2].Value - 12; $w0 = [int]$m.Groups[3].Value + 24; $h0 = [int]$m.Groups[4].Value + 12 + 4
+    if ($golden) {
+      $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
+      $nb = Png $nat $w0 $h0; $cand = Join-Path $Out "candidate-$tag.png"; $nb.Save($cand)
+      $gp = Join-Path $goldenDir "$theme.png"
+      if (-not $reviewed -or -not (Test-Path $gp)) {
+        Write-Host ("QS-PARITY ${tag}: golden pending review (reference native-golden; candidate {0}, {1}x{2} at {3},{4}; freeze only after a side-by-side review against the design prototype, from a committed run)" -f $cand, $w0, $h0, $x, $y)
+        $pending.Add($theme)
+      } else {
+        # the golden, compared like the Electron shot was: bottom-aligned and centred, same threshold, no masks
+        $gb = [System.Drawing.Bitmap]::FromFile($gp)
+        $w = [Math]::Min($gb.Width, $nb.Width); $h = [Math]::Min($gb.Height, $nb.Height)
+        $gc = $gb.Clone((New-Object System.Drawing.Rectangle([int](($gb.Width - $w) / 2), ($gb.Height - $h), $w, $h)), $gb.PixelFormat)
+        $nc = $nb.Clone((New-Object System.Drawing.Rectangle([int](($nb.Width - $w) / 2), ($nb.Height - $h), $w, $h)), $nb.PixelFormat)
+        $s = [ParityNative]::Diff((Bytes $gc), (Bytes $nc), $w, $h, @(), $PixelThreshold)
+        $line = "QS-PARITY $tag (golden)`: ssim={0:N4} diffpx={1:N2}% meanabs={2:N2} golden {3}x{4} native {5}x{6}" -f $s.Ssim, $s.DiffPxPct, $s.MeanAbs, $gb.Width, $gb.Height, $nb.Width, $nb.Height
+        Write-Host $line; $rows += $line; if ($s.Ssim -lt $low) { $low = $s.Ssim }
+        $gb.Dispose(); $gc.Dispose(); $nc.Dispose()
+      }
+      $nb.Dispose()
+      Copy-Item $log (Join-Path $Out "native-$tag-log.txt")
+      $q = Start-Process $Exe -PassThru -ArgumentList @('--quit', '--test', "--profile-name=$prof", "--user-data=$ud")
+      if (-not $q.WaitForExit(15000)) { Stop-Process -Id $q.Id -Force -ErrorAction SilentlyContinue }
+      if (-not $p.WaitForExit(8000)) { Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue }
+      continue
+    }
     $ef = Join-Path $Out ("electron-qs-$theme" + $(if ($Mode -eq 'full') { '-full' } else { '' }) + '.png')
     if (-not (Test-Path $ef)) { $rows += "$tag no score: no Electron shot"; Stop-Process -Id $p.Id -Force -ErrorAction SilentlyContinue; continue }
     $nat = [ParityNative]::Grab($x, $y, $w0, $h0)
@@ -124,7 +179,14 @@ try {
   Stop-Process -Id $back.Id -Force -ErrorAction SilentlyContinue
   Remove-Item Env:MANTLE_TEST_QS -ErrorAction SilentlyContinue
   Remove-Item Env:MANTLE_TEST_QS_NO_GAMEMODE -ErrorAction SilentlyContinue
+  Remove-Item Env:MANTLE_TEST_WALLPAPER -ErrorAction SilentlyContinue
 }
 $scored = @($rows | Where-Object { $_ -like 'QS-PARITY*' }).Count
-Write-Host ("QS-PARITY summary: {0} scored of 2, lowest ssim {1:N4} ({2}); no masks" -f $scored, $low, $Mode)
-$rows | Where-Object { $_ -notlike 'QS-PARITY*' } | ForEach-Object { Write-Host "QS-PARITY problem: $_" }
+Write-Host ("QS-PARITY summary: {0} scored of 2, lowest ssim {1:N4} ({2}); no masks" -f $scored, $low, $(if ($golden) { 'reference native-golden' } else { $Mode }))
+$problems = @($rows | Where-Object { $_ -notlike 'QS-PARITY*' })
+$problems | ForEach-Object { Write-Host "QS-PARITY problem: $_" }
+if ($golden) {
+  # native-golden: the verdict ci.ps1 Stage-qs reads first; a pending golden is a FAIL, like the bar's and the strip's
+  if ($problems.Count) { Write-Host ("QS-PARITY: FAILED (reference native-golden; {0} scored, {1} pending; {2} problem(s): {3})" -f $scored, $pending.Count, $problems.Count, ($problems -join '; ')); exit 1 }
+  if ($pending.Count) { Write-Host ("QS-PARITY: FAILED (qs golden pending review: {0}; candidates in {1})" -f ($pending -join ', '), $Out); exit 1 }
+}
