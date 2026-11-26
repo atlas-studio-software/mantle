@@ -213,8 +213,11 @@ public sealed partial class BarWindow : Window
         var (shown, warn, tip) = p ?? _pipNow;
         _pipNow = (shown, warn, tip);
         MorePip.Visibility = shown ? Visibility.Visible : Visibility.Collapsed;
-        MorePipDot.Fill = (Brush)(warn ? TokenOr("LgWarn", "LgInk2") : ThemeToken("LgInk2"));
-        MorePipRing.Fill = (Brush)TokenOr("LgFillStrong", "LgPaneFill");
+        if (Surfaces.Bar.Frame.BarGeometry.Islands) MorePipDot.Fill = IslandPipInk(warn);   // text-2, warn only for a "warn" problem (BarWindow.Islands.cs)
+        else {
+            MorePipDot.Fill = (Brush)(warn ? TokenOr("LgWarn", "LgInk2") : ThemeToken("LgInk2"));
+            MorePipRing.Fill = (Brush)TokenOr("LgFillStrong", "LgPaneFill");
+        }
         ToolTipService.SetToolTip(MoreBtn, shown ? tip : "More");
         AutomationProperties.SetHelpText(MorePip, shown ? (warn ? "warn: " : "") + tip : "");
         Host.Log.Line(shown ? $"more pip: {(warn ? "warn" : "plain")} ({tip.Replace("\n", "; ")})" : "more pip: none");
@@ -363,8 +366,11 @@ public sealed partial class BarWindow : Window
     static string RoundRect(double x, double y, double w, double h, double r)
         => FormattableString.Invariant($"M{x + r} {y} h{w - 2 * r} a{r} {r} 0 0 1 {r} {r} v{h - 2 * r} a{r} {r} 0 0 1 {-r} {r} h{-(w - 2 * r)} a{r} {r} 0 0 1 {-r} {-r} v{-(h - 2 * r)} a{r} {r} 0 0 1 {r} {-r} Z");
 
-    static UIElement PathEl(string d, bool fill, double stroke = 1.25, string brush = "LgInk2")
+    /// A bar glyph's path. Its ink: LgInk2 on the electron face; the islands look's icon ink (LvBarInk, look.css .btn's
+    /// var(--text)) otherwise.
+    static UIElement PathEl(string d, bool fill, double stroke = 1.25, string? brush = null)
     {
+        brush ??= Surfaces.Bar.Frame.BarGeometry.Islands ? "LvBarInk" : "LgInk2";
         string paint = fill
             ? $"Fill='{{ThemeResource {brush}}}'"
             : FormattableString.Invariant($"Stroke='{{ThemeResource {brush}}}' StrokeThickness='{stroke}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'");
@@ -399,13 +405,27 @@ public sealed partial class BarWindow : Window
     {
         var now = DateTime.Now;
         int h = now.Hour % 12; if (h == 0) h = 12;
-        string t = h.ToString(CultureInfo.InvariantCulture) + ":" + now.ToString("mm:ss", CultureInfo.InvariantCulture) + (now.Hour < 12 ? " AM" : " PM");
+        string t = Surfaces.Bar.Frame.BarGeometry.Islands ? IslandTime(now)
+            : h.ToString(CultureInfo.InvariantCulture) + ":" + now.ToString("mm:ss", CultureInfo.InvariantCulture) + (now.Hour < 12 ? " AM" : " PM");
         if (ClockT.Text != t) ClockT.Text = t;
         string d = now.ToString("d", CultureInfo.CurrentCulture);
         if (ClockD.Text != d) ClockD.Text = d;
         // one timer, re-aimed at the next second boundary (+20 ms: never paint the previous second)
         _clock.Interval = ClockInterval(now);   // seconds while up, minutes while down (BAR-417)
         _clock.Start();
+    }
+
+    /// The islands look's time (apps-r3/mantle-bar shell.js tick: hour and minute only): h:mm, 12- or 24-hour as the
+    /// user's short-time pattern says (CurrentCulture follows Windows' regional format), never seconds, whatever the
+    /// long-time format says. The electron face keeps bar.js's h:mm:ss AM/PM.
+    static string IslandTime(DateTime now)
+    {
+        var f = CultureInfo.CurrentCulture.DateTimeFormat;
+        if (f.ShortTimePattern.Contains('H')) return now.ToString("H:mm", CultureInfo.InvariantCulture);
+        int h = now.Hour % 12; if (h == 0) h = 12;
+        string ampm = now.Hour < 12 ? f.AMDesignator : f.PMDesignator;
+        if (string.IsNullOrEmpty(ampm)) ampm = now.Hour < 12 ? "AM" : "PM";
+        return h.ToString(CultureInfo.InvariantCulture) + ":" + now.ToString("mm", CultureInfo.InvariantCulture) + " " + ampm;
     }
 
     // the dock: Surfaces/Bar/Tasks/BarWindow.Tasks.cs (SyncCells, clicks, cells.json)

@@ -99,6 +99,7 @@ public sealed partial class BarWindow
         if (_media == null || _mchip == null || _mtog == null || _mart == null) return;
         var s = MediaView.Shown(_mediaP);
         _media.Visibility = s == null ? Visibility.Collapsed : Visibility.Visible;
+        IslandSep();   // the islands look: the divider only follows now playing or the tray (BarWindow.Islands.cs)
         if (s == null) {
             if (Popups?.OpenKey == "media") Popups.Close("nothing is playing any more");
             Host.Log.Line("media: the chip is hidden (no session shown)");
@@ -119,7 +120,7 @@ public sealed partial class BarWindow
         if (!guarded) {
             var can = MediaView.Can(s, "toggle");
             string g = playing ? "pause" : "play";
-            var glyph = MediaPics.Glyph(g, 12, MTok(can.Ok ? "LgInk" : "LgInk3"));
+            var glyph = MediaPics.Glyph(g, 12, MTok(can.Ok ? IslandIconKey("LgInk") : "LgInk3"));   // a control that cannot act stays dimmed
             if (!can.Ok) glyph.Opacity = .5;
             _mtog.Content = glyph;
             string tt = MediaView.ToggleTip(s);
@@ -136,7 +137,7 @@ public sealed partial class BarWindow
         var img = await MediaPics.Load(src);
         if (_mart == null || src != _martSrc) return;
         _mart.Child = img != null ? new Image { Source = img, Width = size, Height = size, Stretch = size >= 20 ? Stretch.UniformToFill : Stretch.Uniform }
-            : MediaPics.Glyph("note", 12, MTok("LgInk2"));
+            : MediaPics.Glyph("note", 12, MTok(IslandIconKey("LgInk2")));
     }
 
     /// mediaDo(): a press the app does not accept says why (in the card, or a chip from the bar); a second press while

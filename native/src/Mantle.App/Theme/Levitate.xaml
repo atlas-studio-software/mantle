@@ -3,7 +3,7 @@
   The levitated look's tokens (lane r10-newlook; owner's decision 2026-11-24, EM ticket t_c268b8: Quartz's "levitated"
   look is Mantle's look), from the design file LOOK.md (look-sync design commit 97aa001), which replaced the first spec
   (the prototype quartz-home/app.js + style.css). Merged once, by Theme/Theme.xaml, after Tokens.xaml. The same in both
-  themes. Hand-written; its C# mirror for the pure code is Mantle.Core/Look/Levitate/LevitateTokens.cs, and
+  themes (but the bar's islands inks, LvBar*, in ThemeDictionaries). Hand-written; its C# mirror for the pure code is Mantle.Core/Look/Levitate/LevitateTokens.cs, and
   LevitateTokensTests holds the two equal. Tokens.xaml's values (the other surfaces) are not changed by this file.
   Everything floats above the wallpaper with gaps; nothing but the picture touches the screen edges. Island edge: none
   (no hairline, ring or top highlight); no tint film, no frost colour, no white sheen at rest (LvSheenHover is hover only);
@@ -17,6 +17,29 @@
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <!-- lane r14-bar-review: the bar's islands inks, the one part of this file that differs by theme (apps-r3/mantle-bar
+       look.css; light from apps-r3/LIGHT.md 4 / 4.1). Only the islands look uses them (BarGeometry.Islands); the
+       MANTLE_TEST_GLASS=electron face keeps Tokens.xaml's Lg* inks.
+       LvBarInk: every glyph on the bar (look.css .btn { color: var(--text) }): dark text #EEF6F7, light #0F1E21.
+       LvBarInk2: text-2 (the date, the More pip for a plain problem): dark rgba(230,242,244,.76), light #0F1E21 at .76.
+       LvBarWarn: --warn, only for a "warn" problem's pip: dark #E3C47E, light #4C3300.
+       LvBarAccent: the dock's focus underline (look.css .dock-hl .u): dark #A9E7ED, light #083F49. It moves to Core's
+       islands accent profile (look-sync accent.js 'islands', base hue 185) when that port lands. -->
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="LvBarInk" Color="#FFEEF6F7"/>
+      <SolidColorBrush x:Key="LvBarInk2" Color="#C2E6F2F4"/>
+      <SolidColorBrush x:Key="LvBarWarn" Color="#FFE3C47E"/>
+      <SolidColorBrush x:Key="LvBarAccent" Color="#FFA9E7ED"/>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="LvBarInk" Color="#FF0F1E21"/>
+      <SolidColorBrush x:Key="LvBarInk2" Color="#C20F1E21"/>
+      <SolidColorBrush x:Key="LvBarWarn" Color="#FF4C3300"/>
+      <SolidColorBrush x:Key="LvBarAccent" Color="#FF083F49"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
   <!-- gaps (DIP): island to window / screen edge and between big panels 12; a panel opens 12 above the bar; islands in a
        row 6; content edge = chrome edge 12 -->
   <x:Double x:Key="LvGap">12</x:Double>

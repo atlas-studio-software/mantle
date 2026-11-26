@@ -70,6 +70,7 @@ public sealed partial class BarWindow
                 }));
             }
         _tray.Visibility = _tray.Children.Count > 0 ? Visibility.Visible : Visibility.Collapsed;
+        IslandSep();   // the islands look: the divider only follows now playing or the tray (BarWindow.Islands.cs)
         Host.Log.Line(unavailable ? "tray: the strip is empty: " + _chips.TrayUnavailable
             : $"tray: the strip shows {_tray.Children.Count} icon{(_tray.Children.Count == 1 ? "" : "s")}, {_trayHidden.Count} hidden in Windows' flyout");
     }

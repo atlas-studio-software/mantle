@@ -113,4 +113,18 @@ internal static class Win32
     [DllImport("user32.dll")] static extern bool GetCursorPos(out POINT p);
     [DllImport("user32.dll")] static extern bool SetCursorPos(int x, int y);
     [StructLayout(LayoutKind.Sequential)] struct POINT { public int X, Y; }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct SYSTEM_POWER_STATUS { public byte ACLineStatus, BatteryFlag, BatteryLifePercent, SystemStatusFlag; public uint BatteryLifeTime, BatteryFullLifeTime; }
+    [DllImport("kernel32.dll")] static extern bool GetSystemPowerStatus(out SYSTEM_POWER_STATUS s);
+
+    /// Whether this machine has a battery, read the way the bar reads it (BarWindow.Islands.cs IslandPower: BatteryFlag
+    /// 128 = none, 255 = unknown, both "no battery"), with the words for an Assert.Inconclusive when it has none.
+    public static (bool Has, string Why) Battery()
+    {
+        if (!GetSystemPowerStatus(out var p)) return (false, "Windows did not say whether there is a battery");
+        if ((p.BatteryFlag & 128) != 0) return (false, "this machine reports no battery");
+        if (p.BatteryFlag == 255) return (false, "Windows does not know whether there is a battery");
+        return (true, "ok");
+    }
 }

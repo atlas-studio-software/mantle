@@ -145,19 +145,24 @@ public class BarTests
         using var app = BarApp.Launch("uitest-clock");
         var timeEl = app.Find("bar.clock.time");
         var dateEl = app.Find("bar.clock.date");
-        // Read, then compare with the clock read around it: the bar ticks once a second.
+        // Read, then compare with the clock read around it. Lane r14-bar-review: the islands clock is the prototype's
+        // h:mm (shell.js tick), 12- or 24-hour by the locale, never seconds, so it ticks on the minute.
         var before = DateTime.Now;
         string t = timeEl.Name ?? "", d = dateEl.Name ?? "";
         var after = DateTime.Now;
-        Assert.IsTrue(DateTime.TryParseExact(t, "h:mm:ss tt", CultureInfo.InvariantCulture, DateTimeStyles.None, out var shown),
-            $"time text '{t}' is not h:mm:ss AM/PM");
+        var f = CultureInfo.CurrentCulture.DateTimeFormat;
+        string[] forms = { "h:mm tt", "H:mm" };
+        bool parsed = DateTime.TryParseExact(t, forms, CultureInfo.InvariantCulture, DateTimeStyles.None, out var shown)
+            || DateTime.TryParseExact(t, forms, CultureInfo.CurrentCulture, DateTimeStyles.None, out shown);
+        Assert.IsTrue(parsed, $"time text '{t}' is not h:mm (12-hour with {f.AMDesignator}/{f.PMDesignator}, or 24-hour), or it has seconds");
         var shownToday = before.Date + shown.TimeOfDay;
-        Assert.IsTrue(shownToday >= before.AddSeconds(-2.5) && shownToday <= after.AddSeconds(1.5),
+        Assert.IsTrue(shownToday >= before.AddSeconds(-before.Second - 2.5) && shownToday <= after.AddSeconds(1.5),
             $"time '{t}' vs the system clock {before:HH:mm:ss.fff}-{after:HH:mm:ss.fff}");
         var want = new[] { before.ToString("d", CultureInfo.CurrentCulture), after.ToString("d", CultureInfo.CurrentCulture) };
         CollectionAssert.Contains(want, d, $"date text '{d}', want '{want[0]}'");
-        // It keeps ticking.
-        Assert.IsTrue(Host.Until(() => (timeEl.Name ?? "") != t, 3000), $"the time stayed '{t}' for 3 s");
+        // It keeps ticking: at the next minute.
+        int toNext = (60 - DateTime.Now.Second) * 1000 + 3000;
+        Assert.IsTrue(Host.Until(() => (timeEl.Name ?? "") != t, toNext), $"the time stayed '{t}' past the next minute ({toNext} ms)");
     }
 
     [TestMethod]

@@ -60,3 +60,48 @@ shows today, and on a real frost (the lift brings the darkest tenth to L >= 0.38
 - BarTests `Dark_theme_islands_tint_follows_the_theme`: the left island above the M, light vs dark, dark + 30 < light.
 - ThemeTests `Islands_theme_change_reaches_the_islands_within_1_s`: the islands look (MANTLE_TEST_GLASS=islands),
   theme.json light, then `--test-theme=dark` from a second start; the left island goes clearly darker within 1 s.
+
+## 3-9. Review findings 3-9 (the islands look only; MANTLE_TEST_GLASS=electron is unchanged)
+
+3. **The amber dot on More** was the "more pip", warn: in every parity log the last line is
+   `more pip: warn (notifications off: Windows is not letting apps read your notifications ...; Desktop not attached: ...)`.
+   Two runner conditions, neither the "Bar may not hide" pip:
+   - "notifications off" (tone warn): the runner's Windows has Settings > Privacy & security > Notifications > "Let apps
+     access your notifications" off, so UserNotificationListener says Denied (Chips.NotificationAccess). That is true of
+     the runner and ClusterTests `More_pip_shows_and_says_why_when_notifications_cannot_be_read` depends on it, so the app
+     keeps saying it. The parity capture should run without it (tools are read only; the exact change):
+     `native/tools/parity/run-parity.ps1`, after line 140 (`if ($golden) { Remove-Item Env:MANTLE_TEST_GLASS ... }`):
+     ```
+     # the runner does not let apps read notifications, so More would wear the "notifications off" warn pip; the golden
+     # capture is the prototype, which has no problem: an empty, readable test list (the centre's own fixture) instead
+     if ($golden) { $env:MANTLE_TEST_NOTIFS = '[]' }
+     ```
+     (NotificationCentre takes the fixture as ok with no toasts; BarWindow.NotifsHealth then clears the chip.)
+   - "Desktop not attached" (tone ""): a `--test` run never attaches the desktop layer on purpose
+     (DesktopLayer.TestNeverAttached), so the chip was false in every test run. Chips.List now skips it in Test mode, as
+     it already skipped the hotkey chip. Not a hidden problem: a live run still raises it.
+   The islands pip is now the prototype's (barhide.js `#more .bh-pip`): 6 x 6 at top 8 / right 8, no ring, text-2
+   (LvBarInk2) for tone "", the design's warn (LvBarWarn: dark #E3C47E, light #4C3300) only for tone "warn".
+4. **The lone divider**: RightSep shows only when now playing or the tray strip shows before it (IslandSep, called from
+   PaintMediaChip and the tray's paint). The prototype has the b-sep after the now-playing group; Electron has #tray, then
+   .sep, so a shown tray keeps it too.
+5. **The 77 px gap** was the always-present 32 x 36 battery box (+ its 2 gap) plus the clock's 80 px time box. With no
+   battery BatteryBtn is Collapsed (no room, not in UIA); the clock's time has no min-width in the islands look.
+   ClusterTests checks network to clock is the one 2 DIP gap and, with no battery, ends Inconclusive for the battery's own
+   box; QuickSettingsTests skips the battery click with an Inconclusive reason on a machine with no battery.
+6. **The clock** was BarWindow.Tick's fixed `h:mm:ss AM/PM` (bar.js, not the locale). The islands look reads h:mm with
+   no seconds, 24-hour when the user's short-time pattern has H, else h:mm and the locale's AM / PM. The time and date
+   are right-aligned and the button is as wide as its text plus 8 each side. BAR-416's 80 px box test now launches the
+   electron face; the islands clock has its own test (h:mm, right edges 8 in, left 8 in).
+7. **The M** is already the design's: the prototype draws MARK (viewBox 24, the mark's square 3..21) in a 22 px svg,
+   native in a 22 DIP Viewbox round the same 24 canvas; both show a 16.5 DIP square. No change; the 14,3 16x5 probe stays
+   clear.
+8. **Glyph inks**: every bar glyph (M, downloads, volume, network incl. offline, battery, bell, more, the media chip's
+   note and play / pause, "+N") is LvBarInk in the islands look (look.css `.btn { color: var(--text) }`: dark #EEF6F7,
+   light #0F1E21). The bell no longer drops to LgInk3 when notifications cannot be read (the pip says that). A media
+   control that cannot act stays LgInk3 at .5 (disabled). The clock is LvBarInk over LvBarInk2.
+9. **The focus underline**: Core has no islands accent profile (no "islands" / 185 in an accent file in Mantle.Core).
+   The cell's active line takes a local brush, LvBarAccent (dark #A9E7ED, light #083F49), in Theme/Levitate.xaml's new
+   ThemeDictionaries (TokensTests' lint allows colour literals there only). **Core: needs the islands accent profile**
+   (look-sync accent.js 'islands', base hue 185); LvBarAccent moves to it when the port lands. The downloads dot and the
+   bell's count still use LgAcc.
