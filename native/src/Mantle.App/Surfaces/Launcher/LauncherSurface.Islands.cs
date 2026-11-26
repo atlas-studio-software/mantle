@@ -57,10 +57,8 @@ internal sealed partial class LauncherSurface
         var r = new CornerRadius(_spec.Radius);
         var lev = new LevitatePanel("launcher", r);
         _lvPanel = lev;
-        _panelGrid.Children.Insert(0, lev.Sheen);
-        _panelGrid.Children.Insert(0, lev.Film);
-        _panelGrid.Children.Insert(0, lev.Dim);
-        _panelGrid.Children.Insert(0, lev.Picture);       // Picture, Dim, Film, Sheen, then the launcher's own content
+        var layers = lev.Layers;
+        for (int i = 0; i < layers.Length; i++) _panelGrid.Children.Insert(i, layers[i]);   // Picture, Dim, Film, Sep, Sheen, then the launcher's own content
         foreach (var b in new[] { _bdrop, _fill, _edge, _lip, _dim }) b.Visibility = Visibility.Collapsed;
         _panelGrid.CornerRadius = r;
         _panelGrid.Background = new SolidColorBrush();      // clear but hit-testable, so the sheen follows the whole island

@@ -156,10 +156,8 @@ public sealed partial class BarWindow
     {
         var r = new CornerRadius(BarIslands.Radius);
         var lev = new LevitatePanel(name, r);
-        island.Children.Insert(0, lev.Sheen);
-        island.Children.Insert(0, lev.Film);
-        island.Children.Insert(0, lev.Dim);
-        island.Children.Insert(0, lev.Picture);   // Picture, Dim, Film, Sheen, then the island's own content
+        var layers = lev.Layers;
+        for (int i = 0; i < layers.Length; i++) island.Children.Insert(i, layers[i]);   // Picture, Dim, Film, Sep, Sheen, then the island's own content
         island.CornerRadius = r;
         // clear but hit-testable (a brush with no colour), so the sheen follows the whole island
         island.Background = new SolidColorBrush();

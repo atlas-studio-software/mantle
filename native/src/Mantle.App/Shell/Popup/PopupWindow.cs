@@ -47,7 +47,7 @@ internal sealed class PopupWindow
             var lev = new LevitatePanel("pop-up " + name, r);
             _lev = lev;
             _lift = new PopupLift();
-            Root.Children.Add(lev.Picture); Root.Children.Add(lev.Dim); Root.Children.Add(lev.Film); Root.Children.Add(lev.Sheen);
+            foreach (var layer in lev.Layers) Root.Children.Add(layer);   // Picture, Dim, Film, Sep, Sheen (LevitateLift.Order)
             // clear but hit-testable (a brush with no colour), so the hover sheen follows the whole panel, not only its controls
             face = new Border { CornerRadius = r, Background = new Microsoft.UI.Xaml.Media.SolidColorBrush() };
             Root.PointerEntered += (_, _) => lev.Hover(true);

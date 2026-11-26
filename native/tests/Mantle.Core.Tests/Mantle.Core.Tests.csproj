@@ -27,5 +27,8 @@
     <!-- lane r12-crash-restart: the supervisor's ONE crash rule for native (pure, C# 5) is linked here so the unit stage
          runs it with fakes; Mantle.Sidecar compiles the same file (CrashLoopTests) -->
     <Compile Include="..\..\..\sidecar\CrashLoop.cs" Link="Lifecycle\CrashLoop.linked.cs" />
+    <!-- lane r16-sep-wiring: the app's pure separation pass-through (no WinUI) is linked here so the unit stage runs the
+         app's own code against Core (LevitateLiftTests) -->
+    <Compile Include="..\..\src\Mantle.App\Shell\Levitate\LevitateLift.cs" Link="Look\LevitateLift.linked.cs" />
   </ItemGroup>
 </Project>
