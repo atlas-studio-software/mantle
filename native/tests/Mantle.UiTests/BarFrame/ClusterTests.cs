@@ -47,7 +47,7 @@ public sealed class ClusterTests
     {
         using var app = BarApp.Launch("uitest-pip");
         var pip = app.TryFind("bar.more.pip", 8000);
-        Assert.IsNotNull(pip, "no pip on \"more\"; ids present: " + string.Join(", ", app.SeenIds()));
+        if (pip == null) Assert.Fail("no pip on \"more\"; ids present: " + string.Join(", ", app.SeenIds()));   // the tree walk only on a failure
         string help = pip!.Properties.HelpText.ValueOrDefault ?? "";
         Assert.IsTrue(help.StartsWith("warn: notifications off", StringComparison.Ordinal), "pip help text: " + help);
         var more = app.Find("bar.more").BoundingRectangle;
