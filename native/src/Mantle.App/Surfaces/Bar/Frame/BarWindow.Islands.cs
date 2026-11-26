@@ -249,7 +249,7 @@ public sealed partial class BarWindow
         DockMore.Foreground = IslandsInk.Token(_dark, "LvBarInk", Host.Log.Line);
         DockMore.Background = IslandsInk.Token(_dark, "LvBarSunk", Host.Log.Line);
         // the dock's focus underline (look.css .dock-hl .u: var(--accent)), shared by every cell (IslandCell): the islands
-        // accent, dark from Core's "islands" profile, light the local LvBarAccent until native/r15-accent-v22 merges
+        // accent, Core's "islands" profile in both themes
         _isAccent.Color = IslandsInk.Accent(_dark, Host.Log.Line).Acc;
         // the pip's ink follows the theme too (IslandPipInk, from RenderPip)
         if (MorePip.Visibility == Visibility.Visible) MorePipDot.Fill = IslandPipInk(_pipNow.Item2);

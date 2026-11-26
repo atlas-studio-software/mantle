@@ -4,11 +4,10 @@
 // the levitated bar pop-ups (Downloads today) and LevitatePanel's light hover sheen. Everything else keeps Tokens.xaml's
 // Lg* inks and the steel accent.
 //
-// The accent: dark is Mantle.Core Accent's "islands" profile at its base hue (accent.js tokens(185, "dark", "islands"):
-// acc, strong as the hover, on as the ink on it). Light is the local LvBarAccent / LvBarAccentHover / LvBarAccentInk
-// (LIGHT.md 4 and 4.2) because Core's islands light is still steel's; it switches to Core's islands light
-// (Accent.Tokens(Accent.BaseHue("islands", "light"), "light", "islands")) when native/r15-accent-v22 (the look-sync v2.2
-// port) merges.
+// The accent: Mantle.Core Accent's "islands" profile at its base hue in both themes (accent.js tokens(hue, theme,
+// "islands"), look-sync v2.2: acc, strong as the hover / pressed fill, on as the ink on it). Dark is base 185 (#a9e7ed /
+// #c4f0f4 on #052a2f), light base 189 (LIGHT.md 4 and 4.2: #083f49 / #05313a on #f4f7f8). There is no local copy:
+// Theme/Levitate.xaml holds no LvBarAccent* brush (BarLightTokensTests pins both, and Core's output in light).
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -55,11 +54,9 @@ internal static class IslandsInk
     /// The islands accent of a theme: the accent, its hover / pressed fill and the ink on it (see the file's head).
     public static (global::Windows.UI.Color Acc, global::Windows.UI.Color Hover, global::Windows.UI.Color On) Accent(bool dark, Action<string>? log = null)
     {
-        if (dark && CoreAccent.Tokens(CoreAccent.BaseHue(CoreAccent.Islands, "dark"), "dark", CoreAccent.Islands) is { } t)
-            return (Rgb(t.Acc), Rgb(t.Strong), Rgb(t.On));
-        // light: the local brush (LIGHT.md 4: the accent, 4.2: its hover, the ink on it) until native/r15-accent-v22
-        // merges; then Core's islands light
-        return (Color(false, "LvBarAccent", log), Color(false, "LvBarAccentHover", log), Color(false, "LvBarAccentInk", log));
+        string theme = dark ? "dark" : "light";
+        var t = CoreAccent.Tokens(CoreAccent.BaseHue(CoreAccent.Islands, theme), theme, CoreAccent.Islands)!;   // a base hue: never null
+        return (Rgb(t.Acc), Rgb(t.Strong), Rgb(t.On));
     }
 
     /// A new brush in the islands accent of a theme.

@@ -15,8 +15,9 @@ namespace Mantle.Core.Tests.Look;
 /// against the prototype's numbers. Light: apps-r3/LIGHT.md section 4 (text #0F1E21, text-2 / -3 / -4 at .76 / .56 / .36,
 /// ok #124028, down #6F1813, fills black .05 / .08 / .12 pressed .04, hair black .08, the sheen white .16 / .12) and the
 /// islands accent #083F49 / hover #05313A / ink #F4F7F8 (4 and 4.2). Dark: exactly what the islands showed before (the
-/// LOOK.md tokens of the same file, LevitateTokens, or the Lg token a part kept) and the accent equal to Mantle.Core
-/// Accent's "islands" profile. Parsed the way LevitateTokensTests parses the file.
+/// LOOK.md tokens of the same file, LevitateTokens, or the Lg token a part kept). The accent is NOT in the file: the App
+/// reads Mantle.Core Accent's "islands" profile in both themes (IslandsInk.Accent, lane r16-bar-accent), so these tests pin
+/// Core's output at each theme's base hue. Parsed the way LevitateTokensTests parses the file.
 /// </summary>
 public class BarLightTokensTests
 {
@@ -45,7 +46,7 @@ public class BarLightTokensTests
     static readonly string[] Keys = {
         "LvBarInk", "LvBarInk2", "LvBarInk3", "LvBarInk4", "LvBarWarn", "LvBarOk", "LvBarDown",
         "LvBarFillHover", "LvBarFillOn", "LvBarFillStrong", "LvBarFillPressed", "LvBarHair", "LvBarSheen", "LvBarSheenBig",
-        "LvBarRun", "LvBarTile", "LvBarTileInk", "LvBarSunk", "LvBarAccent", "LvBarAccentHover", "LvBarAccentInk",
+        "LvBarRun", "LvBarTile", "LvBarTileInk", "LvBarSunk",
     };
 
     [Fact]
@@ -102,13 +103,14 @@ public class BarLightTokensTests
     }
 
     [Fact]
-    public void Light_accent_is_083F49_hover_05313A_ink_F4F7F8()
+    public void Light_accent_is_Cores_islands_profile_083F49_hover_05313A_ink_F4F7F8()
     {
-        Assert.Equal("#FF083F49", Bar("Light", "LvBarAccent"));
-        Assert.Equal("#FF05313A", Bar("Light", "LvBarAccentHover"));
-        Assert.Equal("#FFF4F7F8", Bar("Light", "LvBarAccentInk"));
+        // look-sync v2.2: islands light at its base hue 189 is LIGHT.md 4 / 4.2's deep teal, byte for byte
+        Assert.Equal(189, Accent.BaseHue(Accent.Islands, "light"));
+        var t = Accent.Tokens(Accent.BaseHue(Accent.Islands, "light"), "light", Accent.Islands)!;
+        Assert.Equal(("#083f49", "#05313a", "#f4f7f8"), (t.Acc, t.Strong, t.On));
         // the ink on the accent is the light neutral the lift goes toward (LevitateTokens.LightFilm*)
-        Assert.Equal(Argb(1, LevitateTokens.LightFilmR, LevitateTokens.LightFilmG, LevitateTokens.LightFilmB), Bar("Light", "LvBarAccentInk"));
+        Assert.Equal(Argb(1, LevitateTokens.LightFilmR, LevitateTokens.LightFilmG, LevitateTokens.LightFilmB), Opaque(t.On));
     }
 
     [Fact]
@@ -116,14 +118,17 @@ public class BarLightTokensTests
     {
         var t = Accent.Tokens(Accent.BaseHue(Accent.Islands, "dark"), "dark", Accent.Islands)!;
         Assert.Equal(185, Accent.BaseHue(Accent.Islands, "dark"));
-        Assert.Equal("#FFA9E7ED", Opaque(t.Acc));
-        Assert.Equal(Opaque(t.Acc), Bar("Dark", "LvBarAccent"));
-        Assert.Equal(Opaque(t.Strong), Bar("Dark", "LvBarAccentHover"));
-        Assert.Equal(Opaque(t.On), Bar("Dark", "LvBarAccentInk"));
-        Assert.Equal(("#FFA9E7ED", "#FFC4F0F4", "#FF052A2F"), (Bar("Dark", "LvBarAccent"), Bar("Dark", "LvBarAccentHover"), Bar("Dark", "LvBarAccentInk")));
+        Assert.Equal(("#a9e7ed", "#c4f0f4", "#052a2f"), (t.Acc, t.Strong, t.On));
         // and the LOOK.md accent of the same file
-        Assert.Equal(Top("LvAccent"), Bar("Dark", "LvBarAccent"));
-        Assert.Equal(Top("LvAccentInk"), Bar("Dark", "LvBarAccentInk"));
+        Assert.Equal(Top("LvAccent"), Opaque(t.Acc));
+        Assert.Equal(Top("LvAccentInk"), Opaque(t.On));
+    }
+
+    [Fact]
+    public void The_accent_has_no_local_copy_in_either_theme()
+    {
+        foreach (var theme in new[] { "Dark", "Light" })
+            Assert.DoesNotContain(Theme(Root.Value, theme).Elements(), e => (e.Attribute(X + "Key")?.Value ?? "").StartsWith("LvBarAccent", StringComparison.Ordinal));
     }
 
     [Fact]
