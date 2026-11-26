@@ -140,6 +140,21 @@ internal sealed partial class LauncherSurface : Mantle.App.Shell.ISurface
         _q.GotFocus += (_, _) => FocusLine();                             // .slot:focus-within::after
         _q.LostFocus += (_, _) => FocusLine();
         _q.Loaded += (_, _) => HideClearButton();
+        // lane r16-trial-fixes: the window is larger than the pane (the shadow's room round it: ShadowRoom in the islands
+        // look, InsetDip in the glass look). A press there landed on this window, so it was no outside click: the window
+        // kept the focus (no "blur") and nothing closed it. A window region would let the press through but clips the
+        // drawing too, and the shadow is drawn in that room, so the room instead takes the press (the root's clear fill)
+        // and closes the launcher as an outside click does. A press on the pane is the pane's own (and bubbles here, so
+        // only a press outside the pane's rectangle counts).
+        _root.Background = new SolidColorBrush(LauncherTokens.None);
+        _root.PointerPressed += (_, e) =>
+        {
+            if (!_shown) return;
+            var at = e.GetCurrentPoint(_panel).Position;
+            if (at.X >= 0 && at.Y >= 0 && at.X < _panel.ActualWidth && at.Y < _panel.ActualHeight) return;
+            e.Handled = true;
+            Hide("a click outside the island");
+        };
         _win.Activated += (_, e) =>
         {
             // LAU-025: focus lost to another window closes it (live only; a --test launcher is never active)
