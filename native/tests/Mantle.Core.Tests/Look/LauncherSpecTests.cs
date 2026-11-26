@@ -197,4 +197,21 @@ public class LauncherSpecTests
             Assert.All(T(k), v => Assert.Contains(v, space));
         foreach (var k in new[] { "LvLauncherFieldGap", "LvLauncherRowGap", "LvLauncherHintGap", "LvLauncherKeyGap" }) Assert.Contains(D(k), space);
     }
+
+    [Fact]
+    public void Every_islands_ink_the_launcher_uses_is_in_both_themes_and_text_3_is_only_the_placeholder()
+    {
+        string src = Source("LauncherSurface.Islands.cs") + Source("LauncherSurface.cs");
+        var used = Regex.Matches(src, "\"(LvBar\\w+)\"").Select(m => m.Groups[1].Value).Distinct().ToArray();
+        Assert.NotEmpty(used);
+        var themes = LevitateRoot.Value.Element(P + "ResourceDictionary.ThemeDictionaries")!.Elements(P + "ResourceDictionary").ToArray();
+        foreach (var theme in new[] { "Dark", "Light" }) {
+            var keys = new HashSet<string>(themes.Single(e => e.Attribute(X + "Key")?.Value == theme).Elements().Select(e => e.Attribute(X + "Key")!.Value));
+            foreach (var k in used) Assert.True(keys.Contains(k), $"Levitate.xaml {theme} has no {k}");
+        }
+        // FIXES-2: readable text is never text-3; launcher.css L13 keeps it for the placeholder alone
+        Assert.Single(Regex.Matches(src, "\"LvBarInk3\""));
+        Assert.Contains("k.Contains(\"Placeholder\") ? Mantle.App.Shell.Levitate.IslandsInk.Color(dark, \"LvBarInk3\"", src);
+        Assert.DoesNotContain("\"LvBarInk4\"", src);
+    }
 }
