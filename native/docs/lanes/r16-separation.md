@@ -44,3 +44,9 @@ light). `Look/SeparationV23Tests` checks:
 - bad input never throws.
 
 A node mirror of this port's algorithm (index tie-breaks, the same rounding) passed 70 of 70 vectors before the C# run.
+
+2026-11-26 update (EM t_d8c327): ported look-sync f4356d6 (SEPARATION.md 6051417) instead of b96576b: the second
+fallback (d), the lift / shade on top of the .72 film when the film ends at its cap still short (its best step), and the
+overall highest S (a tie keeps the earlier). separation-v23.json is now f4356d6's rev 2, 76 vectors (the 70 earlier
+unchanged), git blob 2b016ca6. b96576b's "already darkened never gets the white lift" test is replaced by look-sync's
+second-fallback cases (5 dark, 1 light).

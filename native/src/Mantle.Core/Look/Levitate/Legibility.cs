@@ -37,8 +37,8 @@ public sealed record PanelLiftResult(double Alpha, string Check, double Dim, (by
 public sealed record SeparationResult(double Alpha, double Sep, (byte R, byte G, byte B) SepRgb, double? LP, double? LI, double? S);
 
 /// <summary>
-/// look-sync v2.3's <c>SEPARATE</c> (CONTRACT "2026-11-26: v2.3: separation", proto/designs apps-r3/SEPARATION.md 7bfde5f,
-/// FROZEN; look-sync b96576b): the constants of <see cref="Legibility.Separation"/>. The film's own step, cap and text targets
+/// look-sync v2.3's <c>SEPARATE</c> (CONTRACT "2026-11-26: v2.3: separation", proto/designs apps-r3/SEPARATION.md 6051417,
+/// FROZEN; look-sync f4356d6): the constants of <see cref="Legibility.Separation"/>. The film's own step, cap and text targets
 /// stay LIFT's (<see cref="LevitateTokens.FilmStep"/>, <see cref="LevitateTokens.FilmCap"/>, <see cref="LevitateTokens.FilmTarget"/>,
 /// <see cref="LevitateTokens.LightFilmTarget"/>).
 /// </summary>
@@ -195,14 +195,17 @@ public static class Legibility
     static Rgb Over(Rgb c, double a, (byte R, byte G, byte B) f) => new(c.R * (1 - a) + f.R * a, c.G * (1 - a) + f.G * a, c.B * (1 - a) + f.B * a);
 
     /// <summary>
-    /// look-sync v2.3's <c>separation(samples, dim, theme)</c> one to one (b96576b; CONTRACT "2026-11-26: v2.3: separation",
-    /// SEPARATION.md 7bfde5f, FROZEN): an island also stands out from the picture under it. Samples, dim and theme as
+    /// look-sync v2.3's <c>separation(samples, dim, theme)</c> one to one (f4356d6; CONTRACT "2026-11-26: v2.3: separation",
+    /// SEPARATION.md 6051417, FROZEN): an island also stands out from the picture under it. Samples, dim and theme as
     /// <see cref="LiftAlpha(double[][], double, string)"/>. P = the median sample (index n/2, darkest first, after the dim);
     /// I = P under the film; S = ratio(L(I), L(P)), target <see cref="Separate.Target"/>. If S is short, the island moves AWAY
     /// from the picture: in dark a white lift (only where the check left the film at 0 and L(P) &lt;= 0.039), else the film
     /// goes on past its stop; in light the #F4F7F8 lift goes on (where it already lifted, or L(P) &lt;= 0.55), else a #0A0C0E
     /// shade. The lift or shade never lets the check's own guard sample cross the check's text target (it stops one step
-    /// before). If it stops short of the target, the film goes on instead when that separates more (the fallback). Every
+    /// before). Steps: (a) the check's film alone, stop at S &gt;= target; (b) the lift / shade row where it applies; (c) if (b)
+    /// did not apply or ended short, more film; (d) if (c) ends at the .72 cap still short, the lift / shade on top of the .72
+    /// film (steps .02, cap .16, the guard under both layers), keeping its step with the highest S. Overall the highest S
+    /// wins; a tie keeps the earlier result. Every
     /// step is rounded to 2 decimals, as look-sync does. Sorts break ties by index (JS's sort is stable, C#'s is not).
     /// No usable sample: alpha 0, sep 0, LP / LI / S null. Pure, never throws.
     /// </summary>
@@ -232,30 +235,42 @@ public static class Legibility
         var film = FilmRgb(t);
         Rgb Island(Rgb c, double a, double k) => Over(Over(c, a, film), k, sepRgb);
         double LP = L(P);
-        double alpha = Alpha(seen, d, light), sep = 0;
-        double LI = L(Island(P, alpha, 0)), S = Ratio(LI, LP);
-        bool sepRow = alpha == 0 && (light ? LP > Separate.SplitLight : LP <= Separate.SplitDark);
-        if (S < Separate.Target && sepRow) {
-            while (S < Separate.Target && sep < Separate.Max - 1e-9) {
-                double next = R2(sep + Separate.Step);
-                double g = L(Island(guard, alpha, next));
-                if (light ? g < LevitateTokens.LightFilmTarget : g > LevitateTokens.FilmTarget) break;   // text contrast wins
-                sep = next; LI = L(Island(P, alpha, sep)); S = Ratio(LI, LP);
+        double T = Separate.Target;
+        SepTry Make(double a, double k) { double li = L(Island(P, a, k)); return new SepTry(a, k, li, Ratio(li, LP)); }
+        bool GuardOk(double a, double k) { double g = L(Island(guard, a, k)); return light ? g >= LevitateTokens.LightFilmTarget : g <= LevitateTokens.FilmTarget; }
+        double a0 = Alpha(seen, d, light);
+        SepTry best = Make(a0, 0);                                            // (a) the brightness check alone
+        void Consider(SepTry r) { if (r.S > best.S) best = r; }               // the highest S; a tie keeps the earlier
+        // the lift (dark white) or shade (light) over film a: its best step or its last one, text contrast first
+        SepTry? Layer(double a, bool keepBest)
+        {
+            double k = 0; SepTry r = Make(a, 0); SepTry? top = null;
+            while (r.S < T && k < Separate.Max - 1e-9) {
+                double next = R2(k + Separate.Step);
+                if (!GuardOk(a, next)) break;                              // stop one step before the guard would cross
+                k = next; r = Make(a, k);
+                if (top == null || r.S > top.S) top = r;
             }
-            if (S < Separate.Target) {   // the fallback (7bfde5f): the lift / shade stopped short; the film instead if it separates more
-                double a2 = alpha, L2 = L(Island(P, a2, 0)), S2 = Ratio(L2, LP);
-                while (S2 < Separate.Target && a2 < LevitateTokens.FilmCap - 1e-9) {
-                    a2 = Math.Min(LevitateTokens.FilmCap, R2(a2 + LevitateTokens.FilmStep)); L2 = L(Island(P, a2, 0)); S2 = Ratio(L2, LP);
+            return keepBest ? top : r;
+        }
+        if (best.S < T) {
+            bool row1 = a0 == 0 && (light ? LP > Separate.SplitLight : LP <= Separate.SplitDark);
+            if (row1) Consider(Layer(a0, false)!);                         // (b) dark white lift / light shade
+            if (!row1 || best.S < T) {                                     // (c) the film goes on past its stop
+                double a = a0; SepTry r = Make(a, 0);
+                while (r.S < T && a < LevitateTokens.FilmCap - 1e-9) { a = Math.Min(LevitateTokens.FilmCap, R2(a + LevitateTokens.FilmStep)); r = Make(a, 0); }
+                Consider(r);
+                if (r.S < T && a >= LevitateTokens.FilmCap - 1e-9) {       // (d) at the cap still short: the layer on top (f4356d6)
+                    SepTry? top = Layer(a, true);
+                    if (top != null) Consider(top);
                 }
-                if (S2 > S) { alpha = a2; sep = 0; LI = L2; S = S2; }
-            }
-        } else if (S < Separate.Target) {
-            while (S < Separate.Target && alpha < LevitateTokens.FilmCap - 1e-9) {
-                alpha = Math.Min(LevitateTokens.FilmCap, R2(alpha + LevitateTokens.FilmStep)); LI = L(Island(P, alpha, 0)); S = Ratio(LI, LP);
             }
         }
-        return new SeparationResult(alpha, sep, sepRgb, LP, LI, S);
+        return new SeparationResult(best.Alpha, best.K, sepRgb, LP, best.LI, best.S);
     }
+
+    /// One candidate of <see cref="Separation"/>: film alpha, layer step, L(I), S.
+    sealed record SepTry(double Alpha, double K, double LI, double S);
 
     static bool Num(JsonNode? v, double lo, double hi, out double d) => LookSyncCore.IsFinite(v, out d) && d >= lo && d <= hi;
 
