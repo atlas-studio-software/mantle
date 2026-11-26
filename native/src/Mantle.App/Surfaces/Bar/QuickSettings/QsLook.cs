@@ -64,13 +64,13 @@ internal static class QsLook
         ["LgPress"] = "LvBarFillOn", ["LgSunk"] = "LvBarSunk",
         ["LgEdgeOut"] = "LvBarHair", ["LgEdgeIn"] = "LvBarHair", ["LgEdgeStrong"] = "LvBarHair", ["LgDivider"] = "LvBarHair",
         ["LgWarn"] = "LvBarWarn",
-        ["LgAcc"] = "LvBarAccent", ["LgAccLine"] = "LvBarAccent", ["LgAccOn"] = "LvBarAccentInk",
+        // LgAcc / LgAccLine / LgAccOn / LgAccSoft have no twin: the islands accent is not a token (Ink below, lane r16-qs-accent)
     };
 
-    /// The resource name a XAML string ({ThemeResource ...}) should use for <paramref name="lg"/> in this look.
-    public static string Key(string lg) => Islands && Twin.TryGetValue(lg, out var lv) ? lv : lg;
-
-    /// The islands brush for an Lg* name, or null when the name has no twin (the caller keeps its Lg* token).
+    /// The islands brush for an Lg* name, or null when the name has no twin (the caller keeps its Lg* token). The accent
+    /// names are IslandsInk.Accent (Mantle.Core Accent's "islands" profile, both themes, as the bar's islands use it); a
+    /// twin or LvBar* / LvQs* name the token files lack is IslandsInk.Token's clear brush, said once. Never hand a twin to
+    /// a {ThemeResource} string: XamlReader throws on a missing name (QsPanel.Fill sets the brush in code).
     public static Brush? Ink(bool dark, string lg, Action<string>? log)
     {
         if (lg == "LgFill0") return new SolidColorBrush();

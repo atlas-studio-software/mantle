@@ -824,16 +824,24 @@ internal sealed partial class QsPanel
 
     /// Draws the paths into a 16x16 canvas in one ink (the SVG's currentColor), a theme token resolved by the element's
     /// own theme. Built inline: the AOT build cannot cast XamlReader's result to Shapes.Path (it can to UIElement).
-    static void Fill(Canvas c, string[] paths, string inkKey)
+    /// The islands look (lane r16-qs-accent): the ink is the brush B gives for the panel's theme (QsLook.Ink: the LvBar*
+    /// twin through IslandsInk.Token, the accent from IslandsInk.Accent), set on the path in code. It is never a
+    /// {ThemeResource} name there: a name the token files lack makes XamlReader.Load throw (a XAML parse error, the
+    /// unhandled crash quick settings had when Levitate.xaml lost LvBarAccent*), where IslandsInk.Token draws it clear
+    /// and says so once. Prepare repaints on every theme change, so the code-set ink follows the bar's theme.
+    void Fill(Canvas c, string[] paths, string inkKey)
     {
         c.Children.Clear();
-        inkKey = QsLook.Key(inkKey);   // the islands look: the LvBar* twin (QsLook.cs)
+        Brush? ink = _isl ? B(inkKey) : null;
         foreach (var spec in paths) {
             int bar = spec.IndexOf('|');
             string kind = spec[..bar], data = spec[(bar + 1)..];
-            string paint = kind == "F" ? $"Fill='{{ThemeResource {inkKey}}}'"
-                : $"Stroke='{{ThemeResource {inkKey}}}' StrokeThickness='{(kind == "s" ? "1.2" : kind == "g" ? "1.1" : "1.3")}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'" + (kind == "D" ? $" Opacity='{FaintText()}'" : "");
-            c.Children.Add((UIElement)XamlReader.Load($"<Path {Ns} Data='{Norm(data)}' {paint}/>"));
+            string res = ink == null ? $"'{{ThemeResource {inkKey}}}'" : "";
+            string paint = kind == "F" ? (ink == null ? $"Fill={res}" : "")
+                : (ink == null ? $"Stroke={res} " : "") + $"StrokeThickness='{(kind == "s" ? "1.2" : kind == "g" ? "1.1" : "1.3")}' StrokeStartLineCap='Round' StrokeEndLineCap='Round' StrokeLineJoin='Round'" + (kind == "D" ? $" Opacity='{FaintText()}'" : "");
+            var path = (UIElement)XamlReader.Load($"<Path {Ns} Data='{Norm(data)}' {paint}/>");
+            if (ink != null) path.SetValue(kind == "F" ? Shape.FillProperty : Shape.StrokeProperty, ink);
+            c.Children.Add(path);
         }
     }
 }
