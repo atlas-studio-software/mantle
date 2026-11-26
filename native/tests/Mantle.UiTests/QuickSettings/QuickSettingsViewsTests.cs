@@ -154,6 +154,48 @@ public class QuickSettingsViewsTests
         Assert.IsFalse(FrameProbe.Log(dir).Contains("NOT DONE"), "a set failed");
     }
 
+    /// Lane r16-trial-fixes: the offline test switch (MANTLE_TEST_NET=off) reaches the Wi-Fi list one level down too, so
+    /// the list never says a network is connected while the tile says "Not connected": the fixture's connected network
+    /// reads as the prototype's quick.js netSub() has a saved one ("Saved · " and its security), and its action is
+    /// Connect, not Disconnect.
+    [TestMethod]
+    public void Offline_test_switch_draws_the_wifi_list_with_no_network_connected()
+    {
+        string dir = FrameProbe.NewDir("qs-netoff-list");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_QS"] = Fixture, ["MANTLE_TEST_NET"] = "off" };
+        using var app = BarApp.Launch("qs-netoff-list", "light", env: env, extra: new[] { "--bench-out=" + dir });
+        Host.LogContains(() => FrameProbe.Log(dir), "qs: a --test run with MANTLE_TEST_QS", "the fixture was not taken", 15000);
+        ClickEl(app.Find("bar.network"));
+        IntPtr h = IntPtr.Zero;
+        Assert.IsTrue(Host.Until(() => FrameProbe.Showing(h = FrameProbe.Find(app.Proc.Id, "Mantle pop-up: Quick settings")), 3000), "quick settings did not open");
+        Has(dir, "pop-up Quick settings: shown at", "quick settings never said it was on screen");
+        var w = Host.Uia.FromHandle(h);
+        Assert.IsTrue(Host.Until(() => Help(El(w, "qs.tile.wifi")) == "Not connected", 3000), $"the Wi-Fi tile says \"{Help(El(w, "qs.tile.wifi"))}\", not \"Not connected\"");
+
+        Press(w, "qs.more.wifi");
+        Has(dir, "qs: the Wi-Fi view opened", "the Wi-Fi view did not open");
+        Assert.AreEqual("Mantle test", El(w, "qs.wifi.net.0").Name);
+        Assert.IsTrue(Host.Until(() => Help(El(w, "qs.wifi.net.0")) == "Saved · WPA2-Personal", 3000),
+            $"the fixture's connected network says \"{Help(El(w, "qs.wifi.net.0"))}\" under MANTLE_TEST_NET=off, not \"Saved · WPA2-Personal\"");
+        Has(dir, "qs: MANTLE_TEST_NET=off: the Wi-Fi list is drawn with no network connected, as the tile", "no offline list line");
+        var subs = new List<string>();
+        for (int i = 0; w.FindFirstDescendant(cf => cf.ByAutomationId("qs.wifi.net." + i)) is { } row; i++) subs.Add(row.Name + ": " + Help(row));
+        Assert.AreEqual(3, subs.Count, "the list does not hold the fixture's 3 networks: " + string.Join(" | ", subs));
+        Assert.IsFalse(subs.Any(s => s.Contains("Connected", StringComparison.Ordinal)), "a row says Connected under MANTLE_TEST_NET=off: " + string.Join(" | ", subs));
+        Host.Screenshot("qs-offline-wifi-list");
+
+        // its action is Connect (a saved network), never Disconnect
+        ClickEl(El(w, "qs.wifi.net.0"));
+        Assert.AreEqual("Connect", El(w, "qs.wifi.connect").Name, "the saved network's action is not Connect");
+        Assert.IsNull(w.FindFirstDescendant(cf => cf.ByAutomationId("qs.wifi.disconnect")), "the list offers Disconnect under MANTLE_TEST_NET=off");
+
+        // back on the main view the tile still says it
+        ClickEl(El(w, "qs.back"));
+        Has(dir, "qs: the Wi-Fi view closed (the back arrow)", "the back arrow did not leave the view");
+        Assert.IsTrue(Host.Until(() => Help(El(w, "qs.tile.wifi")) == "Not connected", 3000), $"after the list the Wi-Fi tile says \"{Help(El(w, "qs.tile.wifi"))}\"");
+        Assert.IsFalse(FrameProbe.Log(dir).Contains("NOT DONE"), "a set failed");
+    }
+
     [TestMethod]
     public void The_password_field_takes_the_keyboard_on_ask_and_the_password_never_reaches_the_log()
     {

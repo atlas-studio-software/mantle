@@ -412,8 +412,8 @@ internal sealed partial class QsPanel
     /// force: redraw even if nothing changed. A poll never redraws over an open password field (it would wipe it).
     void RenderWifi(bool force)
     {
-        var r = _wifiData;
-        if (_view != "wifi" || r == null) return;
+        if (_view != "wifi" || _wifiData == null) return;
+        var r = WifiListShown(_wifiData);   // MANTLE_TEST_NET=off: nothing connected, as the tile (QsPanel.Islands.cs)
         PaintWifiStatus();
         Note("last", QsMoreView.WifiLastNote(r, _wFail.Count > 0));
         if (_wPwFor != null && !force) return;
