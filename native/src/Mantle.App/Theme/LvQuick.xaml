@@ -3,8 +3,83 @@
   LvQuick.xaml (lane r15-quick-launcher): the restyled quick surface's prototype numbers and theme inks (apps-r3/mantle-bar
   panels/quick.css, apps-r3/light-mantle, LIGHT.md). Merged by Theme.xaml; pinned by the unit tests in
   Mantle.Core.Tests/Look (plan v0.2: prototype-spec numeric checks in unit, no pixel compare against the prototype).
+
+  Quick settings (Surfaces/Bar/QuickSettings, read in code by QsLook.cs, only in the islands look; the Electron look keeps
+  the Lg* tokens). Every other ink is a LvBar* token of Levitate.xaml, the accent is IslandsInk.Accent.
+    LvQsWidth 360: .qs width (quick.css 5). LvQsPad 8 / LvQsGap 12: .qs-in padding and gap (quick.css 12).
+    LvQsTileGap 8: .qs-grid gap (15). LvQsTileH 48, LvQsTilePad 12 left 8 right, LvQsTileIco 20, LvQsTileIcoGap 8:
+      .qs-tile (16, 17). LvQsLblFs 13 / LvQsLblLh 18, LvQsSubFs 11 / LvQsSubLh 15: .qs-lbl, .qs-sub (23, 24).
+    LvQsChevW 24, LvQsSplitGap 2: .qs-split (29). LvQsRowGap 4: .qs-row (39). LvQsHeadPad 0 4, LvQsHeadFs 13,
+      LvQsValFs 12: .qs-head, .qs-val (40, 41). LvQsLineH 28, LvQsLineGap 4, LvQsIBtn 28: .qs-line, .qs-ibtn (42, 44).
+    LvQsTrackH 4, LvQsThumb 16: the range track and thumb (51, 53). LvQsSegH 32, LvQsSegPad 2, LvQsSegBtnH 28: .qs-seg,
+      .qs-segb (64, 65). LvQsGoRowH 40, LvQsGoRowPad 12 left 8 right, LvQsGoRowGap 12: .qs-gorow (119).
+    LvQsHeadH 40, LvQsHeadPadX 8, LvQsBackSize 32, LvQsTitleFs 14: .qs-shead, .qs-stitle (127, 128, 129).
+    LvQsFootH 40, LvQsFootPad 16 left 8 right, LvQsFootGap 4, LvQsFootFs 12: .qs-foot, .qs-power (111, 112).
+    LvQsMinH 240, LvQsScreenGap 80: quick.js fit(): max(240, min(natural, innerHeight less 80)).
+    LvQsFaint 0.32: an unlit Wi-Fi arc (quick.js wifiG). LvQsDeadOpacity 0.45: a tile, slider or row native cannot use.
+    Radii: LvQsRCtl 8 (r-m: tiles, rows, the seg), LvQsRSmall 4 (r-xs: the split's inner corners), LvQsRSeg 6 (r-s: a
+      seg button), LvQsRPill 999 (pills, the track).
+    LvQsOnSubInk: the on tile's second line (quick.css 26 accent-ink-2: dark rgba(5,42,47,.72); light-mantle/light.css
+      16 rgba(244,247,248,.78)). LvQsHoverOver: the pointer's overlay on a control, so a fill-1 control reads fill-2
+      (dark white .07 to .12: white .054 over it; light black .05 to .08: black .032 over it).
 -->
 <ResourceDictionary
     xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
     xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+  <ResourceDictionary.ThemeDictionaries>
+    <ResourceDictionary x:Key="Dark">
+      <SolidColorBrush x:Key="LvQsOnSubInk" Color="#B8052A2F"/>
+      <SolidColorBrush x:Key="LvQsHoverOver" Color="#0EFFFFFF"/>
+    </ResourceDictionary>
+    <ResourceDictionary x:Key="Light">
+      <SolidColorBrush x:Key="LvQsOnSubInk" Color="#C7F4F7F8"/>
+      <SolidColorBrush x:Key="LvQsHoverOver" Color="#08000000"/>
+    </ResourceDictionary>
+  </ResourceDictionary.ThemeDictionaries>
+
+  <x:Double x:Key="LvQsWidth">360</x:Double>
+  <x:Double x:Key="LvQsPad">8</x:Double>
+  <x:Double x:Key="LvQsGap">12</x:Double>
+  <x:Double x:Key="LvQsTileGap">8</x:Double>
+  <x:Double x:Key="LvQsTileH">48</x:Double>
+  <Thickness x:Key="LvQsTilePad">12,0,8,0</Thickness>
+  <x:Double x:Key="LvQsTileIco">20</x:Double>
+  <x:Double x:Key="LvQsTileIcoGap">8</x:Double>
+  <x:Double x:Key="LvQsLblFs">13</x:Double>
+  <x:Double x:Key="LvQsLblLh">18</x:Double>
+  <x:Double x:Key="LvQsSubFs">11</x:Double>
+  <x:Double x:Key="LvQsSubLh">15</x:Double>
+  <x:Double x:Key="LvQsChevW">24</x:Double>
+  <x:Double x:Key="LvQsSplitGap">2</x:Double>
+  <x:Double x:Key="LvQsRowGap">4</x:Double>
+  <Thickness x:Key="LvQsHeadPad">4,0,4,0</Thickness>
+  <x:Double x:Key="LvQsHeadFs">13</x:Double>
+  <x:Double x:Key="LvQsValFs">12</x:Double>
+  <x:Double x:Key="LvQsLineH">28</x:Double>
+  <x:Double x:Key="LvQsLineGap">4</x:Double>
+  <x:Double x:Key="LvQsIBtn">28</x:Double>
+  <x:Double x:Key="LvQsTrackH">4</x:Double>
+  <x:Double x:Key="LvQsThumb">16</x:Double>
+  <x:Double x:Key="LvQsSegH">32</x:Double>
+  <x:Double x:Key="LvQsSegPad">2</x:Double>
+  <x:Double x:Key="LvQsSegBtnH">28</x:Double>
+  <x:Double x:Key="LvQsGoRowH">40</x:Double>
+  <Thickness x:Key="LvQsGoRowPad">12,0,8,0</Thickness>
+  <x:Double x:Key="LvQsGoRowGap">12</x:Double>
+  <x:Double x:Key="LvQsHeadH">40</x:Double>
+  <x:Double x:Key="LvQsHeadPadX">8</x:Double>
+  <x:Double x:Key="LvQsBackSize">32</x:Double>
+  <x:Double x:Key="LvQsTitleFs">14</x:Double>
+  <x:Double x:Key="LvQsFootH">40</x:Double>
+  <Thickness x:Key="LvQsFootPad">16,0,8,0</Thickness>
+  <x:Double x:Key="LvQsFootGap">4</x:Double>
+  <x:Double x:Key="LvQsFootFs">12</x:Double>
+  <x:Double x:Key="LvQsMinH">240</x:Double>
+  <x:Double x:Key="LvQsScreenGap">80</x:Double>
+  <x:Double x:Key="LvQsFaint">0.32</x:Double>
+  <x:Double x:Key="LvQsDeadOpacity">0.45</x:Double>
+  <x:Double x:Key="LvQsRCtl">8</x:Double>
+  <x:Double x:Key="LvQsRSmall">4</x:Double>
+  <x:Double x:Key="LvQsRSeg">6</x:Double>
+  <x:Double x:Key="LvQsRPill">999</x:Double>
 </ResourceDictionary>
