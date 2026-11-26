@@ -105,6 +105,27 @@ public class QuickSettingsTests
         Assert.IsFalse(FrameProbe.Log(dir).Contains("NOT DONE"), "a set failed:\n" + Tail(dir));
     }
 
+    /// Lane r15-quick-settings, the offline state (the prototype's ?net=off): MANTLE_TEST_NET=off draws the bar's network
+    /// button offline whatever the runner's network is, and the Wi-Fi tile follows the same switch (BarWindow.Network.cs
+    /// sets QsPanel.ForcedOffline): on, "Not connected" (one bar lit, the rest faint), never the fixture's network.
+    [TestMethod]
+    public void Offline_test_switch_draws_the_wifi_tile_not_connected_like_the_bar_button()
+    {
+        string dir = FrameProbe.NewDir("qs-netoff");
+        var env = new Dictionary<string, string> { ["MANTLE_TEST_QS"] = Fixture, ["MANTLE_TEST_NET"] = "off" };
+        using var app = BarApp.Launch("qs-netoff", "light", env: env, extra: new[] { "--bench-out=" + dir });
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: a --test run with MANTLE_TEST_QS", 15000), "the fixture was not taken. Log:\n" + Tail(dir));
+        var net = app.Find("bar.network");
+        Assert.IsTrue(Host.Until(() => (net.Name ?? "") == "Not connected, Wi-Fi is on but not connected to a network", 8000), $"the network button is named \"{net.Name}\"");
+        ClickEl(net);
+        var w = Panel(app, dir);
+        var wifi = El(w, "qs.tile.wifi");
+        Assert.IsTrue(Host.Until(() => Help(wifi) == "Not connected", 3000), $"the Wi-Fi tile says \"{Help(wifi)}\", not \"Not connected\"");
+        StringAssert.StartsWith(Status(wifi), "on", "the Wi-Fi tile is not drawn on (Wi-Fi on, nothing connected)");
+        Assert.IsTrue(FrameProbe.LogHas(dir, "qs: MANTLE_TEST_NET=off: the Wi-Fi tile is drawn on and not connected", 2000), "no offline line. Log:\n" + Tail(dir));
+        Host.Screenshot("qs-offline-light");
+    }
+
     [TestMethod]
     public void Opens_from_network_and_battery_in_dark_and_reads_the_runner_without_a_fixture()
     {
