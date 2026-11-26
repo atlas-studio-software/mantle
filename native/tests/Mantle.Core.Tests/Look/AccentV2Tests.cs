@@ -25,7 +25,7 @@ public class AccentV2Tests
     public void Every_shared_accent_vector_passes_all_136()
     {
         using var doc = JsonDocument.Parse(File.ReadAllText(Fixture()));
-        Assert.Equal(2, doc.RootElement.GetProperty("rev").GetInt32());
+        Assert.Equal("2", doc.RootElement.GetProperty("rev").GetString());   // the generator writes rev as a string
         var vectors = doc.RootElement.GetProperty("vectors").EnumerateArray().ToArray();
         Assert.Equal(136, vectors.Length);
         int passed = 0;
